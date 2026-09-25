@@ -4,34 +4,7 @@ How Food Pickup works end to end: which piece talks to which, and what happens, 
 
 - **Web app**: React 18 + Vite, in `client/`. It signs in with supabase-js and gets all its data from the API.
 - **API**: Express 5, in `server/`. It verifies Supabase access tokens, holds all business rules, and reads and writes Postgres with the Supabase **secret** key.
-- **Supabase**: Auth (sign-in, token1. Install package
-Add @supabase/server to your backend.
-Details:
-npm install @supabase/server
-On Edge Functions you can import it directly, no install needed.
-Code:
-File: Code
-```
-npm install @supabase/server
-```
-
-2. Set environment variables
-Copy these into your environment so your handler can verify users and use supabase-js.
-Details:
-.env
-SUPABASE_URL=https://xkddnlxeeizaqpefhqlv.supabase.co
-SUPABASE_PUBLISHABLE_KEY=sb_publishable_DrPfncWS6l8j4ZPg8TZ0NQ_lqxJXvF0
-SUPABASE_SECRET_KEY=sb_secret_4rlTp••••••••••••••••••••
-SUPABASE_JWKS_URL=https://xkddnlxeeizaqpefhqlv.supabase.co/auth/v1/.well-known/jwks.json
-On Edge Functions these are injected automatically. For other runtimes, copy the values above. Manage keys in API Keys settings.
-
-3. Install the Supabase Server skill (optional)
-Give AI coding tools instructions for building APIs with @supabase/server.
-Code:
-File: Code
-```
-npx skills add supabase/server
-```s, users), PostgREST (the REST layer supabase-js calls) and Postgres. The Postgres side holds the tables, row-level security (RLS), triggers, and the two functions that do the order transactions.
+- **Supabase**: Auth (sign-in, tokens, users), PostgREST (the REST layer supabase-js calls) and Postgres. The Postgres side holds the tables, row-level security (RLS), triggers, and the two functions that do the order transactions.
 
 ## Contents
 

@@ -6,3 +6,5 @@ dist/
 .DS_Store
 
 .logs/
+# graphify (rebuild locally with /graphify)
+graphify-out/
