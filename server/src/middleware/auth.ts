@@ -1,25 +1,37 @@
 import type { RequestHandler } from 'express';
-import { Role } from '@prisma/client';
+import { verifyCredentials } from '@supabase/server/core';
 import type { AuthUser } from '../types/auth';
 import { forbidden, unauthorized } from '../utils/errors';
-import { verifyToken } from '../utils/jwt';
-import { prisma } from '../utils/prisma';
+import { supabaseAdmin, supabaseEnv } from '../utils/supabase';
 
 function readBearerToken(header: string | undefined): string | undefined {
   const [scheme, token] = header?.split(' ') ?? [];
   return scheme?.toLowerCase() === 'bearer' && token ? token : undefined;
 }
 
-/** Requires a valid bearer token for a user that still exists; attaches `req.user`. */
+/**
+ * Requires a valid Supabase Auth access token for a user whose profile still exists; attaches `req.user`.
+ * The token is checked against the project's JWKS, so tokens from another project (e.g. staging vs production) fail.
+ * The role comes from the profile, not the token, so promoting or demoting staff takes effect on the next request.
+ */
 export const requireAuth: RequestHandler = async (req, _res, next) => {
   const token = readBearerToken(req.header('authorization'));
   if (!token) throw unauthorized();
 
-  const payload = verifyToken(token);
-  const user = await prisma.user.findUnique({
-    where: { id: payload.sub },
-    select: { id: true, role: true },
-  });
+  const { data: auth, error } = await verifyCredentials(
+    { token, apikey: null },
+    { auth: 'user', audience: 'authenticated', env: supabaseEnv },
+  );
+  // 5xx means this server is misconfigured (e.g. the JWKS cannot be fetched): not the caller's fault.
+  if (error && error.status >= 500) throw error;
+  if (!auth?.userClaims) throw unauthorized('Your session has expired. Please sign in again.');
+
+  const { data: user } = await supabaseAdmin
+    .from('profiles')
+    .select('id, role')
+    .eq('id', auth.userClaims.id)
+    .maybeSingle()
+    .throwOnError();
   if (!user) throw unauthorized('That account no longer exists. Please sign in again.');
 
   req.user = user;
@@ -28,7 +40,7 @@ export const requireAuth: RequestHandler = async (req, _res, next) => {
 
 /** Must run after `requireAuth`. */
 export const requireStaff: RequestHandler = (req, _res, next) => {
-  if (currentUser(req).role !== Role.STAFF) throw forbidden('Only staff can do that.');
+  if (currentUser(req).role !== 'STAFF') throw forbidden('Only staff can do that.');
   next();
 };
 

@@ -1,5 +1,5 @@
 import type { ErrorRequestHandler, RequestHandler } from 'express';
-import { Prisma } from '@prisma/client';
+import { PostgrestError } from '@supabase/supabase-js';
 import { ZodError } from 'zod';
 import { AppError, type ErrorCode, type ItemErrorDetails } from '../utils/errors';
 import { describeIssue } from './validate';
@@ -39,29 +39,21 @@ function describeError(err: unknown): ErrorDescription {
     // The router throws this when a path segment has bad percent-encoding (e.g. /api/orders/%E0).
     return { status: 400, code: 'BAD_REQUEST', message: 'The request URL is malformed.' };
   }
-  if (err instanceof Prisma.PrismaClientKnownRequestError) return describePrismaError(err);
-  if (err instanceof Prisma.PrismaClientUnknownRequestError && isInvalidTextError(err)) {
-    return { status: 400, code: 'VALIDATION_ERROR', message: 'Invalid characters in input.' };
-  }
+  if (err instanceof PostgrestError) return describeDatabaseError(err);
   return describeHttpError(err) ?? INTERNAL;
 }
 
-function describePrismaError(err: Prisma.PrismaClientKnownRequestError): ErrorDescription {
+/** Postgres errors (SQLSTATE codes) that a client can cause despite validation; everything else is a real 500. */
+function describeDatabaseError(err: PostgrestError): ErrorDescription {
   switch (err.code) {
-    case 'P2000': // value too long for the column
+    case '22001': // value too long for the column
       return { status: 400, code: 'VALIDATION_ERROR', message: 'One of the values is too long.' };
-    case 'P2002': // the only user-facing unique constraint is User.email
-      return { status: 409, code: 'EMAIL_TAKEN', message: 'An account with this email already exists.' };
-    case 'P2025': // a record the operation depends on was not found
-      return { status: 404, code: 'NOT_FOUND', message: 'We could not find what you were looking for.' };
+    case '22021': // invalid byte sequence, e.g. a NUL byte that slipped past validation
+    case '22P05': // untranslatable character, the same for JSON arguments
+      return { status: 400, code: 'VALIDATION_ERROR', message: 'Invalid characters in input.' };
     default:
       return INTERNAL;
   }
-}
-
-/** Postgres rejects text it cannot encode (SQLSTATE 22021, e.g. a NUL byte that slipped past validation). */
-function isInvalidTextError(err: Prisma.PrismaClientUnknownRequestError): boolean {
-  return err.message.includes('22021') || err.message.includes('invalid byte sequence');
 }
 
 /**

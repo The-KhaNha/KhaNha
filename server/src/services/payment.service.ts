@@ -1,4 +1,4 @@
-import { PaymentStatus } from '@prisma/client';
+import type { PaymentStatus } from '../types/enums';
 
 /**
  * V0 payment: every payment succeeds instantly, no gateway involved.
@@ -8,5 +8,5 @@ import { PaymentStatus } from '@prisma/client';
  */
 export async function simulatePayment(amountInRupees: number): Promise<PaymentStatus> {
   if (amountInRupees <= 0) throw new Error('Payment amount must be positive.');
-  return PaymentStatus.PAID;
+  return 'PAID';
 }

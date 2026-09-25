@@ -1,18 +1,29 @@
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 
+const REQUIRED_ENV = ['VITE_SUPABASE_URL', 'VITE_SUPABASE_PUBLISHABLE_KEY'];
+
 // The dev server proxies /api to the Express server so the client can use relative URLs.
-export default defineConfig({
-  plugins: [react(), tailwindcss()],
-  server: {
-    port: 5173,
-    strictPort: true,
-    proxy: {
-      '/api': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
+export default defineConfig(({ mode }) => {
+  // Fail the build (not the page in the browser) when the mode's Supabase project is not configured.
+  const env = loadEnv(mode, process.cwd());
+  const missing = REQUIRED_ENV.filter((name) => !env[name]);
+  if (missing.length > 0) {
+    throw new Error(`Missing ${missing.join(', ')} for mode "${mode}". Create client/.env.${mode} (see client/.env.example).`);
+  }
+
+  return {
+    plugins: [react(), tailwindcss()],
+    server: {
+      port: 5173,
+      strictPort: true,
+      proxy: {
+        '/api': {
+          target: 'http://localhost:8000',
+          changeOrigin: true,
+        },
       },
     },
-  },
+  };
 });

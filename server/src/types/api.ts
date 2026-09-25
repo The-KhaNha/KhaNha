@@ -1,5 +1,5 @@
 // Response shapes shared with the client. Keep these in sync with the API contract.
-import type { OrderStatus, PaymentStatus, Role } from '@prisma/client';
+import type { OrderStatus, PaymentStatus, Role } from './enums';
 
 export interface UserDto {
   id: string;

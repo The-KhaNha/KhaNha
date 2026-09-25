@@ -1,5 +1,6 @@
 import type { ApiErrorDetails, ApiErrorEnvelope } from '../types/api';
 import { useAuthStore } from '../features/auth/authStore';
+import { supabase } from '../lib/supabase';
 
 const BASE_URL = '/api';
 
@@ -44,11 +45,12 @@ function isErrorEnvelope(value: unknown): value is ApiErrorEnvelope {
 
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { method = 'GET', body, auth = true, signal } = options;
-  const token = useAuthStore.getState().token;
+  // supabase-js hands out the current access token, refreshing it first when it has expired.
+  const token = auth ? (await supabase.auth.getSession()).data.session?.access_token : undefined;
 
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (body !== undefined) headers['Content-Type'] = 'application/json';
-  if (auth && token) headers.Authorization = `Bearer ${token}`;
+  if (token) headers.Authorization = `Bearer ${token}`;
 
   let response: Response;
   try {

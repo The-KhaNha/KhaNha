@@ -4,14 +4,17 @@
 #   ./start.sh --seed   reset the sample data first (wipes existing orders)
 # Press Ctrl+C once to stop both.
 #
+# server/.env decides which Supabase project is used (APP_ENV=local or staging); the web app is started in the
+# matching Vite mode so the browser signs in to the same project. It refuses APP_ENV=production.
+#
 # What it does, in order:
-#   - fails fast if server/.env is missing or PostgreSQL is not running
+#   - fails fast if server/.env is missing, or (local) the Supabase stack is not running
 #   - installs node_modules for server/ and client/ if they are missing
 #   - frees ports 8000 and 5173 (kills whatever is still listening there from an earlier run)
 #   - optionally reseeds (--seed)
 #   - starts both dev servers, logging to .logs/server.log and .logs/client.log
 #   - waits until the API, the web app and GET /api/menu answer, then prints where to go
-# It does NOT create the database or run migrations; see README.md "Quick start" for the one-time setup.
+# It does NOT start Supabase or apply migrations; see README.md "Quick start" for the one-time setup.
 
 set -u
 cd "$(dirname "$0")"
@@ -22,16 +25,33 @@ RED=$'\033[31m'; GREEN=$'\033[32m'; DIM=$'\033[2m'; BOLD=$'\033[1m'; OFF=$'\033[
 if [ ! -f server/.env ]; then
   echo "${RED}server/.env is missing.${OFF}"
   echo "Create it with:  cp server/.env.example server/.env"
-  echo "then set DATABASE_URL (your Mac username, see 'whoami') and JWT_SECRET (e.g. 'openssl rand -hex 32')."
+  echo "The defaults in it use the local Supabase stack (start it with: cd server && npm run db:start)."
   exit 1
 fi
 
-# 2. Is PostgreSQL up?
-if ! pg_isready -q 2>/dev/null; then
-  echo "${RED}PostgreSQL is not running.${OFF}"
-  echo "Start it with:  brew services start postgresql@18   (or open Postgres.app)"
-  exit 1
-fi
+# 2. Which Supabase project, and is it reachable?
+APP_ENV=$(grep -E '^APP_ENV=' server/.env | tail -1 | cut -d= -f2 | tr -d "\"' ")
+case "$APP_ENV" in
+  local)
+    CLIENT_DEV_SCRIPT=dev
+    if [ "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:54321/rest/v1/ 2>/dev/null)" = "000" ]; then
+      echo "${RED}The local Supabase stack is not running.${OFF}"
+      echo "Start it with:  cd server && npm run db:start   (needs Docker; the first run downloads images)"
+      exit 1
+    fi
+    ;;
+  staging)
+    CLIENT_DEV_SCRIPT=dev:staging
+    ;;
+  production)
+    echo "${RED}server/.env has APP_ENV=production.${OFF} start.sh is for local and staging only."
+    exit 1
+    ;;
+  *)
+    echo "${RED}server/.env must set APP_ENV to local or staging${OFF} (found '${APP_ENV}'). See server/.env.example."
+    exit 1
+    ;;
+esac
 
 # 3. Dependencies installed?
 [ -d server/node_modules ] || (echo "${DIM}Installing server dependencies...${OFF}" && cd server && npm install --silent)
@@ -54,7 +74,7 @@ fi
 mkdir -p .logs
 (cd server && npm run dev > ../.logs/server.log 2>&1) &
 SERVER_PID=$!
-(cd client && npm run dev > ../.logs/client.log 2>&1) &
+(cd client && npm run "$CLIENT_DEV_SCRIPT" > ../.logs/client.log 2>&1) &
 CLIENT_PID=$!
 
 # cleanup [exit-code]: stops both servers, then exits (0 on Ctrl+C, non-zero on a failed start).
@@ -82,7 +102,7 @@ done
 
 if [ "$api_ok" != "200" ] || [ "$web_ok" != "200" ]; then
   echo "${RED}Something did not start.${OFF} Check .logs/server.log and .logs/client.log"
-  echo "${DIM}Common causes: server/.env has a bad DATABASE_URL or the placeholder JWT_SECRET, or a port is still busy.${OFF}"
+  echo "${DIM}Common causes: server/.env is missing SUPABASE_URL / SUPABASE_SECRET_KEY, or a port is still busy.${OFF}"
   cleanup 1
 fi
 
@@ -96,12 +116,12 @@ done
 
 if [ "$menu_ok" != "200" ]; then
   echo "${RED}Database looks empty or unreachable — run ./start.sh --seed${OFF}"
-  echo "${DIM}(GET /api/menu answered $menu_ok. First time here? Run 'createdb food_pickup' and, in server/, 'npx prisma migrate dev' first. Details in .logs/server.log)${OFF}"
+  echo "${DIM}(GET /api/menu answered $menu_ok. First time on staging? Apply the migrations with 'cd server && npm run db:push:staging' first. Details in .logs/server.log)${OFF}"
   cleanup 1
 fi
 
 echo ""
-echo "  ${BOLD}Food Pickup is running${OFF}"
+echo "  ${BOLD}Food Pickup is running${OFF} ${DIM}(Supabase: $APP_ENV)${OFF}"
 echo ""
 echo "  ${GREEN}Customer app${OFF}      http://localhost:5173"
 echo "  ${GREEN}Staff dashboard${OFF}   http://localhost:5173/staff"

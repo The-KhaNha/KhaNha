@@ -1,44 +1,43 @@
-import type { User } from '@prisma/client';
-import type { LoginInput, RegisterInput } from '../schemas/auth.schema';
-import type { AuthResponse } from '../types/api';
-import { AppError, notFound } from '../utils/errors';
-import { signToken } from '../utils/jwt';
-import { hashPassword, verifyPassword } from '../utils/password';
-import { prisma } from '../utils/prisma';
-import { toUserDto } from '../utils/serializers';
+import type { AuthError } from '@supabase/supabase-js';
+import type { RegisterInput } from '../schemas/auth.schema';
+import type { Tables } from '../types/database';
+import { AppError, notFound, validationError } from '../utils/errors';
+import { supabaseAdmin } from '../utils/supabase';
 
-export async function register(input: RegisterInput): Promise<AuthResponse> {
-  const existing = await prisma.user.findUnique({ where: { email: input.email }, select: { id: true } });
-  if (existing) {
-    throw new AppError(409, 'EMAIL_TAKEN', 'An account with this email already exists. Try signing in.');
-  }
-
-  const user = await prisma.user.create({
-    data: {
-      name: input.name,
-      email: input.email,
-      phone: input.phone ?? null,
-      passwordHash: await hashPassword(input.password),
-    },
+/**
+ * Creates a Supabase Auth user; the on_auth_user_created trigger turns it into a CUSTOMER profile.
+ * Signing in happens in the browser with supabase-js, straight after this returns.
+ *
+ * Registration goes through the API (not supabase.auth.signUp in the browser) so the same zod rules as before
+ * apply, and so the account is usable at once: it is created already confirmed, and no email is sent.
+ */
+export async function register(input: RegisterInput): Promise<Tables<'profiles'>> {
+  const { data, error } = await supabaseAdmin.auth.admin.createUser({
+    email: input.email,
+    password: input.password,
+    email_confirm: true,
+    user_metadata: { name: input.name, phone: input.phone ?? null },
   });
-  return toAuthResponse(user);
+  if (error) throw describeAuthError(error);
+  return getProfile(data.user.id);
 }
 
-export async function login(input: LoginInput): Promise<AuthResponse> {
-  const user = await prisma.user.findUnique({ where: { email: input.email } });
-  // Same error for unknown email and wrong password so accounts cannot be enumerated.
-  if (!user || !(await verifyPassword(input.password, user.passwordHash))) {
-    throw new AppError(401, 'INVALID_CREDENTIALS', 'Incorrect email or password.');
+export async function getProfile(id: string): Promise<Tables<'profiles'>> {
+  const { data: profile } = await supabaseAdmin.from('profiles').select().eq('id', id).maybeSingle().throwOnError();
+  if (!profile) throw notFound('Account not found.');
+  return profile;
+}
+
+function describeAuthError(error: AuthError): Error {
+  switch (error.code) {
+    case 'email_exists':
+    case 'user_already_exists':
+      return new AppError(409, 'EMAIL_TAKEN', 'An account with this email already exists. Try signing in.');
+    case 'email_address_invalid':
+      return validationError('Please enter a valid email address.');
+    case 'weak_password':
+      return validationError(error.message);
+    default:
+      return error;
   }
-  return toAuthResponse(user);
-}
-
-export async function getUserById(id: string): Promise<User> {
-  const user = await prisma.user.findUnique({ where: { id } });
-  if (!user) throw notFound('Account not found.');
-  return user;
-}
-
-function toAuthResponse(user: User): AuthResponse {
-  return { user: toUserDto(user), token: signToken({ sub: user.id, role: user.role }) };
 }

@@ -1,4 +1,4 @@
-import type { Role } from '@prisma/client';
+import type { Role } from './enums';
 
 /** The authenticated caller, attached to `req.user` by `requireAuth`. */
 export interface AuthUser {

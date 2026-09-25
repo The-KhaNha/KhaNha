@@ -4,7 +4,6 @@ import express from 'express';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { apiRouter } from './routes/index';
 import { env } from './utils/env';
-import { prisma } from './utils/prisma';
 
 const app = express();
 
@@ -19,15 +18,15 @@ app.use(notFoundHandler);
 app.use(errorHandler);
 
 const server = app.listen(env.PORT, () => {
-  console.log(`Food Pickup API running at http://localhost:${env.PORT}/api`);
+  console.log(`Food Pickup API (${env.APP_ENV}) running at http://localhost:${env.PORT}/api`);
 });
 
-async function shutdown(signal: NodeJS.Signals): Promise<void> {
+// supabase-js talks HTTP, so there is no database connection to close.
+function shutdown(signal: NodeJS.Signals): void {
   console.log(`\n${signal} received, shutting down.`);
   server.close();
-  await prisma.$disconnect();
   process.exit(0);
 }
 
-process.on('SIGINT', (signal) => void shutdown(signal));
-process.on('SIGTERM', (signal) => void shutdown(signal));
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);

@@ -1,7 +1,7 @@
 # Food Pickup — V0
 
 Order ahead from **Campus Cafe**, pay in a tap (simulated), and collect your food at the counter without standing in the ordering queue.
-One shop, one staff screen, real-time-enough status updates, and everything runs on localhost.
+One shop, one staff screen, real-time-enough status updates. The API and web app run on localhost; data and sign-in live in Supabase (a local Docker stack for development, plus hosted **staging** and **production** projects — see [Environments](#environments)).
 
 - **Customer app:** http://localhost:5173
 - **Staff dashboard:** http://localhost:5173/staff
@@ -10,61 +10,47 @@ One shop, one staff screen, real-time-enough status updates, and everything runs
 ## Prerequisites
 
 - **Node 20+** (`node --version`; built and tested with Node 26)
-- **PostgreSQL** installed locally — Homebrew (`brew install postgresql@18`) or [Postgres.app](https://postgresapp.com). Tested with PostgreSQL 18 from Homebrew.
+- **Docker** (Docker Desktop, OrbStack or Colima) for the local Supabase stack. Not needed if you develop against staging.
 
 ## Quick start
 
-The one-time setup is four commands; after that `./start.sh` runs everything.
+The one-time setup is three commands; after that `./start.sh` runs everything.
 
-**1. Start PostgreSQL**
-
-```bash
-brew services start postgresql@18     # Homebrew — or open Postgres.app and click Start
-pg_isready                            # should print "accepting connections"
-```
-
-**2. Create the database**
+**1. Install and start the local Supabase stack**
 
 ```bash
-createdb food_pickup
+cd server && npm install && npm run db:start && cd ..
 ```
 
-**3. Configure the server**
+`db:start` runs Supabase (Postgres, Auth, the REST API) in Docker and applies everything in `server/supabase/migrations/`. The first run downloads the images and takes a few minutes. It prints the local URL and keys; they are fixed defaults and already filled in below.
+
+**2. Configure the server**
 
 ```bash
 cp server/.env.example server/.env
 ```
 
-Edit `server/.env`:
-- `DATABASE_URL` — put your Mac username in it (run `whoami`): `postgresql://<mac-username>@localhost:5432/food_pickup`. Homebrew Postgres accepts your Mac username with no password; if yours needs one, use `postgresql://user:password@localhost:5432/food_pickup`.
-- `JWT_SECRET` — any string of 16+ characters. The server refuses to start while it is still the placeholder; `openssl rand -hex 32` generates a good one.
+The defaults point at the local stack (`APP_ENV=local`) and need no editing. To work against staging instead, see [Environments](#environments).
 
-**4. Create the tables**
-
-```bash
-cd server && npm install && npx prisma migrate dev && cd ..
-```
-
-This creates the 5 tables (User, Store, MenuItem, Order, OrderItem) and generates the Prisma client.
-
-**5. Run it**
+**3. Run it**
 
 ```bash
 ./start.sh --seed          # first time: loads Campus Cafe, 11 menu items and the two test accounts
 ./start.sh                 # every time after that
 ```
 
-It prints the URLs and logins when both servers answer. Press **Ctrl+C** once to stop both.
+It prints the URLs and logins when both servers answer. Press **Ctrl+C** once to stop both. The Supabase stack keeps running in Docker; stop it with `cd server && npm run db:stop`.
 
 ### What `start.sh` does
 
-- Stops with a clear message if `server/.env` is missing or PostgreSQL is not running.
+- Reads `APP_ENV` from `server/.env` and starts the web app in the matching mode (`local` → `npm run dev`, `staging` → `npm run dev:staging`), so the browser signs in to the same Supabase project the API uses. Refuses `APP_ENV=production`.
+- Stops with a clear message if `server/.env` is missing, or (for `local`) the Supabase stack is not running.
 - Runs `npm install` in `server/` and `client/` if `node_modules` is missing.
 - **Frees ports 8000 and 5173 first** — anything still listening on them (a stray `npm run dev`, an earlier `start.sh`) is killed. Don't run it while another copy of the project is deliberately serving those ports.
 - `--seed` runs `npm run seed` before starting (see [Re-seeding wipes orders](#re-seeding-wipes-orders)).
 - Starts the API (`tsx watch`, auto-reloads on server edits) and the web app (Vite, hot reloads client edits). Their output goes to **`.logs/server.log`** and **`.logs/client.log`** (gitignored) — look there when something misbehaves.
 - Waits until `GET /api/health`, the web app and `GET /api/menu` all return 200. If the API is up but the menu isn't, it says **"Database looks empty or unreachable — run ./start.sh --seed"** and stops.
-- Does *not* create the database or run migrations — that is steps 1–4 above.
+- Does *not* start Supabase or apply migrations — that is step 1 above (or `npm run db:push:staging` for staging).
 
 ### Manual start (two terminals)
 
@@ -79,10 +65,10 @@ npm run dev
 # terminal 2 — web app on http://localhost:5173
 cd client
 npm install                # first time only
-npm run dev
+npm run dev                # or `npm run dev:staging` when server/.env has APP_ENV=staging
 ```
 
-The Vite dev server proxies `/api/*` to `http://localhost:8000`, so the client needs no configuration.
+The Vite dev server proxies `/api/*` to `http://localhost:8000`. The only client configuration is which Supabase project to sign in to, in `client/.env.<mode>` (see [Environments](#environments)).
 
 ## Test accounts
 
@@ -130,12 +116,11 @@ Also worth showing: **Order Again** adds a past order to the cart (and says what
 
 ## API
 
-Base URL `http://localhost:8000/api`. Authenticated routes take `Authorization: Bearer <token>` (7-day JWT from register/login).
+Base URL `http://localhost:8000/api`. Authenticated routes take `Authorization: Bearer <token>`, where the token is a **Supabase Auth access token**: the web app signs in with `supabase.auth.signInWithPassword` and supabase-js refreshes the token (1 hour) automatically. The API verifies it against the project's JWKS with `@supabase/server`, then reads the caller's role from `profiles`.
 
 | Method | Path                      | Auth       | Purpose                                                        |
 |--------|---------------------------|------------|----------------------------------------------------------------|
-| POST   | `/auth/register`          | –          | `{ name, email, password, phone? }` → `{ user, token }`        |
-| POST   | `/auth/login`             | –          | `{ email, password }` → `{ user, token }`                      |
+| POST   | `/auth/register`          | –          | `{ name, email, password, phone? }` → `{ user }` (201). Creates a confirmed Supabase Auth user; the client then signs in with supabase-js |
 | GET    | `/auth/me`                | user       | `{ user }`                                                     |
 | GET    | `/store`                  | –          | `{ store }` — Campus Cafe, open state, prep time               |
 | GET    | `/menu`                   | –          | `{ store, popular, categories: [{ name, items }] }` — each item has `stockQuantity` (`null` = unlimited) and an `isAvailable` that is already false once tracked stock hits 0 |
@@ -152,7 +137,7 @@ Errors are always `{ "error": { "code", "message" } }` and the message is safe t
 | Status | Codes |
 |--------|-------|
 | 400    | `VALIDATION_ERROR` (bad or missing field, malformed JSON — the message names the field and, for cart problems, the item), `ITEM_NOT_FOUND`, `ITEM_UNAVAILABLE` ("Berry Smoothie is currently unavailable…"), `INSUFFICIENT_STOCK` ("Only 1 Cheese Toast left. Reduce the quantity in your cart." / "Cheese Toast just sold out."), `STORE_CLOSED` (the store's `isOpen` is false), `BAD_REQUEST` (malformed URL or request) |
-| 401    | `UNAUTHORIZED`, `INVALID_CREDENTIALS` |
+| 401    | `UNAUTHORIZED` (missing, expired or wrong-project token) |
 | 403    | `FORBIDDEN` |
 | 404    | `NOT_FOUND` |
 | 409    | `EMAIL_TAKEN`, `INVALID_STATUS_TRANSITION` (message quotes the order's *current* status) |
@@ -165,8 +150,9 @@ Rules the server enforces:
 - Ordering is refused while the store is closed (`STORE_CLOSED`).
 - An order has at most **30 lines** and at most **20 of any one item**; the same item listed twice is merged into one line before the cap is checked. `customerName` ≤ 60 chars, `note` ≤ 200 chars.
 - Phone numbers (`phone`, `customerPhone`) may contain spaces, dashes and parentheses, which are stripped; what remains must be 10–15 digits with an optional leading `+`, and that normalised value is stored. Passwords are 6–72 characters (bcrypt's limit).
-- Stock is reserved inside the order's transaction with a conditional decrement (`stockQuantity >= quantity`), so two customers can never both get the last unit; a refused order leaves no rows and no decrements behind.
-- Allowed transitions are `PLACED → PREPARING → READY → COMPLETED`, plus `PLACED/PREPARING → CANCELLED` by staff. The update is a single conditional write, so two staff devices pressing at once get exactly one 200 and one 409. Cancelling puts the order's items back in stock in the same transaction.
+- Stock is reserved by the `place_order` database function, in the same transaction that writes the order, with a conditional decrement (`stock_quantity >= quantity`), so two customers can never both get the last unit; a refused order leaves no rows and no decrements behind.
+- Allowed transitions are `PLACED → PREPARING → READY → COMPLETED`, plus `PLACED/PREPARING → CANCELLED` by staff. The `update_order_status` database function does a single conditional write, so two staff devices pressing at once get exactly one 200 and one 409. Cancelling puts the order's items back in stock in the same transaction.
+- The browser's publishable key cannot read or write any table: RLS is on everywhere with no policies, and only the API's secret key can call the database functions.
 
 ## Project structure
 
@@ -175,32 +161,34 @@ food-pickup/
 ├── client/                      React 18 + TypeScript + Vite 6 + Tailwind v4
 │   ├── index.html               font preload + first-paint background
 │   ├── vite.config.ts           dev server on :5173, proxies /api → http://localhost:8000
+│   ├── .env.development         Supabase project per Vite mode (.env.staging, .env.production); public values only
 │   ├── public/images/           food and cafe photos
 │   └── src/
 │       ├── index.css            Tailwind + design tokens (@theme: brand/gold/success/cancel, bg/surface/ink/muted/line)
 │       ├── components/          Button, FoodCard, AddControl, QuantityStepper, PopularRail, StoreCard, CartItem, OrderCard, StatusTracker, TopBar, BottomNav, ...
 │       ├── features/
-│       │   ├── auth/            authStore (zustand + localStorage), validation, RequireAuth, RequireStaff
+│       │   ├── auth/            authStore (zustand; the Supabase session itself is kept by supabase-js), validation, RequireAuth, RequireStaff
 │       │   ├── cart/            cartRules (MAX_LINE_QUANTITY = 20, stock limits, line problems), cartStore, CartBar, useReorder
 │       │   ├── menu/            useMenu, useStore, CategoryChips, ItemDetailSheet
 │       │   └── orders/          orderStatus (single source of truth for statuses), useOrder(s) polling, OrderHero, StaffHeader/Filters/Board, StaffOrderCard
-│       ├── lib/                 cn, format, useResource (fetch + polling), useFocusTrap, useNow, useReducedMotion, flyToCart
+│       ├── lib/                 supabase (sign-in only), cn, format, useResource (fetch + polling), useFocusTrap, useNow, useReducedMotion, flyToCart
 │       ├── pages/               Home, Menu, Cart, Checkout, OrderSuccess, Order, Orders, Profile, Login, Register, StaffDashboard, NotFound
 │       ├── services/            api.ts (fetch wrapper) + auth/store/menu/orders
 │       ├── types/api.ts         the API contract types
 │       ├── App.tsx              routes + per-route shell (top bar, cart button, bottom nav)
 │       └── main.tsx
-├── server/                      Express 5 + TypeScript + Prisma 6 + PostgreSQL
+├── server/                      Express 5 + TypeScript + Supabase (supabase-js, @supabase/server)
 │   ├── .env.example             copy to .env (see Environment variables)
-│   ├── prisma/                  schema.prisma, migrations/, seed.ts
+│   ├── supabase/                config.toml (local stack) and migrations/ (schema, RLS, database functions)
+│   ├── scripts/                 seed.ts, db-push.sh (apply migrations to staging / production)
 │   └── src/
 │       ├── routes/              thin route tables
 │       ├── controllers/         parse request → call service → send JSON
 │       ├── services/            business logic (auth, menu, store, order, payment simulation)
 │       ├── middleware/          requireAuth / requireStaff, zod validation, error handler
 │       ├── schemas/             zod request schemas (auth, order, shared phone/optional fields)
-│       ├── types/               API DTOs, auth user, Express request augmentation
-│       ├── utils/               env, prisma client, jwt, password hashing, errors, serializers
+│       ├── types/               API DTOs, generated database types, enums, auth user, Express request augmentation
+│       ├── utils/               env, Supabase admin client, errors, serializers, ids
 │       └── server.ts
 ├── .logs/                       server.log / client.log written by start.sh (gitignored)
 ├── start.sh                     starts both servers (see "What start.sh does")
@@ -209,18 +197,54 @@ food-pickup/
 
 Ports: API **8000**, web app **5173**. Both are fixed: the Vite proxy target (`client/vite.config.ts`) and `start.sh` hardcode 8000, and Vite runs with `--strictPort` on 5173.
 
+## Environments
+
+| Environment | Supabase project | Used by |
+|-------------|------------------|---------|
+| `local`      | Docker stack from `npm run db:start` (`http://127.0.0.1:54321`) | day-to-day development, `./start.sh` |
+| `staging`    | `xkddnlxeeizaqpefhqlv` (`https://xkddnlxeeizaqpefhqlv.supabase.co`) | shared testing before release |
+| `production` | a second hosted project (create it in the Supabase dashboard, then fill in its ref) | the live app |
+
+Each environment is a separate Supabase project with its own database, users and keys. A token from one project is rejected by an API pointed at another, so the API (`server/.env` → `SUPABASE_URL`) and the web app (`client/.env.<mode>` → `VITE_SUPABASE_URL`) must always name the same project.
+
+**Schema changes** are SQL files in `server/supabase/migrations/`, applied in order everywhere:
+
+```bash
+cd server
+npm run db:new add_something       # creates supabase/migrations/<timestamp>_add_something.sql — write the SQL there
+npm run db:reset                   # local: rebuild the local database from all migrations (wipes local data)
+npm run db:types                   # regenerate src/types/database.ts from the local database
+npm run db:push:staging            # apply new migrations to staging
+npm run db:push:production         # the same for production (asks you to type "production" first)
+```
+
+`db:push:*` need `npx supabase login` once, and ask for that project's database password (or read `SUPABASE_DB_PASSWORD`). The CLI lists what it is about to apply and asks before applying.
+
+**Setting up staging** (once): `npm run db:push:staging`, then put the staging URL and secret key in `server/.env` with `APP_ENV=staging` and run `npm run seed` for the demo data.
+
+**Setting up production** (once):
+
+1. Create a new project in the Supabase dashboard (a region near your users; save the database password).
+2. Put its ref in `PRODUCTION_REF` in `server/scripts/db-push.sh`, then `npm run db:push:production`.
+3. Create `client/.env.production` with its `VITE_SUPABASE_URL` and publishable key (see `client/.env.example`); `npm run build` refuses to run without it.
+4. On the production API host set `APP_ENV=production`, `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `PORT` and `CLIENT_ORIGIN`.
+5. Load the store and menu once, with the production values in the environment: `npm run seed -- --production`. It only works while production has no store, and creates no accounts. The plain `npm run seed` refuses to run against production.
+6. Create staff accounts in the dashboard (Authentication → Add user, with auto-confirm), then in the SQL editor: `update public.profiles set role = 'STAFF' where email = '…';`
+7. Recommended in the dashboard (Authentication → Sign In / Providers): turn off **Allow new users to sign up**. Accounts are created by the API's `/auth/register` with the secret key, which still works; this closes direct sign-ups with the publishable key.
+
 ## Environment variables
 
 `server/.env` (copy from `server/.env.example`):
 
-| Variable        | Purpose                                              | Example                                                |
-|-----------------|------------------------------------------------------|--------------------------------------------------------|
-| `DATABASE_URL`  | PostgreSQL connection string                         | `postgresql://anish@localhost:5432/food_pickup`        |
-| `JWT_SECRET`    | Signs login tokens. 16+ characters; the server exits at startup if it is still the `.env.example` placeholder | output of `openssl rand -hex 32` |
-| `PORT`          | API port (default `8000`). **Keep it at 8000** unless you also change the proxy target in `client/vite.config.ts` and the port checks in `start.sh` | `8000` |
-| `CLIENT_ORIGIN` | Origin allowed by CORS (default `http://localhost:5173`) | `http://localhost:5173`                            |
+| Variable              | Purpose                                              | Example                                                |
+|-----------------------|------------------------------------------------------|--------------------------------------------------------|
+| `APP_ENV`             | `local`, `staging` or `production`. `start.sh` picks the web app's mode from it, and `npm run seed` refuses to wipe `production` | `local` |
+| `SUPABASE_URL`        | The project's URL                                    | `http://127.0.0.1:54321`, `https://xkddnlxeeizaqpefhqlv.supabase.co` |
+| `SUPABASE_SECRET_KEY` | The project's **secret** key (`sb_secret_…`, Project Settings → API Keys). Bypasses RLS: keep it out of the client and git | local default is in `.env.example` |
+| `PORT`                | API port (default `8000`). **Keep it at 8000** unless you also change the proxy target in `client/vite.config.ts` and the port checks in `start.sh` | `8000` |
+| `CLIENT_ORIGIN`       | Origin allowed by CORS (default `http://localhost:5173`) | `http://localhost:5173`                            |
 
-The client has no environment variables; it calls `/api` relative to its own origin and Vite proxies that to the API.
+`client/.env.<mode>` (`.env.development`, `.env.staging`, `.env.production`): `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`. These are public (they ship in the JavaScript bundle) and are committed. The client calls `/api` relative to its own origin, and Vite proxies that to the API.
 
 ## Stock limits
 
@@ -234,7 +258,7 @@ Menu items can carry a `stockQuantity` (`null` = not tracked, which is the defau
 
 ## Re-seeding wipes orders
 
-`npm run seed` (in `server/`, or `./start.sh --seed`) deletes **every order** and restarts numbering at **#1001**. The store, menu items and the two test accounts are updated in place and keep their ids, so logins and saved carts in an open browser keep working. Accounts registered while testing are removed.
+`npm run seed` (in `server/`, or `./start.sh --seed`) deletes **every order** and restarts numbering at **#1001**. The store, menu items and the two test accounts are updated in place and keep their ids, so logins and saved carts in an open browser keep working. Accounts registered while testing are removed. It seeds whichever project `server/.env` points at, and refuses `APP_ENV=production`.
 
 ## Useful scripts
 
@@ -244,28 +268,30 @@ Menu items can carry a `stockQuantity` (`null` = not tracked, which is the defau
 | server/  | `npm run dev`        | API with reload (tsx watch) on :8000           |
 | server/  | `npm run seed`       | Reset demo data (see above)                    |
 | server/  | `npm run typecheck`  | `tsc --noEmit`                                 |
-| server/  | `npm run db:migrate` | `prisma migrate dev`                           |
-| server/  | `npm run db:generate`| `prisma generate` (regenerate the Prisma client) |
+| server/  | `npm run db:start` / `db:stop` | Start / stop the local Supabase stack (Docker) |
+| server/  | `npm run db:reset`   | Rebuild the local database from the migrations (wipes local data) |
+| server/  | `npm run db:new <name>` | New empty migration file                    |
+| server/  | `npm run db:types`   | Regenerate `src/types/database.ts` from the local database |
+| server/  | `npm run db:push:staging` / `db:push:production` | Apply new migrations to a hosted project |
 | server/  | `npm run build` / `npm start` | Compile to `dist/` and run `dist/src/server.js` without tsx |
-| client/  | `npm run dev`        | Vite dev server on :5173 with `/api` proxy     |
+| client/  | `npm run dev` / `dev:staging` | Vite dev server on :5173 with `/api` proxy, signing in to local / staging Supabase |
 | client/  | `npm run typecheck`  | `tsc --noEmit`                                 |
-| client/  | `npm run build`      | Type-check + production build into `dist/`     |
+| client/  | `npm run build` / `build:staging` | Type-check + build into `dist/` for production / staging |
 
 ## Troubleshooting
 
 | Symptom | Fix |
 |---------|-----|
 | `EADDRINUSE: address already in use :::8000` or Vite's `Port 5173 is already in use` | Something from an earlier run is still listening. `./start.sh` frees both ports for you; by hand: `lsof -ti:8000 -ti:5173 \| xargs kill`. |
-| `role "YOUR_MAC_USERNAME" does not exist` / `password authentication failed` | `DATABASE_URL` in `server/.env` still has the placeholder or the wrong user. Use the output of `whoami` (Homebrew) or your Postgres.app user. |
-| `database "food_pickup" does not exist` | Run `createdb food_pickup`, then `npx prisma migrate dev` in `server/`. |
-| `start.sh` says **"Database looks empty or unreachable"**, or the app shows "The store has not been set up yet" | Tables missing or never seeded. In `server/`: `npx prisma migrate dev`, then `./start.sh --seed` (or `npm run seed`). |
-| `@prisma/client did not initialize yet` / `Cannot find module '.prisma/client'` | The Prisma client wasn't generated. In `server/`: `npx prisma generate` (or `npm run db:generate`). |
-| `start.sh` says **"server/.env is missing"**, or the API prints `Invalid environment configuration` | `cp server/.env.example server/.env` and set `DATABASE_URL` and `JWT_SECRET`. A `JWT_SECRET` that is too short or still the placeholder is rejected with an explicit message. |
-| `PostgreSQL is not running` / `pg_isready` says `no response` | `brew services start postgresql@18`, or start Postgres.app. |
+| `The local Supabase stack is not running` / `Cannot connect to the Docker daemon` | Start Docker, then `cd server && npm run db:start`. |
+| `start.sh` says **"Database looks empty or unreachable"**, or the app shows "The store has not been set up yet" | Tables missing or never seeded. Local: `cd server && npm run db:reset`, then `./start.sh --seed`. Staging: `npm run db:push:staging`, then `npm run seed`. |
+| Sign-in works but then "Your session has expired. Please sign in again." | The web app and the API point at different Supabase projects. Check `APP_ENV`/`SUPABASE_URL` in `server/.env` against `client/.env.<mode>`, and restart with `./start.sh`. |
+| `permission denied for table …` in the API log | `SUPABASE_SECRET_KEY` is not the secret key of the project in `SUPABASE_URL` (or is a publishable key). |
+| `start.sh` says **"server/.env is missing"**, or the API prints `Invalid environment configuration` | `cp server/.env.example server/.env`; the message names the variable that is missing or malformed. |
 | Blank page on http://localhost:5173 right after starting | Vite is still compiling on the first load; wait a couple of seconds and reload. If it persists, check `.logs/client.log` and the browser console. |
 | Customer page never moves past **Placed** | The API isn't reachable through the proxy — is it on port 8000? `curl http://localhost:8000/api/health` should print `{"ok":true}`. |
 
 ## What V0 deliberately leaves out
 
-One shop only, and nothing beyond the pickup flow: no delivery, maps or location, no GST/taxes or platform/service/handling fees, no discounts, coupons or loyalty, no recommendations or AI, no QR codes, no real payment gateway (payment is simulated, but the order flow is written so a gateway can slot in later), no refunds or wallets, no inventory or item variants, no push notifications, no reporting/analytics, no merchant onboarding, no OTP/social login or refresh tokens, no cloud infrastructure (no Redis, queues, microservices or Docker). Real-time updates are plain polling every few seconds.
+One shop only, and nothing beyond the pickup flow: no delivery, maps or location, no GST/taxes or platform/service/handling fees, no discounts, coupons or loyalty, no recommendations or AI, no QR codes, no real payment gateway (payment is simulated, but the order flow is written so a gateway can slot in later), no refunds or wallets, no inventory or item variants, no push notifications, no reporting/analytics, no merchant onboarding, no OTP/social login, no infrastructure beyond Supabase (no Redis, queues or microservices). Real-time updates are plain polling every few seconds.
 # KhaNha

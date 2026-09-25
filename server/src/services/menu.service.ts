@@ -1,15 +1,17 @@
 import type { MenuCategoryDto, MenuItemDto, MenuResponse } from '../types/api';
-import { prisma } from '../utils/prisma';
+import { supabaseAdmin } from '../utils/supabase';
 import { toMenuItemDto, toStoreDto } from '../utils/serializers';
 import { getStore } from './store.service';
 
 /** Full menu including unavailable items (the client greys them out). */
 export async function getMenu(): Promise<MenuResponse> {
   const store = await getStore();
-  const rows = await prisma.menuItem.findMany({
-    where: { storeId: store.id },
-    orderBy: { sortOrder: 'asc' },
-  });
+  const { data: rows } = await supabaseAdmin
+    .from('menu_items')
+    .select()
+    .eq('store_id', store.id)
+    .order('sort_order')
+    .throwOnError();
   const items = rows.map(toMenuItemDto);
 
   return {

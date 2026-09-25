@@ -1,18 +1,18 @@
 import 'dotenv/config';
 import { z } from 'zod';
 
-/** The value shipped in .env.example. It must be replaced before the server will start. */
-const JWT_SECRET_PLACEHOLDER = 'change-me-to-a-long-random-string';
-
 const envSchema = z.object({
-  DATABASE_URL: z.string().min(1, 'DATABASE_URL is required (PostgreSQL connection string).'),
-  JWT_SECRET: z
-    .string()
-    .min(16, 'JWT_SECRET must be at least 16 characters long.')
-    .refine((secret) => secret !== JWT_SECRET_PLACEHOLDER, {
-      message:
-        'JWT_SECRET is still the placeholder from .env.example. Set a real secret, e.g. the output of `openssl rand -hex 32`.',
-    }),
+  /** Which Supabase project this process talks to. `npm run seed` refuses to wipe `production`. */
+  APP_ENV: z.enum(['local', 'staging', 'production'], {
+    errorMap: () => ({ message: 'APP_ENV must be one of local, staging, production.' }),
+  }),
+  SUPABASE_URL: z
+    .string({ required_error: 'SUPABASE_URL is required (Project Settings → API, e.g. https://<ref>.supabase.co).' })
+    .url('SUPABASE_URL must be a URL such as https://<ref>.supabase.co.'),
+  // The server reads and writes every table with the secret key; RLS keeps the publishable key out of all of them.
+  SUPABASE_SECRET_KEY: z
+    .string({ required_error: 'SUPABASE_SECRET_KEY is required (Project Settings → API Keys → Secret keys).' })
+    .startsWith('sb_secret_', 'SUPABASE_SECRET_KEY must be a new-format secret key (sb_secret_...), not a legacy JWT key.'),
   PORT: z.coerce.number().int().positive().default(8000),
   CLIENT_ORIGIN: z
     .string()

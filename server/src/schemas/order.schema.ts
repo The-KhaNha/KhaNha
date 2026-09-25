@@ -1,5 +1,5 @@
-import { OrderStatus } from '@prisma/client';
 import { z } from 'zod';
+import { ORDER_STATUSES } from '../types/enums';
 import { optionalField, phoneField } from './common';
 
 /** Most of one item in a single order, checked after duplicate lines are merged. */
@@ -42,8 +42,8 @@ export const createOrderSchema = z.object({
 
 export type CreateOrderInput = z.infer<typeof createOrderSchema>;
 
-const status = z.nativeEnum(OrderStatus, {
-  errorMap: () => ({ message: `Status must be one of ${Object.values(OrderStatus).join(', ')}.` }),
+const status = z.enum(ORDER_STATUSES, {
+  errorMap: () => ({ message: `Status must be one of ${ORDER_STATUSES.join(', ')}.` }),
 });
 
 export const updateOrderStatusSchema = z.object({ status });
