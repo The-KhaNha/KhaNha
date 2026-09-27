@@ -142,6 +142,20 @@ Actions and the Dockerfiles, labelled `dependencies` and `no-release`.
 
 Validate a workflow change with `docker run --rm -v "$PWD":/repo -w /repo rhysd/actionlint:latest -color`.
 
+### Security checks (`security.yml`)
+
+Runs on PRs into `dev` and `main`, weekly (Monday 03:00 UTC) and on demand. Informational, not required.
+
+| Job       | Runs                                                                                   | Reproduce locally                                                                                  |
+| --------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `audit`   | `npm audit --omit=dev --audit-level=high` in `client/` and `server/` (only what ships) | the same command in each package                                                                   |
+| `secrets` | the gitleaks binary over the full history, `--redact`, with `.gitleaks.toml`           | `docker run --rm -v "$PWD":/repo -w /repo zricethezav/gitleaks:v8.30.1 detect --source . --redact` |
+
+`.gitleaks.toml` extends the default rules and allowlists by value only: Supabase publishable keys and the CLI's fixed
+local secret in `server/.env.example`. A real key anywhere else, `.env.example` included, still fails. CodeQL is not in
+the workflow: it is the repository's default setup (Settings → Code security), available only on a public repository
+or with GitHub Code Security, and is a user step.
+
 ### Staging tests (later)
 
 Not set up yet. When they are, a workflow sets `TEST_TARGET=staging`, `ALLOW_STAGING_TESTS=1`, `APP_ENV=staging`,
