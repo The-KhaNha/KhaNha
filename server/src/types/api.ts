@@ -51,6 +51,8 @@ export interface MenuResponse {
 export interface SiteSettingsDto {
   customerOrderHistoryLimit: number;
   staffOrderListLimit: number;
+  /** The oldest client version served; older clients get 426 CLIENT_OUTDATED. */
+  minClientVersion: string;
   updatedAt: string;
 }
 

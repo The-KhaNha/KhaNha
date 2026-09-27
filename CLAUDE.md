@@ -29,6 +29,8 @@ settings; no staff powers). Site-wide limits live in the one-row `site_settings`
   only. Tests run against local Supabase only (§13, `docs/TESTING.md`).
 - Migrations in `server/supabase/migrations/` are append-only once pushed (enforced on every PR by the `migrations`
   CI job: only added files, each newer than the base branch's newest).
+- A change the deployed client cannot survive ships with a `min_client_version` bump (`PATCH /api/admin/settings`):
+  older clients then get 426 `CLIENT_OUTDATED` and a refresh banner (`docs/API.md` "Client version gate").
 - API changes stay backward-compatible with the deployed client: add fields, do not rename or remove fields the
   client reads, and keep error codes stable.
 
@@ -459,7 +461,7 @@ Agents added during a session are not registered until the next session; meanwhi
 | Level | Meaning | In this app |
 | --- | --- | --- |
 | `error` | 5xx or unexpected; server logs it with `err` (stack) | unhandled route error, JWKS fetch failure, database unreachable |
-| `warn` | expected but worth noticing | 401 / 403 |
+| `warn` | expected but worth noticing | 401 / 403 (426 `CLIENT_OUTDATED` is `debug`: a stale tab keeps asking) |
 | `info` | lifecycle and business events | listening/shutdown, `Order placed`, `Order status changed`, 4xx like `INSUFFICIENT_STOCK`, access lines for writes |
 | `debug` | dev tracing | access lines for successful reads (polled lists) |
 

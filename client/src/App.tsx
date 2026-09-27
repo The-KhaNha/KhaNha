@@ -9,6 +9,7 @@ import { RequireAuth } from './features/auth/RequireAuth';
 import { RequireRole } from './features/auth/RequireRole';
 import { CartBar } from './features/cart/CartBar';
 import { selectCount, useCartStore } from './features/cart/cartStore';
+import { OutdatedBanner } from './features/version/OutdatedBanner';
 import { cn } from './lib/cn';
 import { CartPage } from './pages/Cart';
 import { HomePage } from './pages/Home';
@@ -222,6 +223,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <ScrollToTop />
+      <OutdatedBanner />
       <AppShell />
     </BrowserRouter>
   );

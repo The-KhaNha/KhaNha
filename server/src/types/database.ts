@@ -220,6 +220,7 @@ export type Database = {
         Row: {
           customer_order_history_limit: number;
           id: boolean;
+          min_client_version: string;
           staff_order_list_limit: number;
           updated_at: string;
           updated_by: string | null;
@@ -227,6 +228,7 @@ export type Database = {
         Insert: {
           customer_order_history_limit?: number;
           id?: boolean;
+          min_client_version?: string;
           staff_order_list_limit?: number;
           updated_at?: string;
           updated_by?: string | null;
@@ -234,6 +236,7 @@ export type Database = {
         Update: {
           customer_order_history_limit?: number;
           id?: boolean;
+          min_client_version?: string;
           staff_order_list_limit?: number;
           updated_at?: string;
           updated_by?: string | null;

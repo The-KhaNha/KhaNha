@@ -17,6 +17,7 @@ a new file (see [DEPLOYMENT.md](DEPLOYMENT.md#schema-changes)).
 | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `20260925120000_init.sql`                     | the three enums, the five tables, indexes, RLS and grants, the triggers and the three RPCs below                                                              |
 | `20260927094610_admin_settings_collected.sql` | adds `user_role` value `ADMIN`; renames `order_status` value `COMPLETED` to `COLLECTED`; adds `public.site_settings` (RLS, revoked, `set_updated_at` trigger) |
+| `20260927222002_min_client_version.sql`       | adds `site_settings.min_client_version` (the 426 gate's minimum)                                                                                              |
 
 ## Enums
 
@@ -123,13 +124,14 @@ the table at one row (the migration seeds it with `insert ... values (true)`). E
 (`GET`/`PATCH /api/admin/settings`, see [API.md](API.md#get-adminsettings)); read on every `GET /api/orders`
 (`order.service.listOrders`).
 
-| Column                         | Type        | Null | Default | Constraints                                                                                                                             |
-| ------------------------------ | ----------- | ---- | ------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `id`                           | boolean     | no   | `true`  | primary key; `check (id)` — only `true` can ever be stored                                                                              |
-| `customer_order_history_limit` | integer     | no   | `20`    | `check (customer_order_history_limit between 1 and 200)`                                                                                |
-| `staff_order_list_limit`       | integer     | no   | `100`   | `check (staff_order_list_limit between 1 and 500)`                                                                                      |
-| `updated_at`                   | timestamptz | no   | `now()` | set on every update by `site_settings_set_updated_at`                                                                                   |
-| `updated_by`                   | uuid        | yes  |         | references `profiles (id)` on delete **set null** — never cascade: deleting the admin who last saved must never delete the settings row |
+| Column                         | Type        | Null | Default   | Constraints                                                                                                                                                         |
+| ------------------------------ | ----------- | ---- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                           | boolean     | no   | `true`    | primary key; `check (id)` — only `true` can ever be stored                                                                                                          |
+| `customer_order_history_limit` | integer     | no   | `20`      | `check (customer_order_history_limit between 1 and 200)`                                                                                                            |
+| `staff_order_list_limit`       | integer     | no   | `100`     | `check (staff_order_list_limit between 1 and 500)`                                                                                                                  |
+| `min_client_version`           | text        | no   | `'0.0.0'` | `check (min_client_version ~ '^\d+\.\d+\.\d+$')`; the oldest client the API serves (older: 426 `CLIENT_OUTDATED`); added by `20260927222002_min_client_version.sql` |
+| `updated_at`                   | timestamptz | no   | `now()`   | set on every update by `site_settings_set_updated_at`                                                                                                               |
+| `updated_by`                   | uuid        | yes  |           | references `profiles (id)` on delete **set null** — never cascade: deleting the admin who last saved must never delete the settings row                             |
 
 Only these two limits are editable. The per-item quantity cap (`MAX_QUANTITY_PER_ITEM = 10` in
 `server/src/schemas/order.schema.ts`) is a fixed constant, not a site setting (see [API.md](API.md#post-orders)).

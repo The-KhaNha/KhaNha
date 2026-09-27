@@ -71,6 +71,7 @@ describe('admin settings: read and validate', () => {
       settings: {
         customerOrderHistoryLimit: 20,
         staffOrderListLimit: 100,
+        minClientVersion: '0.0.0',
         updatedAt: expect.any(String),
       },
     });
@@ -83,6 +84,9 @@ describe('admin settings: read and validate', () => {
     [{ staffOrderListLimit: 501 }, 'at most 500'],
     [{ staffOrderListLimit: 2.5 }, 'whole number'],
     [{ customerOrderHistoryLimit: '20' }, 'must be a number'],
+    [{ minClientVersion: '1.2' }, 'must look like 1.2.3'],
+    [{ minClientVersion: '1.2.3-beta' }, 'must look like 1.2.3'],
+    [{ minClientVersion: 123 }, 'must be text'],
   ])('400 VALIDATION_ERROR for %j', async (body, message) => {
     const res = await api().patch('/api/admin/settings').set(bearer(admin)).send(body);
     expect(res.status).toBe(400);
@@ -100,6 +104,18 @@ describe('admin settings: read and validate', () => {
       customerOrderHistoryLimit: 200,
       staffOrderListLimit: 1,
     });
+  });
+});
+
+describe('admin settings: minimum client version', () => {
+  it('accepts a plain semver version and returns it', async () => {
+    const res = await api()
+      .patch('/api/admin/settings')
+      .set(bearer(admin))
+      .set('X-Client-Version', '9.9.9')
+      .send({ minClientVersion: '0.0.0' });
+    expect(res.status).toBe(200);
+    expect(res.body.settings.minClientVersion).toBe('0.0.0');
   });
 });
 

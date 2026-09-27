@@ -240,12 +240,13 @@ and store (key `'site_settings'`; see [Caching](#caching)).
 Code: `requireAuth` → `requireAdmin` → `validate(updateSettingsSchema)` → `admin.controller.updateSettings` →
 `settings.service.updateSettings`.
 
-Body (`server/src/schemas/admin.schema.ts`), both fields optional but at least one required:
+Body (`server/src/schemas/admin.schema.ts`), every field optional but at least one required:
 
-| Field                       | Type   | Rules               |
-| --------------------------- | ------ | ------------------- |
-| `customerOrderHistoryLimit` | number | whole number, 1–200 |
-| `staffOrderListLimit`       | number | whole number, 1–500 |
+| Field                       | Type   | Rules                                                              |
+| --------------------------- | ------ | ------------------------------------------------------------------ |
+| `customerOrderHistoryLimit` | number | whole number, 1–200                                                |
+| `staffOrderListLimit`       | number | whole number, 1–500                                                |
+| `minClientVersion`          | string | `^\d+\.\d+\.\d+$` ("Minimum client version must look like 1.2.3.") |
 
 - An out-of-range or non-integer value is 400 `VALIDATION_ERROR` ("Customer order history limit must be at least
   1."/"...at most 200."/"...must be a whole number.", and the equivalent messages for the staff limit).
@@ -284,11 +285,12 @@ camelCase shapes and every timestamp into ISO 8601 (`new Date(ts).toISOString()`
 
 `SiteSettingsDto`
 
-| Field                       | Type              | Notes                                                |
-| --------------------------- | ----------------- | ---------------------------------------------------- |
-| `customerOrderHistoryLimit` | number            | 1–200, default 20; caps `GET /orders` for a customer |
-| `staffOrderListLimit`       | number            | 1–500, default 100; caps `GET /orders` for staff     |
-| `updatedAt`                 | string (ISO 8601) | set whenever either limit is saved                   |
+| Field                       | Type              | Notes                                                                                      |
+| --------------------------- | ----------------- | ------------------------------------------------------------------------------------------ |
+| `customerOrderHistoryLimit` | number            | 1–200, default 20; caps `GET /orders` for a customer                                       |
+| `staffOrderListLimit`       | number            | 1–500, default 100; caps `GET /orders` for staff                                           |
+| `minClientVersion`          | string            | default `0.0.0`; clients below it get 426 `CLIENT_OUTDATED` ([gate](#client-version-gate)) |
+| `updatedAt`                 | string (ISO 8601) | set whenever a setting is saved                                                            |
 
 `StoreDto`
 
@@ -393,6 +395,7 @@ Every error response has this shape (`server/src/middleware/errorHandler.ts`):
 | 400    | `STORE_CLOSED`              | `POST /orders`                                                                                                                                                                                                                                                                                             |
 | 401    | `UNAUTHORIZED`              | `requireAuth`                                                                                                                                                                                                                                                                                              |
 | 403    | `FORBIDDEN`                 | `requireStaff`, `requireAdmin`                                                                                                                                                                                                                                                                             |
+| 426    | `CLIENT_OUTDATED`           | every route mounted after the [client version gate](#client-version-gate): the client's `X-Client-Version` is below `site_settings.min_client_version`. "A new version of Food Pickup is available. Refresh the page to continue." Logged at `debug`                                                       |
 | 404    | `NOT_FOUND`                 | missing store, order or profile; an unmatched route ("No route matches <METHOD> <path>.")                                                                                                                                                                                                                  |
 | 409    | `EMAIL_TAKEN`               | `POST /auth/register`                                                                                                                                                                                                                                                                                      |
 | 409    | `INVALID_STATUS_TRANSITION` | `PATCH /orders/:id/status` (from `update_order_status`)                                                                                                                                                                                                                                                    |
@@ -417,6 +420,24 @@ SQLSTATE `P0001` and that message. `order.service.ts` maps them:
 | `update_order_status` | `INVALID_STATUS_TRANSITION` | `{ orderNumber, status }`         | 409 `INVALID_STATUS_TRANSITION`    |
 
 Any other `P0001` or database error is a 500.
+
+## Client version gate
+
+`clientVersionGate` (`server/src/middleware/clientVersion.ts`) runs on every route mounted after it in
+`server/src/routes/index.ts`. It reads `X-Client-Version` (missing or malformed counts as `0.1.0`, the deployed V0
+client that sends none), compares its numeric triple with `site_settings.min_client_version` (read through the
+settings cache: no database round trip per request) and answers 426 `CLIENT_OUTDATED` when it is lower. A prerelease
+label is ignored, so a staging build is never older than its own release.
+
+- **Exempt by mount order, not a path list:** `/health` and `/ready` are registered before the gate (later
+  `/config` and the payment webhooks join them). CORS preflights never reach the router (`cors()` answers them), and
+  the same-origin client sends none.
+- **Before auth:** the gate runs before any router's `requireAuth`, so a stale tab gets 426, not 401.
+- **The client:** `services/api.ts` sets the `outdated` flag on any 426 and `App` shows a "New version available"
+  banner with Refresh; `useResource` stops polling after a 426. The V0 client has no banner, but it shows the
+  envelope's message in `ErrorState`, which is the intended fallback for the first gated release.
+- Raise the minimum with `PATCH /admin/settings` `{ "minClientVersion": "x.y.z" }` when a change ships that the
+  deployed client cannot survive (CLAUDE.md §2); `0.0.0` gates nothing.
 
 ## Headers and limits
 

@@ -16,6 +16,7 @@ export const updateSettings: BodyHandler<UpdateSettingsInput> = async (req, res)
     {
       customerOrderHistoryLimit: req.body.customerOrderHistoryLimit,
       staffOrderListLimit: req.body.staffOrderListLimit,
+      minClientVersion: req.body.minClientVersion,
       by: admin.id,
     },
     'Site settings changed',

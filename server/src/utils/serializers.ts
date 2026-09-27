@@ -49,6 +49,7 @@ export function toSiteSettingsDto(settings: Tables<'site_settings'>): SiteSettin
   return {
     customerOrderHistoryLimit: settings.customer_order_history_limit,
     staffOrderListLimit: settings.staff_order_list_limit,
+    minClientVersion: settings.min_client_version,
     updatedAt: settings.updated_at,
   };
 }

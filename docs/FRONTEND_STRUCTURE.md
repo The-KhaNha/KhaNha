@@ -28,6 +28,7 @@ client/
     │   ├── auth/           authStore, RequireAuth, RequireRole, roles (homeFor), sessionActivity, useAuthRedirect, validation, AuthCard
     │   ├── cart/           cartStore, cartRules, useReorder, CartBar
     │   ├── menu/           useMenu, useStore, CategoryChips, ItemDetailSheet
+    │   ├── version/        versionStore (the 426 "outdated" flag), OutdatedBanner
     │   └── orders/         orderStatus, useOrder, useOrders, OrderHero, StaffHeader, StaffFilters, StaffBoard, StaffOrderCard
     ├── lib/                framework-free helpers and generic hooks (supabase, logger, useResource, format, ...)
     ├── pages/              one component per route
@@ -100,12 +101,13 @@ Polling intervals and the `useResource` engine are drawn in
 
 ## Stores
 
-Both stores are zustand with the `persist` middleware (localStorage).
+The auth and cart stores are zustand with the `persist` middleware (localStorage); the version store is in memory.
 
-| Store          | File                                    | localStorage key      | Persisted       | Holds                                                                                                           |
-| -------------- | --------------------------------------- | --------------------- | --------------- | --------------------------------------------------------------------------------------------------------------- |
-| `useAuthStore` | `client/src/features/auth/authStore.ts` | `fp_auth`             | `user`, `token` | the profile and a mirror of the Supabase access token; `login`, `register`, `logout`, `hydrate`, `clearSession` |
-| `useCartStore` | `client/src/features/cart/cartStore.ts` | `fp_cart` (version 1) | `lines`         | cart lines; `add`, `increment`, `decrement`, `remove`, `clear`, `fix`, `setAvailability`, `syncAvailability`    |
+| Store             | File                                          | localStorage key      | Persisted       | Holds                                                                                                                                                                                      |
+| ----------------- | --------------------------------------------- | --------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `useAuthStore`    | `client/src/features/auth/authStore.ts`       | `fp_auth`             | `user`, `token` | the profile and a mirror of the Supabase access token; `login`, `register`, `logout`, `hydrate`, `clearSession`                                                                            |
+| `useCartStore`    | `client/src/features/cart/cartStore.ts`       | `fp_cart` (version 1) | `lines`         | cart lines; `add`, `increment`, `decrement`, `remove`, `clear`, `fix`, `setAvailability`, `syncAvailability`                                                                               |
+| `useVersionStore` | `client/src/features/version/versionStore.ts` | –                     | nothing         | `outdated` (set by `services/api.ts` on a 426 `CLIENT_OUTDATED`), `markOutdated`; `OutdatedBanner` in `App.tsx` shows "New version available" with Refresh on every screen while it is set |
 
 - supabase-js keeps the real session in localStorage under its own key (`sb-<project-ref>-auth-token`) and refreshes
   it. `authStore` subscribes to `supabase.auth.onAuthStateChange` to keep `token` in step, and `services/api.ts` reads

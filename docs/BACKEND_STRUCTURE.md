@@ -85,7 +85,7 @@ no `try`/`catch` and throw `AppError`s directly. The error mapping is drawn in
 
 | File              | Mounted at    | Routes                                                                                                               |
 | ----------------- | ------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `index.ts`        | `/api`        | `GET /health`, `GET /ready` (probes first); mounts the five routers                                                  |
+| `index.ts`        | `/api`        | `GET /health`, `GET /ready` (probes first), then `clientVersionGate`; mounts the five routers                        |
 | `auth.routes.ts`  | `/api/auth`   | `POST /register` (validate), `GET /me` (requireAuth)                                                                 |
 | `store.routes.ts` | `/api/store`  | `GET /`                                                                                                              |
 | `menu.routes.ts`  | `/api/menu`   | `GET /`                                                                                                              |
@@ -133,12 +133,12 @@ Field rules: [API.md](API.md#routes).
 
 ### middleware/
 
-| File               | Exports                                                                                                        |
-| ------------------ | -------------------------------------------------------------------------------------------------------------- |
-| `auth.ts`          | `requireAuth`, `requireStaff`, `requireAdmin`, `currentUser(req)`                                              |
-| `validate.ts`      | `validate(schema, source = 'body')`, `describeIssue(issue)`                                                    |
-| `errorHandler.ts`  | `notFoundHandler`, `errorHandler`                                                                              |
-| `clientVersion.ts` | `readClientVersion(req)`: the `X-Client-Version` header if it is a plain semver (≤ 32 chars), else `undefined` |
+| File               | Exports                                                                                                                                                                                                                                    |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `auth.ts`          | `requireAuth`, `requireStaff`, `requireAdmin`, `currentUser(req)`                                                                                                                                                                          |
+| `validate.ts`      | `validate(schema, source = 'body')`, `describeIssue(issue)`                                                                                                                                                                                |
+| `errorHandler.ts`  | `notFoundHandler`, `errorHandler`                                                                                                                                                                                                          |
+| `clientVersion.ts` | `readClientVersion(req)`: the `X-Client-Version` header if it is a plain semver (≤ 32 chars), else `undefined`; `clientVersionGate`: 426 `CLIENT_OUTDATED` below `site_settings.min_client_version` ([API.md](API.md#client-version-gate)) |
 
 `validate()` strips NUL bytes from every string, parses with zod, and replaces `req.body` (or shadows the
 `req.query` getter with an own property) with the parsed value. On failure it throws a 400 `VALIDATION_ERROR` whose
@@ -162,9 +162,10 @@ message names the field.
 | `env.ts`         | `env` (validated with zod at import; exits with a list of problems if invalid)                                                                                                                                                                   |
 | `logger.ts`      | `logger` (pino), `REDACT_PATHS`                                                                                                                                                                                                                  |
 | `supabase.ts`    | `supabaseAdmin` (secret key, bypasses RLS), `supabaseEnv`, `raisedByDatabase(err, code)`                                                                                                                                                         |
-| `errors.ts`      | `ErrorCode`, `ItemErrorDetails`, `AppError`, `validationError`, `unauthorized`, `forbidden`, `notFound`, `insufficientStock`                                                                                                                     |
+| `errors.ts`      | `ErrorCode`, `ItemErrorDetails`, `AppError`, `validationError`, `unauthorized`, `forbidden`, `notFound`, `clientOutdated`, `insufficientStock`                                                                                                   |
 | `serializers.ts` | `selectOrders()` (the one order query with lines, store and item photos), `OrderWithDetails`, `toUserDto`, `toStoreDto`, `toMenuItemDto`, `toOrderDto`, `isPurchasable`                                                                          |
 | `ids.ts`         | `isUuid(value)`                                                                                                                                                                                                                                  |
+| `semver.ts`      | `parseSemver(version)`, `compareSemver(a, b)` on the numeric triple (prerelease ignored)                                                                                                                                                         |
 | `version.ts`     | `APP_VERSION` (`package.json` in `process.cwd()`), `GIT_COMMIT` (env)                                                                                                                                                                            |
 | `cache.ts`       | `cached<T>(key, ttlMs, load)`, `invalidate(key?)`, `PUBLIC_READ_TTL_MS = 10_000` — in-process TTL cache for public reads; shares one pending load between concurrent misses; a failed load is never cached. See [API.md#caching](API.md#caching) |
 

@@ -30,7 +30,9 @@ export const errorHandler: ErrorRequestHandler = (err: unknown, req, res, _next)
   const { status, code, message, details } = describeError(err);
   // The one place a failed request is logged. Only 5xx carries the error and its stack; a 4xx is an expected
   // client error, and 401/403 are warn because a burst of them is worth noticing.
+  // A 426 is debug: a stale tab keeps asking until it reloads, and each ask is expected.
   if (status >= 500) req.log.error({ err, code }, 'Request failed');
+  else if (status === 426) req.log.debug({ status, code }, message);
   else req.log[status === 401 || status === 403 ? 'warn' : 'info']({ status, code }, message);
   // The envelope is { error: { code, message } }, plus `details` when an error is about one cart line.
   res.status(status).json({ error: { code, message, ...(details && { details }) } });

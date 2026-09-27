@@ -12,6 +12,10 @@ export const updateSettingsSchema = z
   .object({
     customerOrderHistoryLimit: limit('Customer order history limit', 200).optional(),
     staffOrderListLimit: limit('Staff order list limit', 500).optional(),
+    minClientVersion: z
+      .string({ invalid_type_error: 'Minimum client version must be text.' })
+      .regex(/^\d+\.\d+\.\d+$/, 'Minimum client version must look like 1.2.3.')
+      .optional(),
   })
   .refine((input) => Object.values(input).some((value) => value !== undefined), {
     message: 'Send at least one setting to change.',

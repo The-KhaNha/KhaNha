@@ -92,6 +92,8 @@ export interface ApiErrorEnvelope {
 export interface SiteSettings {
   customerOrderHistoryLimit: number;
   staffOrderListLimit: number;
+  /** The oldest client version the API serves; older clients get 426 CLIENT_OUTDATED. */
+  minClientVersion: string;
   updatedAt: string;
 }
 

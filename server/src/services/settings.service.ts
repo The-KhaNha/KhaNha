@@ -26,6 +26,7 @@ export async function updateSettings(
     .update({
       customer_order_history_limit: input.customerOrderHistoryLimit,
       staff_order_list_limit: input.staffOrderListLimit,
+      min_client_version: input.minClientVersion,
       updated_by: admin.id,
     })
     .eq('id', true)

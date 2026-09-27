@@ -4,6 +4,7 @@ import { changedSettings, validateLimit } from './settingsRules';
 const saved = {
   customerOrderHistoryLimit: 20,
   staffOrderListLimit: 100,
+  minClientVersion: '0.0.0',
   updatedAt: '2026-09-27T00:00:00Z',
 };
 

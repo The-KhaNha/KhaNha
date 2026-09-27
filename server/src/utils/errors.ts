@@ -12,6 +12,7 @@ export type ErrorCode =
   | 'NOT_FOUND'
   | 'EMAIL_TAKEN'
   | 'INVALID_STATUS_TRANSITION'
+  | 'CLIENT_OUTDATED'
   | 'INTERNAL';
 
 /**
@@ -48,6 +49,14 @@ export const forbidden = (message = 'You do not have permission to do that.'): A
 
 export const notFound = (message = 'We could not find what you were looking for.'): AppError =>
   new AppError(404, 'NOT_FOUND', message);
+
+/** The client build is older than site_settings.min_client_version: it must reload to get the current one. */
+export const clientOutdated = (): AppError =>
+  new AppError(
+    426,
+    'CLIENT_OUTDATED',
+    'A new version of Food Pickup is available. Refresh the page to continue.',
+  );
 
 /** The customer asked for more than is left. Names the item so they know exactly which line to change. */
 export const insufficientStock = (menuItemId: string, name: string, available: number): AppError =>

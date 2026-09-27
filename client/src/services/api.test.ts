@@ -84,3 +84,20 @@ describe('client version header', () => {
     expect((init?.headers as Record<string, string>)['X-Client-Version']).toMatch(/^\d+\.\d+\.\d+/);
   });
 });
+
+describe('426 CLIENT_OUTDATED', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('marks the build outdated and still throws the server message', async () => {
+    const { useVersionStore } = await import('../features/version/versionStore');
+    const envelope = { error: { code: 'CLIENT_OUTDATED', message: 'A new version is available.' } };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify(envelope), { status: 426 })),
+    );
+    await expect(request('/menu')).rejects.toSatisfy(
+      (err) => err instanceof ApiError && err.code === 'CLIENT_OUTDATED',
+    );
+    expect(useVersionStore.getState().outdated).toBe(true);
+  });
+});

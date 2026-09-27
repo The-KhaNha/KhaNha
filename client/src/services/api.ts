@@ -1,5 +1,6 @@
 import type { ApiErrorDetails, ApiErrorEnvelope } from '../types/api';
 import { useAuthStore } from '../features/auth/authStore';
+import { useVersionStore } from '../features/version/versionStore';
 import { APP_VERSION } from '../lib/appVersion';
 import { logger } from '../lib/logger';
 import { supabase } from '../lib/supabase';
@@ -106,6 +107,8 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     if (response.status === 401 && auth && token) {
       useAuthStore.getState().clearSession();
     }
+    // This build is older than the server's minimum (426 CLIENT_OUTDATED): App shows the refresh banner.
+    if (response.status === 426) useVersionStore.getState().markOutdated();
     if (isErrorEnvelope(payload)) {
       const { code, message, details } = payload.error;
       throw new ApiError(

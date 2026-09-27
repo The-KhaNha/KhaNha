@@ -280,7 +280,12 @@ async function seedDemo(): Promise<void> {
   // Back to the defaults, so every demo reset (and every test run) starts from the same limits.
   await db
     .from('site_settings')
-    .update({ customer_order_history_limit: 20, staff_order_list_limit: 100, updated_by: null })
+    .update({
+      customer_order_history_limit: 20,
+      staff_order_list_limit: 100,
+      min_client_version: '0.0.0',
+      updated_by: null,
+    })
     .eq('id', true)
     .throwOnError();
 
