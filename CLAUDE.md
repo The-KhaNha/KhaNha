@@ -269,6 +269,14 @@ One owner per topic; other docs link to it instead of copying.
   user immediately.
 - Never commit unless the user asks.
 
+## 12b. Attribution policy (STRICTLY ENFORCED)
+
+- **NEVER** include any mention of Claude, AI, or AI-assisted generation in commit messages, PR descriptions, code
+  comments, or any output visible in the repository.
+- **NEVER** add `Co-Authored-By` lines referencing Claude or any AI.
+- **NEVER** include "Generated with Claude Code" or similar attribution badges in PRs, commits, or docs.
+- All work must appear as if written entirely by the human developer: no AI fingerprints anywhere.
+
 ## 13. Validation after every change
 
 In every package you touched:
