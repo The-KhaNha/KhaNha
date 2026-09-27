@@ -18,7 +18,9 @@ export function useChangeKey(value: number | string | boolean): ChangeKey {
   useLayoutEffect(() => {
     if (Object.is(previous.current, value)) return;
     const direction: 1 | -1 =
-      typeof value === 'number' && typeof previous.current === 'number' && value < previous.current ? -1 : 1;
+      typeof value === 'number' && typeof previous.current === 'number' && value < previous.current
+        ? -1
+        : 1;
     previous.current = value;
     setState((s) => ({ key: s.key + 1, direction }));
   }, [value]);

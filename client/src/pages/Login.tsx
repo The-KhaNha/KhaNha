@@ -51,7 +51,10 @@ export function LoginPage() {
       footer={
         <>
           New here?{' '}
-          <Link to="/register" className="font-semibold text-brand-600 underline-offset-2 hover:text-brand-700 hover:underline">
+          <Link
+            to="/register"
+            className="font-semibold text-brand-600 underline-offset-2 hover:text-brand-700 hover:underline"
+          >
             Create an account
           </Link>
         </>
@@ -88,7 +91,11 @@ export function LoginPage() {
             aria-label={showPassword ? 'Hide password' : 'Show password'}
             className="absolute right-1 top-[26px] grid h-11 w-11 place-items-center rounded-full text-muted transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
           >
-            {showPassword ? <EyeOff className="h-5 w-5" aria-hidden /> : <Eye className="h-5 w-5" aria-hidden />}
+            {showPassword ? (
+              <EyeOff className="h-5 w-5" aria-hidden />
+            ) : (
+              <Eye className="h-5 w-5" aria-hidden />
+            )}
           </button>
         </div>
         <Button type="submit" size="lg" fullWidth loading={submitting} className="mt-2">

@@ -42,7 +42,11 @@ interface PersistedCart {
 }
 
 /** Applies `update` to one line; returns the SAME array when nothing changed so the store can skip the update. */
-function updateLine(lines: CartLine[], menuItemId: string, update: (line: CartLine) => CartLine | null): CartLine[] {
+function updateLine(
+  lines: CartLine[],
+  menuItemId: string,
+  update: (line: CartLine) => CartLine | null,
+): CartLine[] {
   let changed = false;
   const next = lines.flatMap((line) => {
     if (line.menuItemId !== menuItemId) return [line];
@@ -84,11 +88,15 @@ export const useCartStore = create<CartState>()(
           }
           // A line already over its limit is left as is (the cart flags it); otherwise top it up to the limit.
           const nextQuantity =
-            existing.quantity >= limit ? existing.quantity : Math.min(limit, existing.quantity + quantity);
+            existing.quantity >= limit
+              ? existing.quantity
+              : Math.min(limit, existing.quantity + quantity);
           return withLines(
             state,
             updateLine(state.lines, item.id, (l) =>
-              l.quantity === nextQuantity && l.maxQuantity === maxQuantity ? l : { ...l, quantity: nextQuantity, maxQuantity },
+              l.quantity === nextQuantity && l.maxQuantity === maxQuantity
+                ? l
+                : { ...l, quantity: nextQuantity, maxQuantity },
             ),
           );
         });
@@ -138,7 +146,9 @@ export const useCartStore = create<CartState>()(
         set((state) =>
           withLines(
             state,
-            updateLine(state.lines, menuItemId, (l) => (l.maxQuantity === available ? l : { ...l, maxQuantity: available })),
+            updateLine(state.lines, menuItemId, (l) =>
+              l.maxQuantity === available ? l : { ...l, maxQuantity: available },
+            ),
           ),
         );
       },
@@ -174,7 +184,9 @@ export const useCartStore = create<CartState>()(
 
 /* Derived selectors — count and total are never stored. */
 export const selectLines = (state: CartState) => state.lines;
-export const selectCount = (state: CartState) => state.lines.reduce((sum, l) => sum + l.quantity, 0);
-export const selectTotal = (state: CartState) => state.lines.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0);
+export const selectCount = (state: CartState) =>
+  state.lines.reduce((sum, l) => sum + l.quantity, 0);
+export const selectTotal = (state: CartState) =>
+  state.lines.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0);
 export const selectQuantityOf = (menuItemId: string) => (state: CartState) =>
   state.lines.find((l) => l.menuItemId === menuItemId)?.quantity ?? 0;

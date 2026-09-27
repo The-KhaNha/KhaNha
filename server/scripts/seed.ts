@@ -5,6 +5,7 @@
 // Production (`npm run seed -- --production`): first-time setup only. Creates the store and menu while production
 // has no store yet, and nothing else: no wipes, and no test accounts with well-known passwords.
 import { env } from '../src/utils/env';
+import { logger } from '../src/utils/logger';
 import { supabaseAdmin as db } from '../src/utils/supabase';
 import type { Role } from '../src/types/enums';
 import type { Tables } from '../src/types/database';
@@ -34,26 +35,123 @@ interface SeedMenuItem {
 // Array order defines sort_order (and therefore category order on the menu). Images live in client/public/images.
 // Three items are stock-limited to demo the "Only N left" flow; re-seeding resets their stock.
 const MENU: SeedMenuItem[] = [
-  { category: 'Coffee', name: 'Cold Coffee', price: 120, description: 'Creamy chilled coffee, blended smooth', imageUrl: '/images/cold-coffee.jpg', isPopular: true },
-  { category: 'Coffee', name: 'Espresso', price: 90, description: 'Bold double shot, freshly pulled', imageUrl: '/images/espresso.jpg' },
-  { category: 'Coffee', name: 'Cappuccino', price: 140, description: 'Velvety steamed milk over rich espresso', imageUrl: '/images/cappuccino.jpg', isPopular: true },
-  { category: 'Snacks', name: 'Veg Sandwich', price: 150, description: 'Grilled with fresh veggies, cheese and mint chutney', imageUrl: '/images/veg-sandwich.jpg', isPopular: true },
-  { category: 'Snacks', name: 'French Fries', price: 120, description: 'Crispy, golden, lightly salted', imageUrl: '/images/french-fries.jpg', isPopular: true },
-  { category: 'Snacks', name: 'Cheese Toast', price: 130, description: 'Buttery toast with melted cheese and herbs', imageUrl: '/images/cheese-toast.jpg', stockQuantity: 1 },
-  { category: 'Juices', name: 'Orange Juice', price: 100, description: 'Freshly squeezed, no added sugar', imageUrl: '/images/orange-juice.jpg' },
-  { category: 'Juices', name: 'Watermelon Juice', price: 110, description: 'Cold-pressed and refreshing', imageUrl: '/images/watermelon-juice.jpg' },
-  { category: 'Juices', name: 'Berry Smoothie', price: 150, description: 'Mixed berries blended with yogurt', imageUrl: '/images/berry-smoothie.jpg', isAvailable: false },
-  { category: 'Desserts', name: 'Chocolate Brownie', price: 110, description: 'Fudgy, dense, with a crackly top', imageUrl: '/images/chocolate-brownie.jpg', stockQuantity: 2 },
-  { category: 'Desserts', name: 'Blueberry Muffin', price: 90, description: 'Soft-baked with bursting blueberries', imageUrl: '/images/blueberry-muffin.jpg', stockQuantity: 5 },
+  {
+    category: 'Coffee',
+    name: 'Cold Coffee',
+    price: 120,
+    description: 'Creamy chilled coffee, blended smooth',
+    imageUrl: '/images/cold-coffee.jpg',
+    isPopular: true,
+  },
+  {
+    category: 'Coffee',
+    name: 'Espresso',
+    price: 90,
+    description: 'Bold double shot, freshly pulled',
+    imageUrl: '/images/espresso.jpg',
+  },
+  {
+    category: 'Coffee',
+    name: 'Cappuccino',
+    price: 140,
+    description: 'Velvety steamed milk over rich espresso',
+    imageUrl: '/images/cappuccino.jpg',
+    isPopular: true,
+  },
+  {
+    category: 'Snacks',
+    name: 'Veg Sandwich',
+    price: 150,
+    description: 'Grilled with fresh veggies, cheese and mint chutney',
+    imageUrl: '/images/veg-sandwich.jpg',
+    isPopular: true,
+  },
+  {
+    category: 'Snacks',
+    name: 'French Fries',
+    price: 120,
+    description: 'Crispy, golden, lightly salted',
+    imageUrl: '/images/french-fries.jpg',
+    isPopular: true,
+  },
+  {
+    category: 'Snacks',
+    name: 'Cheese Toast',
+    price: 130,
+    description: 'Buttery toast with melted cheese and herbs',
+    imageUrl: '/images/cheese-toast.jpg',
+    stockQuantity: 1,
+  },
+  {
+    category: 'Juices',
+    name: 'Orange Juice',
+    price: 100,
+    description: 'Freshly squeezed, no added sugar',
+    imageUrl: '/images/orange-juice.jpg',
+  },
+  {
+    category: 'Juices',
+    name: 'Watermelon Juice',
+    price: 110,
+    description: 'Cold-pressed and refreshing',
+    imageUrl: '/images/watermelon-juice.jpg',
+  },
+  {
+    category: 'Juices',
+    name: 'Berry Smoothie',
+    price: 150,
+    description: 'Mixed berries blended with yogurt',
+    imageUrl: '/images/berry-smoothie.jpg',
+    isAvailable: false,
+  },
+  {
+    category: 'Desserts',
+    name: 'Chocolate Brownie',
+    price: 110,
+    description: 'Fudgy, dense, with a crackly top',
+    imageUrl: '/images/chocolate-brownie.jpg',
+    stockQuantity: 2,
+  },
+  {
+    category: 'Desserts',
+    name: 'Blueberry Muffin',
+    price: 90,
+    description: 'Soft-baked with bursting blueberries',
+    imageUrl: '/images/blueberry-muffin.jpg',
+    stockQuantity: 5,
+  },
 ];
 
-const ACCOUNTS: { role: Role; name: string; email: string; password: string; phone: string | null }[] = [
-  { role: 'STAFF', name: 'Campus Cafe Staff', email: 'staff@campuscafe.local', password: 'staff123', phone: null },
-  { role: 'CUSTOMER', name: 'Anishka', email: 'anishka@example.com', password: 'test1234', phone: '9876543210' },
+const ACCOUNTS: {
+  role: Role;
+  name: string;
+  email: string;
+  password: string;
+  phone: string | null;
+}[] = [
+  {
+    role: 'STAFF',
+    name: 'Campus Cafe Staff',
+    email: 'staff@campuscafe.local',
+    password: 'staff123',
+    phone: null,
+  },
+  {
+    role: 'CUSTOMER',
+    name: 'Anishka',
+    email: 'anishka@example.com',
+    password: 'test1234',
+    phone: '9876543210',
+  },
 ];
 
 async function seedStore(): Promise<Tables<'stores'>> {
-  const { data: existing } = await db.from('stores').select('id').limit(1).maybeSingle().throwOnError();
+  const { data: existing } = await db
+    .from('stores')
+    .select('id')
+    .limit(1)
+    .maybeSingle()
+    .throwOnError();
   const { data: store } = existing
     ? await db.from('stores').update(STORE).eq('id', existing.id).select().single().throwOnError()
     : await db.from('stores').insert(STORE).select().single().throwOnError();
@@ -61,7 +159,11 @@ async function seedStore(): Promise<Tables<'stores'>> {
 }
 
 async function seedMenu(storeId: string): Promise<Tables<'menu_items'>[]> {
-  const { data: current } = await db.from('menu_items').select('id, name').eq('store_id', storeId).throwOnError();
+  const { data: current } = await db
+    .from('menu_items')
+    .select('id, name')
+    .eq('store_id', storeId)
+    .throwOnError();
   const idByName = new Map(current.map((item) => [item.name, item.id]));
 
   const items: Tables<'menu_items'>[] = [];
@@ -95,7 +197,12 @@ async function seedMenu(storeId: string): Promise<Tables<'menu_items'>[]> {
 
 async function seedAccounts(): Promise<void> {
   for (const { password, role, ...account } of ACCOUNTS) {
-    const { data: existing } = await db.from('profiles').select('id').eq('email', account.email).maybeSingle().throwOnError();
+    const { data: existing } = await db
+      .from('profiles')
+      .select('id')
+      .eq('email', account.email)
+      .maybeSingle()
+      .throwOnError();
     const attributes = {
       email: account.email,
       password,
@@ -105,7 +212,8 @@ async function seedAccounts(): Promise<void> {
     const { data, error } = existing
       ? await db.auth.admin.updateUserById(existing.id, attributes)
       : await db.auth.admin.createUser(attributes);
-    if (error) throw new Error(`Could not save the test account ${account.email}: ${error.message}`);
+    if (error)
+      throw new Error(`Could not save the test account ${account.email}: ${error.message}`);
 
     // The profile trigger only runs on creation, and always makes a CUSTOMER.
     await db
@@ -140,7 +248,7 @@ async function seedDemo(): Promise<void> {
   const menuItems = await seedMenu(store.id);
   await seedAccounts();
 
-  console.log(`
+  logger.info(`
 Seeded Food Pickup (${env.APP_ENV}: ${env.SUPABASE_URL})
 ${describeMenu(store, menuItems)}
   Orders    next order number is #1001
@@ -152,15 +260,22 @@ Test accounts
 }
 
 async function setUpProduction(): Promise<void> {
-  const { data: existing } = await db.from('stores').select('name').limit(1).maybeSingle().throwOnError();
+  const { data: existing } = await db
+    .from('stores')
+    .select('name')
+    .limit(1)
+    .maybeSingle()
+    .throwOnError();
   if (existing) {
-    console.log(`Production already has ${existing.name}; nothing was changed. Edit the live menu in the Supabase dashboard.`);
+    logger.info(
+      `Production already has ${existing.name}; nothing was changed. Edit the live menu in the Supabase dashboard.`,
+    );
     return;
   }
 
   const store = await seedStore();
   const menuItems = await seedMenu(store.id);
-  console.log(`
+  logger.info(`
 Set up Food Pickup (production: ${env.SUPABASE_URL})
 ${describeMenu(store, menuItems)}
 
@@ -185,6 +300,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((error: unknown) => {
-  console.error('Seed failed:', error instanceof Error ? error.message : error);
+  logger.error({ err: error }, 'Seed failed');
   process.exitCode = 1;
 });

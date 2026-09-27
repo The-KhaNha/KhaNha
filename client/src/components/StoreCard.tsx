@@ -1,6 +1,7 @@
 import { ArrowRight, Clock } from 'lucide-react';
 import type { Store } from '../types/api';
 import { formatPrepRange } from '../lib/format';
+import { photoSrcSet } from '../lib/photo';
 import { ButtonLink } from './Button';
 import { Card } from './Card';
 import { OpenPill } from './OpenPill';
@@ -14,10 +15,20 @@ interface StoreCardProps {
 /** Home store card. Sits over the paprika field so the storefront photo becomes the hunger cue. */
 export function StoreCard({ store, className }: StoreCardProps) {
   return (
-    <Card as="section" padding="none" className={`overflow-hidden animate-fade-up ${className ?? ''}`}>
+    <Card
+      as="section"
+      padding="none"
+      className={`overflow-hidden animate-fade-up ${className ?? ''}`}
+    >
       <div className="relative aspect-[16/9] bg-surface-2">
         {store.imageUrl && (
-          <img src={store.imageUrl} alt={`${store.name} storefront`} className="h-full w-full object-cover" />
+          <img
+            src={store.imageUrl}
+            srcSet={photoSrcSet(store.imageUrl)}
+            sizes="(min-width: 768px) 480px, calc(100vw - 32px)"
+            alt={`${store.name} storefront`}
+            className="h-full w-full object-cover"
+          />
         )}
         <OpenPill isOpen={store.isOpen} className="absolute left-4 top-4" />
       </div>
@@ -30,7 +41,13 @@ export function StoreCard({ store, className }: StoreCardProps) {
           </span>
           Ready in {formatPrepRange(store.prepTimeMinMinutes, store.prepTimeMaxMinutes)}
         </div>
-        <ButtonLink to="/menu" size="lg" fullWidth className="mt-5" iconRight={<ArrowRight className="h-5 w-5" aria-hidden />}>
+        <ButtonLink
+          to="/menu"
+          size="lg"
+          fullWidth
+          className="mt-5"
+          iconRight={<ArrowRight className="h-5 w-5" aria-hidden />}
+        >
           View Menu
         </ButtonLink>
       </div>
@@ -40,7 +57,9 @@ export function StoreCard({ store, className }: StoreCardProps) {
 
 export function StoreCardSkeleton({ className }: { className?: string }) {
   return (
-    <div className={`overflow-hidden rounded-[28px] border border-line/70 bg-surface shadow-card ${className ?? ''}`}>
+    <div
+      className={`overflow-hidden rounded-[28px] border border-line/70 bg-surface shadow-card ${className ?? ''}`}
+    >
       <Skeleton className="aspect-[16/9] w-full rounded-none" />
       <div className="p-5">
         <Skeleton className="h-7 w-40" />

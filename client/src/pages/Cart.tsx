@@ -45,7 +45,9 @@ export function CartPage() {
 
   return (
     <div className="pt-4 animate-fade-up">
-      {notice.length > 0 && <ReorderNotice lines={notice} onDismiss={dismissNotice} className="mb-4" />}
+      {notice.length > 0 && (
+        <ReorderNotice lines={notice} onDismiss={dismissNotice} className="mb-4" />
+      )}
 
       <Card padding="none" className="px-4">
         <ul className="divide-y divide-line/70">
@@ -94,13 +96,23 @@ export function CartPage() {
         </p>
         {flagged.length > 0 ? (
           <>
-            <Button size="lg" fullWidth className="mt-5" disabled iconRight={<ArrowRight className="h-5 w-5" aria-hidden />}>
+            <Button
+              size="lg"
+              fullWidth
+              className="mt-5"
+              disabled
+              iconRight={<ArrowRight className="h-5 w-5" aria-hidden />}
+            >
               Proceed to Checkout
             </Button>
-            <p role="status" className="mt-3 flex items-start justify-center gap-1.5 text-center text-[13px] font-semibold text-brand-700">
+            <p
+              role="status"
+              className="mt-3 flex items-start justify-center gap-1.5 text-center text-[13px] font-semibold text-brand-700"
+            >
               <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={2.5} aria-hidden />
               <span>
-                {describeProblems(flagged)} Fix {flagged.length === 1 ? 'it' : 'them'} above to continue.
+                {describeProblems(flagged)} Fix {flagged.length === 1 ? 'it' : 'them'} above to
+                continue.
               </span>
             </p>
           </>
@@ -131,7 +143,10 @@ function ReorderNotice({ lines, onDismiss, className }: ReorderNoticeProps) {
   return (
     <div
       role="status"
-      className={cn('mt-4 flex items-start gap-3 rounded-2xl bg-gold-50 px-4 py-3 text-gold-700 animate-fade-in', className)}
+      className={cn(
+        'mt-4 flex items-start gap-3 rounded-2xl bg-gold-50 px-4 py-3 text-gold-700 animate-fade-in',
+        className,
+      )}
     >
       <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
       <div className="min-w-0 flex-1 text-[14px] leading-snug">

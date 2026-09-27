@@ -18,7 +18,14 @@ interface StaffHeaderProps {
 }
 
 /** Sticky dashboard header: wordmark, shop name, live clock + freshness, log out. */
-export function StaffHeader({ storeName, now, updatedAt, offline, onLogout, children }: StaffHeaderProps) {
+export function StaffHeader({
+  storeName,
+  now,
+  updatedAt,
+  offline,
+  onLogout,
+  children,
+}: StaffHeaderProps) {
   return (
     <header className="sticky top-0 z-40 border-b border-line/60 bg-bg/90 backdrop-blur-md">
       <div className="mx-auto flex h-16 max-w-6xl items-center gap-4 px-4 sm:px-6">
@@ -37,10 +44,19 @@ export function StaffHeader({ storeName, now, updatedAt, offline, onLogout, chil
           <div className="leading-tight">
             <p className="text-[15px] font-bold tabular-nums">{formatTime(now)}</p>
             <p className="text-[11px] text-muted">
-              {updatedAt ? `Updated ${formatAgo(updatedAt, now.getTime())}` : offline ? 'Offline' : 'Connecting…'}
+              {updatedAt
+                ? `Updated ${formatAgo(updatedAt, now.getTime())}`
+                : offline
+                  ? 'Offline'
+                  : 'Connecting…'}
             </p>
           </div>
-          <Button variant="secondary" onClick={onLogout} aria-label="Log out" iconLeft={<LogOut className="h-4 w-4" aria-hidden />}>
+          <Button
+            variant="secondary"
+            onClick={onLogout}
+            aria-label="Log out"
+            iconLeft={<LogOut className="h-4 w-4" aria-hidden />}
+          >
             <span className="hidden sm:inline">Log out</span>
           </Button>
         </div>

@@ -9,8 +9,19 @@ import { ErrorState } from '../components/ErrorState';
 import { Input, Textarea } from '../components/Input';
 import { Price } from '../components/Price';
 import { selectUser, useAuthStore } from '../features/auth/authStore';
-import { NAME_MAX_LENGTH, NOTE_MAX_LENGTH, validateName, validateNote, validatePhone } from '../features/auth/validation';
-import { describeProblems, isItemErrorCode, lineProblem, problemLabel } from '../features/cart/cartRules';
+import {
+  NAME_MAX_LENGTH,
+  NOTE_MAX_LENGTH,
+  validateName,
+  validateNote,
+  validatePhone,
+} from '../features/auth/validation';
+import {
+  describeProblems,
+  isItemErrorCode,
+  lineProblem,
+  problemLabel,
+} from '../features/cart/cartRules';
 import { selectLines, selectTotal, useCartStore, type CartLine } from '../features/cart/cartStore';
 import { useMenu } from '../features/menu/useMenu';
 import { ApiError } from '../services/api';
@@ -75,7 +86,11 @@ export function CheckoutPage() {
   }
 
   async function placeOrder() {
-    const nextErrors = { name: validateName(name), phone: validatePhone(phone), note: validateNote(note) };
+    const nextErrors = {
+      name: validateName(name),
+      phone: validatePhone(phone),
+      note: validateNote(note),
+    };
     setErrors(nextErrors);
     if (nextErrors.name || nextErrors.phone || nextErrors.note) return;
 
@@ -102,7 +117,8 @@ export function CheckoutPage() {
         navigate(`/orders/${order.id}/success`, { replace: true, state: { order } });
       }, PAID_HOLD_MS);
     } catch (err) {
-      const apiError = err instanceof ApiError ? err : new ApiError(0, 'UNKNOWN', 'Something went wrong.');
+      const apiError =
+        err instanceof ApiError ? err : new ApiError(0, 'UNKNOWN', 'Something went wrong.');
       // The server names the line it refused and how many are left: record that so the summary highlights it.
       if (isItemErrorCode(apiError.code) && apiError.details?.menuItemId) {
         setAvailability(apiError.details.menuItemId, apiError.details.available ?? 0);
@@ -163,7 +179,8 @@ export function CheckoutPage() {
               >
                 <span className="min-w-0">
                   <span className="line-clamp-2 wrap-anywhere">
-                    <span className="font-extrabold tabular-nums">{line.quantity} ×</span> {line.name}
+                    <span className="font-extrabold tabular-nums">{line.quantity} ×</span>{' '}
+                    {line.name}
                   </span>
                   {problem && (
                     <span className="mt-0.5 inline-flex items-center gap-1 text-[12px] font-bold text-brand-700">
@@ -234,9 +251,14 @@ export function CheckoutPage() {
         <div className="flex items-end justify-between gap-4">
           <div>
             <p className="eyebrow text-muted">Total to pay</p>
-            <Price value={shownTotal} className="mt-1.5 block text-[40px] font-extrabold leading-none" />
+            <Price
+              value={shownTotal}
+              className="mt-1.5 block text-[40px] font-extrabold leading-none"
+            />
           </div>
-          <p className="max-w-[9rem] text-right text-[13px] leading-snug text-muted">No taxes or fees. Exactly what you saw.</p>
+          <p className="max-w-[9rem] text-right text-[13px] leading-snug text-muted">
+            No taxes or fees. Exactly what you saw.
+          </p>
         </div>
         <Button
           type="submit"
@@ -257,14 +279,19 @@ export function CheckoutPage() {
           {paid ? 'Paid' : submitting ? 'Processing payment…' : `Pay ${formatPrice(shownTotal)}`}
         </Button>
         {blocked ? (
-          <p role="status" className="mt-3 flex items-start justify-center gap-1.5 text-center text-[13px] font-semibold text-brand-700">
+          <p
+            role="status"
+            className="mt-3 flex items-start justify-center gap-1.5 text-center text-[13px] font-semibold text-brand-700"
+          >
             <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={2.5} aria-hidden />
             <span>
               {describeProblems(flagged)} Fix {flagged.length === 1 ? 'it' : 'them'} above to pay.
             </span>
           </p>
         ) : (
-          <p className="mt-3 text-center text-[12px] text-muted">Payment is simulated in this preview build.</p>
+          <p className="mt-3 text-center text-[12px] text-muted">
+            Payment is simulated in this preview build.
+          </p>
         )}
       </Card>
     </form>

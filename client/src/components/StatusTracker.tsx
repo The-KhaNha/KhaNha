@@ -1,4 +1,4 @@
-import { useRef, type CSSProperties } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { Check, CircleX } from 'lucide-react';
 import type { OrderStatus } from '../types/api';
 import { ORDER_STEPS, STATUS_META, stepIndex } from '../features/orders/orderStatus';
@@ -23,8 +23,8 @@ function StepTracker({ status, className }: { status: OrderStatus; className?: s
   // COMPLETED is the end of the road: every step reads as done and nothing pulses any more.
   const finished = status === 'COMPLETED';
   // Only pop the active disc when the status changes while the tracker is on screen (a poll transition).
-  const initialStatus = useRef(status);
-  const transitioned = initialStatus.current !== status;
+  const [initialStatus] = useState(status);
+  const transitioned = initialStatus !== status;
 
   return (
     <ol className={cn('flex items-start', className)} aria-label="Order progress">
@@ -70,7 +70,10 @@ function StepTracker({ status, className }: { status: OrderStatus; className?: s
               </span>
             </div>
             {!last && (
-              <div className="relative mt-5 h-0.5 flex-1 -mx-3 overflow-hidden rounded-full bg-line" aria-hidden>
+              <div
+                className="relative mt-5 h-0.5 flex-1 -mx-3 overflow-hidden rounded-full bg-line"
+                aria-hidden
+              >
                 <div
                   className={cn(
                     'h-full rounded-full bg-success-500 transition-[width] duration-500 ease-out',

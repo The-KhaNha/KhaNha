@@ -22,7 +22,9 @@ export function HomePage() {
       <section className="-mx-4 rounded-b-[28px] bg-[linear-gradient(180deg,#d13711,#b72e0e)] text-white lg:mx-[calc(50%-50vw)]">
         <div className="mx-auto w-full max-w-md px-4 pb-[72px] pt-4 md:max-w-lg">
           <p className="eyebrow text-white">Campus pickup</p>
-          <h1 className="mt-2 text-[44px] font-extrabold leading-none tracking-[-0.02em]">Skip the queue.</h1>
+          <h1 className="mt-2 text-[44px] font-extrabold leading-none tracking-[-0.02em]">
+            Skip the queue.
+          </h1>
           <p className="mt-3 max-w-sm text-[16px] font-medium leading-relaxed text-white">
             Order ahead. We&rsquo;ll prepare it while you make your way.
           </p>
@@ -51,12 +53,17 @@ export function HomePage() {
         </h2>
         <ol className="mt-3 grid grid-cols-3 gap-2">
           {steps.map(({ icon: Icon, title, copy }, index) => (
-            <li key={title} className="rounded-[20px] border border-line/70 bg-surface p-3.5 shadow-card">
+            <li
+              key={title}
+              className="rounded-[20px] border border-line/70 bg-surface p-3.5 shadow-card"
+            >
               <div className="flex items-center justify-between">
                 <span className="grid h-9 w-9 place-items-center rounded-xl bg-brand-50 text-brand-600">
                   <Icon className="h-[18px] w-[18px]" aria-hidden />
                 </span>
-                <span className="text-xs font-extrabold tabular-nums text-gold-500">0{index + 1}</span>
+                <span className="text-xs font-extrabold tabular-nums text-gold-500">
+                  0{index + 1}
+                </span>
               </div>
               <p className="mt-3 text-[13px] font-bold leading-tight">{title}</p>
               <p className="mt-1 text-[12px] leading-snug text-muted">{copy}</p>

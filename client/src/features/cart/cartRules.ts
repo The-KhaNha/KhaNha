@@ -49,7 +49,9 @@ export function problemLabel(problem: LineProblem): string {
 
 /** Full sentence naming the item, matching the server's wording: "Only 1 Cheese Toast left." */
 export function describeProblem(name: string, problem: LineProblem): string {
-  return problem.kind === 'sold-out' ? `${name} is sold out.` : `Only ${problem.available} ${name} left.`;
+  return problem.kind === 'sold-out'
+    ? `${name} is sold out.`
+    : `Only ${problem.available} ${name} left.`;
 }
 
 /** One sentence per flagged line, so a message never says "some item" without naming it. */
@@ -70,7 +72,11 @@ export function limitCaption(maxQuantity: number | null | undefined): string {
 }
 
 /** Server error codes that are about one specific cart line; `error.details` says which. */
-const ITEM_ERROR_CODES: readonly string[] = ['INSUFFICIENT_STOCK', 'ITEM_UNAVAILABLE', 'ITEM_NOT_FOUND'];
+const ITEM_ERROR_CODES: readonly string[] = [
+  'INSUFFICIENT_STOCK',
+  'ITEM_UNAVAILABLE',
+  'ITEM_NOT_FOUND',
+];
 
 export function isItemErrorCode(code: string): boolean {
   return ITEM_ERROR_CODES.includes(code);

@@ -12,7 +12,11 @@ interface ErrorDescription {
   details?: ItemErrorDetails;
 }
 
-const INTERNAL: ErrorDescription = { status: 500, code: 'INTERNAL', message: 'Something went wrong. Please try again.' };
+const INTERNAL: ErrorDescription = {
+  status: 500,
+  code: 'INTERNAL',
+  message: 'Something went wrong. Please try again.',
+};
 
 /** Final non-error middleware: anything that reached here matched no route. */
 export const notFoundHandler: RequestHandler = (req, res) => {
@@ -22,10 +26,12 @@ export const notFoundHandler: RequestHandler = (req, res) => {
 };
 
 // Express only treats a 4-argument function as an error handler, so `_next` must stay.
-export const errorHandler: ErrorRequestHandler = (err: unknown, _req, res, _next) => {
+export const errorHandler: ErrorRequestHandler = (err: unknown, req, res, _next) => {
   const { status, code, message, details } = describeError(err);
-  // Only genuinely unknown failures are logged with a stack; every 4xx is an expected client error.
-  if (status >= 500) console.error(err instanceof Error ? err.stack : err);
+  // The one place a failed request is logged. Only 5xx carries the error and its stack; a 4xx is an expected
+  // client error, and 401/403 are warn because a burst of them is worth noticing.
+  if (status >= 500) req.log.error({ err, code }, 'Request failed');
+  else req.log[status === 401 || status === 403 ? 'warn' : 'info']({ status, code }, message);
   // The envelope is { error: { code, message } }, plus `details` when an error is about one cart line.
   res.status(status).json({ error: { code, message, ...(details && { details }) } });
 };

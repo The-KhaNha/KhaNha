@@ -70,7 +70,10 @@ export function OrderPage() {
       />
 
       {error && (
-        <p role="status" className="rounded-2xl bg-gold-50 px-4 py-2.5 text-center text-[13px] font-semibold text-gold-700 animate-fade-in">
+        <p
+          role="status"
+          className="rounded-2xl bg-gold-50 px-4 py-2.5 text-center text-[13px] font-semibold text-gold-700 animate-fade-in"
+        >
           Live updates paused — reconnecting…
         </p>
       )}
@@ -97,7 +100,10 @@ export function OrderPage() {
         <h3 className="eyebrow text-muted">Items</h3>
         <ul className="mt-3 divide-y divide-line/70">
           {order.items.map((item) => (
-            <li key={item.id} className="flex items-baseline justify-between gap-3 py-2.5 text-[15px] first:pt-0 last:pb-0">
+            <li
+              key={item.id}
+              className="flex items-baseline justify-between gap-3 py-2.5 text-[15px] first:pt-0 last:pb-0"
+            >
               <span className="min-w-0 wrap-anywhere">
                 <span className="font-bold tabular-nums">{item.quantity} ×</span> {item.name}
               </span>

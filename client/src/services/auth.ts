@@ -33,15 +33,27 @@ export function fetchMe(): Promise<{ user: User }> {
 
 function describeAuthError(error: AuthError): ApiError {
   if (isAuthRetryableFetchError(error)) {
-    return new ApiError(0, 'UNREACHABLE', "We couldn't reach the server. Check your connection and try again.");
+    return new ApiError(
+      0,
+      'UNREACHABLE',
+      "We couldn't reach the server. Check your connection and try again.",
+    );
   }
   switch (error.code) {
     case 'invalid_credentials':
       // Same message for unknown email and wrong password so accounts cannot be enumerated.
       return new ApiError(401, 'INVALID_CREDENTIALS', 'Incorrect email or password.');
     case 'over_request_rate_limit':
-      return new ApiError(429, 'RATE_LIMITED', 'Too many attempts. Please wait a minute and try again.');
+      return new ApiError(
+        429,
+        'RATE_LIMITED',
+        'Too many attempts. Please wait a minute and try again.',
+      );
     default:
-      return new ApiError(error.status ?? 500, 'INTERNAL', 'Something went wrong. Please try again.');
+      return new ApiError(
+        error.status ?? 500,
+        'INTERNAL',
+        'Something went wrong. Please try again.',
+      );
   }
 }

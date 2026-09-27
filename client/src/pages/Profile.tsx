@@ -1,6 +1,14 @@
 import type { ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ChevronRight, LayoutDashboard, LogOut, Mail, Phone, ReceiptText, UserRound } from 'lucide-react';
+import {
+  ChevronRight,
+  LayoutDashboard,
+  LogOut,
+  Mail,
+  Phone,
+  ReceiptText,
+  UserRound,
+} from 'lucide-react';
 import { Button, ButtonLink } from '../components/Button';
 import { Card } from '../components/Card';
 import { EmptyState } from '../components/EmptyState';
@@ -67,13 +75,19 @@ export function ProfilePage() {
               <Phone className="h-4 w-4" aria-hidden />
               <span className="sr-only">Phone</span>
             </dt>
-            <dd className={user.phone ? 'tabular-nums' : 'text-muted'}>{user.phone ?? 'No phone added'}</dd>
+            <dd className={user.phone ? 'tabular-nums' : 'text-muted'}>
+              {user.phone ?? 'No phone added'}
+            </dd>
           </div>
         </dl>
       </Card>
 
       <Card padding="none" className="overflow-hidden">
-        <ProfileRow to="/orders" icon={<ReceiptText className="h-5 w-5" aria-hidden />} label="Order history" />
+        <ProfileRow
+          to="/orders"
+          icon={<ReceiptText className="h-5 w-5" aria-hidden />}
+          label="Order history"
+        />
         {user.role === 'STAFF' && (
           <ProfileRow
             to="/staff"
@@ -115,7 +129,9 @@ function ProfileRow({ to, icon, label, className }: ProfileRowProps) {
         className,
       )}
     >
-      <span className="grid h-10 w-10 place-items-center rounded-full bg-brand-50 text-brand-600">{icon}</span>
+      <span className="grid h-10 w-10 place-items-center rounded-full bg-brand-50 text-brand-600">
+        {icon}
+      </span>
       <span className="flex-1">{label}</span>
       <ChevronRight className="h-5 w-5 text-muted" aria-hidden />
     </Link>

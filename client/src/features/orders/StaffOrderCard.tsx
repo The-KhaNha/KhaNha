@@ -25,7 +25,14 @@ interface StaffOrderCardProps {
  * always paprika so staff can hit it without reading. The total + actions sit at the bottom of the
  * card (mt-auto) so buttons line up across a grid row whatever the ticket length.
  */
-export function StaffOrderCard({ order, pending, error, onChangeStatus, fresh = false, leaving = false }: StaffOrderCardProps) {
+export function StaffOrderCard({
+  order,
+  pending,
+  error,
+  onChangeStatus,
+  fresh = false,
+  leaving = false,
+}: StaffOrderCardProps) {
   const meta = STATUS_META[order.status];
   const finished = isTerminal(order.status);
   const [confirmingCancel, setConfirmingCancel] = useState(false);
@@ -34,7 +41,8 @@ export function StaffOrderCard({ order, pending, error, onChangeStatus, fresh = 
   const nextStatus = meta.next;
 
   function handleAnimationEnd(event: AnimationEvent<HTMLElement>) {
-    if (event.target === event.currentTarget && event.animationName === 'ring-flash') setEntering(false);
+    if (event.target === event.currentTarget && event.animationName === 'ring-flash')
+      setEntering(false);
   }
 
   return (
@@ -47,12 +55,22 @@ export function StaffOrderCard({ order, pending, error, onChangeStatus, fresh = 
         leaving ? 'animate-card-leave' : entering && 'animate-ring-flash',
       )}
     >
-      <span aria-hidden className={cn('absolute inset-y-0 left-0 w-1 transition-colors duration-200', meta.railClass)} />
+      <span
+        aria-hidden
+        className={cn(
+          'absolute inset-y-0 left-0 w-1 transition-colors duration-200',
+          meta.railClass,
+        )}
+      />
 
-      <div className={cn('flex min-w-0 flex-1 flex-col', entering && !leaving && 'animate-fade-up')}>
+      <div
+        className={cn('flex min-w-0 flex-1 flex-col', entering && !leaving && 'animate-fade-up')}
+      >
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-[34px] font-extrabold leading-none tabular-nums tracking-tight">#{order.orderNumber}</p>
+            <p className="text-[34px] font-extrabold leading-none tabular-nums tracking-tight">
+              #{order.orderNumber}
+            </p>
             <p className="mt-1.5 text-[13px] text-muted">
               <TimeText iso={order.createdAt} withDay />
             </p>
@@ -64,7 +82,9 @@ export function StaffOrderCard({ order, pending, error, onChangeStatus, fresh = 
           <UserRound className="mt-0.5 h-4 w-4 shrink-0 text-muted" aria-hidden />
           <span className="min-w-0 wrap-anywhere">
             {order.customerName}
-            {order.customerPhone && <span className="font-normal tabular-nums text-muted"> · {order.customerPhone}</span>}
+            {order.customerPhone && (
+              <span className="font-normal tabular-nums text-muted"> · {order.customerPhone}</span>
+            )}
           </span>
         </p>
 
@@ -106,17 +126,31 @@ export function StaffOrderCard({ order, pending, error, onChangeStatus, fresh = 
 
           {nextStatus && meta.actionLabel && (
             <div className="mt-4 space-y-2">
-              <Button size="lg" fullWidth loading={pending} onClick={() => onChangeStatus(order, nextStatus)}>
+              <Button
+                size="lg"
+                fullWidth
+                loading={pending}
+                onClick={() => onChangeStatus(order, nextStatus)}
+              >
                 {meta.actionLabel}
               </Button>
 
               {meta.canCancel &&
                 (confirmingCancel ? (
                   <div className="flex items-center gap-2 animate-fade-in">
-                    <Button variant="danger" fullWidth loading={pending} onClick={() => onChangeStatus(order, 'CANCELLED')}>
+                    <Button
+                      variant="danger"
+                      fullWidth
+                      loading={pending}
+                      onClick={() => onChangeStatus(order, 'CANCELLED')}
+                    >
                       Yes, cancel order
                     </Button>
-                    <Button variant="ghost" onClick={() => setConfirmingCancel(false)} disabled={pending}>
+                    <Button
+                      variant="ghost"
+                      onClick={() => setConfirmingCancel(false)}
+                      disabled={pending}
+                    >
                       Keep
                     </Button>
                   </div>

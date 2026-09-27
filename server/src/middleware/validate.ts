@@ -17,7 +17,12 @@ export function validate(schema: ZodTypeAny, source: Source = 'body'): RequestHa
       req.body = result.data;
     } else {
       // Express 5 defines req.query as a prototype getter, so shadow it with an own property.
-      Object.defineProperty(req, 'query', { value: result.data, writable: true, configurable: true, enumerable: true });
+      Object.defineProperty(req, 'query', {
+        value: result.data,
+        writable: true,
+        configurable: true,
+        enumerable: true,
+      });
     }
     next();
   };
@@ -28,7 +33,9 @@ function stripNullBytes(value: unknown): unknown {
   if (typeof value === 'string') return value.replaceAll('\0', '');
   if (Array.isArray(value)) return value.map(stripNullBytes);
   if (typeof value === 'object' && value !== null) {
-    return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, stripNullBytes(entry)]));
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [key, stripNullBytes(entry)]),
+    );
   }
   return value;
 }
@@ -45,7 +52,9 @@ export function describeIssue(issue: ZodIssue | undefined, source: Source = 'bod
 }
 
 function fieldLabel(path: (string | number)[], source: Source): string {
-  const name = [...path].reverse().find((segment): segment is string => typeof segment === 'string');
+  const name = [...path]
+    .reverse()
+    .find((segment): segment is string => typeof segment === 'string');
   if (!name) return source === 'body' ? 'Request body' : 'Query';
   const words = name.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase();
   return words.charAt(0).toUpperCase() + words.slice(1);

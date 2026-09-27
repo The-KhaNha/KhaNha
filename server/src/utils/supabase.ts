@@ -20,7 +20,8 @@ export const supabaseAdmin = createAdminClient<Database>({ env: supabaseEnv });
  * API error code and whose detail is a JSON object. Returns that detail when `err` is such a failure with `code`.
  */
 export function raisedByDatabase(err: unknown, code: string): Record<string, unknown> | undefined {
-  if (!(err instanceof PostgrestError) || err.code !== 'P0001' || err.message !== code) return undefined;
+  if (!(err instanceof PostgrestError) || err.code !== 'P0001' || err.message !== code)
+    return undefined;
   try {
     const detail: unknown = JSON.parse(err.details);
     return typeof detail === 'object' && detail !== null ? (detail as Record<string, unknown>) : {};

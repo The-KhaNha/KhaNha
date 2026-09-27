@@ -2,6 +2,7 @@ import { MAX_QUANTITY_PER_ITEM, type CreateOrderInput } from '../schemas/order.s
 import type { AuthUser } from '../types/auth';
 import type { Tables } from '../types/database';
 import { ORDER_STATUSES, type OrderStatus } from '../types/enums';
+import { invalidate } from '../utils/cache';
 import { AppError, insufficientStock, notFound, validationError } from '../utils/errors';
 import { isUuid } from '../utils/ids';
 import { selectOrders, type OrderWithDetails } from '../utils/serializers';
@@ -20,6 +21,8 @@ const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
 
 /** Staff poll the list every few seconds, so it is bounded to the newest orders. */
 const STAFF_LIST_LIMIT = 100;
+/** A customer's history is capped too, so a regular's polled list never grows without bound. */
+const CUSTOMER_LIST_LIMIT = 50;
 
 type MenuItem = Tables<'menu_items'>;
 
@@ -38,16 +41,27 @@ type OrderLine = {
  * place_order reserves the stock and writes the order in ONE transaction, so a refused order (sold out)
  * leaves no order rows and no stock decrements behind.
  */
-export async function createOrder(user: AuthUser, input: CreateOrderInput): Promise<OrderWithDetails> {
+export async function createOrder(
+  user: AuthUser,
+  input: CreateOrderInput,
+): Promise<OrderWithDetails> {
   const store = await getStore();
   if (!store.is_open) {
-    throw new AppError(400, 'STORE_CLOSED', `${store.name} is closed right now. Please come back when it opens.`);
+    throw new AppError(
+      400,
+      'STORE_CLOSED',
+      `${store.name} is closed right now. Please come back when it opens.`,
+    );
   }
   const customerName = input.customerName ?? (await lookupUserName(user.id));
 
   // Ids that are not UUIDs (e.g. a cart saved before the move to Supabase) cannot exist, so they are not queried.
   const ids = input.items.map((line) => line.menuItemId).filter(isUuid);
-  const { data: menuItems } = await supabaseAdmin.from('menu_items').select().in('id', ids).throwOnError();
+  const { data: menuItems } = await supabaseAdmin
+    .from('menu_items')
+    .select()
+    .in('id', ids)
+    .throwOnError();
   const byId = new Map(menuItems.map((item) => [item.id, item]));
 
   const lines = priceLines(input.items, byId);
@@ -71,19 +85,33 @@ export async function createOrder(user: AuthUser, input: CreateOrderInput): Prom
   } catch (err) {
     // The loser of a race for the last units is told exactly which item and how many are left.
     const stock = raisedByDatabase(err, 'INSUFFICIENT_STOCK');
-    if (stock) throw insufficientStock(String(stock.menuItemId), String(stock.name), Number(stock.available));
+    if (stock)
+      throw insufficientStock(
+        String(stock.menuItemId),
+        String(stock.name),
+        Number(stock.available),
+      );
     throw err;
+  } finally {
+    // Placed or refused for stock, the cached menu's stock counts are out of date either way.
+    invalidate('menu');
   }
 
   const { data: order } = await selectOrders().eq('id', orderId).single().throwOnError();
   return order;
 }
 
-/** Customers see all of their own orders; staff see the newest STAFF_LIST_LIMIT across everyone. Newest first. */
-export async function listOrders(user: AuthUser, status?: OrderStatus): Promise<OrderWithDetails[]> {
+/**
+ * Customers see their newest CUSTOMER_LIST_LIMIT orders; staff see the newest STAFF_LIST_LIMIT across everyone.
+ * Newest first.
+ */
+export async function listOrders(
+  user: AuthUser,
+  status?: OrderStatus,
+): Promise<OrderWithDetails[]> {
   let query = selectOrders().order('created_at', { ascending: false });
   if (user.role === 'STAFF') query = query.limit(STAFF_LIST_LIMIT);
-  else query = query.eq('user_id', user.id);
+  else query = query.eq('user_id', user.id).limit(CUSTOMER_LIST_LIMIT);
   if (status) query = query.eq('status', status);
 
   const { data: orders } = await query.throwOnError();
@@ -107,7 +135,10 @@ export async function getOrder(user: AuthUser, id: string): Promise<OrderWithDet
  * the row only changes if its status is still one that ALLOWED_TRANSITIONS lets move to `nextStatus`.
  * Cancelling also puts the order's items back in stock, in the same transaction.
  */
-export async function updateOrderStatus(id: string, nextStatus: OrderStatus): Promise<OrderWithDetails> {
+export async function updateOrderStatus(
+  id: string,
+  nextStatus: OrderStatus,
+): Promise<OrderWithDetails> {
   if (!isUuid(id)) throw notFound('Order not found.');
 
   try {
@@ -130,6 +161,8 @@ export async function updateOrderStatus(id: string, nextStatus: OrderStatus): Pr
     }
     throw err;
   }
+  // Cancelling puts the items back in stock.
+  if (nextStatus === 'CANCELLED') invalidate('menu');
 
   const { data: order } = await selectOrders().eq('id', id).single().throwOnError();
   return order;
@@ -145,11 +178,17 @@ function statusesLeadingTo(target: OrderStatus): OrderStatus[] {
  * item is gone, identifies it by id) so the client can point at the exact cart line.
  * Items arrive already merged by the schema, so the quantity cap applies to the real total per item.
  */
-function priceLines(requested: CreateOrderInput['items'], byId: Map<string, MenuItem>): OrderLine[] {
+function priceLines(
+  requested: CreateOrderInput['items'],
+  byId: Map<string, MenuItem>,
+): OrderLine[] {
   return requested.map(({ menuItemId, quantity }) => {
     const item = byId.get(menuItemId);
     if (!item) {
-      throw new AppError(400, 'ITEM_NOT_FOUND', 'One of the items is no longer on the menu.', { menuItemId, available: 0 });
+      throw new AppError(400, 'ITEM_NOT_FOUND', 'One of the items is no longer on the menu.', {
+        menuItemId,
+        available: 0,
+      });
     }
     if (!item.is_available) {
       throw new AppError(
@@ -169,6 +208,11 @@ function priceLines(requested: CreateOrderInput['items'], byId: Map<string, Menu
 }
 
 async function lookupUserName(userId: string): Promise<string> {
-  const { data: profile } = await supabaseAdmin.from('profiles').select('name').eq('id', userId).single().throwOnError();
+  const { data: profile } = await supabaseAdmin
+    .from('profiles')
+    .select('name')
+    .eq('id', userId)
+    .single()
+    .throwOnError();
   return profile.name;
 }

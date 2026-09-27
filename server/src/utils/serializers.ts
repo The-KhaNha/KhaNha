@@ -52,7 +52,9 @@ export function toStoreDto(store: Tables<'stores'>): StoreDto {
 }
 
 /** An item can be ordered when it is switched on and, if it tracks stock, has some left. */
-export function isPurchasable(item: Pick<Tables<'menu_items'>, 'is_available' | 'stock_quantity'>): boolean {
+export function isPurchasable(
+  item: Pick<Tables<'menu_items'>, 'is_available' | 'stock_quantity'>,
+): boolean {
   return item.is_available && (item.stock_quantity === null || item.stock_quantity > 0);
 }
 

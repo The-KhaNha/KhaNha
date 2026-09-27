@@ -9,7 +9,7 @@ interface FieldProps {
 }
 
 const fieldClass =
-  'w-full rounded-xl border bg-surface px-4 text-[15px] text-ink placeholder:text-[#8f7f74] outline-none ' +
+  'w-full rounded-xl border bg-surface px-4 text-[15px] text-ink placeholder:text-hint outline-none ' +
   'transition-[border-color,box-shadow] duration-150 focus:border-brand-500 focus:ring-4 focus:ring-brand-500/20 ' +
   'focus-visible:ring-4 focus-visible:ring-brand-500/20';
 
@@ -27,7 +27,11 @@ function Label({ id, label, hint }: { id: string; label: string; hint?: string }
 function FieldError({ id, error }: { id: string; error?: string }) {
   if (!error) return null;
   return (
-    <p id={id} role="alert" className="mt-1.5 inline-flex items-center gap-1.5 text-[13px] font-medium text-brand-700 animate-fade-in">
+    <p
+      id={id}
+      role="alert"
+      className="mt-1.5 inline-flex items-center gap-1.5 text-[13px] font-medium text-brand-700 animate-fade-in"
+    >
       <CircleAlert className="h-3.5 w-3.5 shrink-0" aria-hidden />
       {error}
     </p>
@@ -77,7 +81,11 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function 
         rows={rows}
         aria-invalid={error ? true : undefined}
         aria-describedby={error ? errorId : undefined}
-        className={cn(fieldClass, 'resize-none py-3 leading-relaxed', error ? 'border-brand-600' : 'border-line')}
+        className={cn(
+          fieldClass,
+          'resize-none py-3 leading-relaxed',
+          error ? 'border-brand-600' : 'border-line',
+        )}
         {...rest}
       />
       <FieldError id={errorId} error={error} />

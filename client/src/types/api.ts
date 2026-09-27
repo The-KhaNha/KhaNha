@@ -87,11 +87,6 @@ export interface ApiErrorEnvelope {
   error: { code: string; message: string; details?: ApiErrorDetails };
 }
 
-export interface AuthResponse {
-  user: User;
-  token: string;
-}
-
 export interface CreateOrderInput {
   items: { menuItemId: string; quantity: number }[];
   customerName: string;

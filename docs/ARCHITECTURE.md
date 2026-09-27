@@ -6,6 +6,23 @@ How Food Pickup works end to end: which piece talks to which, and what happens, 
 - **API**: Express 5, in `server/`. It verifies Supabase access tokens, holds all business rules, and reads and writes Postgres with the Supabase **secret** key.
 - **Supabase**: Auth (sign-in, tokens, users), PostgREST (the REST layer supabase-js calls) and Postgres. The Postgres side holds the tables, row-level security (RLS), triggers, and the two functions that do the order transactions.
 
+## Docs map
+
+This file owns the system overview, the cross-cutting flows and the diagrams. Everything else has one owner:
+
+| Topic                                                           | Doc                                                           |
+| --------------------------------------------------------------- | ------------------------------------------------------------- |
+| Endpoints, request/response shapes, error codes, limits         | [API.md](API.md)                                              |
+| Tables, columns, enums, indexes, triggers, RPCs, migrations     | [SCHEMA.md](SCHEMA.md)                                        |
+| Roles, route guards, ownership rules, RLS, grants               | [PERMISSIONS.md](PERMISSIONS.md)                              |
+| Shared components, `lib/` hooks and utils, feature rules        | [COMPONENTS.md](COMPONENTS.md)                                |
+| `client/src` layout, routes, stores, services                   | [FRONTEND_STRUCTURE.md](FRONTEND_STRUCTURE.md)                |
+| `server/src` layout, request pipeline, modules, scripts         | [BACKEND_STRUCTURE.md](BACKEND_STRUCTURE.md)                  |
+| Environments, env vars, migrations, seeding, builds, production | [DEPLOYMENT.md](DEPLOYMENT.md)                                |
+| Log levels, request ids, redaction                              | [LOGGING.md](LOGGING.md)                                      |
+| Tests                                                           | [TESTING.md](TESTING.md)                                      |
+| Performance budgets                                             | `PERF_BASELINE.md` (created by perf-auditor on its first run) |
+
 ## Contents
 
 1. [System overview](#1-system-overview)
@@ -19,7 +36,7 @@ How Food Pickup works end to end: which piece talks to which, and what happens, 
 9. [Server request pipeline and error handling](#9-server-request-pipeline-and-error-handling)
 10. [Data model](#10-data-model)
 11. [Access control](#11-access-control)
-12. [Operations: start.sh, seeding, migrations, production setup](#12-operations)
+12. [Operations](#12-operations)
 
 ---
 
@@ -72,6 +89,8 @@ flowchart LR
 
 The browser talks to Supabase **only** to sign in, refresh its token and sign out. All data goes through the API. The publishable key shipped in the bundle cannot read or write any table (see [Access control](#11-access-control)).
 
+The API logs every request with pino. Each request gets an id, echoed in the `x-request-id` response header, and every log line inside the request carries it; the client logs that id when a call fails. See [LOGGING.md](LOGGING.md).
+
 ---
 
 ## 2. Environments and configuration
@@ -106,7 +125,7 @@ flowchart TB
 
 The rule that ties it together: **the API and the web app must point at the same project.** Tokens are signed per project, so a token from staging fails verification in an API pointed at local, and the result is "Your session has expired. Please sign in again." `start.sh` enforces this by reading `APP_ENV` and starting Vite in the matching mode.
 
-Config is validated at startup ([server/src/utils/env.ts](../server/src/utils/env.ts)): the process exits with a list of problems if `APP_ENV`, `SUPABASE_URL` or `SUPABASE_SECRET_KEY` is missing or malformed. The client refuses to build without its two variables ([client/vite.config.ts](../client/vite.config.ts)).
+Config is validated at startup ([server/src/utils/env.ts](../server/src/utils/env.ts)): the process exits with a list of problems if `APP_ENV`, `SUPABASE_URL` or `SUPABASE_SECRET_KEY` is missing or malformed. The client refuses to start or build without its two Supabase variables ([client/vite.config.ts](../client/vite.config.ts)). Every variable, the push flow and production setup are in [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ---
 
@@ -199,7 +218,7 @@ sequenceDiagram
   end
 ```
 
-The account is created already confirmed and no email is sent, so the customer can order straight away. Direct sign-ups with the publishable key (`supabase.auth.signUp`) also get a CUSTOMER profile from the same trigger, but they skip the API's validation. That is why the README recommends turning off public sign-ups on hosted projects.
+The account is created already confirmed and no email is sent, so the customer can order straight away. Direct sign-ups with the publishable key (`supabase.auth.signUp`) also get a CUSTOMER profile from the same trigger, but they skip the API's validation. That is why [DEPLOYMENT.md](DEPLOYMENT.md#production-first-time-setup) recommends turning off public sign-ups on hosted projects.
 
 ### 3.3 Sign-in
 
@@ -615,12 +634,12 @@ flowchart TD
   Idle -.-> Vis
 ```
 
-| Hook | Endpoint | Interval |
-|------|----------|----------|
-| `useOrder` | `GET /api/orders/:id` | 4 s until COMPLETED or CANCELLED |
-| `useOrders` (customer Orders tab) | `GET /api/orders` | 8 s |
-| `useOrders` (staff board) | `GET /api/orders` | 4 s |
-| `useMenu`, `useStore` | `GET /api/menu`, `GET /api/store` | once per mount |
+| Hook                              | Endpoint                          | Interval                         |
+| --------------------------------- | --------------------------------- | -------------------------------- |
+| `useOrder`                        | `GET /api/orders/:id`             | 4 s until COMPLETED or CANCELLED |
+| `useOrders` (customer Orders tab) | `GET /api/orders`                 | 8 s                              |
+| `useOrders` (staff board)         | `GET /api/orders`                 | 4 s                              |
+| `useMenu`, `useStore`             | `GET /api/menu`, `GET /api/store` | once per mount                   |
 
 ### 7.3 Order history
 
@@ -721,7 +740,7 @@ sequenceDiagram
     Svc-->>B: 404
   else status already moved on
     DB-->>Svc: raise INVALID_STATUS_TRANSITION { orderNumber, current status }
-    Svc-->>B: 409 "Order 1001 cannot move from READY to PREPARING."
+    Svc-->>B: 409 "Order #1001 cannot move from READY to PREPARING."
     B->>B: show the message on the card, reload the list at once
   else updated
     Svc->>DB: select the order with details
@@ -757,7 +776,7 @@ sequenceDiagram
   API-->>S1: 200 { order PREPARING }
   DB->>DB: device 2 re-checks: status is now PREPARING, not in (PLACED) → 0 rows
   DB->>DB: SELECT status, order_number → RAISE INVALID_STATUS_TRANSITION
-  API-->>S2: 409 "Order 1001 cannot move from PREPARING to PREPARING."
+  API-->>S2: 409 "Order #1001 cannot move from PREPARING to PREPARING."
 
   Note over S1,DB: Cancelling (from PLACED or PREPARING) runs in the same transaction:
   S1->>API: PATCH status CANCELLED
@@ -802,13 +821,14 @@ stateDiagram-v2
 
 ## 9. Server request pipeline and error handling
 
-Code: [server/src/server.ts](../server/src/server.ts), [server/src/routes/](../server/src/routes/), [server/src/middleware/](../server/src/middleware/), [server/src/utils/serializers.ts](../server/src/utils/serializers.ts).
+Code: [server/src/app.ts](../server/src/app.ts), [server/src/routes/](../server/src/routes/), [server/src/middleware/](../server/src/middleware/), [server/src/utils/serializers.ts](../server/src/utils/serializers.ts). [server/src/server.ts](../server/src/server.ts) only calls `createApp()` from `app.ts`, listens on `PORT`, and on `SIGINT`/`SIGTERM` closes the server and flushes the logger. Module-by-module detail is in [BACKEND_STRUCTURE.md](BACKEND_STRUCTURE.md).
 
 ### 9.1 Pipeline
 
 ```mermaid
 flowchart TD
-  Req["HTTP request"] --> Cors["cors(CLIENT_ORIGIN)"]
+  Req["HTTP request"] --> Pino["pino-http<br/>request id → x-request-id header, req.log"]
+  Pino --> Cors["cors(CLIENT_ORIGIN)"]
   Cors --> Json["express.json (100 kB limit)"]
   Json --> Router{"/api router"}
   Router -->|"GET /health"| Health["{ ok: true }"]
@@ -837,6 +857,8 @@ flowchart TD
 
 `validate()` removes NUL characters from every string, parses with zod, and replaces `req.body` or `req.query` with the parsed value, so handlers only ever see validated, stripped data.
 
+`pino-http` writes one access line per request: `debug` for successful reads, `info` for writes and failures. The error handler is the one place a failed request is logged (see [LOGGING.md](LOGGING.md)).
+
 ### 9.2 Error mapping
 
 Every error reaches the client as `{ "error": { "code", "message", "details?" } }`, and the message is safe to show to the user.
@@ -862,11 +884,13 @@ flowchart TD
 
 Database functions report expected failures as `raise exception` with the API code as the message and a JSON detail. The service turns those into `AppError`s before the error handler sees them:
 
-| Raised by | Message | Becomes |
-|-----------|---------|---------|
-| `place_order` | `INSUFFICIENT_STOCK` + `{ menuItemId, name, available }` | 400 `INSUFFICIENT_STOCK` with `details` |
-| `update_order_status` | `NOT_FOUND` | 404 `NOT_FOUND` |
-| `update_order_status` | `INVALID_STATUS_TRANSITION` + `{ orderNumber, status }` | 409 `INVALID_STATUS_TRANSITION` |
+| Raised by             | Message                                                  | Becomes                                 |
+| --------------------- | -------------------------------------------------------- | --------------------------------------- |
+| `place_order`         | `INSUFFICIENT_STOCK` + `{ menuItemId, name, available }` | 400 `INSUFFICIENT_STOCK` with `details` |
+| `update_order_status` | `NOT_FOUND`                                              | 404 `NOT_FOUND`                         |
+| `update_order_status` | `INVALID_STATUS_TRANSITION` + `{ orderNumber, status }`  | 409 `INVALID_STATUS_TRANSITION`         |
+
+Every code, status and message: [API.md](API.md#errors).
 
 ---
 
@@ -947,135 +971,16 @@ erDiagram
   }
 ```
 
-Indexes: `menu_items (store_id, category)`, `orders (user_id, created_at)`, `orders (status, created_at)`, `order_items (menu_item_id)`, and the unique `order_items (order_id, line_number)`.
+Five tables: `profiles` (one per Auth user, holds the role), `stores` (one row in V0), `menu_items` (with optional tracked stock), `orders` and `order_items` (name and price snapshotted at order time). Columns with their types, defaults and constraints, the indexes, triggers and the `place_order` / `update_order_status` / `reset_demo_orders` functions are in [SCHEMA.md](SCHEMA.md).
 
 ---
 
 ## 11. Access control
 
-```mermaid
-flowchart LR
-  subgraph Callers
-    Anon["Browser, signed out<br/>publishable key → role anon"]
-    Authd["Browser, signed in<br/>publishable key + user JWT → role authenticated"]
-    Server["Express API<br/>secret key → role service_role"]
-  end
-
-  subgraph Postgres["Postgres, public schema"]
-    Tables["profiles, stores, menu_items,<br/>orders, order_items<br/>RLS ON, no policies,<br/>all privileges revoked from anon/authenticated"]
-    Fns["place_order, update_order_status,<br/>reset_demo_orders<br/>EXECUTE only for service_role"]
-    Trg["handle_new_user, handle_user_email_change<br/>security definer, fired by auth.users triggers only"]
-  end
-
-  Anon -. "permission denied" .-> Tables
-  Authd -. "permission denied" .-> Tables
-  Anon -. "permission denied" .-> Fns
-  Authd -. "permission denied" .-> Fns
-  Server -->|"bypasses RLS"| Tables
-  Server -->|"rpc"| Fns
-  Trg --> Tables
-```
-
-- **Who may see what** is decided in the services. Customers only see their own orders (queries filter by `user_id`), staff see everything, and someone else's order returns the same 404 as a missing one.
-- **Who is staff** is only ever `profiles.role`. `user_metadata` can be edited by users themselves, so it is never trusted for roles.
-- **Future tables and functions** start closed: the migration changes the default privileges, so anything a later migration creates grants nothing to `anon` or `authenticated` unless that migration grants it explicitly.
+The browser's publishable key can touch nothing: RLS is on for every table with no policies, all table privileges are revoked from `anon` and `authenticated`, and only `service_role` (the API's secret key) may execute `place_order`, `update_order_status` and `reset_demo_orders`. Because the API's `supabaseAdmin` client bypasses RLS, the services decide who sees what and scope every per-user query themselves: customers see only their own orders, staff see all, and someone else's order returns the same 404 as a missing one. The role is only ever `profiles.role`, never the token or `user_metadata`. The access diagram, the route matrix and the client guards are in [PERMISSIONS.md](PERMISSIONS.md).
 
 ---
 
 ## 12. Operations
 
-### 12.1 `./start.sh`
-
-```mermaid
-flowchart TD
-  S["./start.sh [--seed]"] --> Env{"server/.env exists?"}
-  Env -->|"no"| X1["Exit: cp server/.env.example server/.env"]
-  Env -->|"yes"| App{"APP_ENV"}
-  App -->|"local"| Up{"http://127.0.0.1:54321 answers?"}
-  Up -->|"no"| X2["Exit: cd server && npm run db:start"]
-  Up -->|"yes"| ModeL["client script = dev"]
-  App -->|"staging"| ModeS["client script = dev:staging"]
-  App -->|"production"| X3["Exit: start.sh is for local and staging only"]
-  App -->|"anything else"| X4["Exit: set APP_ENV"]
-  ModeL --> Deps
-  ModeS --> Deps
-  Deps["npm install where node_modules is missing"] --> Ports["Kill anything listening on 8000 and 5173"]
-  Ports --> Seed{"--seed?"}
-  Seed -->|"yes"| RunSeed["cd server && npm run seed (12.2)"]
-  Seed -->|"no"| Start
-  RunSeed -->|"fails"| X5["Exit: database not migrated?"]
-  RunSeed -->|"ok"| Start
-  Start["Start API (tsx watch) and Vite in the chosen mode<br/>logs → .logs/server.log, .logs/client.log"] --> Wait{"/api/health and :5173 return 200<br/>within 45 s?"}
-  Wait -->|"no"| X6["Stop both, point at the logs"]
-  Wait -->|"yes"| Menu{"/api/menu returns 200?"}
-  Menu -->|"no"| X7["Stop both: database empty or unreachable, run --seed"]
-  Menu -->|"yes"| Ready["Print URLs, test logins and APP_ENV, wait for Ctrl+C"]
-```
-
-### 12.2 Seeding
-
-Code: [server/scripts/seed.ts](../server/scripts/seed.ts).
-
-```mermaid
-flowchart TD
-  Run["npm run seed [-- --production]"] --> E{"APP_ENV"}
-  E -->|"local / staging"| F1{"--production passed?"}
-  F1 -->|"yes"| Err1["Fail: flag does not match APP_ENV"]
-  F1 -->|"no"| Demo
-  E -->|"production"| F2{"--production passed?"}
-  F2 -->|"no"| Err2["Fail: the demo seed would wipe production"]
-  F2 -->|"yes"| HasStore{"a store already exists?"}
-  HasStore -->|"yes"| NoOp["Change nothing, edit the live menu in the dashboard"]
-  HasStore -->|"no"| ProdSet["Create store + 11 menu items<br/>no accounts, no wipes"]
-  ProdSet --> ProdMsg["Print how to add staff:<br/>dashboard Add user, then set profiles.role = STAFF in SQL"]
-
-  subgraph Demo["Demo reset (local / staging)"]
-    D1["rpc reset_demo_orders()<br/>TRUNCATE order_items, orders RESTART IDENTITY → next order 1001"] --> D2["Upsert the single store"]
-    D2 --> D3["Upsert 11 menu items by name (ids kept),<br/>reset stock: Cheese Toast 1, Brownie 2, Muffin 5,<br/>delete items no longer in the list"]
-    D3 --> D4["For each test account: auth.admin create or update<br/>(confirmed, known password), then set profile name, phone, role"]
-    D4 --> D5["Delete every other Auth user (profiles cascade)"]
-    D5 --> D6["Print summary + test logins"]
-  end
-```
-
-### 12.3 Changing the schema and promoting it
-
-```mermaid
-flowchart TD
-  New["npm run db:new add_something<br/>→ supabase/migrations/timestamp_add_something.sql"] --> Write["Write the SQL<br/>(enable RLS + grant explicitly for anything new)"]
-  Write --> Reset["npm run db:reset<br/>rebuild the local database from all migrations"]
-  Reset --> Types["npm run db:types<br/>regenerate src/types/database.ts"]
-  Types --> Code["Update services, run npm run typecheck,<br/>npm run seed, try it with ./start.sh"]
-  Code --> PR["Commit migration + types + code"]
-  PR --> Stg["npm run db:push:staging<br/>(supabase login once, DB password)"]
-  Stg --> Verify["Point server/.env at staging (APP_ENV=staging), run ./start.sh, check"]
-  Verify --> Prod["npm run db:push:production<br/>type 'production' to confirm, CLI lists migrations and asks again"]
-  Prod --> Deploy["Deploy the API and web app build that expect the new schema"]
-```
-
-Migrations are append-only once pushed. A pushed migration is never edited; later changes go in a new file. The CLI records what has been applied in each project's `supabase_migrations` history table, so `db:push` only sends new files.
-
-### 12.4 First-time production setup
-
-```mermaid
-sequenceDiagram
-  autonumber
-  actor Dev as Developer
-  participant Dash as Supabase dashboard
-  participant CLI as Supabase CLI (db-push.sh)
-  participant Prod as Production project
-  participant Host as API host
-  participant Seed as npm run seed
-
-  Dev->>Dash: create project (region, DB password)
-  Dev->>Dev: PRODUCTION_REF in server/scripts/db-push.sh
-  Dev->>CLI: npm run db:push:production
-  CLI->>Prod: apply all migrations
-  Dev->>Dev: client/.env.production (URL + publishable key), npm run build
-  Dev->>Host: set APP_ENV=production, SUPABASE_URL, SUPABASE_SECRET_KEY, PORT, CLIENT_ORIGIN
-  Dev->>Seed: npm run seed -- --production (production env vars)
-  Seed->>Prod: store + menu only (refuses if a store exists)
-  Dev->>Dash: Authentication → Add user for each staff member (auto-confirm)
-  Dev->>Dash: SQL editor: update public.profiles set role = 'STAFF' where email = ...
-  Dev->>Dash: turn off Allow new users to sign up (the API's /auth/register still works)
-```
+`./start.sh` starts the API and web app for `local` or `staging` in the matching Vite mode and refuses `production`. `npm run seed` resets the demo data (local and staging) or, with `--production`, loads the store and menu into an empty production project. Schema changes are append-only migrations in `server/supabase/migrations/`, rebuilt locally with `db:reset` and applied to hosted projects with `db:push:staging` / `db:push:production`. The flow diagrams for all four (`start.sh`, seeding, promoting a migration, first-time production setup), the environment variables and the build steps are in [DEPLOYMENT.md](DEPLOYMENT.md).

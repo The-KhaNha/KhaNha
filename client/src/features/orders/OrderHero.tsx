@@ -23,18 +23,28 @@ export function OrderHero({ order, onReorder, reordering }: OrderHeroProps) {
     return (
       <div className="animate-scale-in">
         <section className="relative overflow-hidden rounded-[28px] bg-success-500 p-6 text-white shadow-ready animate-glow-pulse">
-          <div aria-hidden className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-white/10" />
-          <div aria-hidden className="pointer-events-none absolute -bottom-16 -left-6 h-44 w-44 rounded-full bg-white/10" />
+          <div
+            aria-hidden
+            className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-white/10"
+          />
+          <div
+            aria-hidden
+            className="pointer-events-none absolute -bottom-16 -left-6 h-44 w-44 rounded-full bg-white/10"
+          />
           <div className="eyebrow relative flex items-center gap-2 text-[13px] text-white">
             <PackageCheck className="h-5 w-5" aria-hidden /> Ready for pickup
           </div>
-          <h2 className="relative mt-3 text-[30px] font-extrabold leading-tight">Your order is ready!</h2>
+          <h2 className="relative mt-3 text-[30px] font-extrabold leading-tight">
+            Your order is ready!
+          </h2>
           <p className="relative mt-4 text-[72px] font-extrabold leading-none tabular-nums tracking-tight animate-check-pop">
             #{order.orderNumber}
           </p>
           <p className="relative mt-2 text-[17px] font-bold text-white">{order.store.name}</p>
           <p className="relative mt-4 text-[17px] font-bold">Head to the pickup counter.</p>
-          <p className="relative mt-1 text-[15px] font-semibold text-white">Tell the staff your order number.</p>
+          <p className="relative mt-1 text-[15px] font-semibold text-white">
+            Tell the staff your order number.
+          </p>
         </section>
       </div>
     );

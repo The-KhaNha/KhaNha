@@ -20,7 +20,8 @@ const base =
 
 const variants: Record<ButtonVariant, string> = {
   primary: 'bg-brand-500 text-white shadow-brand hover:bg-brand-600 hover:shadow-brand-hover',
-  secondary: 'bg-surface text-ink border border-line shadow-[0_1px_2px_rgba(27,20,16,0.05)] hover:bg-surface-2',
+  secondary:
+    'bg-surface text-ink border border-line shadow-[0_1px_2px_rgba(27,20,16,0.05)] hover:bg-surface-2',
   ghost: 'bg-transparent text-muted hover:text-ink hover:bg-surface-2',
   /** Tinted paprika pill for secondary brand actions ("Order Again"). */
   tint: 'bg-brand-50 text-brand-700 hover:bg-brand-100',
@@ -34,7 +35,10 @@ const sizes: Record<ButtonSize, string> = {
   lg: 'h-14 px-6 text-base',
 };
 
-export function buttonClasses({ variant = 'primary', size = 'md', fullWidth = false }: StyleProps, extra?: string) {
+export function buttonClasses(
+  { variant = 'primary', size = 'md', fullWidth = false }: StyleProps,
+  extra?: string,
+) {
   return cn(base, variants[variant], sizes[size], fullWidth && 'w-full', extra);
 }
 
@@ -65,7 +69,11 @@ export function Button({
       aria-busy={loading || undefined}
       {...rest}
     >
-      {loading ? <LoaderCircle className="h-[1.15em] w-[1.15em] animate-spin" aria-hidden /> : iconLeft}
+      {loading ? (
+        <LoaderCircle className="h-[1.15em] w-[1.15em] animate-spin" aria-hidden />
+      ) : (
+        iconLeft
+      )}
       {children}
       {iconRight}
     </button>
@@ -78,7 +86,16 @@ export interface ButtonLinkProps extends LinkProps, StyleProps {
 }
 
 /** A router Link styled exactly like a Button. */
-export function ButtonLink({ variant, size, fullWidth, iconLeft, iconRight, className, children, ...rest }: ButtonLinkProps) {
+export function ButtonLink({
+  variant,
+  size,
+  fullWidth,
+  iconLeft,
+  iconRight,
+  className,
+  children,
+  ...rest
+}: ButtonLinkProps) {
   return (
     <Link className={buttonClasses({ variant, size, fullWidth }, className)} {...rest}>
       {iconLeft}

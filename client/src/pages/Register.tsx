@@ -23,7 +23,12 @@ export function RegisterPage() {
   const register = useAuthStore((s) => s.register);
   const redirectAfterAuth = useAuthRedirect();
 
-  const [values, setValues] = useState<Record<Field, string>>({ name: '', email: '', phone: '', password: '' });
+  const [values, setValues] = useState<Record<Field, string>>({
+    name: '',
+    email: '',
+    phone: '',
+    password: '',
+  });
   const [errors, setErrors] = useState<FieldErrors>({});
   const [serverError, setServerError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -82,7 +87,10 @@ export function RegisterPage() {
       footer={
         <>
           Already have an account?{' '}
-          <Link to="/login" className="font-semibold text-brand-600 underline-offset-2 hover:text-brand-700 hover:underline">
+          <Link
+            to="/login"
+            className="font-semibold text-brand-600 underline-offset-2 hover:text-brand-700 hover:underline"
+          >
             Sign in
           </Link>
         </>

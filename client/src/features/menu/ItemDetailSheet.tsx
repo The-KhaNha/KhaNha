@@ -43,14 +43,18 @@ export function ItemDetailSheet({ item, onClose }: ItemDetailSheetProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   useFocusTrap(dialogRef, item !== null);
 
-  const requestClose = useCallback(() => {
-    setPhase((current) => (current === 'closing' ? current : 'closing'));
-  }, []);
+  const requestClose = useCallback(() => setPhase('closing'), []);
+
+  // A new item starts fresh; reset during render rather than in the effect below.
+  const [shownItem, setShownItem] = useState(item);
+  if (item !== shownItem) {
+    setShownItem(item);
+    setQuantity(1);
+    setPhase('open');
+  }
 
   useEffect(() => {
     if (!item) return;
-    setQuantity(1);
-    setPhase('open');
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     const onKey = (event: KeyboardEvent) => {
@@ -103,7 +107,10 @@ export function ItemDetailSheet({ item, onClose }: ItemDetailSheetProps) {
         aria-label="Close"
         onClick={requestClose}
         tabIndex={-1}
-        className={cn('absolute inset-0 bg-ink/45 backdrop-blur-[2px]', closing ? 'animate-fade-out' : 'animate-fade-in')}
+        className={cn(
+          'absolute inset-0 bg-ink/45 backdrop-blur-[2px]',
+          closing ? 'animate-fade-out' : 'animate-fade-in',
+        )}
       />
       <div
         ref={dialogRef}
@@ -114,7 +121,9 @@ export function ItemDetailSheet({ item, onClose }: ItemDetailSheetProps) {
         onAnimationEnd={handleAnimationEnd}
         className={cn(
           'relative flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-[28px] bg-surface shadow-float outline-none md:max-w-[480px] md:rounded-[28px]',
-          closing ? 'animate-sheet-down md:animate-fade-out' : 'animate-sheet-up md:animate-scale-in',
+          closing
+            ? 'animate-sheet-down md:animate-fade-out'
+            : 'animate-sheet-up md:animate-scale-in',
         )}
       >
         <div className="relative shrink-0">
@@ -123,14 +132,23 @@ export function ItemDetailSheet({ item, onClose }: ItemDetailSheetProps) {
             alt={item.name}
             eager
             muted={unavailable}
+            sizes="(min-width: 768px) 480px, 100vw"
             className="aspect-[4/3] w-full rounded-none"
             imgClassName={cn('origin-center', !reducedMotion && 'animate-photo-zoom')}
           >
-            {item.isPopular && !unavailable && <PopularBadge className="left-4 top-4 px-2 py-1 text-[11px]" />}
+            {item.isPopular && !unavailable && (
+              <PopularBadge className="left-4 top-4 px-2 py-1 text-[11px]" />
+            )}
           </FoodPhoto>
           {/* Cream fade so the photo melts into the text (no dark scrim on food). */}
-          <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-surface to-transparent" />
-          <span aria-hidden className="absolute left-1/2 top-2 h-1 w-9 -translate-x-1/2 rounded-full bg-white/85 md:hidden" />
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-surface to-transparent"
+          />
+          <span
+            aria-hidden
+            className="absolute left-1/2 top-2 h-1 w-9 -translate-x-1/2 rounded-full bg-white/85 md:hidden"
+          />
           <button
             type="button"
             onClick={requestClose}
@@ -169,7 +187,9 @@ export function ItemDetailSheet({ item, onClose }: ItemDetailSheetProps) {
                   onIncrement={() => setQuantity((q) => Math.min(room, q + 1))}
                   onDecrement={() => setQuantity((q) => Math.max(1, q - 1))}
                 />
-                {showNote && <StepperNote maxQuantity={maxQuantity} inCart={inCart} className="mt-1.5" />}
+                {showNote && (
+                  <StepperNote maxQuantity={maxQuantity} inCart={inCart} className="mt-1.5" />
+                )}
               </div>
             )}
           </div>
@@ -192,14 +212,19 @@ export function ItemDetailSheet({ item, onClose }: ItemDetailSheetProps) {
               }
             >
               {unavailable ? (
-                item.stockQuantity === 0 ? 'Sold out' : 'Currently unavailable'
+                item.stockQuantity === 0 ? (
+                  'Sold out'
+                ) : (
+                  'Currently unavailable'
+                )
               ) : room === 0 ? (
                 'Already in your cart'
               ) : added ? (
                 'Added'
               ) : (
                 <>
-                  Add to Cart <span className="text-white/70">·</span> <Price value={item.price * Math.min(quantity, room)} />
+                  Add to Cart <span className="text-white/70">·</span>{' '}
+                  <Price value={item.price * Math.min(quantity, room)} />
                 </>
               )}
             </Button>

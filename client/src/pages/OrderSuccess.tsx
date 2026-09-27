@@ -3,6 +3,7 @@ import { Check, Clock } from 'lucide-react';
 import type { Order } from '../types/api';
 import { ButtonLink } from '../components/Button';
 import { ErrorState } from '../components/ErrorState';
+import { DrawnCheck } from '../components/icons/DrawnCheck';
 import { Skeleton } from '../components/Skeleton';
 import { useOrder } from '../features/orders/useOrder';
 import { formatPrice, formatTime } from '../lib/format';
@@ -17,15 +18,18 @@ export function OrderSuccessPage() {
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-center px-6 py-12 text-center md:max-w-lg">
       <div className="relative">
-        <span aria-hidden className="absolute inset-0 rounded-full bg-success-500/30 animate-ring" />
+        <span
+          aria-hidden
+          className="absolute inset-0 rounded-full bg-success-500/30 animate-ring"
+        />
         <div className="relative grid h-28 w-28 place-items-center rounded-full bg-success-500 text-white shadow-ready animate-check-pop">
-          <svg viewBox="0 0 24 24" className="h-14 w-14" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <path d="M5 12.5l4.5 4.5L19 7" pathLength={48} strokeDasharray={48} className="animate-draw" />
-          </svg>
+          <DrawnCheck className="h-14 w-14" />
         </div>
       </div>
 
-      <h1 className="mt-8 text-[32px] font-extrabold leading-tight animate-fade-up">Order placed!</h1>
+      <h1 className="mt-8 text-[32px] font-extrabold leading-tight animate-fade-up">
+        Order placed!
+      </h1>
 
       {order ? (
         <div className="mt-2 flex w-full flex-col items-center">
@@ -36,10 +40,12 @@ export function OrderSuccessPage() {
             <p className="mt-2 text-[17px] font-semibold text-ink">{order.store.name}</p>
             <span className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-success-50 px-3.5 py-1.5 text-sm font-bold text-success-700">
               <Check className="h-4 w-4 text-success-500" strokeWidth={3} aria-hidden />
-              {formatPrice(order.total)} {order.paymentStatus === 'PAID' ? 'Paid' : 'Payment pending'}
+              {formatPrice(order.total)}{' '}
+              {order.paymentStatus === 'PAID' ? 'Paid' : 'Payment pending'}
             </span>
             <p className="mt-5 inline-flex items-center gap-2 text-[15px] font-semibold">
-              <Clock className="h-4 w-4 text-brand-600" strokeWidth={2.5} aria-hidden /> Ready around {formatTime(order.estimatedReadyAt)}
+              <Clock className="h-4 w-4 text-brand-600" strokeWidth={2.5} aria-hidden /> Ready
+              around {formatTime(order.estimatedReadyAt)}
             </p>
             <p className="mt-3 max-w-xs text-[15px] leading-relaxed text-muted">
               Skip the queue and pick it up when it&rsquo;s ready.

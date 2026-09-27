@@ -1,7 +1,8 @@
-import { useEffect } from 'react';
+import { lazy, useEffect } from 'react';
 import { BrowserRouter, Route, Routes, matchPath, useLocation } from 'react-router-dom';
 import { BottomNav } from './components/BottomNav';
 import { CartButton } from './components/CartButton';
+import { PageBoundary } from './components/PageBoundary';
 import { TopBar, type TopBarTone } from './components/TopBar';
 import { useAuthStore } from './features/auth/authStore';
 import { RequireAuth } from './features/auth/RequireAuth';
@@ -10,17 +11,27 @@ import { CartBar } from './features/cart/CartBar';
 import { selectCount, useCartStore } from './features/cart/cartStore';
 import { cn } from './lib/cn';
 import { CartPage } from './pages/Cart';
-import { CheckoutPage } from './pages/Checkout';
 import { HomePage } from './pages/Home';
-import { LoginPage } from './pages/Login';
 import { MenuPage } from './pages/Menu';
 import { NotFoundPage } from './pages/NotFound';
 import { OrderPage } from './pages/Order';
-import { OrderSuccessPage } from './pages/OrderSuccess';
 import { OrdersPage } from './pages/Orders';
 import { ProfilePage } from './pages/Profile';
-import { RegisterPage } from './pages/Register';
-import { StaffDashboardPage } from './pages/StaffDashboard';
+
+// Split out of the first download: the screens a customer does not need to browse and fill a cart (see CLAUDE.md §2b).
+const CheckoutPage = lazy(() =>
+  import('./pages/Checkout').then((m) => ({ default: m.CheckoutPage })),
+);
+const OrderSuccessPage = lazy(() =>
+  import('./pages/OrderSuccess').then((m) => ({ default: m.OrderSuccessPage })),
+);
+const LoginPage = lazy(() => import('./pages/Login').then((m) => ({ default: m.LoginPage })));
+const RegisterPage = lazy(() =>
+  import('./pages/Register').then((m) => ({ default: m.RegisterPage })),
+);
+const StaffDashboardPage = lazy(() =>
+  import('./pages/StaffDashboard').then((m) => ({ default: m.StaffDashboardPage })),
+);
 
 interface ShellConfig {
   /** null hides the TopBar entirely. No title = wordmark. */
@@ -43,21 +54,46 @@ const column: Pick<ShellConfig, 'bottomNav' | 'cartButton' | 'cartBar' | 'layout
   layout: 'column',
 };
 
+/** The page owns the whole screen: no top bar, bottom nav or cart. */
+const fullScreen: ShellConfig = {
+  topBar: null,
+  bottomNav: false,
+  cartButton: false,
+  cartBar: false,
+  layout: 'full',
+};
+
 const SHELL_BY_ROUTE: { pattern: string; config: ShellConfig }[] = [
   { pattern: '/', config: { ...column, topBar: { tone: 'brand' }, cartBar: true } },
-  { pattern: '/menu', config: { ...column, topBar: { title: 'Menu', backTo: '/' }, cartBar: true, width: 'wide' } },
-  { pattern: '/cart', config: { ...column, topBar: { title: 'Your cart', backTo: '/menu' }, cartButton: false } },
-  { pattern: '/checkout', config: { ...column, topBar: { title: 'Checkout', backTo: '/cart' }, cartButton: false } },
+  {
+    pattern: '/menu',
+    config: { ...column, topBar: { title: 'Menu', backTo: '/' }, cartBar: true, width: 'wide' },
+  },
+  {
+    pattern: '/cart',
+    config: { ...column, topBar: { title: 'Your cart', backTo: '/menu' }, cartButton: false },
+  },
+  {
+    pattern: '/checkout',
+    config: { ...column, topBar: { title: 'Checkout', backTo: '/cart' }, cartButton: false },
+  },
   { pattern: '/orders', config: { ...column, topBar: { title: 'Your orders', backTo: '/' } } },
-  { pattern: '/orders/:id/success', config: { topBar: null, bottomNav: false, cartButton: false, cartBar: false, layout: 'full' } },
-  { pattern: '/orders/:id', config: { ...column, topBar: { title: 'Order details', backTo: '/orders' } } },
+  { pattern: '/orders/:id/success', config: fullScreen },
+  {
+    pattern: '/orders/:id',
+    config: { ...column, topBar: { title: 'Order details', backTo: '/orders' } },
+  },
   { pattern: '/profile', config: { ...column, topBar: { title: 'Profile', backTo: '/' } } },
-  { pattern: '/login', config: { topBar: null, bottomNav: false, cartButton: false, cartBar: false, layout: 'full' } },
-  { pattern: '/register', config: { topBar: null, bottomNav: false, cartButton: false, cartBar: false, layout: 'full' } },
-  { pattern: '/staff', config: { topBar: null, bottomNav: false, cartButton: false, cartBar: false, layout: 'full' } },
+  { pattern: '/login', config: fullScreen },
+  { pattern: '/register', config: fullScreen },
+  { pattern: '/staff', config: fullScreen },
 ];
 
-const NOT_FOUND_SHELL: ShellConfig = { ...column, topBar: { title: 'Not found', backTo: '/' }, cartButton: false };
+const NOT_FOUND_SHELL: ShellConfig = {
+  ...column,
+  topBar: { title: 'Not found', backTo: '/' },
+  cartButton: false,
+};
 
 function getShellConfig(pathname: string): ShellConfig {
   for (const { pattern, config } of SHELL_BY_ROUTE) {
@@ -82,55 +118,57 @@ function AppShell() {
   const widthClass = WIDTH_CLASS[config.width ?? 'default'];
 
   const routes = (
-    <Routes>
-      <Route path="/" element={<HomePage />} />
-      <Route path="/menu" element={<MenuPage />} />
-      <Route path="/cart" element={<CartPage />} />
-      <Route
-        path="/checkout"
-        element={
-          <RequireAuth>
-            <CheckoutPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/orders"
-        element={
-          <RequireAuth>
-            <OrdersPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/orders/:id"
-        element={
-          <RequireAuth>
-            <OrderPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/orders/:id/success"
-        element={
-          <RequireAuth>
-            <OrderSuccessPage />
-          </RequireAuth>
-        }
-      />
-      <Route path="/profile" element={<ProfilePage />} />
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/register" element={<RegisterPage />} />
-      <Route
-        path="/staff"
-        element={
-          <RequireStaff>
-            <StaffDashboardPage />
-          </RequireStaff>
-        }
-      />
-      <Route path="*" element={<NotFoundPage />} />
-    </Routes>
+    <PageBoundary key={pathname}>
+      <Routes>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/menu" element={<MenuPage />} />
+        <Route path="/cart" element={<CartPage />} />
+        <Route
+          path="/checkout"
+          element={
+            <RequireAuth>
+              <CheckoutPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/orders"
+          element={
+            <RequireAuth>
+              <OrdersPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/orders/:id"
+          element={
+            <RequireAuth>
+              <OrderPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/orders/:id/success"
+          element={
+            <RequireAuth>
+              <OrderSuccessPage />
+            </RequireAuth>
+          }
+        />
+        <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
+        <Route
+          path="/staff"
+          element={
+            <RequireStaff>
+              <StaffDashboardPage />
+            </RequireStaff>
+          }
+        />
+        <Route path="*" element={<NotFoundPage />} />
+      </Routes>
+    </PageBoundary>
   );
 
   if (config.layout === 'full') return routes;

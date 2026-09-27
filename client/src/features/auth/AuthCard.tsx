@@ -13,7 +13,14 @@ interface AuthCardProps {
 }
 
 /** Shared frame for the Login and Register pages. */
-export function AuthCard({ title, subtitle, error, children, footer, backTo = '/' }: AuthCardProps) {
+export function AuthCard({
+  title,
+  subtitle,
+  error,
+  children,
+  footer,
+  backTo = '/',
+}: AuthCardProps) {
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col px-4 pb-10 pt-4 md:max-w-lg md:justify-center">
       <div className="flex items-center justify-between">

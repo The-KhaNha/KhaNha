@@ -8,10 +8,13 @@ import { useCartStore } from '../cart/cartStore';
  * (never its prices), so a line that sold out meanwhile is flagged before the customer tries to pay.
  */
 export function useMenu() {
-  const { data, isLoading, error, reload } = useResource(fetchMenu, { key: 'menu' });
+  const { data, isLoading, error, reload } = useResource(fetchMenu, { key: 'menu', persist: true });
 
   useEffect(() => {
-    if (data) useCartStore.getState().syncAvailability(data.categories.flatMap((category) => category.items));
+    if (data)
+      useCartStore
+        .getState()
+        .syncAvailability(data.categories.flatMap((category) => category.items));
   }, [data]);
 
   return { menu: data, isLoading, error, retry: reload };

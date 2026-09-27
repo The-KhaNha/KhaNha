@@ -57,10 +57,19 @@ export function FoodCard({ item, onOpen, showPopularBadge = true }: FoodCardProp
         <button
           type="button"
           onClick={() => onOpen(item)}
-          className="min-w-0 flex-1 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
+          className="min-h-11 min-w-0 flex-1 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
         >
-          <h3 className={cn('truncate text-[16px] font-bold leading-[1.3]', unavailable && 'text-muted')}>{item.name}</h3>
-          <p className="mt-0.5 line-clamp-2 text-[13px] leading-snug text-muted">{item.description}</p>
+          <h3
+            className={cn(
+              'truncate text-[16px] font-bold leading-[1.3]',
+              unavailable && 'text-muted',
+            )}
+          >
+            {item.name}
+          </h3>
+          <p className="mt-0.5 line-clamp-2 text-[13px] leading-snug text-muted">
+            {item.description}
+          </p>
         </button>
 
         {showStock && <StockPill item={item} className="mt-1.5 self-start" />}
@@ -69,7 +78,10 @@ export function FoodCard({ item, onOpen, showPopularBadge = true }: FoodCardProp
         <div className="mt-2 flex items-start justify-between gap-2">
           <Price
             value={item.price}
-            className={cn('inline-flex h-11 items-center text-[17px] font-extrabold', unavailable && 'text-muted')}
+            className={cn(
+              'inline-flex h-11 items-center text-[17px] font-extrabold',
+              unavailable && 'text-muted',
+            )}
           />
           <AddControl item={item} photoRef={photoRef} />
         </div>

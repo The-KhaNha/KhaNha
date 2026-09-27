@@ -91,10 +91,10 @@ export const STATUS_META: Record<OrderStatus, StatusMeta> = {
     customerTitle: 'Picked up',
     customerCopy: 'Picked up successfully. Enjoy your order!',
     icon: CircleCheck,
-    badgeClass: 'bg-surface-2 text-[#6b5b51]',
-    fillClass: 'bg-[#b5a597]',
+    badgeClass: 'bg-surface-2 text-complete-700',
+    fillClass: 'bg-complete-500',
     onFillClass: 'text-white',
-    railClass: 'bg-[#b5a597]',
+    railClass: 'bg-complete-500',
     pulseRgb: '181 165 151',
     next: null,
     actionLabel: null,
@@ -156,13 +156,15 @@ export function amountLabel(order: Pick<Order, 'status' | 'paymentStatus'>): str
   return order.paymentStatus === 'PAID' && order.status !== 'CANCELLED' ? 'Total paid' : 'Total';
 }
 
-export interface TimelineLabel {
+interface TimelineLabel {
   label: string;
   iso: string;
 }
 
 /** The one time that matters now: the ETA while it's being made, when it became ready, when it was picked up. */
-export function timelineLabel(order: Pick<Order, 'status' | 'estimatedReadyAt' | 'updatedAt' | 'createdAt'>): TimelineLabel {
+export function timelineLabel(
+  order: Pick<Order, 'status' | 'estimatedReadyAt' | 'updatedAt' | 'createdAt'>,
+): TimelineLabel {
   switch (order.status) {
     case 'READY':
       return { label: 'Ready since', iso: order.updatedAt };

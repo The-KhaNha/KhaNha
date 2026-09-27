@@ -23,7 +23,10 @@ export function useFocusTrap(ref: RefObject<HTMLElement>, active: boolean): void
     if (!container) return;
 
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const initial = container.querySelector<HTMLElement>('[data-autofocus]') ?? focusablesIn(container)[0] ?? container;
+    const initial =
+      container.querySelector<HTMLElement>('[data-autofocus]') ??
+      focusablesIn(container)[0] ??
+      container;
     // Next frame, so the portal has painted and focusing doesn't fight the entrance animation.
     const frame = window.requestAnimationFrame(() => initial.focus({ preventScroll: true }));
 

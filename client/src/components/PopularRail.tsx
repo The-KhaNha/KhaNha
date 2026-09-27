@@ -96,16 +96,27 @@ function RailCard({ item, onOpen }: { item: MenuItem; onOpen: (item: MenuItem) =
             src={item.imageUrl}
             muted={unavailable}
             eager
+            sizes="188px"
             className="h-40 w-full rounded-[14px]"
             imgClassName="transition-transform duration-[400ms] ease-out group-hover:scale-[1.04]"
           />
         </button>
-        <h3 className={cn('mt-2.5 truncate px-1 text-[15px] font-bold leading-snug', unavailable && 'text-muted')}>{item.name}</h3>
+        <h3
+          className={cn(
+            'mt-2.5 truncate px-1 text-[15px] font-bold leading-snug',
+            unavailable && 'text-muted',
+          )}
+        >
+          {item.name}
+        </h3>
         {showStock && <StockPill item={item} className="ml-1 mt-1.5 self-start" />}
         <div className="mt-auto flex items-start justify-between gap-2 pl-1 pt-1.5">
           <Price
             value={item.price}
-            className={cn('inline-flex h-11 shrink-0 items-center text-[17px] font-extrabold', unavailable && 'text-muted')}
+            className={cn(
+              'inline-flex h-11 shrink-0 items-center text-[17px] font-extrabold',
+              unavailable && 'text-muted',
+            )}
           />
           <AddControl item={item} photoRef={photoRef} />
         </div>
@@ -120,7 +131,13 @@ export function PopularRailSkeleton() {
       <Skeleton className="h-3 w-20" />
       <div className="no-scrollbar -mx-4 mt-3 flex gap-3 overflow-hidden px-4 pt-1">
         {Array.from({ length: 3 }, (_, i) => (
-          <div key={i} className={cn(CARD_WIDTH_CLASS, 'shrink-0 rounded-[20px] border border-line/70 bg-surface p-2 shadow-card')}>
+          <div
+            key={i}
+            className={cn(
+              CARD_WIDTH_CLASS,
+              'shrink-0 rounded-[20px] border border-line/70 bg-surface p-2 shadow-card',
+            )}
+          >
             <Skeleton className="h-40 w-full rounded-[14px]" />
             <Skeleton className="mt-3 h-4 w-3/4" />
             <div className="mt-2 flex items-center justify-between">

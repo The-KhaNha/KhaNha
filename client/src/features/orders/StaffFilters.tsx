@@ -10,7 +10,11 @@ interface StaffFiltersProps {
 /** Status filters for the board. They narrow one list rather than switch panels, so: toggle buttons, not tabs. */
 export function StaffFilters({ value, counts, onChange }: StaffFiltersProps) {
   return (
-    <div role="group" aria-label="Filter orders" className="no-scrollbar -mb-px flex gap-1 overflow-x-auto">
+    <div
+      role="group"
+      aria-label="Filter orders"
+      className="no-scrollbar -mb-px flex gap-1 overflow-x-auto"
+    >
       {STAFF_FILTERS.map((f) => {
         const active = f.key === value;
         const count = counts[f.key];
@@ -32,12 +36,18 @@ export function StaffFilters({ value, counts, onChange }: StaffFiltersProps) {
               key={count}
               className={cn(
                 'rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums transition-colors duration-200 animate-pop',
-                hot ? 'bg-brand-500 text-white' : active ? 'bg-surface-2 text-ink' : 'bg-surface-2 text-muted',
+                hot
+                  ? 'bg-brand-500 text-white'
+                  : active
+                    ? 'bg-surface-2 text-ink'
+                    : 'bg-surface-2 text-muted',
               )}
             >
               {count}
             </span>
-            {active && <span className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-brand-500" />}
+            {active && (
+              <span className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-brand-500" />
+            )}
           </button>
         );
       })}

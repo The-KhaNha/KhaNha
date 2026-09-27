@@ -25,7 +25,12 @@ interface CategoryChipsProps {
  * The chips scroll the page to a section rather than swapping panels, so they are
  * toggle buttons, not tabs.
  */
-export function CategoryChips({ sections, activeId, onSelect, scrolled = false }: CategoryChipsProps) {
+export function CategoryChips({
+  sections,
+  activeId,
+  onSelect,
+  scrolled = false,
+}: CategoryChipsProps) {
   const scroller = useRef<HTMLDivElement>(null);
   const [overflow, setOverflow] = useState({ left: false, right: false });
 

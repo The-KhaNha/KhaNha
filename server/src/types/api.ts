@@ -73,8 +73,3 @@ export interface OrderDto {
   store: { id: string; name: string };
   items: OrderItemDto[];
 }
-
-export interface AuthResponse {
-  user: UserDto;
-  token: string;
-}

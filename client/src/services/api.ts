@@ -1,8 +1,11 @@
 import type { ApiErrorDetails, ApiErrorEnvelope } from '../types/api';
 import { useAuthStore } from '../features/auth/authStore';
+import { logger } from '../lib/logger';
 import { supabase } from '../lib/supabase';
 
 const BASE_URL = '/api';
+/** Longest wait for a response (headers and body) before the request counts as unreachable. */
+export const REQUEST_TIMEOUT_MS = 15_000;
 
 export class ApiError extends Error {
   readonly status: number;
@@ -52,31 +55,67 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   if (token) headers.Authorization = `Bearer ${token}`;
 
+  // A stalled connection must end in the unreachable state, never an endless skeleton. The timer covers the body
+  // read too. The caller's own abort still rethrows as an AbortError. (No AbortSignal.any: older iOS Safari lacks it.)
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  if (signal?.aborted) abort();
+  signal?.addEventListener('abort', abort, { once: true });
+  const timer = setTimeout(abort, REQUEST_TIMEOUT_MS);
+
   let response: Response;
+  let payload: unknown;
   try {
     response = await fetch(`${BASE_URL}${path}`, {
       method,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
-      signal,
+      signal: controller.signal,
     });
+    payload = await response.json().catch(() => null);
+    if (controller.signal.aborted) throw controller.signal.reason;
   } catch (err) {
-    if (err instanceof DOMException && err.name === 'AbortError') throw err;
-    throw new ApiError(0, 'UNREACHABLE', "We couldn't reach the server. Check your connection and try again.");
+    if (signal?.aborted) throw err;
+    // debug only: a polling screen that goes offline would otherwise log every few seconds.
+    logger.debug('API unreachable', { method, path, timedOut: controller.signal.aborted });
+    throw new ApiError(
+      0,
+      'UNREACHABLE',
+      "We couldn't reach the server. Check your connection and try again.",
+    );
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', abort);
   }
 
-  const payload: unknown = await response.json().catch(() => null);
-
   if (!response.ok) {
+    // requestId matches the server's log line for this request. A 4xx is expected, so only 5xx is an error.
+    const context = {
+      method,
+      path,
+      status: response.status,
+      requestId: response.headers.get('x-request-id'),
+    };
+    if (response.status >= 500) logger.error('API request failed', context);
+    else logger.debug('API request rejected', context);
     if (response.status === 401 && auth && token) {
       useAuthStore.getState().clearSession();
     }
     if (isErrorEnvelope(payload)) {
       const { code, message, details } = payload.error;
-      throw new ApiError(response.status, code, message, typeof details === 'object' && details !== null ? details : undefined);
+      throw new ApiError(
+        response.status,
+        code,
+        message,
+        typeof details === 'object' && details !== null ? details : undefined,
+      );
     }
     if (response.status >= 500) {
-      throw new ApiError(response.status, 'UNREACHABLE', "We couldn't reach the server. Please try again in a moment.");
+      throw new ApiError(
+        response.status,
+        'UNREACHABLE',
+        "We couldn't reach the server. Please try again in a moment.",
+      );
     }
     throw new ApiError(response.status, 'INTERNAL', 'Something went wrong.');
   }

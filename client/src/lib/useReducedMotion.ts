@@ -4,7 +4,11 @@ const QUERY = '(prefers-reduced-motion: reduce)';
 
 /** Synchronous check for imperative animations (Web Animations API, vibrate gates). */
 export function prefersReducedMotion(): boolean {
-  return typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia(QUERY).matches;
+  return (
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia(QUERY).matches
+  );
 }
 
 /** Reactive version for render-time gates (e.g. skipping a JS-driven image zoom). */

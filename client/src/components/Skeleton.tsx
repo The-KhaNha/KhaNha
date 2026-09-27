@@ -14,7 +14,11 @@ export function Skeleton({ className, round = false }: SkeletonProps) {
   return (
     <div
       aria-hidden
-      className={cn('relative overflow-hidden bg-surface-2', round ? 'rounded-full' : 'rounded-xl', className)}
+      className={cn(
+        'relative overflow-hidden bg-surface-2',
+        round ? 'rounded-full' : 'rounded-xl',
+        className,
+      )}
     >
       <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/60 to-transparent animate-shimmer" />
     </div>

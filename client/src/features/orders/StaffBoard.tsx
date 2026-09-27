@@ -41,7 +41,11 @@ export function StaffBoard({
 }: StaffBoardProps) {
   if (isLoading) {
     return (
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3" aria-busy aria-label="Loading orders">
+      <div
+        className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3"
+        aria-busy
+        aria-label="Loading orders"
+      >
         {Array.from({ length: 6 }, (_, i) => (
           <StaffOrderCardSkeleton key={i} />
         ))}
@@ -52,7 +56,12 @@ export function StaffBoard({
   if (error && !orders) {
     return (
       <div className="mx-auto max-w-md">
-        <ErrorState title="Unable to load orders." message={error.message} onRetry={onRetry} unreachable={error.isUnreachable} />
+        <ErrorState
+          title="Unable to load orders."
+          message={error.message}
+          onRetry={onRetry}
+          unreachable={error.isUnreachable}
+        />
       </div>
     );
   }
