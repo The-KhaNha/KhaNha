@@ -13,7 +13,7 @@ needs resolving and hands over.
 ```bash
 git diff --name-only --diff-filter=U                       # (a) git-level conflicts, every unmerged combo
 ls server/supabase/migrations/ | sort                      # (b) migration order
-git ls-tree --name-only origin/main -- server/supabase/migrations/
+git ls-tree -r --name-only origin/main -- server/supabase/migrations/
 ```
 
 (b) matters because git merges two new migration files without a conflict, yet the result can be broken: two files

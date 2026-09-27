@@ -32,18 +32,20 @@ export function createApp(): Express {
   const app = express();
 
   app.disable('x-powered-by');
-  app.use(pinoHttp({ logger, genReqId: requestId, customLogLevel: accessLevel }));
-  app.use(cors({ origin: env.CLIENT_ORIGIN }));
-  app.use(express.json());
 
   // Every API response is revalidated before reuse: the browser keeps its copy and sends If-None-Match, Express's
   // ETag check answers 304 with no body when nothing changed. That saves the whole payload on every poll on metered
   // data, and nothing stale is ever shown. Vary keeps one account's cached copy from answering another's request.
+  // Installed before pino-http/cors/express.json so a CORS preflight or a malformed-JSON error response, which never
+  // reach the routes below, still carry these headers.
   app.use('/api', (_req, res, next) => {
     res.set('Cache-Control', 'no-cache');
     res.vary('Authorization');
     next();
   });
+  app.use(pinoHttp({ logger, genReqId: requestId, customLogLevel: accessLevel }));
+  app.use(cors({ origin: env.CLIENT_ORIGIN }));
+  app.use(express.json());
   app.use('/api', apiRouter);
 
   // Express 5 no longer accepts "*" paths; a bare app.use() is the catch-all.

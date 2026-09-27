@@ -11,6 +11,7 @@ import {
   type TestUser,
 } from '../setup/helpers';
 import { api } from '../setup/api';
+import { resolveTestTarget } from '../setup/target';
 
 interface MenuItemRow {
   id: string;
@@ -59,6 +60,9 @@ afterAll(async () => {
   // them, or deleteTestUser fails with a foreign-key violation. resetDemoData() also removes every non-seed
   // account (including ours), so it cannot run first either: it would delete customer1/2/staff out from under
   // deleteTestUser ("User not found"). reset_demo_orders alone only truncates orders/order_items.
+  // Guarded separately from resetDemoData()'s own check: afterAll still runs after a beforeAll failure (e.g. a
+  // non-local target), and this RPC would otherwise truncate orders on whatever target that was.
+  if (resolveTestTarget() !== 'local') return;
   await supabaseAdmin.rpc('reset_demo_orders').throwOnError();
   await Promise.all([customer1, customer2, staff].map((user) => deleteTestUser(user)));
   resetDemoData();

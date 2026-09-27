@@ -33,6 +33,7 @@ You are read-only: you never edit or create files. Bash is for `graphify`, `grep
 
 ## Output handoff classes
 The main agent acts on every item in your report in the same turn:
+
 | Class | Meaning | Main agent does |
 |---|---|---|
 | AUTO-EXECUTE | clear, low-risk, one obvious action (or already applied by you) | applies it / accepts it without asking |
@@ -40,6 +41,7 @@ The main agent acts on every item in your report in the same turn:
 | ADVISORY | informational, no single concrete fix | lists it for the user |
 
 This agent's items:
+
 | Finding | Class |
 |---|---|
 | REUSE X | AUTO-EXECUTE: import and use it as-is |
@@ -84,7 +86,8 @@ Run all of it, even after an early hit; the best match is often the second one.
 - A variation that is only visual or parameterizable (a size, a tone, an optional icon, a label) is EXTEND the
   existing atom with a prop, never a copy. Styling differences are Tailwind classes via `cn()` and the `@theme` tokens,
   or a `className` prop on the atom, not a new component.
-- Icons come from `lucide-react`. There is no icon folder; never propose inline `<svg>`.
+- Icons are named imports from `lucide-react`. Put genuinely custom icons in `client/src/components/icons/` as
+  components; do not inline `<svg>` in pages or features.
 - HTTP goes through `client/src/services/*.ts` → `request()`; never propose `fetch(` in a component or hook.
 - A new server error is a factory in `server/src/utils/errors.ts`; a new DTO mapper goes in `utils/serializers.ts`.
 - Do not invent matches. If Read or Grep did not show you the file, you did not find it.

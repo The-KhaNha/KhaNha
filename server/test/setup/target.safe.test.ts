@@ -21,10 +21,25 @@ describe('resolveTestTarget', () => {
     const staging = {
       TEST_TARGET: 'staging',
       APP_ENV: 'staging',
-      SUPABASE_URL: 'https://x.supabase.co',
+      SUPABASE_URL: 'https://xkddnlxeeizaqpefhqlv.supabase.co',
     };
     expect(() => resolveTestTarget(staging)).toThrow(/ALLOW_STAGING_TESTS/);
     expect(resolveTestTarget({ ...staging, ALLOW_STAGING_TESTS: '1' })).toBe('staging');
+  });
+
+  it('refuses staging when SUPABASE_URL is not the staging project, opt-in or not', () => {
+    const staging = {
+      TEST_TARGET: 'staging',
+      ALLOW_STAGING_TESTS: '1',
+      APP_ENV: 'staging',
+    };
+    expect(() =>
+      resolveTestTarget({ ...staging, SUPABASE_URL: 'https://some-other-project.supabase.co' }),
+    ).toThrow(/SUPABASE_URL/);
+    // A prod-looking host must not slip through opt-in staging mode either.
+    expect(() =>
+      resolveTestTarget({ ...staging, SUPABASE_URL: 'https://production-project.supabase.co' }),
+    ).toThrow(/SUPABASE_URL/);
   });
 
   it('never runs against production', () => {

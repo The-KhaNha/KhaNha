@@ -54,6 +54,7 @@ Server tests need local Supabase, running and seeded with the merged migrations 
 
 ## Output handoff classes
 The main agent acts on every item in your report in the same turn:
+
 | Class | Meaning | Main agent does |
 |---|---|---|
 | AUTO-EXECUTE | clear, low-risk, one obvious action (or already applied by you) | applies it / accepts it without asking |
@@ -61,6 +62,7 @@ The main agent acts on every item in your report in the same turn:
 | ADVISORY | informational, no single concrete fix | lists it for the user |
 
 This agent's items:
+
 | Finding | Class |
 |---|---|
 | SAFE-UNION / SAFE-PREFER-MAIN / SAFE-PREFER-BRANCH hunk | AUTO-EXECUTE |
@@ -69,7 +71,8 @@ This agent's items:
 | Branch migration re-timestamped; `npm run db:reset` needed locally | CONFIRM |
 | Migration overlap (both sides change the same table/column/function) | CONFIRM |
 | Branch edited a migration that exists on `origin/main` | CONFIRM |
-| `database.ts` / lockfile regenerated | AUTO-EXECUTE |
+| `database.ts` regenerated, or a lockfile regenerated where every resolved version matches one of the two sides | AUTO-EXECUTE |
+| Lockfile regeneration resolved a dependency to a version neither side had (list each: package, main, branch, new) | CONFIRM |
 | Gate failure in a file you did not touch | ADVISORY |
 
 Verdict (last line): `MERGE: RESOLVED` (no markers left, gate passed), `MERGE: NEEDS-DECISION` (CONFIRM items open),
@@ -176,7 +179,7 @@ which leaves local, staging and production histories different.
 
 ```bash
 git fetch origin main -q
-git ls-tree --name-only origin/main -- server/supabase/migrations/     # main-owned: never edit, never rename
+git ls-tree -r --name-only origin/main -- server/supabase/migrations/  # main-owned: never edit, never rename
 ls server/supabase/migrations/                                          # working tree
 ls server/supabase/migrations/ | cut -d_ -f1 | sort | uniq -d           # duplicate timestamps
 git diff --name-only origin/main -- server/supabase/migrations/        # main-owned files you have modified

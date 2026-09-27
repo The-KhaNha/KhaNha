@@ -58,6 +58,7 @@ Audit the changed lines (`git diff origin/main...HEAD -- <file>` and `git diff H
 functions around them. Check 1 also runs repo-wide, because it is cheap.
 
 ## Level table (from docs/LOGGING.md; do not invent a different one)
+
 | Level | Use | Examples |
 |---|---|---|
 | `error` | a 5xx or anything unexpected. Server: always with `err` so the stack is logged | unhandled route error, JWKS fetch failure, database unreachable |
@@ -160,6 +161,7 @@ functions around them. Check 1 also runs repo-wide, because it is cheap.
 
 ## Output handoff classes
 The main agent acts on every item in your report in the same turn:
+
 | Class | Meaning | Main agent does |
 |---|---|---|
 | AUTO-EXECUTE | clear, low-risk, one obvious action (or already applied by you) | applies it / accepts it without asking |
@@ -167,6 +169,7 @@ The main agent acts on every item in your report in the same turn:
 | ADVISORY | informational, no single concrete fix | lists it for the user |
 
 This agent's items:
+
 | Finding | Class |
 |---|---|
 | SAFE fixes already applied (console swap, level fix, structured message, PII field removed, double log removed, redact path + test) | AUTO-EXECUTE |

@@ -186,6 +186,7 @@ convention breach (S1–S5, S8) or a cosmetic problem. A **note** is an observat
 
 ## Output handoff classes
 The main agent acts on every item in your report in the same turn:
+
 | Class | Meaning | Main agent does |
 |---|---|---|
 | AUTO-EXECUTE | clear, low-risk, one obvious action (or already applied by you) | applies it / accepts it without asking |
@@ -193,6 +194,7 @@ The main agent acts on every item in your report in the same turn:
 | ADVISORY | informational, no single concrete fix | lists it for the user |
 
 This agent's items:
+
 | Finding | Class |
 |---|---|
 | Verdict ✅ READY (no blockers) | AUTO-EXECUTE (the main agent accepts it and moves on) |

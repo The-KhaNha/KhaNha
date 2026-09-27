@@ -38,13 +38,13 @@ The full gate for a touched package is `npm run typecheck && npm run lint && npm
 `server/test/setup/guard.ts` runs before any test file imports the app. It calls `resolveTestTarget()` from
 `test/setup/target.ts`, which decides which Supabase project the run may touch:
 
-| `TEST_TARGET`     | Allowed when                                                       | Suites that run       |
-| ----------------- | ------------------------------------------------------------------ | --------------------- |
-| `local` (default) | `APP_ENV=local` and `SUPABASE_URL` host is `127.0.0.1`/`localhost` | every `*.test.ts`     |
-| `staging`         | `ALLOW_STAGING_TESTS=1` and `APP_ENV=staging`                      | only `*.safe.test.ts` |
-| `production`      | never                                                              | –                     |
+| `TEST_TARGET`     | Allowed when                                                                                                                                           | Suites that run       |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------- |
+| `local` (default) | `APP_ENV=local` and `SUPABASE_URL` host is `127.0.0.1`/`localhost`                                                                                     | every `*.test.ts`     |
+| `staging`         | `ALLOW_STAGING_TESTS=1`, `APP_ENV=staging`, and `SUPABASE_URL` host = the staging project (`xkddnlxeeizaqpefhqlv.supabase.co`, or `TEST_STAGING_HOST`) | only `*.safe.test.ts` |
+| `production`      | never                                                                                                                                                  | –                     |
 
-If the guard throws, the whole run stops before a single request is made. Production is never a test target.
+If the guard throws, the whole run stops before a single request is made. `vitest.config.mts` loads `server/.env` before choosing which files to include, so the file filter and the guard always read the same `TEST_TARGET`. Production is never a test target.
 
 ## Destructive vs staging-safe suites
 

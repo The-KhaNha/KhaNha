@@ -60,7 +60,7 @@ again, and every one must pass. A problem in a file you may not edit (source) is
 Compute the changed files from the repo root:
 ```bash
 { git diff --name-only origin/main...HEAD; git status --porcelain -uall | cut -c4- | sed 's/.* -> //'; } | sort -u
-git diff origin/main...HEAD; git diff HEAD      # read the content, not just the names
+git diff origin/main...HEAD -- . ':(exclude)server/.env' ':(exclude)client/.env.development' ':(exclude)client/.env.staging' ':(exclude)client/.env.production'; git diff HEAD -- . ':(exclude)server/.env' ':(exclude)client/.env.development' ':(exclude)client/.env.staging' ':(exclude)client/.env.production'      # read the content, not just the names
 ```
 On a first run, when a doc in the map does not exist yet, generate it from the code and from the existing
 `README.md` / `docs/ARCHITECTURE.md` (plan: move the README API section to `docs/API.md`, ARCHITECTURE §10 to
@@ -68,6 +68,7 @@ On a first run, when a doc in the map does not exist yet, generate it from the c
 behind in each place).
 
 ## Ownership map (apply it to every changed file)
+
 | A change to… | updates |
 |---|---|
 | an endpoint, a request/response shape, an error code or a server rule | `docs/API.md` (and check that the `ErrorCode` union in `server/src/utils/errors.ts` is listed) |
@@ -146,6 +147,7 @@ Each fact has one owner. The other docs link to the owner (`[API](API.md#orders)
 
 ## Output handoff classes
 The main agent acts on every item in your report in the same turn:
+
 | Class | Meaning | Main agent does |
 |---|---|---|
 | AUTO-EXECUTE | clear, low-risk, one obvious action (or already applied by you) | applies it / accepts it without asking |
@@ -153,6 +155,7 @@ The main agent acts on every item in your report in the same turn:
 | ADVISORY | informational, no single concrete fix | lists it for the user |
 
 This agent's items:
+
 | Finding | Class |
 |---|---|
 | Doc edits that follow the code (already applied) | AUTO-EXECUTE |

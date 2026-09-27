@@ -1,8 +1,13 @@
 // Decides which Supabase project a test run may touch. Runs before any test file imports the app.
 //   TEST_TARGET=local (default)  APP_ENV=local and SUPABASE_URL on 127.0.0.1/localhost; every suite runs.
-//   TEST_TARGET=staging          refused unless ALLOW_STAGING_TESTS=1; then only *.safe.test.ts suites run.
+//   TEST_TARGET=staging          refused unless ALLOW_STAGING_TESTS=1 and SUPABASE_URL is the staging project
+//                                (server/.env.example); then only *.safe.test.ts suites run.
 //   TEST_TARGET=production       always refused.
 export type TestTarget = 'local' | 'staging';
+
+// The staging project's host (server/.env.example). Override only for a genuinely different staging project,
+// never to point tests at production.
+const DEFAULT_STAGING_HOST = 'xkddnlxeeizaqpefhqlv.supabase.co';
 
 export function resolveTestTarget(env: NodeJS.ProcessEnv = process.env): TestTarget {
   const target = env.TEST_TARGET ?? 'local';
@@ -29,6 +34,13 @@ export function resolveTestTarget(env: NodeJS.ProcessEnv = process.env): TestTar
     if (env.APP_ENV !== 'staging') {
       throw new Error(
         `Tests refuse to run: TEST_TARGET=staging needs APP_ENV=staging (found ${env.APP_ENV}).`,
+      );
+    }
+    const stagingHost = env.TEST_STAGING_HOST ?? DEFAULT_STAGING_HOST;
+    const host = safeHost(env.SUPABASE_URL);
+    if (host !== stagingHost) {
+      throw new Error(
+        `Tests refuse to run: TEST_TARGET=staging needs SUPABASE_URL on ${stagingHost} (found ${host}).`,
       );
     }
     return 'staging';

@@ -3,7 +3,7 @@
 // (UserPromptSubmit hooks take no matcher, so the pattern is checked here.)
 
 const MARKERS =
-  /@coderabbitai|coderabbit\.ai|\bcoderabbit\b|_:warning:\s*Potential\s+issue_|_:hammer_and_wrench:\s*Refactor\s+suggestion_|_:pencil2:\s*Nitpick_|Actionable\s+comments\s+posted|Outside\s+diff\s+range\s+comments|Comments\s+suppressed\s+due\s+to\s+low\s+confidence|Summary\s+by\s+CodeRabbit|```suggestion/i;
+  /@coderabbitai|coderabbit\.ai|\bcoderabbit\b|(?:_:warning:\s*)?Potential\s+issue_?|(?:_:hammer_and_wrench:\s*)?Refactor\s+suggestion_?|(?:_:pencil2:\s*)?Nitpick_?|Actionable\s+comments\s+posted|Outside\s+diff\s+range\s+comments|Comments\s+suppressed\s+due\s+to\s+low\s+confidence|Summary\s+by\s+CodeRabbit|```suggestion/i;
 
 let input;
 try {

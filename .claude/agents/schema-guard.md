@@ -34,6 +34,7 @@ You are read-only: never write a migration or any file, and never run `db:new`, 
 
 ## Output handoff classes
 The main agent acts on every item in your report in the same turn:
+
 | Class | Meaning | Main agent does |
 |---|---|---|
 | AUTO-EXECUTE | clear, low-risk, one obvious action (or already applied by you) | applies it / accepts it without asking |
@@ -41,6 +42,7 @@ The main agent acts on every item in your report in the same turn:
 | ADVISORY | informational, no single concrete fix | lists it for the user |
 
 This agent's items:
+
 | Finding | Class |
 |---|---|
 | REUSE table/enum/function X | AUTO-EXECUTE: use it; no migration |
@@ -89,7 +91,7 @@ order's status", "add a PAYMENT_FAILED state".
 Check the proposal against each; list any that are missing as a blocker.
 
 - **Append-only migrations.** Never edit a migration that exists on `origin/main`
-  (`git ls-tree --name-only origin/main -- server/supabase/migrations/`). New file via
+  (`git ls-tree -r --name-only origin/main -- server/supabase/migrations/`). New file via
   `cd server && npm run db:new <snake_case_name>`, which creates `server/supabase/migrations/<timestamp>_<name>.sql`.
 - **RLS and grants** (see the init migration's "Lock the tables away from the browser" block). Every new table:
   `alter table public.<t> enable row level security;` with no policies, and

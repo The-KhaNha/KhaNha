@@ -262,15 +262,22 @@ async function seedDemo(): Promise<void> {
     .eq('id', true)
     .throwOnError();
 
+  // Credentials only go to the local developer's own terminal. Staging logs can be centralized and read by more
+  // people, so print roles there instead of the well-known demo passwords (CWE-532).
+  const accounts =
+    env.APP_ENV === 'local'
+      ? ACCOUNTS.map(
+          (account) => `  ${account.role.padEnd(8)}  ${account.email} / ${account.password}`,
+        ).join('\n')
+      : ACCOUNTS.map((account) => `  ${account.role.padEnd(8)}  ${account.email}`).join('\n');
+
   logger.info(`
 Seeded Food Pickup (${env.APP_ENV}: ${env.SUPABASE_URL})
 ${describeMenu(store, menuItems)}
   Orders    next order number is #1001
 
 Test accounts
-  STAFF     staff@campuscafe.local / staff123
-  ADMIN     admin@campuscafe.local / admin123
-  CUSTOMER  anishka@example.com / test1234
+${accounts}
 `);
 }
 

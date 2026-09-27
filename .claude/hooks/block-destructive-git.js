@@ -9,7 +9,7 @@ const FORBIDDEN = [
   [/\bgit\s+reset\s+(?:.*\s)?--(?:hard|merge)\b/, 'git reset --hard / --merge'],
   [/\bgit\s+restore\s+(?:.*\s)?(?:\.|--)(?:\s|$)/, 'git restore . / -- <path>'],
   [/\bgit\s+checkout\s+(?:.*\s)?(?:\.|--)(?:\s|$)/, 'git checkout . / -- <path>'],
-  [/\bgit\s+clean\s+(?:.*\s)?-[a-zA-Z]*f/, 'git clean -f'],
+  [/\bgit\s+clean\s+(?:.*\s)?(?:-[a-zA-Z]*f|--force\b)/, 'git clean -f / --force'],
   [/\bgit\s+push\s+(?:.*\s)?(?:-f|--force(?:-with-lease)?(?:=\S*)?)(?:\s|$)/, 'git push --force'],
   [/\bgit\s+branch\s+(?:.*\s)?(?:-D|--delete\s+--force|--force\s+--delete)(?:\s|$)/, 'git branch -D'],
 ];
@@ -33,6 +33,7 @@ if (process.argv.includes('--self-test')) {
     'git checkout .',
     'git checkout -- src/a.ts',
     'git clean -fd',
+    'git clean --force',
     'git push -f origin main',
     'git push --force-with-lease',
     'git branch -D feat',

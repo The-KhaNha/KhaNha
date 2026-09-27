@@ -91,6 +91,18 @@ export function MenuPage() {
 
   return (
     <div className="animate-fade-up">
+      {/* The saved menu stays usable when a refresh fails; say so instead of hiding it (checkout re-checks stock). */}
+      {error && (
+        <ErrorState
+          compact
+          className="mt-4"
+          title="Showing your saved menu"
+          message="We couldn't refresh it just now."
+          retryLabel="Retry"
+          onRetry={retry}
+          unreachable={error.isUnreachable}
+        />
+      )}
       {/* Storefront header: name + tagline live on the photo so food appears sooner. */}
       <section className="pt-4">
         <div className="relative aspect-[21/9] overflow-hidden rounded-[28px] bg-surface-2 shadow-card">

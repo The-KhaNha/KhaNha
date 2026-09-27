@@ -48,10 +48,12 @@ function git(...args) {
   return execFileSync('git', args, { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
 }
 
-/** Every file that differs from HEAD (tracked edits, deletions, untracked), with changed-line counts. */
-function workingChanges() {
+/** Every file that differs from `baseline` (tracked edits, deletions, untracked, and any commits made since
+ *  `baseline`), with changed-line counts. `baseline` is the HEAD saved by the last --mark, so committed-but-
+ *  unverified changes still count even once `git diff HEAD` alone would be empty. */
+function workingChanges(baseline) {
   const lines = new Map();
-  for (const row of git('diff', 'HEAD', '--numstat', '--no-renames').split('\n')) {
+  for (const row of git('diff', baseline, '--numstat', '--no-renames').split('\n')) {
     const [added, deleted, file] = row.split('\t');
     if (file) lines.set(file, (Number(added) || 0) + (Number(deleted) || 0));
   }
@@ -88,11 +90,15 @@ function writeJson(file, value) {
   fs.writeFileSync(file, JSON.stringify(value, null, 2) + '\n');
 }
 
-/** Changes whose content differs from what the last /post-change verified. */
+/** Changes whose content differs from what the last /post-change verified. Diffs against the HEAD saved at that
+ *  mark (falling back to the current HEAD before any mark exists), so a commit made since does not hide the
+ *  change: it only drops out once its content matches what was verified. */
 function unverifiedChanges() {
-  const changes = workingChanges();
+  const mark = readJson(MARK);
+  const baseline = mark?.head || 'HEAD';
+  const changes = workingChanges(baseline);
   const hashes = contentHashes(changes.map((c) => c.file));
-  const verified = readJson(MARK)?.hashes ?? {};
+  const verified = mark?.hashes ?? {};
   return { changes: changes.filter((c) => verified[c.file] !== hashes[c.file]), hashes };
 }
 
@@ -136,7 +142,47 @@ function selfTest() {
   assert.equal(classify(five.slice(1)).major, false);
   assert.equal(classify([c('client/src/lib/a.ts', 100), c('server/src/utils/b.ts', 50)]).major, true);
   assert.equal(classify([c('client/src/lib/a.ts', 149)]).major, false);
+  testMarkSurvivesCommit();
   console.log('major-change-gate: ok');
+}
+
+/** A commit made after --mark must still show up as unverified (regression: `git diff HEAD` alone goes empty once
+ *  the change is committed). Runs the real hook, as a subprocess, against a scratch git repo. */
+function testMarkSurvivesCommit() {
+  const assert = require('node:assert');
+  const os = require('node:os');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'major-change-gate-selftest-'));
+  const run = (...args) =>
+    execFileSync(process.execPath, [__filename, ...args], {
+      cwd: tmp,
+      env: { ...process.env, CLAUDE_PROJECT_DIR: tmp },
+      encoding: 'utf8',
+    });
+  const g = (...args) => execFileSync('git', args, { cwd: tmp, encoding: 'utf8' });
+  try {
+    g('init', '-q');
+    g('config', 'user.email', 'test@test.local');
+    g('config', 'user.name', 'test');
+    fs.mkdirSync(path.join(tmp, 'server/src/routes'), { recursive: true });
+    fs.writeFileSync(path.join(tmp, 'server/src/routes/index.ts'), 'export {};\n');
+    g('add', '-A');
+    g('commit', '-q', '-m', 'init');
+    run('--mark');
+
+    fs.writeFileSync(path.join(tmp, 'server/src/routes/index.ts'), 'export {}; // changed\n');
+    g('add', '-A');
+    g('commit', '-q', '-m', 'unverified change');
+
+    const status = JSON.parse(run('--status'));
+    assert.equal(status.major, true, 'a committed-but-unmarked change to a major path must still be classified major');
+    assert.ok(status.files.includes('server/src/routes/index.ts'));
+
+    run('--mark');
+    const after = JSON.parse(run('--status'));
+    assert.equal(after.major, false, 'marking again with no further changes clears the pending state');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 }
 
 function main() {

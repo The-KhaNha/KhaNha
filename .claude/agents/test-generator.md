@@ -213,7 +213,9 @@ Baseline failures (pre-existing): <none | list>
 
 
 ## Output handoff classes
+
 The main agent acts on every item in your report in the same turn:
+
 | Class | Meaning | Main agent does |
 |---|---|---|
 | AUTO-EXECUTE | clear, low-risk, one obvious action (or already applied by you) | applies it / accepts it without asking |
@@ -221,6 +223,7 @@ The main agent acts on every item in your report in the same turn:
 | ADVISORY | informational, no single concrete fix | lists it for the user |
 
 This agent's items:
+
 | Finding | Class |
 |---|---|
 | New or extended test files that pass | AUTO-EXECUTE (already written; the main agent keeps them) |

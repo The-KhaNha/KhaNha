@@ -1,6 +1,13 @@
+import 'dotenv/config';
 import { defineConfig } from 'vitest/config';
 
 // Staging runs only the suites that create and clean up their own data (*.safe.test.ts); see docs/TESTING.md.
+// dotenv (above) loads server/.env before this runs, so this reads TEST_TARGET from the same source as
+// resolveTestTarget() in test/setup/target.ts (also `import 'dotenv/config'`, in guard.ts). Without this import,
+// a TEST_TARGET set only in .env (not the shell) would compute stagingOnly=false here — including the
+// destructive suites — while resolveTestTarget() still saw 'staging' and let the run proceed.
+// Manual check: with only server/.env containing TEST_TARGET=staging (nothing exported in the shell), run
+// `npx vitest list` and confirm only *.safe.test.ts files are listed.
 const stagingOnly = process.env.TEST_TARGET === 'staging';
 
 export default defineConfig({

@@ -183,6 +183,9 @@ nothing at all to show — while a real fetch runs and replaces it in the backgr
 (stale-while-revalidate). `useMenu()` and `useStore()` both pass `persist: true`; `useOrder`/`useOrders` never do —
 orders are user-specific and must never survive a sign-out on a shared device.
 
+If a refresh fails while a saved copy is showing, `MenuPage` and `HomePage` keep the saved copy and add a compact
+`ErrorState` ("Showing your saved menu" + Retry) instead of hiding it; checkout re-checks stock and prices anyway.
+
 Bump `CACHE_PREFIX` (`fp_cache:v1:` → `fp_cache:v2:`, …) whenever a persisted response's shape changes, so old code
 never hands new code a shape it no longer expects. Reading or writing the cache never throws: private-mode or a full
 quota just means no head start, not a crash.

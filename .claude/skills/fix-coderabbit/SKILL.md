@@ -18,18 +18,23 @@ comments, groups them by file and dispatches, so the main agent stays free while
 
 CodeRabbit writes in two places; missing either drops real findings.
 
-1. Unresolved, non-outdated inline threads:
+1. Unresolved, non-outdated inline threads, paginated with the `reviewThreads` cursor (a PR can have more than 100
+   threads, and a thread more than 20 comments):
    ```bash
    REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner); OWNER=${REPO%/*}; NAME=${REPO#*/}
    gh api graphql -F owner=$OWNER -F name=$NAME -F pr=<n> -f query='
-     query($owner:String!,$name:String!,$pr:Int!){repository(owner:$owner,name:$name){pullRequest(number:$pr){
-       reviewThreads(first:100){nodes{isResolved isOutdated path line
-         comments(first:20){nodes{databaseId author{login} body}}}}}}}'
+     query($owner:String!,$name:String!,$pr:Int!,$threadsAfter:String){repository(owner:$owner,name:$name){pullRequest(number:$pr){
+       reviewThreads(first:100, after:$threadsAfter){pageInfo{hasNextPage endCursor} nodes{isResolved isOutdated path line
+         comments(first:50){nodes{databaseId author{login} body}}}}}}}'
    ```
-   Keep `isResolved == false && isOutdated == false`. Each keeps its `databaseId` so the fixer can reply.
-2. Review bodies by `coderabbitai[bot]` (`gh api repos/$REPO/pulls/<n>/reviews`): parse the
-   `Outside diff range comments` and `Nitpick comments` `<details>` sections into `{file, lines, severity, body}`.
-   These have no thread, so no reply. Skip `Duplicate comments` (the inline thread is the canonical copy).
+   Omit `threadsAfter` on the first call (the variable is nullable); repeat with `-f threadsAfter="<endCursor>"`
+   while `hasNextPage` is true. Keep `isResolved == false && isOutdated == false`. Each keeps its `databaseId` so the
+   fixer can reply.
+2. Review bodies by `coderabbitai[bot]` (`gh api --paginate repos/$REPO/pulls/<n>/reviews`, since reviews can span
+   more than one page): parse every `<details><summary>… comments (N)</summary>` section keyed by severity —
+   `Outside diff range comments`, `🟡 Minor comments`, `Nitpick comments` (or any other severity CodeRabbit labels the
+   same way) — into `{file, lines, severity, body}`. These have no thread, so no reply. Skip `Duplicate comments`
+   (the inline thread is the canonical copy).
 
 ## 3. Group by file and dispatch
 

@@ -19,24 +19,54 @@
 
 set -u
 TRANSCRIPT="${1:?usage: $0 <transcript-path>}"
+# Bounds for the two failure paths: the agent never creates the transcript (crashes before spawn), or it creates
+# the transcript but stalls and never emits a `result` event (hangs after spawn).
+STARTUP_TIMEOUT="${AGENT_MONITOR_STARTUP_TIMEOUT:-120}"   # seconds to wait for the transcript file to appear
+IDLE_TIMEOUT="${AGENT_MONITOR_IDLE_TIMEOUT:-600}"          # seconds of no new transcript line before giving up
 
-# Wait for the file to exist (the agent process creates it after spawn).
-while [ ! -e "$TRANSCRIPT" ]; do sleep 0.5; done
+# Wait for the file to exist (the agent process creates it after spawn), bounded so a crash before spawn exits.
+waited=0
+while [ ! -e "$TRANSCRIPT" ]; do
+  if [ "$waited" -ge "$STARTUP_TIMEOUT" ]; then
+    echo "⏱️ timeout: transcript never appeared after ${STARTUP_TIMEOUT}s ($TRANSCRIPT)"
+    exit 1
+  fi
+  sleep 0.5
+  waited=$((waited + 1))
+done
 
 # Follow the file, parse each new JSON line, emit a short one-liner.
-python3 -u - "$TRANSCRIPT" <<'PYEOF'
+python3 -u - "$TRANSCRIPT" "$IDLE_TIMEOUT" <<'PYEOF'
 import json, sys
+import selectors
 import subprocess
 
+path, idle_timeout = sys.argv[1], float(sys.argv[2])
+
 tail = subprocess.Popen(
-    ["tail", "-F", "-n", "+1", sys.argv[1]],
+    ["tail", "-F", "-n", "+1", path],
     stdout=subprocess.PIPE,
     stderr=subprocess.DEVNULL,
     text=True,
     bufsize=1,
 )
 
-for raw in tail.stdout or []:
+sel = selectors.DefaultSelector()
+sel.register(tail.stdout, selectors.EVENT_READ)
+
+def readline_with_timeout(timeout):
+    events = sel.select(timeout=timeout)
+    if not events:
+        return None
+    return tail.stdout.readline()
+
+while True:
+    raw = readline_with_timeout(idle_timeout)
+    if raw is None:
+        print(f"⏱️ timeout: no activity for {int(idle_timeout)}s, agent may be stalled", flush=True)
+        break
+    if raw == "":
+        break  # tail's stdout closed
     raw = raw.strip()
     if not raw:
         continue

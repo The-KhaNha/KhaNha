@@ -39,6 +39,7 @@ To see what you changed, use `git diff HEAD -- <path>`, never a stash.
   script file in the temp dir.
 
 ## Budgets (identical to CLAUDE.md "Target devices and network"; copy this table into the baseline)
+
 | Budget | Limit | Measured at |
 |---|---|---|
 | LCP | ≤ 2.5 s | 360×640, Slow 4G (150 ms RTT, 1.6 Mbps down, 750 kbps up), 4× CPU |
@@ -138,7 +139,9 @@ Demo logins: customer `anishka@example.com / test1234`, staff `staff@campuscafe.
    await s.send('Network.emulateNetworkConditions', { offline: false, latency: 150, downloadThroughput: 1.6e6/8, uploadThroughput: 750e3/8 });
    await s.send('Emulation.setCPUThrottlingRate', { rate: 4 });
    await page.goto('http://localhost:4173/menu', { waitUntil: 'networkidle' });
-   // interact like a user: tap the first add button, open a food card's sheet, press Escape, tap a category chip
+   // interact like a user: tap the first add button, then press Escape, so the INP observer has a real interaction
+   await page.click('[aria-label="Add to cart"]');
+   await page.keyboard.press('Escape');
    await page.waitForTimeout(1000);
    return await page.evaluate(() => window.__cwv);
    ```
@@ -303,6 +306,7 @@ Every finding cites a file:line or a measured number, and gives a concrete fix.
 
 ## Output handoff classes
 The main agent acts on every item in your report in the same turn:
+
 | Class | Meaning | Main agent does |
 |---|---|---|
 | AUTO-EXECUTE | clear, low-risk, one obvious action (or already applied by you) | applies it / accepts it without asking |
@@ -310,6 +314,7 @@ The main agent acts on every item in your report in the same turn:
 | ADVISORY | informational, no single concrete fix | lists it for the user |
 
 This agent's items:
+
 | Finding | Class |
 |---|---|
 | HIGH: a budget regression (> 20% worse), newly over budget, a heavy dependency in the initial chunk, polling while hidden, a missing index on a growing table | CONFIRM (one per finding: fix now / defer / custom) |

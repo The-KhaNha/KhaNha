@@ -43,7 +43,23 @@ export function HomePage() {
             unreachable={error.isUnreachable}
           />
         ) : (
-          store && <StoreCard store={store} />
+          store && (
+            <>
+              <StoreCard store={store} />
+              {/* Saved copy shown, refresh failed: keep it, but say so. */}
+              {error && (
+                <ErrorState
+                  compact
+                  className="mt-3"
+                  title="Showing saved shop details"
+                  message="We couldn't refresh them just now."
+                  retryLabel="Retry"
+                  onRetry={retry}
+                  unreachable={error.isUnreachable}
+                />
+              )}
+            </>
+          )
         )}
       </div>
 

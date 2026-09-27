@@ -8,14 +8,31 @@ import { join } from 'node:path';
 const LOCK = join(tmpdir(), 'food-pickup-server-tests.lock');
 const WAIT_MS = 5 * 60_000;
 
+/** A sentinel pid: the lock file exists but its pid is not (yet) readable, so treat it as held, not dead. */
+const UNKNOWN_HOLDER = -1;
+
 /** The pid holding the lock, or undefined when there is no lock or its process is gone. */
 function liveHolder(): number | undefined {
+  let raw: string;
   try {
-    const pid = Number(readFileSync(LOCK, 'utf8'));
-    process.kill(pid, 0);
-    return pid;
+    raw = readFileSync(LOCK, 'utf8');
   } catch {
     return undefined;
+  }
+  const pid = Number(raw);
+  if (!Number.isInteger(pid) || pid <= 0) {
+    // acquireRunLock opens the file ('wx') before writing the pid into it, so a waiter can read it in that gap
+    // as empty or partial. That is a live, just-created lock, not a dead one: never reap it here, only on the
+    // deadline below, once the lock file's pid becomes readable or the wait times out.
+    return UNKNOWN_HOLDER;
+  }
+  try {
+    process.kill(pid, 0);
+    return pid;
+  } catch (err) {
+    // ESRCH: no such process, it is dead. Any other error (e.g. EPERM: exists, but owned by another user on this
+    // shared tmpdir) means the process is still alive, so the lock stays.
+    return (err as NodeJS.ErrnoException).code === 'ESRCH' ? undefined : pid;
   }
 }
 
@@ -35,7 +52,12 @@ export default async function acquireRunLock(): Promise<() => void> {
     if (holder === undefined) {
       // ponytail: a crashed run left its lock behind. Two waiters could both clear it in the same instant; that
       // needs a crash plus two simultaneous new runs, so it is not worth a stronger lock.
-      unlinkSync(LOCK);
+      try {
+        unlinkSync(LOCK);
+      } catch (err) {
+        // ENOENT: another waiter already cleared it. Anything else is a real failure.
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+      }
       continue;
     }
     if (Date.now() > deadline) {

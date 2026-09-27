@@ -15,11 +15,19 @@ export function cached<T>(key: string, ttlMs: number, load: () => Promise<T>): P
   const hit = entries.get(key);
   if (hit && hit.expiresAt > Date.now()) return hit.value as Promise<T>;
 
+  // While the load is in flight, expiresAt is Infinity so a slow load stays shared with every concurrent caller no
+  // matter how long it takes; the TTL only starts once the load has settled.
   const value = load();
-  entries.set(key, { expiresAt: Date.now() + ttlMs, value });
-  value.catch(() => {
-    if (entries.get(key)?.value === value) entries.delete(key);
-  });
+  entries.set(key, { expiresAt: Infinity, value });
+  value.then(
+    () => {
+      if (entries.get(key)?.value === value)
+        entries.set(key, { expiresAt: Date.now() + ttlMs, value });
+    },
+    () => {
+      if (entries.get(key)?.value === value) entries.delete(key);
+    },
+  );
   return value;
 }
 

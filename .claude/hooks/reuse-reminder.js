@@ -16,8 +16,9 @@ try {
 } catch {
   process.exit(0);
 }
-const path = input?.tool_input?.file_path ?? '';
-if (!path || fs.existsSync(path) || /\.test\.tsx?$/.test(path)) process.exit(0);
+const rawPath = input?.tool_input?.file_path ?? '';
+const path = rawPath.replace(/\\/g, '/');
+if (!path || fs.existsSync(rawPath) || /\.test\.tsx?$/.test(path)) process.exit(0);
 
 const rule = RULES.find(([re]) => re.test(path));
 if (rule) {

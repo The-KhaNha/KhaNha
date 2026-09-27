@@ -21,7 +21,8 @@ work exactly like a customer's. Its only privilege is the admin dashboard (`/adm
 
 - The role is `profiles.role` (enum `user_role`) and nothing else. It is never read from the token or from
   `user_metadata`: users can edit their own `user_metadata`, so it must never grant `STAFF` or `ADMIN`.
-- Only the secret key can change `profiles.role`. There is no API route that changes a role.
+- No application API route changes `profiles.role`. Only privileged database access (the secret key, or an
+  administrator using the SQL editor) can change it.
 - `requireAuth` reads the role from `profiles` on every request, so promoting or demoting someone takes effect on
   their next request without signing in again.
 - Making someone staff: `update public.profiles set role = 'STAFF' where email = '…';` in the SQL editor (see

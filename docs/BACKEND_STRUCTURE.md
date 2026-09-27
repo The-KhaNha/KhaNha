@@ -152,15 +152,15 @@ message names the field.
 
 ### utils/
 
-| File             | Exports                                                                                                                                                                 |
-| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `env.ts`         | `env` (validated with zod at import; exits with a list of problems if invalid)                                                                                          |
-| `logger.ts`      | `logger` (pino), `REDACT_PATHS`                                                                                                                                         |
-| `supabase.ts`    | `supabaseAdmin` (secret key, bypasses RLS), `supabaseEnv`, `raisedByDatabase(err, code)`                                                                                |
-| `errors.ts`      | `ErrorCode`, `ItemErrorDetails`, `AppError`, `validationError`, `unauthorized`, `forbidden`, `notFound`, `insufficientStock`                                            |
-| `serializers.ts` | `selectOrders()` (the one order query with lines, store and item photos), `OrderWithDetails`, `toUserDto`, `toStoreDto`, `toMenuItemDto`, `toOrderDto`, `isPurchasable` |
-| `ids.ts`         | `isUuid(value)`                                                                                                                                                         |
-| `cache.ts`       | `cached<T>(key, ttlMs, load)`, `invalidate(key?)`, `PUBLIC_READ_TTL_MS = 10_000`                                                                                        | in-process TTL cache for public reads; shares one pending load between concurrent misses; a failed load is never cached. See [API.md#caching](API.md#caching) |
+| File             | Exports                                                                                                                                                                                                                                          |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `env.ts`         | `env` (validated with zod at import; exits with a list of problems if invalid)                                                                                                                                                                   |
+| `logger.ts`      | `logger` (pino), `REDACT_PATHS`                                                                                                                                                                                                                  |
+| `supabase.ts`    | `supabaseAdmin` (secret key, bypasses RLS), `supabaseEnv`, `raisedByDatabase(err, code)`                                                                                                                                                         |
+| `errors.ts`      | `ErrorCode`, `ItemErrorDetails`, `AppError`, `validationError`, `unauthorized`, `forbidden`, `notFound`, `insufficientStock`                                                                                                                     |
+| `serializers.ts` | `selectOrders()` (the one order query with lines, store and item photos), `OrderWithDetails`, `toUserDto`, `toStoreDto`, `toMenuItemDto`, `toOrderDto`, `isPurchasable`                                                                          |
+| `ids.ts`         | `isUuid(value)`                                                                                                                                                                                                                                  |
+| `cache.ts`       | `cached<T>(key, ttlMs, load)`, `invalidate(key?)`, `PUBLIC_READ_TTL_MS = 10_000` — in-process TTL cache for public reads; shares one pending load between concurrent misses; a failed load is never cached. See [API.md#caching](API.md#caching) |
 
 ## Adding an endpoint
 

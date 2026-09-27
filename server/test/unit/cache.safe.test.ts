@@ -26,6 +26,19 @@ describe('cached', () => {
     expect(load).toHaveBeenCalledTimes(2);
   });
 
+  it('keeps a slow in-flight load shared past its TTL', async () => {
+    vi.useFakeTimers();
+    let resolve!: (value: string) => void;
+    const load = vi.fn(() => new Promise<string>((r) => (resolve = r)));
+    const first = cached('k', 1000, load);
+    vi.advanceTimersByTime(2000); // the TTL would have expired while the load is still pending
+    const second = cached('k', 1000, load);
+    resolve('menu');
+    await expect(first).resolves.toBe('menu');
+    await expect(second).resolves.toBe('menu');
+    expect(load).toHaveBeenCalledTimes(1);
+  });
+
   it('never caches a failed load', async () => {
     const load = vi
       .fn<() => Promise<string>>()
