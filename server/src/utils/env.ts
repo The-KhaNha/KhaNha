@@ -26,6 +26,8 @@ const envSchema = z
         'sb_secret_',
         'SUPABASE_SECRET_KEY must be a new-format secret key (sb_secret_...), not a legacy JWT key.',
       ),
+    /** `production` in the API image (Dockerfile), where dev dependencies such as pino-pretty are not installed. */
+    NODE_ENV: z.string().optional(),
     PORT: z.coerce.number().int().positive().default(8000),
     CLIENT_ORIGIN: z
       .string()

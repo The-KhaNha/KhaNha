@@ -93,8 +93,9 @@ are always confirmed by the server, and user-specific data is never cached where
   `lazy()` routes in `App.tsx`, behind `PageBoundary` (skeleton while loading, retry if the chunk fails).
 - The browser HTTP cache does the rest: never add cache-busting query strings to API calls or images.
 
-**Future (Docker + nginx, not in the repo yet):** hashed `/assets/*` `public, max-age=31536000, immutable`;
-`/images/*` a week; `index.html` `no-cache`; gzip or brotli on. See `docs/DEPLOYMENT.md`.
+**Containers (`server/Dockerfile`, `client/Dockerfile`, `client/nginx/`):** hashed `/assets/*`
+`public, max-age=31536000, immutable`; `/images/*` a week; `index.html`, SPA routes and `/runtime-env.js` `no-cache`;
+gzip on. See `docs/DEPLOYMENT.md` "Containers".
 
 `perf-auditor` checks all of this (check 10) and reports a missing safe cache as a finding.
 

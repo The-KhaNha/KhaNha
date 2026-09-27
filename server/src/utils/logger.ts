@@ -25,12 +25,16 @@ export const REDACT_PATHS = [
   '*.SUPABASE_SECRET_KEY',
 ];
 
-/** The one server logger. Level: LOG_LEVEL (see utils/env). Pretty on local, JSON lines on staging and production. */
+// Pretty only in local development: the image (NODE_ENV=production) has no pino-pretty and writes JSON lines even
+// when it points at the local stack.
+const pretty = env.APP_ENV === 'local' && env.NODE_ENV !== 'production';
+
+/** The one server logger. Level: LOG_LEVEL (see utils/env). Pretty in local dev, JSON lines everywhere else. */
 export const logger = pino({
   level: env.LOG_LEVEL,
   base: { env: env.APP_ENV },
   redact: { paths: REDACT_PATHS, censor: '[Redacted]' },
-  ...(env.APP_ENV === 'local' && {
+  ...(pretty && {
     transport: {
       target: 'pino-pretty',
       options: { colorize: true, translateTime: 'SYS:HH:MM:ss', ignore: 'pid,hostname,env' },

@@ -17,6 +17,7 @@ server/
 ├── scripts/
 │   ├── seed.ts               demo reset (local/staging) or first-time production setup
 │   └── db-push.sh            applies migrations to staging or production
+├── Dockerfile                the API image (deps → build → runtime); DEPLOYMENT.md "Containers"
 ├── supabase/
 │   ├── config.toml           local Supabase stack (API :54321, DB :54322, Studio :54323)
 │   └── migrations/           schema, RLS, grants and database functions (SCHEMA.md)

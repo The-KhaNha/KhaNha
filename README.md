@@ -30,6 +30,11 @@ One shop, one staff screen, real-time-enough status updates. The API and web app
 - **Node 24.15 or later 24.x** with any installer (`.nvmrc` / `.node-version` pin it; `npm ci` refuses other majors with `EBADENGINE`)
 - **Docker** (Docker Desktop, OrbStack or Colima) for the local Supabase stack. Not needed if you develop against staging.
 
+## Containers
+
+`server/Dockerfile` and `client/Dockerfile` build the API and web images; one web image serves every environment
+(Supabase values are set at start). See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#containers).
+
 ## Quick start
 
 The one-time setup is three commands; after that `./start.sh` runs everything.

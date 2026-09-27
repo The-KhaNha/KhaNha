@@ -30,14 +30,12 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <!-- Non-blocking: paint in the system font, swap in Plus Jakarta Sans once its CSS lands. -->
+    <!-- main.tsx turns it into a stylesheet (no inline handler, so the CSP needs no 'unsafe-inline' for scripts). -->
     <link
       rel="preload"
       as="style"
+      data-font-stylesheet
       href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
-      onload="
-        this.onload = null;
-        this.rel = 'stylesheet';
-      "
     />
     <noscript>
       <link
@@ -48,6 +46,8 @@
   </head>
   <body>
     <div id="root"></div>
+    <!-- Classic script, before the module: sets window.__RUNTIME_ENV__ (lib/runtimeEnv.ts). -->
+    <script src="/runtime-env.js"></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

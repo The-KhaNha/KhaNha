@@ -12,6 +12,13 @@ interface ImportMetaEnv {
   readonly VITE_SUPABASE_PUBLISHABLE_KEY?: string;
   /** Minimum level for lib/logger: debug, info, warn, error or silent. Unset: debug in dev, warn in builds. */
   readonly VITE_LOG_LEVEL?: string;
+  /** Request timeout in ms for services/api.ts. Unset: 15000. */
+  readonly VITE_REQUEST_TIMEOUT_MS?: string;
+}
+
+interface Window {
+  /** Set by /runtime-env.js before the app loads (nginx/runtime-env.sh in the web image); read by lib/runtimeEnv.ts. */
+  __RUNTIME_ENV__?: import('./lib/runtimeEnv').RuntimeEnv;
 }
 
 interface ImportMeta {

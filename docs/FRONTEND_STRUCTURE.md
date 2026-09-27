@@ -8,17 +8,23 @@ the API is in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ```
 client/
-├── index.html              font preconnect + preload (Plus Jakarta Sans, display=swap), first-paint background
+├── index.html              font preconnect + preload (Plus Jakarta Sans, display=swap), first-paint background,
+│                           /runtime-env.js as a classic script before the app
 ├── vite.config.ts          dev server :5173 (strictPort), proxies /api → http://localhost:8000; refuses to start
 │                           or build without VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY for the mode
+│                           (except mode "container")
 ├── vitest.config.ts        unit tests (jsdom), separate from vite.config.ts
 ├── eslint.config.js
 ├── .env.example            documents the client env vars (see DEPLOYMENT.md)
 ├── .env.development        Vite mode "development" (npm run dev)
 ├── .env.staging            Vite mode "staging" (npm run dev:staging, build:staging)
+├── .env.container          Vite mode "container" (build:container): placeholders, replaced at start
+├── Dockerfile              the web image (build → nginx-unprivileged); DEPLOYMENT.md "Containers"
+├── nginx/                  default.conf.template, security.conf.template (headers, CSP), runtime-env.sh
+├── public/runtime-env.js   window.__RUNTIME_ENV__ = {} for dev; the image serves a generated one instead
 ├── public/images/          food and cafe photos, served at /images/*
 └── src/
-    ├── main.tsx            createRoot + StrictMode + index.css
+    ├── main.tsx            applies the preloaded webfont, createRoot + StrictMode + index.css
     ├── App.tsx             routes, route guards, per-route shell config
     ├── index.css           Tailwind import, design tokens (@theme), keyframes, utilities, reduced-motion rules
     ├── vite-env.d.ts       typed import.meta.env

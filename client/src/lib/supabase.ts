@@ -1,8 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
+import { runtimeEnv } from './runtimeEnv';
 
-// Set per mode in client/.env.<mode> (see client/.env.example); vite.config.ts refuses to build without them.
-const url = import.meta.env.VITE_SUPABASE_URL;
-const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+// The web image's runtime values, else client/.env.<mode> (see client/.env.example); vite.config.ts refuses to build
+// a normal mode without them.
+const url = runtimeEnv.supabaseUrl;
+const publishableKey = runtimeEnv.supabasePublishableKey;
 
 if (!url || !publishableKey) {
   throw new Error(

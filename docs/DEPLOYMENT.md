@@ -42,6 +42,7 @@ Read from `server/.env` (copy `server/.env.example`) or the host's environment. 
 | `APP_ENV`                                                              | yes             |                                 | `local`, `staging` or `production`                           | which project this process talks to; `start.sh` picks the client mode from it; `npm run seed` refuses the demo reset on `production`; logger output and default level                                                                                                      |
 | `SUPABASE_URL`                                                         | yes             |                                 | a URL                                                        | the project URL, e.g. `http://127.0.0.1:54321` or `https://<ref>.supabase.co`                                                                                                                                                                                              |
 | `SUPABASE_SECRET_KEY`                                                  | yes             |                                 | starts with `sb_secret_` (legacy JWT keys are rejected)      | the project's secret key (Project Settings → API Keys). Bypasses RLS. Never in the client or git                                                                                                                                                                           |
+| `NODE_ENV`                                                             | no              |                                 | any                                                          | `production` in the API image (set by the Dockerfile): turns the pretty log transport off, so logs are JSON lines                                                                                                                                                          |
 | `PORT`                                                                 | no              | `8000`                          | positive integer                                             | API port. Keep 8000: `client/vite.config.ts` (proxy target) and `start.sh` hardcode it                                                                                                                                                                                     |
 | `CLIENT_ORIGIN`                                                        | no              | `http://localhost:5173`         | a URL                                                        | the one origin CORS allows                                                                                                                                                                                                                                                 |
 | `GIT_COMMIT`                                                           | no              | `unknown`                       | non-empty string                                             | the commit the build came from; reported by `GET /api/health`. Set by the image build (`--build-arg GIT_COMMIT`)                                                                                                                                                           |
@@ -69,6 +70,7 @@ committed. Never put a secret key (`sb_secret_…`) in any client file.
 | ------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | `VITE_SUPABASE_URL`             | yes      | the project the browser signs in to; same project as the API's `SUPABASE_URL`                                                         |
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | yes      | that project's publishable key (`sb_publishable_…`); RLS keeps it out of every table                                                  |
+| `VITE_REQUEST_TIMEOUT_MS`       | no       | the client's request timeout in ms (default 15000)                                                                                    |
 | `VITE_LOG_LEVEL`                | no       | `debug`, `info`, `warn`, `error` or `silent`; unset: `debug` in dev, `warn` in builds; `debug`/`info` are no-ops in production builds |
 
 Types: `client/src/vite-env.d.ts`. Template: `client/.env.example`.
@@ -85,7 +87,8 @@ builds alike. `client/src/lib/supabase.ts` throws at runtime for the same reason
 
 The client calls the API at `/api` on its own origin (`BASE_URL` in `client/src/services/api.ts`). Only the Vite dev
 server proxies `/api` to `http://localhost:8000`. A production host has to serve the API under `/api` on the client's
-origin (and set `CLIENT_ORIGIN` to that origin). The repo contains no hosting configuration for this.
+origin (and set `CLIENT_ORIGIN` to that origin); the web image's nginx does exactly that ([Containers](#containers)).
+In the web image, each of these values can also be set at start ([runtime environment](#web-image-runtime-environment)).
 
 ## Builds
 
@@ -281,28 +284,85 @@ stack; a hosted project (staging or production) needs the same limit set by hand
 project setting too but its default already matches `config.toml`'s `3600`. Until this is set on a hosted project,
 the client's own 7-day check still runs, but Supabase's refresh token itself will not expire on inactivity.
 
-## Future: Docker + nginx
+## Containers
 
-**Not in the repo yet — this section is future scope, not a description of anything that exists today.** The repo
-currently contains no hosting configuration (see [Client environment variables](#client-environment-variables)); a
-production host has to serve the API under `/api` on the client's own origin and the built `client/dist/` as static
-files. The plan, when someone builds it:
+Two images, built from `server/Dockerfile` and `client/Dockerfile`. One image of each serves every environment:
+the web image takes its Supabase values at start, not at build.
 
-- nginx in front of both: reverse-proxy `/api/*` to the Express server (`server/dist` under Node, `PORT` from its
-  environment), and serve `client/dist/` for everything else, so the browser never needs CORS for same-origin `/api`
-  calls (`CLIENT_ORIGIN` would still be set for any cross-origin caller).
-- Cache headers nginx would add on top of the API's own `Cache-Control: no-cache` (see [API.md#caching](API.md#caching)):
+```bash
+docker build -t fp-api --build-arg GIT_COMMIT=$(git rev-parse --short HEAD) server
+docker build -t fp-web --build-arg GIT_COMMIT=$(git rev-parse --short HEAD) client
+```
 
-  | Path                     | Header                                               | Why                                                                                  |
-  | ------------------------ | ---------------------------------------------------- | ------------------------------------------------------------------------------------ |
-  | `client/dist/assets/*`   | `Cache-Control: public, max-age=31536000, immutable` | Vite hashes these filenames; a changed file is a new URL, so caching forever is safe |
-  | `client/dist/index.html` | `Cache-Control: no-cache`                            | must always be revalidated, or a deploy never reaches a returning visitor            |
-  | `/images/*`              | `Cache-Control: public, max-age=604800` (a week)     | food and cafe photos change rarely and are not fingerprinted                         |
-  | everything else          | unset — the API's own `no-cache` stands              | stock, menu and orders must always be revalidated                                    |
+| Image    | Base                                                | Runs                                       | Port   | Health check                 | Size budget |
+| -------- | --------------------------------------------------- | ------------------------------------------ | ------ | ---------------------------- | ----------- |
+| `fp-api` | `node:24-alpine` (deps → build → runtime stages)    | `node dist/src/server.js` as `node`, PID 1 | `8000` | `GET /api/health` on `$PORT` | 200 MB      |
+| `fp-web` | `nginxinc/nginx-unprivileged:1.27-alpine` (uid 101) | nginx serving `dist/` and proxying `/api/` | `8080` | `GET /healthz`               | 50 MB       |
 
-- gzip or brotli compression on nginx's static responses (Vite's build output is not pre-compressed).
-- `client/.env.production` (see [Client environment variables](#client-environment-variables)) still has to exist
-  before `npm run build` runs, wherever the build happens (CI or the host).
+- **`fp-api`** installs with `npm ci --ignore-scripts` (no Supabase CLI binary), keeps `dist/scripts` so staging can
+  be seeded with `node dist/scripts/seed.js` (it refuses `APP_ENV=production`), and sets `NODE_ENV=production` and
+  `GIT_COMMIT` from the build arg. Its environment is the [server table above](#server-environment-variables).
+- **`fp-web`** builds with `npm run build:container` (`vite build --mode container`, placeholders from the committed
+  `client/.env.container`; `vite.config.ts` skips its required-env check in that mode). At start the image's
+  entrypoint renders `nginx/default.conf.template` and `nginx/security.conf.template` (substituting only variables
+  that are set, so nginx's `$uri` survives), then `nginx/runtime-env.sh` writes `/runtime-env.js`.
 
-Docker is one route to package this (an nginx image plus a small Node image for the API); nothing here commits to
-that container layout, only to what a production host has to do.
+### Web image runtime environment
+
+| Variable                   | Required | Purpose                                                                                            |
+| -------------------------- | -------- | -------------------------------------------------------------------------------------------------- |
+| `API_UPSTREAM`             | yes      | where `/api/` is proxied, e.g. `http://api:8000`; **no trailing slash** (nginx would strip `/api`) |
+| `SUPABASE_URL`             | yes      | the project the browser signs in to (browser-side URL); also the CSP's `connect-src`               |
+| `SUPABASE_PUBLISHABLE_KEY` | yes      | that project's publishable key                                                                     |
+| `LOG_LEVEL`                | no       | the browser console level (as `VITE_LOG_LEVEL`)                                                    |
+| `REQUEST_TIMEOUT_MS`       | no       | the client's request timeout (default 15000)                                                       |
+
+`runtime-env.sh` refuses to start when a required value is empty or any value contains a quote, backslash or `<`. It
+writes `window.__RUNTIME_ENV__ = {…}` to `/tmp/runtime-env/runtime-env.js` (uid 101 cannot write the html
+directory); nginx serves it at `/runtime-env.js`, shadowing the empty `client/public/runtime-env.js` that
+development uses. `index.html` loads it as a classic script before the app, and `lib/runtimeEnv.ts` reads each value
+as runtime first, then the build's `VITE_` value.
+
+### Web image headers
+
+| Path                                         | `Cache-Control`                       | Why                                                                      |
+| -------------------------------------------- | ------------------------------------- | ------------------------------------------------------------------------ |
+| `/assets/*`                                  | `public, max-age=31536000, immutable` | Vite hashes these names; a changed file is a new URL                     |
+| `/images/*`                                  | `public, max-age=604800` (a week)     | photos change rarely and are not fingerprinted                           |
+| `/index.html`, SPA routes, `/runtime-env.js` | `no-cache`                            | a deploy or a config change must reach a returning visitor at once       |
+| `/api/*`                                     | the API's own `no-cache`              | stock, menu and orders are always revalidated ([API.md](API.md#caching)) |
+
+Every location also sends `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`,
+`Permissions-Policy: camera=(self)` and, in P0, **`Content-Security-Policy-Report-Only`**: `default-src 'self';
+script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com;
+img-src 'self' data:; connect-src 'self' ${SUPABASE_URL}; frame-ancestors 'none'; base-uri 'self'`. The snippet is
+included in each location because an `add_header` inside a location drops every inherited one. Moving the CSP to
+enforcing is a user decision, once staging shows no reports. gzip is on for text, CSS, JavaScript, JSON and SVG.
+`/api/` is proxied with HTTP/1.1, `Host`, `X-Forwarded-For`, `X-Forwarded-Proto` and a 30 s read timeout.
+
+### The API must reach Supabase at the browser's URL
+
+Found while testing the images against the local stack: the API verifies each access token against the Supabase URL it
+was configured with, and the token names the URL the browser signed in at as its issuer. With the API at
+`SUPABASE_URL=http://host.docker.internal:54321` and the browser at `http://127.0.0.1:54321`, every signed-in request
+fails with a 500 whose log says `A JWT was provided but no JWKS is configured`, while public routes still work.
+So in any container setup the API's `SUPABASE_URL` must be the same URL the browser uses:
+
+- **Hosted projects** (staging, production): both use `https://<ref>.supabase.co`; nothing to do.
+- **Local stack on Linux:** run the API with `--network host` (compose: `network_mode: host`) and
+  `SUPABASE_URL=http://127.0.0.1:54321`.
+- **Docker Desktop (macOS, Windows/WSL):** `network_mode: host` needs Docker Desktop 4.34+ with host networking
+  enabled, and ports on that "host" are Docker's VM, not your shell. Otherwise run the API with `npm run dev` on the
+  host and only the web image in a container.
+
+### Running the images by hand
+
+```bash
+docker run --rm --network host --env-file server/.env fp-api   # Linux; see the section above
+docker run --rm -p 8080:8080 -e API_UPSTREAM=http://host.docker.internal:8000 --add-host host.docker.internal:host-gateway \
+  -e SUPABASE_URL=http://127.0.0.1:54321 -e SUPABASE_PUBLISHABLE_KEY=<local publishable key> fp-web
+curl -i localhost:8080/runtime-env.js   # no-cache, the runtime values; /assets/* immutable; /menu serves index.html
+```
+
+`server/.env` works as a `--env-file` because its values are unquoted (Docker passes quotes through literally). The
+image logs JSON lines even with `APP_ENV=local`: `NODE_ENV=production` turns pino-pretty (a dev dependency) off.

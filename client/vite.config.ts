@@ -13,8 +13,9 @@ const APP_VERSION_DEFINE = {
 // The dev server proxies /api to the Express server so the client can use relative URLs.
 export default defineConfig(({ mode }) => {
   // Fail the build (not the page in the browser) when the mode's Supabase project is not configured.
+  // Mode "container" builds with placeholders: the web image sets the real values at start (lib/runtimeEnv.ts).
   const env = loadEnv(mode, process.cwd());
-  const missing = REQUIRED_ENV.filter((name) => !env[name]);
+  const missing = mode === 'container' ? [] : REQUIRED_ENV.filter((name) => !env[name]);
   if (missing.length > 0) {
     throw new Error(
       `Missing ${missing.join(', ')} for mode "${mode}". Create client/.env.${mode} (see client/.env.example).`,

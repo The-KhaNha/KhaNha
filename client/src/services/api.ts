@@ -3,11 +3,12 @@ import { useAuthStore } from '../features/auth/authStore';
 import { useVersionStore } from '../features/version/versionStore';
 import { APP_VERSION } from '../lib/appVersion';
 import { logger } from '../lib/logger';
+import { runtimeEnv } from '../lib/runtimeEnv';
 import { supabase } from '../lib/supabase';
 
 const BASE_URL = '/api';
 /** Longest wait for a response (headers and body) before the request counts as unreachable. */
-export const REQUEST_TIMEOUT_MS = 15_000;
+export const REQUEST_TIMEOUT_MS = runtimeEnv.requestTimeoutMs;
 
 export class ApiError extends Error {
   readonly status: number;

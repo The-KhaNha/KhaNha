@@ -1,0 +1,6 @@
+# Included in EVERY location of default.conf: an add_header inside a location drops all inherited ones.
+add_header X-Content-Type-Options "nosniff" always;
+add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+add_header Permissions-Policy "camera=(self)" always;
+# Report-Only in P0: flipping to enforcing is a decision made once staging shows no reports.
+add_header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' ${SUPABASE_URL}; frame-ancestors 'none'; base-uri 'self'" always;
