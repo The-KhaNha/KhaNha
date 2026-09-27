@@ -1,5 +1,6 @@
 import type { ApiErrorDetails, ApiErrorEnvelope } from '../types/api';
 import { useAuthStore } from '../features/auth/authStore';
+import { APP_VERSION } from '../lib/appVersion';
 import { logger } from '../lib/logger';
 import { supabase } from '../lib/supabase';
 
@@ -51,7 +52,11 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   // supabase-js hands out the current access token, refreshing it first when it has expired.
   const token = auth ? (await supabase.auth.getSession()).data.session?.access_token : undefined;
 
-  const headers: Record<string, string> = { Accept: 'application/json' };
+  // Same origin (Vite proxy, nginx), so the custom header costs no CORS preflight.
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+    'X-Client-Version': APP_VERSION,
+  };
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   if (token) headers.Authorization = `Bearer ${token}`;
 

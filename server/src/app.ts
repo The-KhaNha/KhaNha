@@ -3,6 +3,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import cors from 'cors';
 import express, { type Express } from 'express';
 import { pinoHttp } from 'pino-http';
+import { readClientVersion } from './middleware/clientVersion';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { apiRouter } from './routes/index';
 import { env } from './utils/env';
@@ -43,7 +44,15 @@ export function createApp(): Express {
     res.vary('Authorization');
     next();
   });
-  app.use(pinoHttp({ logger, genReqId: requestId, customLogLevel: accessLevel }));
+  app.use(
+    pinoHttp({
+      logger,
+      genReqId: requestId,
+      customLogLevel: accessLevel,
+      // Which client build made the request: tells a stale tab from a current one when reading logs.
+      customProps: (req) => ({ clientVersion: readClientVersion(req) ?? 'none' }),
+    }),
+  );
   app.use(cors({ origin: env.CLIENT_ORIGIN }));
   app.use(express.json());
   app.use('/api', apiRouter);

@@ -1,7 +1,7 @@
 import { useState, type CSSProperties } from 'react';
 import { Check, CircleX } from 'lucide-react';
 import type { OrderStatus } from '../types/api';
-import { ORDER_STEPS, STATUS_META, stepIndex } from '../features/orders/orderStatus';
+import { ORDER_STEPS, STATUS_META, stepIndex, statusMeta } from '../features/orders/orderStatus';
 import { cn } from '../lib/cn';
 
 interface StatusTrackerProps {
@@ -29,7 +29,7 @@ function StepTracker({ status, className }: { status: OrderStatus; className?: s
   return (
     <ol className={cn('flex items-start', className)} aria-label="Order progress">
       {ORDER_STEPS.map((step, index) => {
-        const meta = STATUS_META[step];
+        const meta = statusMeta(step);
         const done = finished || index < current;
         const active = !finished && index === current;
         const last = index === ORDER_STEPS.length - 1;

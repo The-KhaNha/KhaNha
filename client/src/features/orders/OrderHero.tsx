@@ -4,7 +4,7 @@ import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
 import { StatusBadge } from '../../components/StatusBadge';
 import { cn } from '../../lib/cn';
-import { STATUS_META } from './orderStatus';
+import { statusMeta } from './orderStatus';
 
 interface OrderHeroProps {
   order: Order;
@@ -17,7 +17,7 @@ interface OrderHeroProps {
  * Re-key it on `order.status` so each state plays its entrance once.
  */
 export function OrderHero({ order, onReorder, reordering }: OrderHeroProps) {
-  const meta = STATUS_META[order.status];
+  const meta = statusMeta(order.status);
 
   if (order.status === 'READY') {
     return (

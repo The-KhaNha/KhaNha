@@ -1,5 +1,5 @@
 import type { OrderStatus } from '../types/api';
-import { STATUS_META, isActive } from '../features/orders/orderStatus';
+import { isActive, statusMeta } from '../features/orders/orderStatus';
 import { cn } from '../lib/cn';
 
 interface StatusBadgeProps {
@@ -10,7 +10,7 @@ interface StatusBadgeProps {
 
 /** Tinted status pill. The dot pings only while the order is still moving. */
 export function StatusBadge({ status, size = 'sm', className }: StatusBadgeProps) {
-  const meta = STATUS_META[status];
+  const meta = statusMeta(status);
   return (
     <span
       className={cn(

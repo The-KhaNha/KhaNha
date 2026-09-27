@@ -70,3 +70,17 @@ describe('request timeout', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 });
+
+describe('client version header', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('sends X-Client-Version on every request', async () => {
+    const fetchMock = vi.fn(
+      async (_url: string, _init?: RequestInit) => new Response('{}', { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    await request('/menu');
+    const init = fetchMock.mock.calls[0]?.[1];
+    expect((init?.headers as Record<string, string>)['X-Client-Version']).toMatch(/^\d+\.\d+\.\d+/);
+  });
+});

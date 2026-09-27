@@ -1,5 +1,10 @@
 /// <reference types="vite/client" />
 
+/** client/package.json version, injected by `define` (lib/appVersion.ts). */
+declare const __APP_VERSION__: string;
+/** Build commit (GIT_COMMIT at build time, else 'local'), injected by `define` (lib/appVersion.ts). */
+declare const __APP_COMMIT__: string;
+
 interface ImportMetaEnv {
   /** The Supabase project the browser signs in to. Must be the same project the API's SUPABASE_URL points at. */
   readonly VITE_SUPABASE_URL?: string;

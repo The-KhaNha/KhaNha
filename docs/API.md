@@ -40,19 +40,20 @@ The API has no sign-in or sign-out route. The browser signs in and out with supa
 
 ## Routes
 
-| Method | Path                 | Auth         | Request                                                  | Success                             |
-| ------ | -------------------- | ------------ | -------------------------------------------------------- | ----------------------------------- |
-| GET    | `/health`            | none         | none                                                     | 200 `{ ok: true }`                  |
-| POST   | `/auth/register`     | none         | body: [`registerSchema`](#post-authregister)             | 201 `{ user: UserDto }`             |
-| GET    | `/auth/me`           | user         | none                                                     | 200 `{ user: UserDto }`             |
-| GET    | `/store`             | none         | none                                                     | 200 `{ store: StoreDto }`           |
-| GET    | `/menu`              | none         | none                                                     | 200 `MenuResponse`                  |
-| POST   | `/orders`            | user         | body: [`createOrderSchema`](#post-orders)                | 201 `{ order: OrderDto }`           |
-| GET    | `/orders`            | user         | query: [`listOrdersQuerySchema`](#get-orders)            | 200 `{ orders: OrderDto[] }`        |
-| GET    | `/orders/:id`        | user         | path: `id`                                               | 200 `{ order: OrderDto }`           |
-| PATCH  | `/orders/:id/status` | user + STAFF | body: [`updateOrderStatusSchema`](#patch-ordersidstatus) | 200 `{ order: OrderDto }`           |
-| GET    | `/admin/settings`    | user + ADMIN | none                                                     | 200 `{ settings: SiteSettingsDto }` |
-| PATCH  | `/admin/settings`    | user + ADMIN | body: [`updateSettingsSchema`](#patch-adminsettings)     | 200 `{ settings: SiteSettingsDto }` |
+| Method | Path                 | Auth         | Request                                                  | Success                                         |
+| ------ | -------------------- | ------------ | -------------------------------------------------------- | ----------------------------------------------- |
+| GET    | `/health`            | none         | none                                                     | 200 `{ ok: true, version, commit }`             |
+| GET    | `/ready`             | none         | none                                                     | 200 `{ ready: true }` or 503 `{ ready: false }` |
+| POST   | `/auth/register`     | none         | body: [`registerSchema`](#post-authregister)             | 201 `{ user: UserDto }`                         |
+| GET    | `/auth/me`           | user         | none                                                     | 200 `{ user: UserDto }`                         |
+| GET    | `/store`             | none         | none                                                     | 200 `{ store: StoreDto }`                       |
+| GET    | `/menu`              | none         | none                                                     | 200 `MenuResponse`                              |
+| POST   | `/orders`            | user         | body: [`createOrderSchema`](#post-orders)                | 201 `{ order: OrderDto }`                       |
+| GET    | `/orders`            | user         | query: [`listOrdersQuerySchema`](#get-orders)            | 200 `{ orders: OrderDto[] }`                    |
+| GET    | `/orders/:id`        | user         | path: `id`                                               | 200 `{ order: OrderDto }`                       |
+| PATCH  | `/orders/:id/status` | user + STAFF | body: [`updateOrderStatusSchema`](#patch-ordersidstatus) | 200 `{ order: OrderDto }`                       |
+| GET    | `/admin/settings`    | user + ADMIN | none                                                     | 200 `{ settings: SiteSettingsDto }`             |
+| PATCH  | `/admin/settings`    | user + ADMIN | body: [`updateSettingsSchema`](#patch-adminsettings)     | 200 `{ settings: SiteSettingsDto }`             |
 
 `orderRouter.use(requireAuth)` runs before any `/orders` route matches. So any path under `/api/orders`, including
 one that matches no route, returns 401 without a valid token. `adminRouter.use(requireAuth, requireAdmin)` does the
@@ -60,7 +61,17 @@ same for every path under `/api/admin`.
 
 ### GET /health
 
-Code: `server/src/routes/index.ts`. Always 200 `{ "ok": true }`. It does not touch the database.
+Code: `server/src/controllers/health.controller.ts`. Liveness: always 200
+`{ "ok": true, "version": "0.1.0", "commit": "1a2b3c4…" }`. `version` is `server/package.json`'s (bumped only by the
+release PR); `commit` is `GIT_COMMIT` (`unknown` outside an image build). It does not touch the database, so a
+database outage never restarts a healthy container.
+
+### GET /ready
+
+Code: `server/src/controllers/health.controller.ts`. Readiness: one `site_settings` select with a 1-second
+`AbortSignal.timeout`. 200 `{ "ready": true }` when it answers, else 503 `{ "ready": false }`. The failure is the
+answer, not an error: it never reaches the error handler or the error log. Load balancers and compose use this to
+hold traffic back from an instance that cannot reach the database.
 
 ### POST /auth/register
 
@@ -409,20 +420,21 @@ Any other `P0001` or database error is a 500.
 
 ## Headers and limits
 
-| Item                   | Value                                                                                              | Source                                 |
-| ---------------------- | -------------------------------------------------------------------------------------------------- | -------------------------------------- |
-| `x-request-id`         | echoed on every response; a caller's value is kept if it matches `^[\w.-]{1,64}$`, else a new UUID | `server/src/app.ts`                    |
-| CORS                   | one allowed origin, `CLIENT_ORIGIN` (default `http://localhost:5173`)                              | `server/src/app.ts`, `utils/env.ts`    |
-| `x-powered-by`         | disabled                                                                                           | `server/src/app.ts`                    |
-| JSON body size         | 100 kB (the `express.json()` default); larger is 413                                               | `server/src/app.ts`                    |
-| Lines per order        | 1–30, counted before merging duplicates                                                            | `order.schema.ts`                      |
-| Quantity per item      | 1–10 after merging duplicates, a fixed constant (`MAX_QUANTITY_PER_ITEM`), not editable            | `order.schema.ts`, `order.service.ts`  |
-| Customer order history | site setting, default 20 (1–200), editable at `PATCH /admin/settings`                              | `settings.service.ts`, `site_settings` |
-| Staff order list       | site setting, default 100 (1–500), editable at `PATCH /admin/settings`                             | `settings.service.ts`, `site_settings` |
-| Name                   | 2–60 (register); at most 60 (`customerName`)                                                       | `auth.schema.ts`, `order.schema.ts`    |
-| Note                   | at most 200                                                                                        | `order.schema.ts`                      |
-| Password               | 6–72                                                                                               | `auth.schema.ts`                       |
-| Phone                  | optional `+` and 10–15 digits after stripping spaces, dashes, parentheses                          | `common.ts`                            |
+| Item                   | Value                                                                                                                                                                                      | Source                                                                 |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------- |
+| `X-Client-Version`     | sent by the client on every request (`client/package.json` version); logged as `clientVersion` on the access line (`none` when missing, or not `^\d+\.\d+\.\d+(-[\w.]+)?$` up to 32 chars) | `client/src/services/api.ts`, `server/src/middleware/clientVersion.ts` |
+| `x-request-id`         | echoed on every response; a caller's value is kept if it matches `^[\w.-]{1,64}$`, else a new UUID                                                                                         | `server/src/app.ts`                                                    |
+| CORS                   | one allowed origin, `CLIENT_ORIGIN` (default `http://localhost:5173`)                                                                                                                      | `server/src/app.ts`, `utils/env.ts`                                    |
+| `x-powered-by`         | disabled                                                                                                                                                                                   | `server/src/app.ts`                                                    |
+| JSON body size         | 100 kB (the `express.json()` default); larger is 413                                                                                                                                       | `server/src/app.ts`                                                    |
+| Lines per order        | 1–30, counted before merging duplicates                                                                                                                                                    | `order.schema.ts`                                                      |
+| Quantity per item      | 1–10 after merging duplicates, a fixed constant (`MAX_QUANTITY_PER_ITEM`), not editable                                                                                                    | `order.schema.ts`, `order.service.ts`                                  |
+| Customer order history | site setting, default 20 (1–200), editable at `PATCH /admin/settings`                                                                                                                      | `settings.service.ts`, `site_settings`                                 |
+| Staff order list       | site setting, default 100 (1–500), editable at `PATCH /admin/settings`                                                                                                                     | `settings.service.ts`, `site_settings`                                 |
+| Name                   | 2–60 (register); at most 60 (`customerName`)                                                                                                                                               | `auth.schema.ts`, `order.schema.ts`                                    |
+| Note                   | at most 200                                                                                                                                                                                | `order.schema.ts`                                                      |
+| Password               | 6–72                                                                                                                                                                                       | `auth.schema.ts`                                                       |
+| Phone                  | optional `+` and 10–15 digits after stripping spaces, dashes, parentheses                                                                                                                  | `common.ts`                                                            |
 
 The client logs the `x-request-id` of a failed call so it can be matched to the server's log line. See
 [LOGGING.md](LOGGING.md#request-ids).

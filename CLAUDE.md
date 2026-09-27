@@ -463,6 +463,7 @@ Agents added during a session are not registered until the next session; meanwhi
 | `info` | lifecycle and business events | listening/shutdown, `Order placed`, `Order status changed`, 4xx like `INSUFFICIENT_STOCK`, access lines for writes |
 | `debug` | dev tracing | access lines for successful reads (polled lists) |
 
+- Access lines carry `clientVersion` (the `X-Client-Version` header, `none` when missing or malformed).
 - Structured fields first, a short constant message second: `req.log.info({ orderId, status }, 'Order status changed')`.
 - Never log tokens, the secret key, passwords, or raw email/phone. Redaction (`REDACT_PATHS`) covers object keys
   only, never message strings.

@@ -2,6 +2,7 @@ import {
   ChefHat,
   CircleCheck,
   CircleX,
+  LoaderCircle,
   PackageCheck,
   ReceiptText,
   type LucideIcon,
@@ -115,6 +116,32 @@ export const STATUS_META: Record<OrderStatus, StatusMeta> = {
     canCancel: false,
   },
 };
+
+/**
+ * Shown for a status this build does not know yet (a newer server added one). Neutral, with no staff action, so an
+ * old tab degrades to "Updating…" instead of crashing on an undefined lookup.
+ */
+export const FALLBACK_STATUS_META: StatusMeta = {
+  label: 'Updating…',
+  customerTitle: 'Updating…',
+  customerCopy: 'Refresh the page to see the latest status of your order.',
+  icon: LoaderCircle,
+  badgeClass: 'bg-surface-2 text-muted',
+  fillClass: 'bg-line',
+  onFillClass: 'text-ink',
+  railClass: 'bg-line',
+  pulseRgb: '181 165 151',
+  next: null,
+  actionLabel: null,
+  canCancel: false,
+};
+
+/** The display rules for a status; every read goes through here so an unknown status gets the fallback. */
+export function statusMeta(status: string): StatusMeta {
+  return Object.hasOwn(STATUS_META, status)
+    ? STATUS_META[status as OrderStatus]
+    : FALLBACK_STATUS_META;
+}
 
 export function isTerminal(status: OrderStatus): boolean {
   return TERMINAL_STATUSES.includes(status);

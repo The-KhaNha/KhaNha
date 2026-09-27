@@ -14,6 +14,7 @@ import { Button, ButtonLink } from '../components/Button';
 import { Card } from '../components/Card';
 import { EmptyState } from '../components/EmptyState';
 import { selectUser, useAuthStore } from '../features/auth/authStore';
+import { APP_COMMIT, APP_VERSION } from '../lib/appVersion';
 import { cn } from '../lib/cn';
 import { initialOf } from '../lib/format';
 
@@ -117,6 +118,11 @@ export function ProfilePage() {
       >
         Log out
       </Button>
+
+      {/* Tells support which build a customer runs; staging builds share a version, the commit tells them apart. */}
+      <p className="text-center text-xs text-hint">
+        Food Pickup v{APP_VERSION} ({APP_COMMIT.slice(0, 7)})
+      </p>
     </div>
   );
 }

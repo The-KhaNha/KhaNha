@@ -38,6 +38,8 @@ Successful `GET`s are logged at `debug` on purpose: the staff board polls every 
 
 - `pino-http` gives every request an id. It keeps a caller's `x-request-id` if it is 1–64 characters of
   `[A-Za-z0-9_.-]`; otherwise it generates a UUID. The id is echoed in the `x-request-id` response header.
+- Every access line also carries `clientVersion`: the request's `X-Client-Version` (`none` when it is missing or
+  malformed; `server/src/middleware/clientVersion.ts`). It tells a stale browser tab from a current one.
 - Log through `req.log` inside a request (controllers, middleware, the error handler). Every line then carries
   `req.id`. Use the module `logger` only outside requests (startup, shutdown, `scripts/seed.ts`).
 - The client logs `requestId` from the response header when an API call fails, so a browser report can be matched to

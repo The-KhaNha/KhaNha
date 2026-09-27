@@ -31,6 +31,11 @@ const envSchema = z
       .string()
       .url('CLIENT_ORIGIN must be a URL such as http://localhost:5173.')
       .default('http://localhost:5173'),
+    /** The commit this build came from (image build arg); reported by GET /api/health. */
+    GIT_COMMIT: z.string().min(1).default('unknown'),
+    // Must exceed the load balancer's idle timeout (60 s on an ALB), or Node closes a kept-alive connection the
+    // balancer is about to reuse and the next request fails with a 502.
+    KEEP_ALIVE_TIMEOUT_MS: z.coerce.number().int().positive().default(65_000),
     /** Minimum level written by utils/logger. Unset: debug on local, info on staging and production. */
     LOG_LEVEL: z
       .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'], {

@@ -21,15 +21,15 @@ server/
 │   ├── config.toml           local Supabase stack (API :54321, DB :54322, Studio :54323)
 │   └── migrations/           schema, RLS, grants and database functions (SCHEMA.md)
 ├── src/
-│   ├── server.ts             entry point: createApp().listen(PORT), graceful shutdown
+│   ├── server.ts             entry point: createApp().listen(PORT), keep-alive timeouts, graceful shutdown
 │   ├── app.ts                createApp(): the whole middleware pipeline, no listen
 │   ├── routes/               route tables: index.ts + one *.routes.ts per resource
 │   ├── controllers/          thin handlers: read req → call a service → serialize → res.json
 │   ├── services/             business logic and every database call
 │   ├── schemas/              zod request schemas
-│   ├── middleware/           auth.ts, validate.ts, errorHandler.ts
+│   ├── middleware/           auth.ts, validate.ts, errorHandler.ts, clientVersion.ts
 │   ├── types/                API DTOs, generated database types, enums, AuthUser, Express augmentation
-│   └── utils/                env, logger, Supabase client, errors, serializers, ids, cache
+│   └── utils/                env, logger, Supabase client, errors, serializers, ids, cache, version
 └── test/
     ├── setup/                api.ts, guard.ts, run-lock.ts, target.ts, helpers.ts (+ target.safe.test.ts)
     ├── api/                  one suite per router: admin, auth, health, menu, menu-cache, orders, store, caching
@@ -40,7 +40,9 @@ server/
 ## Request pipeline
 
 `server/src/server.ts` only loads `dotenv/config`, calls `createApp()` from `server/src/app.ts`, listens on
-`env.PORT`, and on `SIGINT`/`SIGTERM` closes the server and flushes the logger before exiting. `createApp()` never
+`env.PORT` with `keepAliveTimeout = KEEP_ALIVE_TIMEOUT_MS` (and `headersTimeout` 1 s above it), and on
+`SIGINT`/`SIGTERM` stops accepting, lets in-flight requests finish, flushes the logger and exits (forced exit with code
+1 after 10 s). `createApp()` never
 calls `listen`, so tests drive it with Supertest.
 
 ```mermaid
@@ -50,7 +52,7 @@ flowchart TD
   Pino --> Cors["cors({ origin: CLIENT_ORIGIN })"]
   Cors --> Json["express.json() (100 kB default limit)"]
   Json --> Api{"/api → apiRouter"}
-  Api -->|"GET /health"| Health["{ ok: true }"]
+  Api -->|"GET /health, GET /ready"| Health["health.controller<br/>{ ok, version, commit } / { ready }"]
   Api -->|"/auth, /store, /menu, /orders"| Router["resource router<br/>requireAuth / requireStaff / validate(schema)"]
   Api -->|"/admin"| AdminR["adminRouter<br/>requireAuth / requireAdmin"]
   Router --> Ctl["controller"] --> Svc["service → supabaseAdmin → Postgres"]
@@ -68,7 +70,7 @@ flowchart TD
 | `pino-http`       | `src/app.ts`                     | keeps a caller's `x-request-id` if it matches `^[\w.-]{1,64}$`, else a UUID; echoes it; access line at `debug` for successful GET/HEAD/OPTIONS, `info` otherwise |
 | `cors`            | `src/app.ts`                     | one allowed origin, `env.CLIENT_ORIGIN`                                                                                                                          |
 | `express.json()`  | `src/app.ts`                     | parses JSON bodies; over 100 kB is 413, malformed is 400 (mapped in the error handler)                                                                           |
-| `apiRouter`       | `src/routes/index.ts`            | `/health`, then mounts `/auth`, `/store`, `/menu`, `/orders`, `/admin`                                                                                           |
+| `apiRouter`       | `src/routes/index.ts`            | `/health`, `/ready`, then mounts `/auth`, `/store`, `/menu`, `/orders`, `/admin`                                                                                 |
 | `notFoundHandler` | `src/middleware/errorHandler.ts` | 404 `NOT_FOUND` "No route matches <METHOD> <path>."                                                                                                              |
 | `errorHandler`    | `src/middleware/errorHandler.ts` | maps any error to status + code + safe message; logs it once (5xx `error` with the stack, 401/403 `warn`, other 4xx `info`)                                      |
 
@@ -83,7 +85,7 @@ no `try`/`catch` and throw `AppError`s directly. The error mapping is drawn in
 
 | File              | Mounted at    | Routes                                                                                                               |
 | ----------------- | ------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `index.ts`        | `/api`        | `GET /health`; mounts the five routers                                                                               |
+| `index.ts`        | `/api`        | `GET /health`, `GET /ready` (probes first); mounts the five routers                                                  |
 | `auth.routes.ts`  | `/api/auth`   | `POST /register` (validate), `GET /me` (requireAuth)                                                                 |
 | `store.routes.ts` | `/api/store`  | `GET /`                                                                                                              |
 | `menu.routes.ts`  | `/api/menu`   | `GET /`                                                                                                              |
@@ -98,13 +100,14 @@ service call, serializes with `utils/serializers.ts` and sends JSON. `order.cont
 `req.log.info`. Typed with `BodyHandler` / `QueryHandler` from
 `types/http.ts` so `req.body` and `req.query` carry the parsed schema type.
 
-| File                  | Handlers                                                     |
-| --------------------- | ------------------------------------------------------------ |
-| `auth.controller.ts`  | `register`, `me`                                             |
-| `store.controller.ts` | `getStore`                                                   |
-| `menu.controller.ts`  | `getMenu`                                                    |
-| `order.controller.ts` | `createOrder`, `listOrders`, `getOrder`, `updateOrderStatus` |
-| `admin.controller.ts` | `getSettings`, `updateSettings`                              |
+| File                   | Handlers                                                                               |
+| ---------------------- | -------------------------------------------------------------------------------------- |
+| `health.controller.ts` | `getHealth`, `getReady`, `readinessHandler(probe)` (the probe is injectable for tests) |
+| `auth.controller.ts`   | `register`, `me`                                                                       |
+| `store.controller.ts`  | `getStore`                                                                             |
+| `menu.controller.ts`   | `getMenu`                                                                              |
+| `order.controller.ts`  | `createOrder`, `listOrders`, `getOrder`, `updateOrderStatus`                           |
+| `admin.controller.ts`  | `getSettings`, `updateSettings`                                                        |
 
 ### services/
 
@@ -130,11 +133,12 @@ Field rules: [API.md](API.md#routes).
 
 ### middleware/
 
-| File              | Exports                                                           |
-| ----------------- | ----------------------------------------------------------------- |
-| `auth.ts`         | `requireAuth`, `requireStaff`, `requireAdmin`, `currentUser(req)` |
-| `validate.ts`     | `validate(schema, source = 'body')`, `describeIssue(issue)`       |
-| `errorHandler.ts` | `notFoundHandler`, `errorHandler`                                 |
+| File               | Exports                                                                                                        |
+| ------------------ | -------------------------------------------------------------------------------------------------------------- |
+| `auth.ts`          | `requireAuth`, `requireStaff`, `requireAdmin`, `currentUser(req)`                                              |
+| `validate.ts`      | `validate(schema, source = 'body')`, `describeIssue(issue)`                                                    |
+| `errorHandler.ts`  | `notFoundHandler`, `errorHandler`                                                                              |
+| `clientVersion.ts` | `readClientVersion(req)`: the `X-Client-Version` header if it is a plain semver (≤ 32 chars), else `undefined` |
 
 `validate()` strips NUL bytes from every string, parses with zod, and replaces `req.body` (or shadows the
 `req.query` getter with an own property) with the parsed value. On failure it throws a 400 `VALIDATION_ERROR` whose
@@ -161,6 +165,7 @@ message names the field.
 | `errors.ts`      | `ErrorCode`, `ItemErrorDetails`, `AppError`, `validationError`, `unauthorized`, `forbidden`, `notFound`, `insufficientStock`                                                                                                                     |
 | `serializers.ts` | `selectOrders()` (the one order query with lines, store and item photos), `OrderWithDetails`, `toUserDto`, `toStoreDto`, `toMenuItemDto`, `toOrderDto`, `isPurchasable`                                                                          |
 | `ids.ts`         | `isUuid(value)`                                                                                                                                                                                                                                  |
+| `version.ts`     | `APP_VERSION` (`package.json` in `process.cwd()`), `GIT_COMMIT` (env)                                                                                                                                                                            |
 | `cache.ts`       | `cached<T>(key, ttlMs, load)`, `invalidate(key?)`, `PUBLIC_READ_TTL_MS = 10_000` — in-process TTL cache for public reads; shares one pending load between concurrent misses; a failed load is never cached. See [API.md#caching](API.md#caching) |
 
 ## Adding an endpoint

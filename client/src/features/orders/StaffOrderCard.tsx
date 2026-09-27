@@ -7,7 +7,7 @@ import { Skeleton } from '../../components/Skeleton';
 import { StatusBadge } from '../../components/StatusBadge';
 import { TimeText } from '../../components/TimeText';
 import { cn } from '../../lib/cn';
-import { STATUS_META, isTerminal } from './orderStatus';
+import { isTerminal, statusMeta } from './orderStatus';
 
 interface StaffOrderCardProps {
   order: Order;
@@ -33,7 +33,7 @@ export function StaffOrderCard({
   fresh = false,
   leaving = false,
 }: StaffOrderCardProps) {
-  const meta = STATUS_META[order.status];
+  const meta = statusMeta(order.status);
   const finished = isTerminal(order.status);
   const [confirmingCancel, setConfirmingCancel] = useState(false);
   // Capture "fresh" at mount so later re-renders (polls, the clock) don't restart the flash.
