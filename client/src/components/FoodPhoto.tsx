@@ -1,5 +1,6 @@
 import { forwardRef, type ReactNode } from 'react';
 import { cn } from '../lib/cn';
+import { photoSrcSet } from '../lib/photo';
 
 interface FoodPhotoProps {
   src: string | null;
@@ -11,6 +12,11 @@ interface FoodPhotoProps {
   /** Grey out unavailable items. */
   muted?: boolean;
   eager?: boolean;
+  /**
+   * Rendered width, so the browser picks the 400px thumbnail or the 900px original (lib/photo.ts). Defaults to a
+   * thumbnail; pass the real width for anything larger (the rail, the item sheet).
+   */
+  sizes?: string;
   /** Only the gold Popular badge is allowed on top of a food photo. */
   children?: ReactNode;
 }
@@ -21,21 +27,40 @@ interface FoodPhotoProps {
  * Storefront photos do NOT use this component.
  */
 export const FoodPhoto = forwardRef<HTMLSpanElement, FoodPhotoProps>(function FoodPhoto(
-  { src, alt = '', className, imgClassName, muted = false, eager = false, children },
+  {
+    src,
+    alt = '',
+    className,
+    imgClassName,
+    muted = false,
+    eager = false,
+    sizes = '112px',
+    children,
+  },
   ref,
 ) {
   return (
     <span
       ref={ref}
       data-food-photo
-      className={cn('relative block overflow-hidden bg-surface-2', muted && 'opacity-60', className)}
+      className={cn(
+        'relative block overflow-hidden bg-surface-2',
+        muted && 'opacity-60',
+        className,
+      )}
     >
       {src && (
         <img
           src={src}
+          srcSet={photoSrcSet(src)}
+          sizes={sizes}
           alt={alt}
           loading={eager ? 'eager' : 'lazy'}
-          className={cn('h-full w-full object-cover saturate-[1.06]', muted && 'grayscale', imgClassName)}
+          className={cn(
+            'h-full w-full object-cover saturate-[1.06]',
+            muted && 'grayscale',
+            imgClassName,
+          )}
         />
       )}
       <span

@@ -8,9 +8,30 @@
     "agent-skills@addy-agent-skills": true
   },
   "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          { "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/coderabbit-detect.js\"", "timeout": 5 },
+          { "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/major-change-reminder.js\"", "timeout": 5 }
+        ]
+      }
+    ],
     "PreToolUse": [
       { "matcher": "Bash|Grep", "hooks": [{ "type": "command", "command": "graphify hook-guard search", "timeout": 10 }] },
-      { "matcher": "Read|Glob", "hooks": [{ "type": "command", "command": "graphify hook-guard read", "timeout": 10 }] }
+      { "matcher": "Read|Glob", "hooks": [{ "type": "command", "command": "graphify hook-guard read", "timeout": 10 }] },
+      {
+        "matcher": "Bash",
+        "hooks": [{ "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-destructive-git.js\"", "timeout": 5 }]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [{ "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/reuse-reminder.js\"", "timeout": 5 }]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [{ "type": "command", "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/major-change-gate.js\"", "timeout": 90 }]
+      }
     ]
   }
 }

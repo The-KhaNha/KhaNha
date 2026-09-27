@@ -23,7 +23,12 @@ export async function register(input: RegisterInput): Promise<Tables<'profiles'>
 }
 
 export async function getProfile(id: string): Promise<Tables<'profiles'>> {
-  const { data: profile } = await supabaseAdmin.from('profiles').select().eq('id', id).maybeSingle().throwOnError();
+  const { data: profile } = await supabaseAdmin
+    .from('profiles')
+    .select()
+    .eq('id', id)
+    .maybeSingle()
+    .throwOnError();
   if (!profile) throw notFound('Account not found.');
   return profile;
 }
@@ -32,7 +37,11 @@ function describeAuthError(error: AuthError): Error {
   switch (error.code) {
     case 'email_exists':
     case 'user_already_exists':
-      return new AppError(409, 'EMAIL_TAKEN', 'An account with this email already exists. Try signing in.');
+      return new AppError(
+        409,
+        'EMAIL_TAKEN',
+        'An account with this email already exists. Try signing in.',
+      );
     case 'email_address_invalid':
       return validationError('Please enter a valid email address.');
     case 'weak_password':

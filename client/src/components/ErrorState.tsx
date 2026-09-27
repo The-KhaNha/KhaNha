@@ -36,7 +36,9 @@ export function ErrorState({
       role="alert"
       className={cn(
         'flex flex-col items-center text-center animate-fade-up',
-        compact ? 'rounded-[28px] border border-line/70 bg-surface px-5 py-8 shadow-card' : 'px-6 py-14',
+        compact
+          ? 'rounded-[28px] border border-line/70 bg-surface px-5 py-8 shadow-card'
+          : 'px-6 py-14',
         className,
       )}
     >
@@ -50,7 +52,9 @@ export function ErrorState({
       </div>
       <h2 className={cn('mt-5 font-extrabold', compact ? 'text-lg' : 'text-[20px]')}>{title}</h2>
       <p className="mt-2 max-w-xs text-[15px] leading-relaxed text-muted">{message}</p>
-      {actions && <div className="mt-6 flex w-full max-w-xs flex-col items-stretch gap-2">{actions}</div>}
+      {actions && (
+        <div className="mt-6 flex w-full max-w-xs flex-col items-stretch gap-2">{actions}</div>
+      )}
       {!actions && onRetry && (
         <Button
           variant="secondary"

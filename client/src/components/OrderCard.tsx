@@ -54,7 +54,9 @@ export function OrderCard({ order, onReorder, reordering = false }: OrderCardPro
             </span>
           )}
         </div>
-        <p className="min-w-0 line-clamp-2 wrap-anywhere text-sm leading-snug text-muted">{summarizeItems(order)}</p>
+        <p className="min-w-0 line-clamp-2 wrap-anywhere text-sm leading-snug text-muted">
+          {summarizeItems(order)}
+        </p>
       </div>
 
       <div className="mt-4 flex items-center justify-between gap-3 border-t border-line/70 pt-4">

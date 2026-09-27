@@ -66,7 +66,12 @@ export function OrdersPage() {
   return (
     <div className="pt-4">
       {active.length > 0 && (
-        <OrderGroup title="In progress" orders={active} onReorder={reorder} reorderingId={reorderingId} />
+        <OrderGroup
+          title="In progress"
+          orders={active}
+          onReorder={reorder}
+          reorderingId={reorderingId}
+        />
       )}
       {past.length > 0 && (
         <OrderGroup

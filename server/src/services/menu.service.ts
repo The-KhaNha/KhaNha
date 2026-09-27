@@ -1,10 +1,18 @@
 import type { MenuCategoryDto, MenuItemDto, MenuResponse } from '../types/api';
+import { cached, PUBLIC_READ_TTL_MS } from '../utils/cache';
 import { supabaseAdmin } from '../utils/supabase';
 import { toMenuItemDto, toStoreDto } from '../utils/serializers';
 import { getStore } from './store.service';
 
-/** Full menu including unavailable items (the client greys them out). */
-export async function getMenu(): Promise<MenuResponse> {
+/**
+ * Full menu including unavailable items (the client greys them out). Cached for PUBLIC_READ_TTL_MS; order.service
+ * drops the cache whenever stock changes through this API (an order placed or cancelled).
+ */
+export function getMenu(): Promise<MenuResponse> {
+  return cached('menu', PUBLIC_READ_TTL_MS, loadMenu);
+}
+
+async function loadMenu(): Promise<MenuResponse> {
   const store = await getStore();
   const { data: rows } = await supabaseAdmin
     .from('menu_items')

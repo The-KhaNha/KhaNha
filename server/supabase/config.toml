@@ -268,11 +268,14 @@ max_frequency = "5s"
 # 4152127777 = "123456"
 
 # Configure logged in session timeouts.
-# [auth.sessions]
+[auth.sessions]
 # Force log out after the specified duration.
 # timebox = "24h"
 # Force log out if the user has been inactive longer than the specified duration.
-# inactivity_timeout = "8h"
+# A sign-in lasts a week without use; using the app (which refreshes the 1 h access token) restarts the week.
+# The client enforces the same week (client/src/features/auth/sessionActivity.ts). Hosted projects: set it in the
+# dashboard (Authentication -> Sessions), a paid-plan setting; this file only configures the local stack.
+inactivity_timeout = "168h"
 
 # This hook runs before a new user is created and allows developers to reject the request based on the incoming user object.
 # [auth.hook.before_user_created]

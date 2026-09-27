@@ -10,6 +10,11 @@ interface CartItemProps {
   line: CartLine;
 }
 
+/** A 44px tap target around a 32px visible pill (PILL), so the row stays compact. */
+const HIT_AREA = 'group grid h-11 min-w-11 place-items-center focus-visible:outline-none';
+const PILL =
+  'grid h-8 place-items-center rounded-lg text-[13px] transition-colors group-focus-visible:ring-2 group-focus-visible:ring-brand-500/40';
+
 /**
  * One cart line. The stepper is the quiet outlined variant so "Proceed to Checkout" stays the only paprika fill.
  * A line the shop can no longer fulfil (sold out, or more than is left) gets a paprika ring, a label naming
@@ -32,17 +37,29 @@ export function CartItem({ line }: CartItemProps) {
         problem && '-mx-2 my-1 rounded-[20px] px-2 ring-2 ring-brand-500',
       )}
     >
-      <FoodPhoto src={line.imageUrl} muted={soldOut} className="h-[72px] w-[72px] shrink-0 rounded-[14px]">
+      <FoodPhoto
+        src={line.imageUrl}
+        muted={soldOut}
+        className="h-[72px] w-[72px] shrink-0 rounded-[14px]"
+      >
         {!line.imageUrl && (
-          <UtensilsCrossed className="absolute left-1/2 top-1/2 h-6 w-6 -translate-x-1/2 -translate-y-1/2 text-muted" aria-hidden />
+          <UtensilsCrossed
+            className="absolute left-1/2 top-1/2 h-6 w-6 -translate-x-1/2 -translate-y-1/2 text-muted"
+            aria-hidden
+          />
         )}
       </FoodPhoto>
       <div className="min-w-0 flex-1">
-        <p className="line-clamp-2 wrap-anywhere text-[16px] font-bold leading-[1.3]">{line.name}</p>
+        <p className="line-clamp-2 wrap-anywhere text-[16px] font-bold leading-[1.3]">
+          {line.name}
+        </p>
         <p className="mt-0.5 text-[13px] text-muted">
           <Price value={line.unitPrice} /> each
         </p>
-        <Price value={line.unitPrice * line.quantity} className="mt-1 block text-[20px] font-extrabold leading-none" />
+        <Price
+          value={line.unitPrice * line.quantity}
+          className="mt-1 block text-[20px] font-extrabold leading-none"
+        />
       </div>
       <div className="flex shrink-0 flex-col items-end">
         <QuantityStepper
@@ -55,22 +72,39 @@ export function CartItem({ line }: CartItemProps) {
           label={`${line.name} quantity`}
         />
         {problem ? (
-          <p role="status" className="mt-1.5 inline-flex items-center gap-1 text-[12px] font-bold text-brand-700">
+          <p
+            role="status"
+            className="mt-1.5 inline-flex items-center gap-1 text-[12px] font-bold text-brand-700"
+          >
             <CircleAlert className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden />
             {problemLabel(problem)}
           </p>
         ) : (
-          line.quantity >= limit && <StepperNote maxQuantity={line.maxQuantity} className="mt-1.5" />
+          line.quantity >= limit && (
+            <StepperNote maxQuantity={line.maxQuantity} className="mt-1.5" />
+          )
         )}
-        <div className="-mr-1.5 mt-1 flex items-center gap-1">
+        {/* 44px buttons around the smaller visible pills; the negative margins keep the row's spacing. */}
+        <div className="-my-1 -mr-1.5 flex items-center gap-1">
           {problem && (
             <button
               type="button"
               onClick={() => fix(line.menuItemId)}
-              aria-label={problem.kind === 'over-limit' ? `Set ${line.name} to ${problem.available}` : `Remove ${line.name}`}
-              className="h-8 rounded-lg bg-brand-50 px-2.5 text-[13px] font-bold text-brand-700 transition-colors hover:bg-brand-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
+              aria-label={
+                problem.kind === 'over-limit'
+                  ? `Set ${line.name} to ${problem.available}`
+                  : `Remove ${line.name}`
+              }
+              className={HIT_AREA}
             >
-              {soldOut ? 'Remove' : 'Fix'}
+              <span
+                className={cn(
+                  PILL,
+                  'bg-brand-50 px-2.5 font-bold text-brand-700 group-hover:bg-brand-100',
+                )}
+              >
+                {soldOut ? 'Remove' : 'Fix'}
+              </span>
             </button>
           )}
           {!soldOut && (
@@ -78,9 +112,16 @@ export function CartItem({ line }: CartItemProps) {
               type="button"
               onClick={() => remove(line.menuItemId)}
               aria-label={`Remove ${line.name}`}
-              className="h-8 rounded-lg px-1.5 text-[13px] font-semibold text-muted transition-colors hover:bg-surface-2 hover:text-cancel-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
+              className={HIT_AREA}
             >
-              Remove
+              <span
+                className={cn(
+                  PILL,
+                  'px-1.5 font-semibold text-muted group-hover:bg-surface-2 group-hover:text-cancel-700',
+                )}
+              >
+                Remove
+              </span>
             </button>
           )}
         </div>

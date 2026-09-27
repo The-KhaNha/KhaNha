@@ -18,7 +18,11 @@ export function Wordmark({ size = 'sm', tone = 'default', className }: WordmarkP
           size === 'sm' ? 'h-8 w-8 rounded-xl' : 'h-11 w-11 rounded-2xl',
         )}
       >
-        <ShoppingBag className={size === 'sm' ? 'h-4 w-4' : 'h-6 w-6'} strokeWidth={2.25} aria-hidden />
+        <ShoppingBag
+          className={size === 'sm' ? 'h-4 w-4' : 'h-6 w-6'}
+          strokeWidth={2.25}
+          aria-hidden
+        />
       </span>
       <span
         className={cn(

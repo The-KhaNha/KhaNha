@@ -3,12 +3,15 @@ import { ORDER_STATUSES } from '../types/enums';
 import { optionalField, phoneField } from './common';
 
 /** Most of one item in a single order, checked after duplicate lines are merged. */
-export const MAX_QUANTITY_PER_ITEM = 20;
+export const MAX_QUANTITY_PER_ITEM = 10;
 const MAX_ITEM_LINES = 30;
 
 const orderItemInput = z.object({
   menuItemId: z.string().min(1, 'Menu item id is required.'),
-  quantity: z.number().int('Quantity must be a whole number.').min(1, 'Quantity must be at least 1.'),
+  quantity: z
+    .number()
+    .int('Quantity must be a whole number.')
+    .min(1, 'Quantity must be at least 1.'),
 });
 
 type OrderItemInput = z.infer<typeof orderItemInput>;

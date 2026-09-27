@@ -1,0 +1,213 @@
+# Backend structure
+
+The API in `server/`: Express 5, TypeScript, zod 3, Supabase (`@supabase/supabase-js`, `@supabase/server`), pino.
+The HTTP contract is in [API.md](API.md), the database in [SCHEMA.md](SCHEMA.md), and the flows in
+[ARCHITECTURE.md](ARCHITECTURE.md).
+
+## Tree
+
+```
+server/
+├── .env.example              copy to .env (see DEPLOYMENT.md)
+├── package.json              scripts below
+├── tsconfig.json             typecheck target: src/, scripts/ and test/
+├── tsconfig.build.json        build target: src/ and scripts/ only (extends tsconfig.json, excludes test/ from dist/)
+├── vitest.config.mts         test config (see TESTING.md)
+├── eslint.config.mjs
+├── scripts/
+│   ├── seed.ts               demo reset (local/staging) or first-time production setup
+│   └── db-push.sh            applies migrations to staging or production
+├── supabase/
+│   ├── config.toml           local Supabase stack (API :54321, DB :54322, Studio :54323)
+│   └── migrations/           schema, RLS, grants and database functions (SCHEMA.md)
+├── src/
+│   ├── server.ts             entry point: createApp().listen(PORT), graceful shutdown
+│   ├── app.ts                createApp(): the whole middleware pipeline, no listen
+│   ├── routes/               route tables: index.ts + one *.routes.ts per resource
+│   ├── controllers/          thin handlers: read req → call a service → serialize → res.json
+│   ├── services/             business logic and every database call
+│   ├── schemas/              zod request schemas
+│   ├── middleware/           auth.ts, validate.ts, errorHandler.ts
+│   ├── types/                API DTOs, generated database types, enums, AuthUser, Express augmentation
+│   └── utils/                env, logger, Supabase client, errors, serializers, ids, cache
+└── test/
+    ├── setup/                api.ts, guard.ts, run-lock.ts, target.ts, helpers.ts (+ target.safe.test.ts)
+    ├── api/                  one suite per router: admin, auth, health, menu, menu-cache, orders, store, caching
+    ├── unit/                 pure logic: cache, errors, schemas, serializers, validate
+    └── logging.safe.test.ts
+```
+
+## Request pipeline
+
+`server/src/server.ts` only loads `dotenv/config`, calls `createApp()` from `server/src/app.ts`, listens on
+`env.PORT`, and on `SIGINT`/`SIGTERM` closes the server and flushes the logger before exiting. `createApp()` never
+calls `listen`, so tests drive it with Supertest.
+
+```mermaid
+flowchart TD
+  Req["HTTP request"] --> XPB["x-powered-by disabled"]
+  XPB --> Pino["pino-http<br/>request id (x-request-id), req.log, one access line per request"]
+  Pino --> Cors["cors({ origin: CLIENT_ORIGIN })"]
+  Cors --> Json["express.json() (100 kB default limit)"]
+  Json --> Api{"/api → apiRouter"}
+  Api -->|"GET /health"| Health["{ ok: true }"]
+  Api -->|"/auth, /store, /menu, /orders"| Router["resource router<br/>requireAuth / requireStaff / validate(schema)"]
+  Api -->|"/admin"| AdminR["adminRouter<br/>requireAuth / requireAdmin"]
+  Router --> Ctl["controller"] --> Svc["service → supabaseAdmin → Postgres"]
+  AdminR --> Ctl
+  Svc --> Ser["serializer → XDto"] --> Res["res.json"]
+  Api -->|"no match"| NF["notFoundHandler → 404 NOT_FOUND"]
+  Router -. "throw" .-> EH["errorHandler → { error: { code, message, details? } }"]
+  AdminR -. "throw" .-> EH
+  Ctl -. "rejected promise" .-> EH
+  Svc -. "throw" .-> EH
+```
+
+| Step              | File                             | What it does                                                                                                                                                     |
+| ----------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pino-http`       | `src/app.ts`                     | keeps a caller's `x-request-id` if it matches `^[\w.-]{1,64}$`, else a UUID; echoes it; access line at `debug` for successful GET/HEAD/OPTIONS, `info` otherwise |
+| `cors`            | `src/app.ts`                     | one allowed origin, `env.CLIENT_ORIGIN`                                                                                                                          |
+| `express.json()`  | `src/app.ts`                     | parses JSON bodies; over 100 kB is 413, malformed is 400 (mapped in the error handler)                                                                           |
+| `apiRouter`       | `src/routes/index.ts`            | `/health`, then mounts `/auth`, `/store`, `/menu`, `/orders`, `/admin`                                                                                           |
+| `notFoundHandler` | `src/middleware/errorHandler.ts` | 404 `NOT_FOUND` "No route matches <METHOD> <path>."                                                                                                              |
+| `errorHandler`    | `src/middleware/errorHandler.ts` | maps any error to status + code + safe message; logs it once (5xx `error` with the stack, 401/403 `warn`, other 4xx `info`)                                      |
+
+Express 5 forwards a rejected promise from an async handler to the error handler, so controllers and middleware have
+no `try`/`catch` and throw `AppError`s directly. The error mapping is drawn in
+[ARCHITECTURE.md](ARCHITECTURE.md#92-error-mapping) and listed in [API.md](API.md#errors). Logging rules:
+[LOGGING.md](LOGGING.md).
+
+## Module map
+
+### routes/
+
+| File              | Mounted at    | Routes                                                                                                               |
+| ----------------- | ------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `index.ts`        | `/api`        | `GET /health`; mounts the five routers                                                                               |
+| `auth.routes.ts`  | `/api/auth`   | `POST /register` (validate), `GET /me` (requireAuth)                                                                 |
+| `store.routes.ts` | `/api/store`  | `GET /`                                                                                                              |
+| `menu.routes.ts`  | `/api/menu`   | `GET /`                                                                                                              |
+| `order.routes.ts` | `/api/orders` | `requireAuth` for all; `POST /`, `GET /` (query validate), `GET /:id`, `PATCH /:id/status` (requireStaff + validate) |
+| `admin.routes.ts` | `/api/admin`  | `requireAuth` + `requireAdmin` for all; `GET /settings`, `PATCH /settings` (validate)                                |
+
+### controllers/
+
+One file per router. Each handler reads `req.body` / `req.query` / `req.params` / `currentUser(req)`, awaits one
+service call, serializes with `utils/serializers.ts` and sends JSON. `order.controller.ts` also logs
+`Order placed` and `Order status changed`, and `admin.controller.ts` logs `Site settings changed`, through
+`req.log.info`. Typed with `BodyHandler` / `QueryHandler` from
+`types/http.ts` so `req.body` and `req.query` carry the parsed schema type.
+
+| File                  | Handlers                                                     |
+| --------------------- | ------------------------------------------------------------ |
+| `auth.controller.ts`  | `register`, `me`                                             |
+| `store.controller.ts` | `getStore`                                                   |
+| `menu.controller.ts`  | `getMenu`                                                    |
+| `order.controller.ts` | `createOrder`, `listOrders`, `getOrder`, `updateOrderStatus` |
+| `admin.controller.ts` | `getSettings`, `updateSettings`                              |
+
+### services/
+
+| File                  | Exports                                                      | Notes                                                                                                                                                                                                                                                                                                                                                             |
+| --------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `auth.service.ts`     | `register(input)`, `getProfile(id)`                          | `auth.admin.createUser` (confirmed); maps Supabase Auth error codes                                                                                                                                                                                                                                                                                               |
+| `store.service.ts`    | `getStore()`, `getCachedStore()`                             | `getStore()`: first row of `stores`, 404 if none. `getCachedStore()`: the same read through `cached('store', PUBLIC_READ_TTL_MS, getStore)` for `GET /api/store` only; `createOrder`'s `is_open` check always calls the uncached `getStore()` (see [API.md#caching](API.md#caching))                                                                              |
+| `menu.service.ts`     | `getMenu()`                                                  | items by `sort_order`, `popular`, categories grouped by first item; read through `cached('menu', PUBLIC_READ_TTL_MS, loadMenu)` (see [API.md#caching](API.md#caching))                                                                                                                                                                                            |
+| `order.service.ts`    | `createOrder`, `listOrders`, `getOrder`, `updateOrderStatus` | holds `ALLOWED_TRANSITIONS`; reads both list limits from `settings.service.getSettings()` (`STAFF_LIST_LIMIT`/`CUSTOMER_LIST_LIMIT` constants were removed); calls the `place_order` / `update_order_status` RPCs and maps their `P0001` errors; `invalidate('menu')` after `createOrder` (any outcome) and after a cancel (see [API.md#caching](API.md#caching)) |
+| `settings.service.ts` | `getSettings()`, `updateSettings(admin, input)`              | the single `site_settings` row. `getSettings()` is read through `cached('site_settings', PUBLIC_READ_TTL_MS, ...)`; `updateSettings()` writes `updated_by = admin.id` and calls `invalidate('site_settings')` (see [API.md#caching](API.md#caching))                                                                                                              |
+| `payment.service.ts`  | `simulatePayment(amount)`                                    | always `PAID`; throws on a non-positive amount. The seam for a real gateway                                                                                                                                                                                                                                                                                       |
+
+### schemas/
+
+| File              | Exports                                                                                                                                                        |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `common.ts`       | `optionalField(schema)`, `phoneField`                                                                                                                          |
+| `auth.schema.ts`  | `registerSchema`, `RegisterInput`                                                                                                                              |
+| `order.schema.ts` | `MAX_QUANTITY_PER_ITEM = 10`, `createOrderSchema`, `updateOrderStatusSchema`, `listOrdersQuerySchema` and their input types                                    |
+| `admin.schema.ts` | `updateSettingsSchema`, `UpdateSettingsInput` (bounds mirror the `site_settings` check constraints, 1-200 / 1-500; refined so at least one field must be sent) |
+
+Field rules: [API.md](API.md#routes).
+
+### middleware/
+
+| File              | Exports                                                           |
+| ----------------- | ----------------------------------------------------------------- |
+| `auth.ts`         | `requireAuth`, `requireStaff`, `requireAdmin`, `currentUser(req)` |
+| `validate.ts`     | `validate(schema, source = 'body')`, `describeIssue(issue)`       |
+| `errorHandler.ts` | `notFoundHandler`, `errorHandler`                                 |
+
+`validate()` strips NUL bytes from every string, parses with zod, and replaces `req.body` (or shadows the
+`req.query` getter with an own property) with the parsed value. On failure it throws a 400 `VALIDATION_ERROR` whose
+message names the field.
+
+### types/
+
+| File           | Contents                                                                                                                              |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `api.ts`       | response DTOs: `UserDto`, `StoreDto`, `MenuItemDto`, `MenuCategoryDto`, `MenuResponse`, `SiteSettingsDto`, `OrderItemDto`, `OrderDto` |
+| `database.ts`  | generated by `npm run db:types`; do not edit by hand                                                                                  |
+| `enums.ts`     | `Role`, `OrderStatus`, `PaymentStatus`, `ORDER_STATUSES` from the generated types                                                     |
+| `auth.ts`      | `AuthUser { id, role }`                                                                                                               |
+| `express.d.ts` | adds `req.user?: AuthUser`                                                                                                            |
+| `http.ts`      | `BodyHandler<Body, Params>`, `QueryHandler<Query>`                                                                                    |
+
+### utils/
+
+| File             | Exports                                                                                                                                                                                                                                          |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `env.ts`         | `env` (validated with zod at import; exits with a list of problems if invalid)                                                                                                                                                                   |
+| `logger.ts`      | `logger` (pino), `REDACT_PATHS`                                                                                                                                                                                                                  |
+| `supabase.ts`    | `supabaseAdmin` (secret key, bypasses RLS), `supabaseEnv`, `raisedByDatabase(err, code)`                                                                                                                                                         |
+| `errors.ts`      | `ErrorCode`, `ItemErrorDetails`, `AppError`, `validationError`, `unauthorized`, `forbidden`, `notFound`, `insufficientStock`                                                                                                                     |
+| `serializers.ts` | `selectOrders()` (the one order query with lines, store and item photos), `OrderWithDetails`, `toUserDto`, `toStoreDto`, `toMenuItemDto`, `toOrderDto`, `isPurchasable`                                                                          |
+| `ids.ts`         | `isUuid(value)`                                                                                                                                                                                                                                  |
+| `cache.ts`       | `cached<T>(key, ttlMs, load)`, `invalidate(key?)`, `PUBLIC_READ_TTL_MS = 10_000` — in-process TTL cache for public reads; shares one pending load between concurrent misses; a failed load is never cached. See [API.md#caching](API.md#caching) |
+
+## Adding an endpoint
+
+The layers, in the order a request passes them:
+
+1. `routes/<resource>.routes.ts`: the route, with `requireAuth` / `requireStaff` and `validate(schema)` as needed.
+2. `schemas/<resource>.schema.ts`: the zod schema and its `z.infer` type.
+3. `controllers/<resource>.controller.ts`: a thin handler, no `try`/`catch`.
+4. `services/<resource>.service.ts`: the logic and the queries through `supabaseAdmin`, scoped by user where it
+   matters (see [PERMISSIONS.md](PERMISSIONS.md#why-every-query-scopes-by-user)).
+5. `utils/serializers.ts` + `types/api.ts`: row → DTO. Mirror the DTO in `client/src/types/api.ts`.
+6. Errors: throw an `AppError` factory from `utils/errors.ts`; add a new code to `ErrorCode`.
+7. Document it in [API.md](API.md) and add a suite under `server/test/api/`.
+
+## Scripts
+
+`server/package.json`:
+
+| Script                                   | Runs                                                                                                                        |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `dev`                                    | `tsx watch src/server.ts`                                                                                                   |
+| `build`                                  | `tsc -p tsconfig.build.json` → `dist/` (`src/` and `scripts/` only; tests never ship)                                       |
+| `start`                                  | `node dist/src/server.js`                                                                                                   |
+| `typecheck`                              | `tsc -p tsconfig.json --noEmit`                                                                                             |
+| `lint`                                   | `eslint .`                                                                                                                  |
+| `format` / `format:check`                | `prettier --write .` / `prettier --check .`                                                                                 |
+| `test` / `test:watch`                    | `vitest run` / `vitest`                                                                                                     |
+| `seed`                                   | `tsx scripts/seed.ts` (see [DEPLOYMENT.md](DEPLOYMENT.md#seeding))                                                          |
+| `db:start` / `db:stop`                   | `supabase start` / `supabase stop`                                                                                          |
+| `db:reset`                               | `supabase db reset` (rebuilds the local database from the migrations)                                                       |
+| `db:new <name>`                          | `supabase migration new`                                                                                                    |
+| `db:types`                               | `supabase gen types typescript --local > src/types/database.ts`                                                             |
+| `db:push:staging` / `db:push:production` | `./scripts/db-push.sh staging` / `./scripts/db-push.sh production` (see [DEPLOYMENT.md](DEPLOYMENT.md#applying-migrations)) |
+
+`scripts/seed.ts` and `scripts/db-push.sh` are described in [DEPLOYMENT.md](DEPLOYMENT.md).
+
+## Tests
+
+- Suites: `server/test/**/*.test.ts`, one file per router under `test/api/`. Staging-safe suites are named
+  `*.safe.test.ts`.
+- `test/setup/guard.ts` runs first and refuses any target but local Supabase (or staging with an explicit opt-in),
+  then starts this file's API server (`test/setup/api.ts`) and stops it after.
+- `test/setup/api.ts`: `api()`, the Supertest client for the current file. Full detail:
+  [TESTING.md](TESTING.md#the-per-file-api-server).
+- `test/setup/run-lock.ts`: a `globalSetup` that lets only one server test run happen on the machine at a time.
+- `test/setup/helpers.ts`: `createTestUser`, `deleteTestUser`, `resetDemoData`.
+- Files run one at a time (`fileParallelism: false`); `LOG_LEVEL` defaults to `silent` in tests.
+
+Everything else about tests is in [TESTING.md](TESTING.md).

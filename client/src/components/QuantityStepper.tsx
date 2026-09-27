@@ -54,10 +54,11 @@ export function QuantityStepper({
     if (event.animationName === 'shake') setShaking(false);
   }
 
+  // Neutral uses an outer ring, not a border: a border would eat 2px of the 44px height and shrink both tap targets.
   const shell =
     tone === 'brand'
       ? 'bg-brand-500 text-white shadow-brand'
-      : 'bg-surface text-ink border border-line shadow-[0_1px_2px_rgba(27,20,16,0.05)]';
+      : 'bg-surface text-ink ring-1 ring-line shadow-[0_1px_2px_rgba(27,20,16,0.05)]';
   const half = cn(
     'relative grid h-full place-items-center transition-[background-color,translate,scale] duration-[120ms]',
     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset disabled:pointer-events-none disabled:opacity-40',
@@ -65,7 +66,9 @@ export function QuantityStepper({
     size === 'sm' ? 'w-11' : 'w-12',
   );
   const pressable =
-    tone === 'brand' ? 'active:scale-95 hover:bg-white/15 active:bg-white/25' : 'active:scale-95 hover:bg-surface-2 active:bg-line';
+    tone === 'brand'
+      ? 'active:scale-95 hover:bg-white/15 active:bg-white/25'
+      : 'active:scale-95 hover:bg-surface-2 active:bg-line';
 
   return (
     <div
@@ -89,18 +92,27 @@ export function QuantityStepper({
       >
         <span className="relative block h-4 w-4">
           <Minus
-            className={cn('absolute inset-0 h-4 w-4 transition-opacity duration-150', showTrash && 'opacity-0')}
+            className={cn(
+              'absolute inset-0 h-4 w-4 transition-opacity duration-150',
+              showTrash && 'opacity-0',
+            )}
             aria-hidden
           />
           <Trash2
-            className={cn('absolute inset-0 h-4 w-4 transition-opacity duration-150', !showTrash && 'opacity-0')}
+            className={cn(
+              'absolute inset-0 h-4 w-4 transition-opacity duration-150',
+              !showTrash && 'opacity-0',
+            )}
             aria-hidden
           />
         </span>
       </button>
       <span
         aria-live="polite"
-        className={cn('grid min-w-6 place-items-center text-center font-bold tabular-nums', size === 'sm' ? 'text-[15px]' : 'text-base')}
+        className={cn(
+          'grid min-w-6 place-items-center text-center font-bold tabular-nums',
+          size === 'sm' ? 'text-[15px]' : 'text-base',
+        )}
       >
         <span
           key={key}
@@ -133,9 +145,16 @@ interface StepperNoteProps {
 
 /** Why the plus stopped: gold for a stock limit ("Only 2 available"), muted for the per-order cap. */
 export function StepperNote({ maxQuantity, inCart = 0, className }: StepperNoteProps) {
-  const stockLimited = maxQuantity !== null && maxQuantity !== undefined && maxQuantity < MAX_LINE_QUANTITY;
+  const stockLimited =
+    maxQuantity !== null && maxQuantity !== undefined && maxQuantity < MAX_LINE_QUANTITY;
   return (
-    <p className={cn('text-[11px] font-semibold tabular-nums', stockLimited ? 'text-gold-700' : 'text-muted', className)}>
+    <p
+      className={cn(
+        'text-[11px] font-semibold tabular-nums',
+        stockLimited ? 'text-gold-700' : 'text-muted',
+        className,
+      )}
+    >
       {limitCaption(maxQuantity)}
       {inCart > 0 && ` · ${inCart} in your cart`}
     </p>

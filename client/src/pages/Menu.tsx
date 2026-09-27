@@ -10,6 +10,7 @@ import { CategoryChips, type MenuSection } from '../features/menu/CategoryChips'
 import { ItemDetailSheet } from '../features/menu/ItemDetailSheet';
 import { useMenu } from '../features/menu/useMenu';
 import { formatPrepRange } from '../lib/format';
+import { photoSrcSet } from '../lib/photo';
 
 interface Section extends MenuSection {
   items: MenuItem[];
@@ -36,7 +37,10 @@ export function MenuPage() {
     const popular: Section[] = menu.popular.length
       ? [{ id: POPULAR_ID, name: 'Popular', items: menu.popular, isPopular: true }]
       : [];
-    return [...popular, ...menu.categories.map((c) => ({ id: slugify(c.name), name: c.name, items: c.items }))];
+    return [
+      ...popular,
+      ...menu.categories.map((c) => ({ id: slugify(c.name), name: c.name, items: c.items })),
+    ];
   }, [menu]);
 
   useEffect(() => {
@@ -87,10 +91,30 @@ export function MenuPage() {
 
   return (
     <div className="animate-fade-up">
+      {/* The saved menu stays usable when a refresh fails; say so instead of hiding it (checkout re-checks stock). */}
+      {error && (
+        <ErrorState
+          compact
+          className="mt-4"
+          title="Showing your saved menu"
+          message="We couldn't refresh it just now."
+          retryLabel="Retry"
+          onRetry={retry}
+          unreachable={error.isUnreachable}
+        />
+      )}
       {/* Storefront header: name + tagline live on the photo so food appears sooner. */}
       <section className="pt-4">
         <div className="relative aspect-[21/9] overflow-hidden rounded-[28px] bg-surface-2 shadow-card">
-          {store.imageUrl && <img src={store.imageUrl} alt="" className="h-full w-full object-cover" />}
+          {store.imageUrl && (
+            <img
+              src={store.imageUrl}
+              srcSet={photoSrcSet(store.imageUrl)}
+              sizes="(min-width: 768px) 640px, calc(100vw - 32px)"
+              alt=""
+              className="h-full w-full object-cover"
+            />
+          )}
           <div aria-hidden className="absolute inset-x-0 bottom-0 h-[72%] store-scrim" />
           <OpenPill isOpen={store.isOpen} className="absolute left-3 top-3" />
           <span className="absolute right-3 top-3 inline-flex h-9 items-center gap-1.5 rounded-full bg-surface/92 px-3 text-[13px] font-semibold text-ink shadow-sm backdrop-blur-md">
@@ -106,13 +130,28 @@ export function MenuPage() {
 
       {/* Not wrapped in a div on purpose: a sticky element can only travel inside its
           parent's box, so its parent has to be this full-height page column. */}
-      <CategoryChips sections={sections} activeId={activeId} onSelect={scrollToSection} scrolled={scrolled} />
+      <CategoryChips
+        sections={sections}
+        activeId={activeId}
+        onSelect={scrollToSection}
+        scrolled={scrolled}
+      />
 
       {sections.map((section) =>
         section.isPopular ? (
-          <PopularRail key={section.id} id={section.id} items={section.items} onOpen={setSelected} />
+          <PopularRail
+            key={section.id}
+            id={section.id}
+            items={section.items}
+            onOpen={setSelected}
+          />
         ) : (
-          <section key={section.id} id={`section-${section.id}`} aria-labelledby={`heading-${section.id}`} className="pt-6">
+          <section
+            key={section.id}
+            id={`section-${section.id}`}
+            aria-labelledby={`heading-${section.id}`}
+            className="pt-6"
+          >
             <h2 id={`heading-${section.id}`} className="eyebrow mb-3 text-muted">
               {section.name}
             </h2>

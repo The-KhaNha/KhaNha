@@ -18,13 +18,21 @@ interface TopBarProps {
   widthClass?: string;
 }
 
-export function TopBar({ title, backTo, tone = 'default', right, widthClass = 'max-w-md md:max-w-lg' }: TopBarProps) {
+export function TopBar({
+  title,
+  backTo,
+  tone = 'default',
+  right,
+  widthClass = 'max-w-md md:max-w-lg',
+}: TopBarProps) {
   const brand = tone === 'brand';
   return (
     <header
       className={cn(
         'sticky top-0 z-40',
-        brand ? 'bg-brand-500 text-white' : 'border-b border-line/60 bg-bg/90 text-ink backdrop-blur-md',
+        brand
+          ? 'bg-brand-500 text-white'
+          : 'border-b border-line/60 bg-bg/90 text-ink backdrop-blur-md',
       )}
     >
       <div className={cn('mx-auto flex h-14 items-center gap-1 px-4', widthClass)}>
@@ -45,7 +53,11 @@ export function TopBar({ title, backTo, tone = 'default', right, widthClass = 'm
           {title ? (
             <h1 className="truncate text-[17px] font-bold">{title}</h1>
           ) : (
-            <Link to="/" className="inline-flex rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40" aria-label="Food Pickup home">
+            <Link
+              to="/"
+              className="inline-flex min-h-11 items-center rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
+              aria-label="Food Pickup home"
+            >
               <Wordmark tone={brand ? 'inverse' : 'default'} />
             </Link>
           )}

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ShoppingBag } from 'lucide-react';
 import { selectCount, useCartStore } from '../features/cart/cartStore';
@@ -24,15 +24,11 @@ export function CartButton({ tone = 'default' }: CartButtonProps) {
 
   // Keep the badge mounted briefly after the count hits 0 so it can fade out.
   const [shownCount, setShownCount] = useState(count);
-  const fadeTimer = useRef<number | undefined>(undefined);
+  if (count > 0 && shownCount !== count) setShownCount(count);
   useEffect(() => {
-    window.clearTimeout(fadeTimer.current);
-    if (count > 0) {
-      setShownCount(count);
-      return;
-    }
-    fadeTimer.current = window.setTimeout(() => setShownCount(0), BADGE_FADE_MS);
-    return () => window.clearTimeout(fadeTimer.current);
+    if (count > 0) return;
+    const timer = window.setTimeout(() => setShownCount(0), BADGE_FADE_MS);
+    return () => window.clearTimeout(timer);
   }, [count]);
 
   useEffect(() => {

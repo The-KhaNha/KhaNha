@@ -44,7 +44,11 @@ export function BottomNav() {
                     isActive && 'bg-brand-50',
                   )}
                 >
-                  <Icon className="h-[22px] w-[22px]" strokeWidth={isActive ? 2.4 : 2} aria-hidden />
+                  <Icon
+                    className="h-[22px] w-[22px]"
+                    strokeWidth={isActive ? 2.4 : 2}
+                    aria-hidden
+                  />
                 </span>
                 {label}
               </>

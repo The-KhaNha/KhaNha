@@ -8,3 +8,6 @@ dist/
 .logs/
 # graphify (rebuild locally with /graphify)
 graphify-out/
+
+# Claude Code hook state (post-change marker, pending major change)
+.claude/.state/

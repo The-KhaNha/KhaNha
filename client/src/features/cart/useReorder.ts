@@ -11,7 +11,9 @@ const REORDER_NOTICE_STATE = 'reorderNotice';
 export function readReorderNotice(state: unknown): string[] {
   if (typeof state !== 'object' || state === null) return [];
   const notice = (state as Record<string, unknown>)[REORDER_NOTICE_STATE];
-  return Array.isArray(notice) ? notice.filter((line): line is string => typeof line === 'string') : [];
+  return Array.isArray(notice)
+    ? notice.filter((line): line is string => typeof line === 'string')
+    : [];
 }
 
 /**
@@ -28,7 +30,10 @@ export function useReorder() {
     let notice: string[];
     try {
       const menu = await fetchMenu();
-      notice = addOrderToCart(order, menu.categories.flatMap((category) => category.items));
+      notice = addOrderToCart(
+        order,
+        menu.categories.flatMap((category) => category.items),
+      );
     } catch {
       notice = ["We couldn't load the menu, so nothing was added. Please try again."];
     }
@@ -63,8 +68,13 @@ function addOrderToCart(order: Order, menuItems: MenuItem[]): string[] {
     const added = Math.max(0, Math.min(wanted.quantity, limit - inCart));
     if (added > 0) cart.add(item, added);
     if (added < wanted.quantity) {
-      const reason = available === null ? `max ${MAX_LINE_QUANTITY} per order` : `only ${limit} left`;
-      notice.push(added > 0 ? `${item.name}: ${reason}, added ${added}` : `${item.name}: ${reason}, already in your cart`);
+      const reason =
+        available === null ? `max ${MAX_LINE_QUANTITY} per order` : `only ${limit} left`;
+      notice.push(
+        added > 0
+          ? `${item.name}: ${reason}, added ${added}`
+          : `${item.name}: ${reason}, already in your cart`,
+      );
     }
   }
   return notice;

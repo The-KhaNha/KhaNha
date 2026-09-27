@@ -1,6 +1,13 @@
 import type { QueryData } from '@supabase/supabase-js';
 import type { Tables } from '../types/database';
-import type { MenuItemDto, OrderDto, OrderItemDto, StoreDto, UserDto } from '../types/api';
+import type {
+  MenuItemDto,
+  OrderDto,
+  OrderItemDto,
+  SiteSettingsDto,
+  StoreDto,
+  UserDto,
+} from '../types/api';
 import { supabaseAdmin } from './supabase';
 
 /**
@@ -38,6 +45,14 @@ export function toUserDto(profile: Tables<'profiles'>): UserDto {
   };
 }
 
+export function toSiteSettingsDto(settings: Tables<'site_settings'>): SiteSettingsDto {
+  return {
+    customerOrderHistoryLimit: settings.customer_order_history_limit,
+    staffOrderListLimit: settings.staff_order_list_limit,
+    updatedAt: settings.updated_at,
+  };
+}
+
 export function toStoreDto(store: Tables<'stores'>): StoreDto {
   return {
     id: store.id,
@@ -52,7 +67,9 @@ export function toStoreDto(store: Tables<'stores'>): StoreDto {
 }
 
 /** An item can be ordered when it is switched on and, if it tracks stock, has some left. */
-export function isPurchasable(item: Pick<Tables<'menu_items'>, 'is_available' | 'stock_quantity'>): boolean {
+export function isPurchasable(
+  item: Pick<Tables<'menu_items'>, 'is_available' | 'stock_quantity'>,
+): boolean {
   return item.is_available && (item.stock_quantity === null || item.stock_quantity > 0);
 }
 

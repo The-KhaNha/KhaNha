@@ -11,7 +11,8 @@ export const NOTE_MAX_LENGTH = 200;
 export function validateName(value: string): string | undefined {
   const trimmed = value.trim();
   if (trimmed.length < 2) return 'Please enter your name.';
-  if (trimmed.length > NAME_MAX_LENGTH) return `Keep your name to ${NAME_MAX_LENGTH} characters or fewer.`;
+  if (trimmed.length > NAME_MAX_LENGTH)
+    return `Keep your name to ${NAME_MAX_LENGTH} characters or fewer.`;
   return undefined;
 }
 
@@ -45,6 +46,7 @@ export function validatePhone(value: string): string | undefined {
 }
 
 export function validateNote(value: string): string | undefined {
-  if (value.trim().length > NOTE_MAX_LENGTH) return `Keep the note to ${NOTE_MAX_LENGTH} characters or fewer.`;
+  if (value.trim().length > NOTE_MAX_LENGTH)
+    return `Keep the note to ${NOTE_MAX_LENGTH} characters or fewer.`;
   return undefined;
 }

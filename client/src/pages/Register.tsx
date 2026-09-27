@@ -4,6 +4,7 @@ import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { AuthCard } from '../features/auth/AuthCard';
 import { selectUser, useAuthStore } from '../features/auth/authStore';
+import { homeFor } from '../features/auth/roles';
 import { useAuthRedirect } from '../features/auth/useAuthRedirect';
 import {
   NAME_MAX_LENGTH,
@@ -23,12 +24,17 @@ export function RegisterPage() {
   const register = useAuthStore((s) => s.register);
   const redirectAfterAuth = useAuthRedirect();
 
-  const [values, setValues] = useState<Record<Field, string>>({ name: '', email: '', phone: '', password: '' });
+  const [values, setValues] = useState<Record<Field, string>>({
+    name: '',
+    email: '',
+    phone: '',
+    password: '',
+  });
   const [errors, setErrors] = useState<FieldErrors>({});
   const [serverError, setServerError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  if (user) return <Navigate to={user.role === 'STAFF' ? '/staff' : '/'} replace />;
+  if (user) return <Navigate to={homeFor(user.role)} replace />;
 
   const validators: Record<Field, (value: string) => string | undefined> = {
     name: validateName,
@@ -82,7 +88,10 @@ export function RegisterPage() {
       footer={
         <>
           Already have an account?{' '}
-          <Link to="/login" className="font-semibold text-brand-600 underline-offset-2 hover:text-brand-700 hover:underline">
+          <Link
+            to="/login"
+            className="font-semibold text-brand-600 underline-offset-2 hover:text-brand-700 hover:underline"
+          >
             Sign in
           </Link>
         </>

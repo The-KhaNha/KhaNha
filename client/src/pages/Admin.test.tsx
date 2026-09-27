@@ -1,0 +1,94 @@
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { SiteSettings } from '../types/api';
+
+const admin = vi.hoisted(() => ({
+  fetchSiteSettings: vi.fn(),
+  updateSiteSettings: vi.fn(),
+}));
+vi.mock('../services/admin', () => admin);
+vi.mock('../services/api', () => ({
+  ApiError: class ApiError extends Error {
+    status: number;
+    code: string;
+    constructor(status: number, code: string, message: string) {
+      super(message);
+      this.status = status;
+      this.code = code;
+    }
+  },
+}));
+
+const { AdminPage } = await import('./Admin');
+const { ApiError } = await import('../services/api');
+
+const saved: SiteSettings = {
+  customerOrderHistoryLimit: 20,
+  staffOrderListLimit: 100,
+  updatedAt: '2026-09-27T00:00:00Z',
+};
+
+describe('AdminPage', () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('renders the loaded values', async () => {
+    admin.fetchSiteSettings.mockResolvedValue(saved);
+    render(<AdminPage />);
+
+    expect(await screen.findByLabelText('Customer order history')).toHaveValue('20');
+    expect(screen.getByLabelText('Staff board size')).toHaveValue('100');
+  });
+
+  it('disables Save until a field changes', async () => {
+    admin.fetchSiteSettings.mockResolvedValue(saved);
+    render(<AdminPage />);
+    await screen.findByLabelText('Customer order history');
+
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+  });
+
+  it('disables Save when a changed field is invalid, even though it differs from the saved value', async () => {
+    admin.fetchSiteSettings.mockResolvedValue(saved);
+    render(<AdminPage />);
+    const input = await screen.findByLabelText('Customer order history');
+
+    fireEvent.change(input, { target: { value: '0' } });
+
+    expect(await screen.findByText('Must be between 1 and 200.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+  });
+
+  it('sends only the field that changed', async () => {
+    admin.fetchSiteSettings.mockResolvedValue(saved);
+    admin.updateSiteSettings.mockResolvedValue({ ...saved, customerOrderHistoryLimit: 25 });
+    render(<AdminPage />);
+    const input = await screen.findByLabelText('Customer order history');
+
+    fireEvent.change(input, { target: { value: '25' } });
+    const save = screen.getByRole('button', { name: 'Save' });
+    expect(save).not.toBeDisabled();
+    fireEvent.click(save);
+
+    await waitFor(() => {
+      expect(admin.updateSiteSettings).toHaveBeenCalledWith({ customerOrderHistoryLimit: 25 });
+    });
+  });
+
+  it('shows the API error message from a failed save', async () => {
+    admin.fetchSiteSettings.mockResolvedValue(saved);
+    admin.updateSiteSettings.mockRejectedValue(
+      new ApiError(409, 'CONFLICT', 'Someone else just changed these settings.'),
+    );
+    render(<AdminPage />);
+    const input = await screen.findByLabelText('Staff board size');
+
+    fireEvent.change(input, { target: { value: '150' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Someone else just changed these settings.',
+    );
+  });
+});

@@ -1,0 +1,197 @@
+# Performance Baseline — food-pickup
+
+Date: 2026-09-26
+Commit: fb7e874 + uncommitted changes
+Machine: Apple M5, macOS 26.4, Node v26.7.0, local Supabase, preview build (`vite preview` on the `vite build --mode development` output), Playwright Chromium
+
+## Budgets
+
+| Budget         | Limit                                                                       | Measured at                                                       |
+| -------------- | --------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| LCP            | ≤ 2.5 s                                                                     | 360×640, Slow 4G (150 ms RTT, 1.6 Mbps down, 750 kbps up), 4× CPU |
+| INP            | ≤ 200 ms                                                                    | same                                                              |
+| CLS            | ≤ 0.1                                                                       | same                                                              |
+| Initial JS     | ≤ ~170 KB gzipped                                                           | `vite build` output: entry + modulepreload chunks                 |
+| Code splitting | route-level for staff, auth and checkout                                    | `client/src/App.tsx` + build chunks                               |
+| Menu photo     | ≤ ~80 KB each, sized to its box, lazy below the fold, aspect box (no shift) | `client/public/images/`, rendered at 360px                        |
+| API payloads   | lean JSON, no over-fetching; no chatty request waterfalls                   | per route                                                         |
+| Polling        | paused while the tab is hidden; conservative intervals (metered data)       | `/orders/:id`, `/orders`, `/staff`                                |
+
+## Bundle
+
+Single chunk — **no route-level code splitting at all** (`client/src/App.tsx` imports every page statically, no `lazy()`/`import()`). `StaffDashboardPage`, `LoginPage`, `RegisterPage`, `CheckoutPage` all ship in the one initial bundle.
+
+| Asset                                   | Gzip                 | Raw       | Notes                                                              |
+| --------------------------------------- | -------------------- | --------- | ------------------------------------------------------------------ |
+| `assets/index-*.js` (entry, only chunk) | 152,473 B (148.9 KB) | 533,026 B | includes every route                                               |
+| `assets/index-*.css`                    | 10,333 B             | 55,635 B  |                                                                    |
+| **Initial JS total**                    | **148.9 KB**         |           | within the 170 KB budget by byte count, but structurally not split |
+
+Raw source share (from source maps, top contributors): `@supabase/auth-js` 423K, `react-router` 367K, app code 211K, `react-dom` 131K, `@supabase/storage-js` 113K, `@supabase/postgrest-js` 109K, `@supabase/realtime-js` 100K, `lucide-react` 25K (imported by name everywhere — tree-shaken correctly).
+
+`client/package.json` changed in this diff, but only in `devDependencies` (vitest, eslint, prettier, testing-library, jsdom, typescript-eslint) — no new runtime dependency, no bundle impact.
+
+## Images
+
+Raw files (`client/public/images/`), all 900×700 px source JPEGs:
+
+| File                  | Bytes   | Over 80 KB? |
+| --------------------- | ------- | ----------- |
+| cafe-cover.jpg        | 163,623 | yes         |
+| veg-sandwich.jpg      | 154,367 | yes         |
+| cheese-toast.jpg      | 133,741 | yes         |
+| cappuccino.jpg        | 127,546 | yes         |
+| french-fries.jpg      | 110,430 | yes         |
+| watermelon-juice.jpg  | 108,999 | yes         |
+| chocolate-brownie.jpg | 101,000 | yes         |
+| berry-smoothie.jpg    | 84,858  | slightly    |
+| blueberry-muffin.jpg  | 82,586  | slightly    |
+| espresso.jpg          | 69,162  | no          |
+| orange-juice.jpg      | 58,228  | no          |
+| cold-coffee.jpg       | 55,941  | no          |
+
+At 360×640 on `/menu`: every image is rendered at 112–170 px (device px) but served at its full 900×700 natural size — 5–8× oversized in each dimension, in every case. `loading="lazy"` is correctly applied to grid thumbnails and below-fold images; the above-the-fold popular rail and `cafe-cover.jpg` are eager, correctly. All images have a sized parent box (`boxH` non-zero before load) — no CLS shift observed (CLS ≈ 0 on `/menu`, `/cart`, `/orders/:id`).
+
+`cafe-cover.jpg` is the LCP element on `/` (164 KB, rendered at 328×141 device px vs 900×700 natural).
+
+## Web Vitals (median of 3, cold cache, Slow 4G, 4× CPU, 360×640)
+
+| Route                                                               | LCP (runs)                   | Median LCP  | CLS      | INP (worst)                 | Long tasks >50ms                  |
+| ------------------------------------------------------------------- | ---------------------------- | ----------- | -------- | --------------------------- | --------------------------------- |
+| `/` (logged out)                                                    | 2380 / 2352 / 2344 ms        | **2352 ms** | 0        | 0 (no interaction scripted) | none                              |
+| `/menu` (logged out, tap Add / open sheet / Escape / category chip) | 6192 / 6132 / 6172 ms        | **6152 ms** | ~0.0002  | 112 ms                      | one 112 ms, one 64 ms (both runs) |
+| `/cart` (3 items, step quantity ×5 up/down)                         | 2032 / 1968 / 1972 ms        | **1972 ms** | ~0.0002  | 64 ms                       | none                              |
+| `/orders/:id` (logged in as customer)                               | 1588 / 1600 / 1568 ms        | **1588 ms** | ~0.00005 | 0                           | none                              |
+| `/staff` (secondary, not budget-held)                               | not run this pass (see note) | —           | —        | —                           | —                                 |
+
+Total blocking time: negligible everywhere (single long task per run, all ≤ 112 ms, i.e. ≤ 62 ms over the 50 ms threshold).
+
+## Bytes and requests per route (same cold/throttled load)
+
+| Route         | Requests | Transfer    | API calls (encoded body)                                               |
+| ------------- | -------- | ----------- | ---------------------------------------------------------------------- |
+| `/`           | 6        | 330,020 B   | `/api/store` 268 B                                                     |
+| `/menu`       | 14       | 1,154,926 B | `/api/menu` 4,360 B                                                    |
+| `/cart`       | 8        | 508,943 B   | `/api/menu` 4,360 B                                                    |
+| `/orders/:id` | 6        | 167,113 B   | `/api/orders/:id` 805 B, `/api/auth/me` 179 B (parallel, no waterfall) |
+
+No serial API waterfalls observed on any route (all `/api/` calls on a page start together). The `/menu` page's 1.15 MB weight is almost entirely the 12 oversized photos (see Images above), and is the direct cause of its 6.15 s LCP.
+
+## Polling (verified on a freshly-placed, non-terminal order; the only pre-seeded order, #1001, is already `COLLECTED`)
+
+- `/orders/:id` (non-terminal, `POLL_MS = 4000` in `client/src/features/orders/useOrder.ts`): ~7 `/api/orders/:id` requests over 18 s (≈ 23 req/min, ≈ 23 KB/min at 1,005 B/response) — matches the coded 4 s interval.
+- Hidden tab: 0 requests over 20 s with `document.hidden` forced true — polling correctly pauses.
+- Restored visibility: fetch resumed within 1 s (2 requests observed instead of the ideal 1 — negligible, well below any budget; not investigated further).
+- Terminal order (`COLLECTED`): 0 additional requests over 60s+ — `isTerminal()` correctly stops polling. (The pre-seeded order #1001 has already reached `COLLECTED` — was `COMPLETED` at measurement time, the status was later renamed — unlike the `PLACED`/`PREPARING` state described in scope — DB state has moved on since seeding.)
+- `/orders` (customer list) and `/staff` share the same `useResource` pause/resume mechanism (`client/src/lib/useResource.ts`); not independently re-verified live given it's the identical, already-verified code path. `/orders` defaults to `pollMs = 8000` (`client/src/features/orders/useOrders.ts`); `/staff` uses `STAFF_POLL_MS`.
+
+## Long tasks and re-renders (menu/cart, 4× CPU)
+
+Scroll + 3 adds + open/close `ItemDetailSheet` on `/menu`, and 5× quantity step up/down on `/cart`: at most one long task per run, ≤ 112 ms, well under the 200 ms INP-risk threshold. No static review of `useCartStore()`/selector patterns triggered (spec only calls for it when long tasks show up over budget).
+
+## API latency (local API, 20 requests each, warm-up excluded)
+
+| Endpoint                       | p50  | p95  | bytes |
+| ------------------------------ | ---- | ---- | ----- |
+| health                         | 1 ms | 3 ms | 11    |
+| store                          | 6 ms | 7 ms | 268   |
+| menu                           | 5 ms | 6 ms | 4,360 |
+| auth/me (customer)             | 5 ms | 6 ms | 179   |
+| orders (customer)              | 6 ms | 8 ms | 1,804 |
+| order:customer (single)        | 6 ms | 7 ms | 1,005 |
+| orders (staff)                 | 7 ms | 9 ms | 1,804 |
+| orders (staff, ?status=PLACED) | 6 ms | 7 ms | 1,008 |
+
+All well within any reasonable latency budget (local network, seeded DB).
+
+## Supabase query patterns (server/src/services/*.ts, static review)
+
+- **Over-fetching:** bare `.select()` (`select *`) in `auth.service.ts:28` (profiles, single row), `menu.service.ts:11` (menu_items, ~12-row table, 3 unused columns vs `toMenuItemDto`), `order.service.ts:59` (menu_items lookup during order placement, bounded by cart size), `store.service.ts:9` (stores, single row, `.limit(1)`). None are on a list/polled endpoint with a large table — impact is minor at current data volumes. `selectOrders()` (`server/src/utils/serializers.ts:11`) already uses an explicit column list with embedded `stores`/`order_items`/`menu_items` relations — a good pattern, one round trip for order + lines + store.
+- **N+1:** none found (`grep -n -B4 ".from("` shows no `.from(` inside a loop or `Promise.all(list.map(...))`).
+- **Missing indexes:** none found on the hot paths. `orders(user_id, created_at)` and `orders(status, created_at)` cover `listOrders`/`getOrder`'s filters and sort; `menu_items(store_id, category)` covers the menu query's `store_id` filter (the `sort_order` in the same query isn't indexed alongside `store_id`, but `menu_items` is a ~12-row table, not a growing one — not worth an index).
+- **Unbounded lists:** `listOrders` (`server/src/services/order.service.ts:98-107`) bounds the staff path with `STAFF_LIST_LIMIT = 100` but the customer path (`else query = query.eq('user_id', user.id);`) has no `.limit(`. `orders` is a growing table with an index on `(user_id, created_at)`, so it will scale in query cost, if not yet in payload size (2 orders total today).
+- **Round-trips:** menu route = 2 sequential calls (`getStore()` then `menu_items`, both required); order creation = `getStore` → `menu_items` (pricing) → `place_order` RPC → `selectOrders` (confirm) — 4 calls, all necessary, and `place_order` already folds the stock-reservation + insert into one DB transaction. None exceed the 3-in-series threshold.
+
+## Client fetch patterns (changed files: `CartButton.tsx`, `StatusTracker.tsx`, `ItemDetailSheet.tsx`, `StaffDashboard.tsx`)
+
+All four changes are the react-hooks v7 fixes described in scope (ref/setState-in-effect → render-time derived state). None add a new fetch, change a `pollInterval`, or duplicate a GET already available via router state. No findings.
+
+## Known over budget
+
+- **LCP `/menu` = 6.15 s vs 2.5 s budget (146% over).** Root cause: 12 menu photos served at their full 900×700 source resolution (up to 164 KB each) while displayed at 112–170 px device boxes — 5–8× oversized in every case, 1.15 MB total page weight. Fix: a resize pipeline (or `srcset`/`sizes`) producing ~230–340 px variants would cut photo bytes by roughly 90%.
+- **7 of 12 menu photos exceed the ~80 KB budget** (`cafe-cover.jpg` 164 KB down to `chocolate-brownie.jpg` 101 KB) — same root cause as above.
+- **No route-level code splitting** — `client/src/App.tsx` imports `StaffDashboardPage`, `LoginPage`, `RegisterPage`, `CheckoutPage` eagerly; the build produces one 533 KB (149 KB gzip) chunk. Currently under the 170 KB byte budget, but structurally non-compliant and will regress past budget as any of those routes grow.
+- **`listOrders` customer path has no `.limit(`** (`server/src/services/order.service.ts:98-107`) — unbounded for a growing table, no measured impact yet (2 orders exist).
+- **Bare `select()` (select \*)** on `menu_items`, `profiles`, `stores` — minor over-fetch on small tables, no measured impact at current row counts.
+
+None of the above were introduced by this change (the semantic diff is server-side logging + client hooks-correctness fixes); every item pre-dates it and is recorded here as the starting point.
+
+## History
+
+- **2026-09-27** · `fb7e874 + uncommitted changes` (round 2: image compression + 400px thumbnails, client localStorage
+  persisted cache, server ETag/304 + in-process read cache, customer order-list cap, route-level code splitting for
+  Checkout/OrderSuccess/Login/Register/StaffDashboard) — Initial JS 143.6 KB gzip (was 148.9 KB, −3.5%); `/menu` LCP
+  2.88 s / INP 48 ms / CLS ~0.0002 (was 6.15 s / 112 ms / ~0.0002 — LCP −53%, still ~15% over the 2.5 s budget, no
+  longer the 146%-over regression it was); `/menu` photo payload 406 KB total page weight (was 1.15 MB, −65%);
+  `GET /api/menu` and `GET /api/store` p50 latency ~1 ms (was 5–6 ms, served from the new in-process read cache);
+  `/orders/:id` polling unchanged at 15 req/min (4 s interval) but ~4.5 KB/min (was ~23 KB/min, −80%, from ETag 304s);
+  hidden-tab pause and resume-on-visible still hold (0 requests hidden, 1 request on resume — the "2 requests"
+  baseline quirk is gone). Customer `listOrders` is no longer unbounded (`CUSTOMER_LIST_LIMIT = 50` added). See
+  report body (this run) for full deltas, the `cafe-cover.jpg` gap (StoreCard/menu banner still serves the
+  full 900×700 original, 103 KB, even though a 400px thumbnail now exists for it), and CONFIRM items.
+- **2026-09-27 (follow-up)** · same tree + storefront cover `srcSet`/`sizes` (`StoreCard.tsx`, `pages/Menu.tsx`, now
+  using `cafe-cover-400.jpg`) — `/menu` LCP median 2532 ms (runs 2740/2532/2476; LCP element `cafe-cover-400.jpg`),
+  page weight 322 KB (was 406 KB). Measured by the main agent with the check-3 method (preview build, 360×640, Slow 4G,
+  4× CPU, cold cache) at DPR 1; a DPR 2–3 phone picks the 900px cover, so its gain is smaller. ~1% over budget.
+- **2026-09-27 (round 3)** · `355fff5 + uncommitted changes` (ADMIN role + `/admin` site-settings dashboard, `site_settings`
+  singleton with a 10 s in-process read cache, `listOrders` now sources its customer/staff list limits from that
+  cache instead of fixed constants, COMPLETED→COLLECTED rename, max qty 10, `authStore.hydrate` single-flight) —
+  Initial JS 144.3 KB gzip (`index-DVr1sxne.js` 147,789 B; was 143.6 KB, +0.5%, noise-level, still well under the
+  170 KB budget); `AdminPage` confirmed lazy (`Admin-CShg55gW.js`, 1,463 B gzip, no `modulepreload`/`src` link in
+  `index.html`'s initial set) — it did **not** land in the initial bundle; `roles.ts` (8 lines) and
+  `sessionActivity.ts` (38 lines) are eager as scoped, both tiny, no measurable bundle impact. No new runtime
+  dependency (`client/package.json` diff is devDependencies only — eslint/vitest/prettier toolchain). `/menu` LCP
+  median 2292 ms (runs 2560/2260/2292, was 2532 ms — back within the 2.5 s budget, first time this round); `/orders/:id`
+  LCP median 1540 ms (runs 1516/1540/1600, was 1588 ms, within noise). `cafe-cover` still serves the `srcset`
+  400w/900w pair unchanged. `GET /api/orders` (customer) p50 6 ms / p95 8 ms / 609 B, `GET /api/orders` (staff) p50
+  6 ms / p95 8 ms / 609 B, `GET /api/orders/:id` p50 6 ms / p95 7 ms / 606 B — all within noise of the round-1
+  baseline (6–9 ms); `listOrders`'s new `await getSettings()` added no measurable latency because `site_settings`
+  shares the same in-process TTL cache as menu/store (`server/src/utils/cache.ts`, 10 s TTL) — confirmed a cache hit
+  by code inspection (`cached()` returns the stored promise on every call inside the TTL window) and by latency
+  staying flat. `GET /api/admin/settings` p50 3 ms / p95 4 ms / 118 B; `PATCH /api/admin/settings` p50 6 ms / p95
+  8 ms / 118 B, and the read cache is invalidated on every PATCH (verified live: PATCH then GET returns the new value
+  immediately). Polling unchanged: `/orders/:id` (non-terminal `PLACED` order, freshly placed for this run) ~15
+  req/min, transferSize 300 B/response (encodedBodySize 595 B — the ETag/304 still lands: `Content-Length` is 595 B
+  but only ~300 B of headers cross the wire on repeat polls) ≈ 4.5 KB/min, matching the round-2 baseline; `/staff`
+  ~15 req/min, transferSize 300 B/response (encodedBodySize 1,195 B) ≈ 4.5 KB/min, same ETag/304 behaviour — both 0
+  requests over a hidden-tab window and 1 immediate request on resume. `TERMINAL_STATUSES` now reads `['COLLECTED',
+'CANCELLED']` (`orderStatus.ts`) so polling still stops correctly at the renamed terminal state. The customer
+  `listOrders` path is no longer a fixed `CUSTOMER_LIST_LIMIT` constant — it now reads `customer_order_history_limit`
+  from the (cached) site settings, defaulting to 20 — this fully resolves last round's "no `.limit(`" advisory by
+  making the cap admin-configurable instead of dropping it. See report body (this run) for the full delta table and
+  CONFIRM items.
+- **2026-09-27 (round 4)** · `55c3208 + uncommitted changes` (review round: `cache.ts` in-flight load shared past TTL
+  via `expiresAt: Infinity` while pending, `app.ts` cache headers moved before pino-http/cors/express.json, stale-copy
+  notice on `/` and `/menu` when a refresh fails over a persisted copy, `TopBar` logo `min-h-11`, server prod build via
+  `tsconfig.build.json`, plus non-perf test/doc/seed/hook changes) — Initial JS 144.5 KB gzip (`index-ByUvrC2x.js`
+  147,996 B; was 144.3 KB, +0.14%, noise-level, still well under the 170 KB budget); splitting unchanged (`Login`,
+  `Register`, `Checkout`, `StaffDashboard`, `Admin`, `OrderSuccess` all separate chunks, none in the initial set). No
+  new runtime dependency (`client/package.json` untouched this round). `/menu` LCP median 2268 ms (runs
+  2268/2268/2292, was 2292 ms — within noise, still within the 2.5 s budget), CLS ~0.00016, INP 48–104 ms, one 57 ms
+  long task (well under the 200 ms INP-risk line); `/` LCP median 1608 ms (runs 1616/1608/1608, was not separately
+  tracked the last two rounds — within the 2.5 s budget by a wide margin). `/cart` and `/orders/:id` were not
+  re-measured this round (untouched by the diff; carrying forward round-3 numbers: 1972 ms / 1540 ms, both
+  within budget). Confirmed the stale-copy notice adds no layout shift: with `/api/menu` and `/api/store` aborted
+  after a warm persisted-cache visit, "Showing your saved menu" / "Showing saved shop details" render and CLS stays
+  ~0.00016 / 0 respectively — no shift from the notice mounting. `cache.ts`: 20 parallel `GET /api/menu` fired
+  immediately after an order-placement invalidation (which calls `invalidate('menu')`) all completed in 9–26 ms with
+  no serial stacking (consistent with one shared in-flight load, not 20 duplicate DB round trips); warm p50/p95
+  settled back to 1 ms/1 ms afterward, matching round 3. `app.ts`: verified live that moving the `Cache-Control`/`Vary`
+  middleware before `pino-http`/`cors`/`express.json` did not drop headers on paths that never reach the routers —
+  an `OPTIONS` CORS preflight (204) and a malformed-JSON `POST /api/orders` (400) both still carry `Cache-Control:
+no-cache` and `Vary: Authorization, Origin`; normal `GET` 304 revalidation on `/api/menu`, `/api/store`,
+  `/api/orders` (customer) and `/api/orders/:id` all still return `304` with `0B` body. `cached()`/`invalidate()`
+  usage unchanged (`menu`, `store`, `site_settings` cached; `persist: true` still only on `useMenu`/`useStore`, never
+  on orders/profile). `server npm run build` (now via `tsconfig.build.json`) emits `dist/src/**` and `dist/scripts/**`
+  only — no `dist/test/**`, no `*.test.js` anywhere in `dist` (confirmed by `find dist -iname "*test*"` returning
+  nothing); `dist/` is gitignored and was removed after the check. No regressions found; nothing newly over budget.

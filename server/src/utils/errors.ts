@@ -54,6 +54,8 @@ export const insufficientStock = (menuItemId: string, name: string, available: n
   new AppError(
     400,
     'INSUFFICIENT_STOCK',
-    available === 0 ? `${name} just sold out.` : `Only ${available} ${name} left. Reduce the quantity in your cart.`,
+    available === 0
+      ? `${name} just sold out.`
+      : `Only ${available} ${name} left. Reduce the quantity in your cart.`,
     { menuItemId, name, available },
   );

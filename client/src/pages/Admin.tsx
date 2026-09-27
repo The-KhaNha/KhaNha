@@ -1,0 +1,120 @@
+import { useState, type FormEvent } from 'react';
+import { Button } from '../components/Button';
+import { Card } from '../components/Card';
+import { ErrorState } from '../components/ErrorState';
+import { Input } from '../components/Input';
+import { Skeleton } from '../components/Skeleton';
+import { TimeText } from '../components/TimeText';
+import {
+  SETTING_KEYS,
+  SETTING_LIMITS,
+  changedSettings,
+  validateLimit,
+} from '../features/admin/settingsRules';
+import { useSiteSettings } from '../features/admin/useSiteSettings';
+import { ApiError } from '../services/api';
+import { updateSiteSettings } from '../services/admin';
+import type { SiteSettings } from '../types/api';
+
+type Draft = Record<(typeof SETTING_KEYS)[number], string>;
+
+const toDraft = (settings: SiteSettings): Draft => ({
+  customerOrderHistoryLimit: String(settings.customerOrderHistoryLimit),
+  staffOrderListLimit: String(settings.staffOrderListLimit),
+});
+
+/** Site-wide admin dashboard (developer/operator, not the restaurant): the limits in site_settings. */
+export function AdminPage() {
+  const { settings, isLoading, error, retry, mutate } = useSiteSettings();
+
+  return (
+    <div className="space-y-4 pt-4 animate-fade-up">
+      <div>
+        <h2 className="text-xl font-extrabold">Site settings</h2>
+        <p className="mt-1 text-sm text-muted">
+          Apply to every store. Changes take effect on the next request.
+        </p>
+      </div>
+      {isLoading ? (
+        <Skeleton className="h-64 w-full rounded-[20px]" />
+      ) : error || !settings ? (
+        <ErrorState
+          unreachable={error?.isUnreachable}
+          title="Settings didn't load"
+          message={error?.message}
+          onRetry={retry}
+        />
+      ) : (
+        <SettingsForm
+          key={settings.updatedAt}
+          settings={settings}
+          onSaved={(saved) => mutate(() => saved)}
+        />
+      )}
+    </div>
+  );
+}
+
+function SettingsForm({
+  settings,
+  onSaved,
+}: {
+  settings: SiteSettings;
+  onSaved: (settings: SiteSettings) => void;
+}) {
+  const [draft, setDraft] = useState<Draft>(() => toDraft(settings));
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const fieldErrors = Object.fromEntries(
+    SETTING_KEYS.map((key) => [key, validateLimit(key, draft[key])]),
+  );
+  const valid = SETTING_KEYS.every((key) => fieldErrors[key] === null);
+  const changes = valid ? changedSettings(settings, draft) : {};
+  const dirty = Object.keys(changes).length > 0;
+
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    if (!valid || !dirty || saving) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      onSaved(await updateSiteSettings(changes));
+    } catch (err) {
+      setSaveError(err instanceof ApiError ? err.message : 'Something went wrong.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card as="section" padding="lg">
+      <form onSubmit={handleSubmit} noValidate className="space-y-5">
+        {SETTING_KEYS.map((key) => (
+          <Input
+            key={key}
+            label={SETTING_LIMITS[key].label}
+            hint={`${SETTING_LIMITS[key].hint} (1–${SETTING_LIMITS[key].max})`}
+            inputMode="numeric"
+            value={draft[key]}
+            error={fieldErrors[key] ?? undefined}
+            onChange={(event) => setDraft((d) => ({ ...d, [key]: event.target.value }))}
+          />
+        ))}
+        {saveError && (
+          <p role="alert" className="text-sm font-semibold text-brand-700">
+            {saveError}
+          </p>
+        )}
+        <div className="flex items-center justify-between gap-3 border-t border-line/70 pt-4">
+          <p className="text-[13px] text-muted">
+            Last saved <TimeText iso={settings.updatedAt} withDay />
+          </p>
+          <Button type="submit" loading={saving} disabled={!valid || !dirty}>
+            Save
+          </Button>
+        </div>
+      </form>
+    </Card>
+  );
+}

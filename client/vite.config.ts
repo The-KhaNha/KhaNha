@@ -10,7 +10,9 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd());
   const missing = REQUIRED_ENV.filter((name) => !env[name]);
   if (missing.length > 0) {
-    throw new Error(`Missing ${missing.join(', ')} for mode "${mode}". Create client/.env.${mode} (see client/.env.example).`);
+    throw new Error(
+      `Missing ${missing.join(', ')} for mode "${mode}". Create client/.env.${mode} (see client/.env.example).`,
+    );
   }
 
   return {
