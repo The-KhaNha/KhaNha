@@ -1,6 +1,9 @@
 import 'dotenv/config';
 import { z } from 'zod';
 
+const seedPassword = (name: string) =>
+  z.string().min(12, `${name} must be at least 12 characters.`).optional();
+
 const envSchema = z
   .object({
     /** Which Supabase project this process talks to. `npm run seed` refuses to wipe `production`. */
@@ -36,6 +39,11 @@ const envSchema = z
         }),
       })
       .optional(),
+    // The demo accounts' passwords on staging (local uses the ones published in README.md). Only scripts/seed.ts
+    // reads them, and it refuses to seed staging without all three; the API server never needs them.
+    SEED_STAFF_PASSWORD: seedPassword('SEED_STAFF_PASSWORD'),
+    SEED_ADMIN_PASSWORD: seedPassword('SEED_ADMIN_PASSWORD'),
+    SEED_CUSTOMER_PASSWORD: seedPassword('SEED_CUSTOMER_PASSWORD'),
   })
   .transform((env) => ({
     ...env,

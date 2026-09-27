@@ -152,13 +152,27 @@ function testMarkSurvivesCommit() {
   const assert = require('node:assert');
   const os = require('node:os');
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'major-change-gate-selftest-'));
+  // Strip Git repository-selection vars so both child processes operate on the scratch repo under `tmp`,
+  // never the caller's repo (GIT_DIR/GIT_WORK_TREE etc. would otherwise leak through process.env).
+  const childEnv = { ...process.env };
+  for (const key of [
+    'GIT_DIR',
+    'GIT_WORK_TREE',
+    'GIT_INDEX_FILE',
+    'GIT_OBJECT_DIRECTORY',
+    'GIT_ALTERNATE_OBJECT_DIRECTORIES',
+    'GIT_COMMON_DIR',
+    'GIT_CEILING_DIRECTORIES',
+  ]) {
+    delete childEnv[key];
+  }
   const run = (...args) =>
     execFileSync(process.execPath, [__filename, ...args], {
       cwd: tmp,
-      env: { ...process.env, CLAUDE_PROJECT_DIR: tmp },
+      env: { ...childEnv, CLAUDE_PROJECT_DIR: tmp },
       encoding: 'utf8',
     });
-  const g = (...args) => execFileSync('git', args, { cwd: tmp, encoding: 'utf8' });
+  const g = (...args) => execFileSync('git', args, { cwd: tmp, env: childEnv, encoding: 'utf8' });
   try {
     g('init', '-q');
     g('config', 'user.email', 'test@test.local');

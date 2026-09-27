@@ -20,13 +20,30 @@ describe('isIdleExpired', () => {
 });
 
 describe('readLastActive / markActive', () => {
-  afterEach(() => localStorage.clear());
+  afterEach(() => {
+    localStorage.clear();
+    vi.restoreAllMocks();
+  });
 
   it('round-trips and ignores garbage', () => {
     markActive(12345);
     expect(readLastActive()).toBe(12345);
     localStorage.setItem('fp_last_active', 'nope');
     expect(readLastActive()).toBeNull();
+  });
+
+  it('logs a blocked write once at warn, not on every call', async () => {
+    const { logger } = await import('../../lib/logger');
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {});
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('Blocked', 'SecurityError');
+    });
+    markActive(1);
+    markActive(2);
+    expect(warn).toHaveBeenCalledExactlyOnceWith('Session activity storage unavailable', {
+      operation: 'markActive',
+      error: 'SecurityError',
+    });
   });
 });
 

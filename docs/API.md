@@ -435,7 +435,8 @@ The client's caching is [FRONTEND_STRUCTURE.md#caching](FRONTEND_STRUCTURE.md#ca
 
 ### HTTP layer (every `/api` response)
 
-`server/src/app.ts` sets, before the router runs:
+`server/src/app.ts` sets these before `pino-http`, `cors` and `express.json()`, so a CORS preflight or a
+malformed-JSON error response — neither of which reaches the router below — still carries them:
 
 | Header          | Value           | Why                                                                                                                                       |
 | --------------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
@@ -452,11 +453,11 @@ body has not changed, the response is a bodiless `304 Not Modified` instead of t
 `GET /api/admin/settings`) are additionally held in an in-process cache, so concurrent requests during a cold cache
 share one database round-trip instead of repeating it:
 
-| Export                        | What                                                                                                                                                                                    |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `cached<T>(key, ttlMs, load)` | returns the cached value while younger than `ttlMs`; otherwise calls `load()` once and shares the pending promise between every concurrent miss. A failed load is dropped, never cached |
-| `invalidate(key?)`            | drops one key, or every key with no argument                                                                                                                                            |
-| `PUBLIC_READ_TTL_MS = 10_000` | the 10 s TTL used by both reads below                                                                                                                                                   |
+| Export                        | What                                                                                                                                                                                                                                                                                                                  |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `cached<T>(key, ttlMs, load)` | returns the cached value while younger than `ttlMs`; otherwise calls `load()` once and shares the pending promise between every concurrent miss, however long it takes — the `ttlMs` clock only starts once the load settles, so a slow load is never re-triggered mid-flight. A failed load is dropped, never cached |
+| `invalidate(key?)`            | drops one key, or every key with no argument                                                                                                                                                                                                                                                                          |
+| `PUBLIC_READ_TTL_MS = 10_000` | the 10 s TTL used by both reads below                                                                                                                                                                                                                                                                                 |
 
 | Cached endpoint                              | Key               | Loader                                      | Invalidated by                                                                                                                                                        |
 | -------------------------------------------- | ----------------- | ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

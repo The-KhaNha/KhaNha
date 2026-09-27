@@ -918,6 +918,7 @@ Schema: [server/supabase/migrations/20260925120000_init.sql](../server/supabase/
 ```mermaid
 erDiagram
   AUTH_USERS ||--|| PROFILES : "on_auth_user_created trigger"
+  PROFILES o|--o| SITE_SETTINGS : updated_by
   PROFILES ||--o{ ORDERS : places
   STORES ||--o{ MENU_ITEMS : sells
   STORES ||--o{ ORDERS : receives
@@ -935,8 +936,15 @@ erDiagram
     text name
     text email UK "kept in sync by trigger"
     text phone
-    user_role role "CUSTOMER or STAFF"
+    user_role role "CUSTOMER, STAFF or ADMIN"
     timestamptz created_at
+  }
+  SITE_SETTINGS {
+    boolean id PK "always true"
+    int customer_order_history_limit
+    int staff_order_list_limit
+    timestamptz updated_at
+    uuid updated_by FK "nullable, ON DELETE SET NULL"
   }
   STORES {
     uuid id PK

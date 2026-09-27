@@ -37,14 +37,15 @@ Read from `server/.env` (copy `server/.env.example`) or the host's environment. 
 `server/src/utils/env.ts`: on any problem the process prints `Invalid environment configuration. Check server/.env
 (see .env.example):` with one line per variable and exits with code 1.
 
-| Variable              | Required | Default                         | Rule                                                         | Purpose                                                                                                                                                               |
-| --------------------- | -------- | ------------------------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `APP_ENV`             | yes      |                                 | `local`, `staging` or `production`                           | which project this process talks to; `start.sh` picks the client mode from it; `npm run seed` refuses the demo reset on `production`; logger output and default level |
-| `SUPABASE_URL`        | yes      |                                 | a URL                                                        | the project URL, e.g. `http://127.0.0.1:54321` or `https://<ref>.supabase.co`                                                                                         |
-| `SUPABASE_SECRET_KEY` | yes      |                                 | starts with `sb_secret_` (legacy JWT keys are rejected)      | the project's secret key (Project Settings → API Keys). Bypasses RLS. Never in the client or git                                                                      |
-| `PORT`                | no       | `8000`                          | positive integer                                             | API port. Keep 8000: `client/vite.config.ts` (proxy target) and `start.sh` hardcode it                                                                                |
-| `CLIENT_ORIGIN`       | no       | `http://localhost:5173`         | a URL                                                        | the one origin CORS allows                                                                                                                                            |
-| `LOG_LEVEL`           | no       | `debug` on `local`, else `info` | `fatal`, `error`, `warn`, `info`, `debug`, `trace`, `silent` | minimum log level (see [LOGGING.md](LOGGING.md#tuning-per-environment))                                                                                               |
+| Variable                                                               | Required        | Default                         | Rule                                                         | Purpose                                                                                                                                                                                                                                                                    |
+| ---------------------------------------------------------------------- | --------------- | ------------------------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `APP_ENV`                                                              | yes             |                                 | `local`, `staging` or `production`                           | which project this process talks to; `start.sh` picks the client mode from it; `npm run seed` refuses the demo reset on `production`; logger output and default level                                                                                                      |
+| `SUPABASE_URL`                                                         | yes             |                                 | a URL                                                        | the project URL, e.g. `http://127.0.0.1:54321` or `https://<ref>.supabase.co`                                                                                                                                                                                              |
+| `SUPABASE_SECRET_KEY`                                                  | yes             |                                 | starts with `sb_secret_` (legacy JWT keys are rejected)      | the project's secret key (Project Settings → API Keys). Bypasses RLS. Never in the client or git                                                                                                                                                                           |
+| `PORT`                                                                 | no              | `8000`                          | positive integer                                             | API port. Keep 8000: `client/vite.config.ts` (proxy target) and `start.sh` hardcode it                                                                                                                                                                                     |
+| `CLIENT_ORIGIN`                                                        | no              | `http://localhost:5173`         | a URL                                                        | the one origin CORS allows                                                                                                                                                                                                                                                 |
+| `LOG_LEVEL`                                                            | no              | `debug` on `local`, else `info` | `fatal`, `error`, `warn`, `info`, `debug`, `trace`, `silent` | minimum log level (see [LOGGING.md](LOGGING.md#tuning-per-environment))                                                                                                                                                                                                    |
+| `SEED_STAFF_PASSWORD`, `SEED_ADMIN_PASSWORD`, `SEED_CUSTOMER_PASSWORD` | seed on staging |                                 | 12+ characters each                                          | read only by `npm run seed` (the API never needs them): the staging passwords of the three demo accounts; local uses the ones published in [README.md](../README.md#test-accounts). On staging the seed refuses to run (before wiping anything) and names the missing ones |
 
 `server/.env.example` holds the local stack's default values; the local secret key there is the Supabase CLI's
 fixed local default, printed by `npm run db:start`. Hosted keys go in `server/.env` (staging) or the host's
@@ -52,10 +53,10 @@ environment (production), never in git.
 
 Other variables read outside `env.ts`:
 
-| Variable                             | Read by                                                   | Purpose                                                           |
-| ------------------------------------ | --------------------------------------------------------- | ----------------------------------------------------------------- |
-| `SUPABASE_DB_PASSWORD`               | Supabase CLI in `db-push.sh`                              | the hosted database password, instead of the interactive prompt   |
-| `TEST_TARGET`, `ALLOW_STAGING_TESTS` | `server/test/setup/target.ts`, `server/vitest.config.mts` | which project a test run may touch (see [TESTING.md](TESTING.md)) |
+| Variable                                                  | Read by                                                   | Purpose                                                                                                                                                                                   |
+| --------------------------------------------------------- | --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SUPABASE_DB_PASSWORD`                                    | Supabase CLI in `db-push.sh`                              | the hosted database password, instead of the interactive prompt                                                                                                                           |
+| `TEST_TARGET`, `ALLOW_STAGING_TESTS`, `TEST_STAGING_HOST` | `server/test/setup/target.ts`, `server/vitest.config.mts` | which project a test run may touch; on `TEST_TARGET=staging`, `TEST_STAGING_HOST` must be set and match `SUPABASE_URL`'s host (see [TESTING.md](TESTING.md#the-test-target-guard-server)) |
 
 ## Client environment variables
 
@@ -86,11 +87,11 @@ origin (and set `CLIENT_ORIGIN` to that origin). The repo contains no hosting co
 
 ## Builds
 
-| Package | Command                 | Output         | Notes                                                                                      |
-| ------- | ----------------------- | -------------- | ------------------------------------------------------------------------------------------ |
-| server  | `npm run build`         | `server/dist/` | `tsc`; run with `npm start` (`node dist/src/server.js`)                                    |
-| client  | `npm run build`         | `client/dist/` | `tsc --noEmit` then `vite build` in production mode; **requires `client/.env.production`** |
-| client  | `npm run build:staging` | `client/dist/` | same, with `client/.env.staging`                                                           |
+| Package | Command                 | Output         | Notes                                                                                                                         |
+| ------- | ----------------------- | -------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| server  | `npm run build`         | `server/dist/` | `tsc -p tsconfig.build.json` (`src/` and `scripts/` only, tests never ship); run with `npm start` (`node dist/src/server.js`) |
+| client  | `npm run build`         | `client/dist/` | `tsc --noEmit` then `vite build` in production mode; **requires `client/.env.production`**                                    |
+| client  | `npm run build:staging` | `client/dist/` | same, with `client/.env.staging`                                                                                              |
 
 `npm start` does not load `tsx`; it needs `npm run build` first. `server.ts` loads `dotenv/config`, so a
 `server/.env` is read if present; on a host, set the variables in its environment instead.
@@ -170,10 +171,10 @@ flowchart TD
   subgraph Demo["Demo reset (local / staging)"]
     D1["rpc reset_demo_orders()<br/>TRUNCATE order_items, orders RESTART IDENTITY → next order 1001"] --> D2["Upsert the single store"]
     D2 --> D3["Upsert 11 menu items by name (ids kept),<br/>reset stock: Cheese Toast 1, Brownie 2, Muffin 5,<br/>delete items no longer in the list"]
-    D3 --> D4["For each test account (STAFF, ADMIN, CUSTOMER): auth.admin create or update<br/>(confirmed, known password), then set profile name, phone, role"]
+    D3 --> D4["For each test account (STAFF, ADMIN, CUSTOMER): auth.admin create or update<br/>(confirmed; published passwords on local, SEED_*_PASSWORD on staging),<br/>then set profile name, phone, role"]
     D4 --> D5["Delete every other Auth user (profiles cascade)"]
     D5 --> D6["Reset site_settings to defaults (20 / 100)"]
-    D6 --> D7["Print summary + test logins"]
+    D6 --> D7["Print summary + account roles (no emails/passwords, see README.md Test accounts)"]
   end
 ```
 
@@ -189,7 +190,8 @@ flowchart TD
 - **Local**: `cd server && npm run db:start` (Docker) applies every migration. `cp server/.env.example server/.env`
   needs no edits. Then `./start.sh --seed` once, `./start.sh` after that. See the [README](../README.md#quick-start).
 - **Staging, once**: `npm run db:push:staging`, then put the staging URL and secret key in `server/.env` with
-  `APP_ENV=staging` and run `npm run seed` for the demo data.
+  `APP_ENV=staging` and the three `SEED_*_PASSWORD`s (never the published demo passwords; see [server environment
+  variables](#server-environment-variables)), and run `npm run seed` for the demo data.
 
 ### start.sh
 

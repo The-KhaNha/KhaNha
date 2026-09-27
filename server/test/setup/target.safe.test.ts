@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { resolveTestTarget } from './target';
 
 const local = { APP_ENV: 'local', SUPABASE_URL: 'http://127.0.0.1:54321' };
+// An obviously fake staging host, never a real project ref.
+const STAGING_HOST = 'staging.example.test';
 
 describe('resolveTestTarget', () => {
   it('defaults to local and accepts the local stack', () => {
@@ -21,10 +23,21 @@ describe('resolveTestTarget', () => {
     const staging = {
       TEST_TARGET: 'staging',
       APP_ENV: 'staging',
-      SUPABASE_URL: 'https://xkddnlxeeizaqpefhqlv.supabase.co',
+      TEST_STAGING_HOST: STAGING_HOST,
+      SUPABASE_URL: `https://${STAGING_HOST}`,
     };
     expect(() => resolveTestTarget(staging)).toThrow(/ALLOW_STAGING_TESTS/);
     expect(resolveTestTarget({ ...staging, ALLOW_STAGING_TESTS: '1' })).toBe('staging');
+  });
+
+  it('refuses staging without TEST_STAGING_HOST set', () => {
+    const staging = {
+      TEST_TARGET: 'staging',
+      ALLOW_STAGING_TESTS: '1',
+      APP_ENV: 'staging',
+      SUPABASE_URL: `https://${STAGING_HOST}`,
+    };
+    expect(() => resolveTestTarget(staging)).toThrow(/TEST_STAGING_HOST/);
   });
 
   it('refuses staging when SUPABASE_URL is not the staging project, opt-in or not', () => {
@@ -32,6 +45,7 @@ describe('resolveTestTarget', () => {
       TEST_TARGET: 'staging',
       ALLOW_STAGING_TESTS: '1',
       APP_ENV: 'staging',
+      TEST_STAGING_HOST: STAGING_HOST,
     };
     expect(() =>
       resolveTestTarget({ ...staging, SUPABASE_URL: 'https://some-other-project.supabase.co' }),

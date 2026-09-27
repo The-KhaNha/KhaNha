@@ -10,7 +10,8 @@ The HTTP contract is in [API.md](API.md), the database in [SCHEMA.md](SCHEMA.md)
 server/
 ├── .env.example              copy to .env (see DEPLOYMENT.md)
 ├── package.json              scripts below
-├── tsconfig.json             compiles src/, scripts/ and test/ to dist/
+├── tsconfig.json             typecheck target: src/, scripts/ and test/
+├── tsconfig.build.json        build target: src/ and scripts/ only (extends tsconfig.json, excludes test/ from dist/)
 ├── vitest.config.mts         test config (see TESTING.md)
 ├── eslint.config.mjs
 ├── scripts/
@@ -182,7 +183,7 @@ The layers, in the order a request passes them:
 | Script                                   | Runs                                                                                                                        |
 | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
 | `dev`                                    | `tsx watch src/server.ts`                                                                                                   |
-| `build`                                  | `tsc -p tsconfig.json` → `dist/`                                                                                            |
+| `build`                                  | `tsc -p tsconfig.build.json` → `dist/` (`src/` and `scripts/` only; tests never ship)                                       |
 | `start`                                  | `node dist/src/server.js`                                                                                                   |
 | `typecheck`                              | `tsc -p tsconfig.json --noEmit`                                                                                             |
 | `lint`                                   | `eslint .`                                                                                                                  |

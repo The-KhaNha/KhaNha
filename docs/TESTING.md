@@ -38,11 +38,11 @@ The full gate for a touched package is `npm run typecheck && npm run lint && npm
 `server/test/setup/guard.ts` runs before any test file imports the app. It calls `resolveTestTarget()` from
 `test/setup/target.ts`, which decides which Supabase project the run may touch:
 
-| `TEST_TARGET`     | Allowed when                                                                                                                                           | Suites that run       |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------- |
-| `local` (default) | `APP_ENV=local` and `SUPABASE_URL` host is `127.0.0.1`/`localhost`                                                                                     | every `*.test.ts`     |
-| `staging`         | `ALLOW_STAGING_TESTS=1`, `APP_ENV=staging`, and `SUPABASE_URL` host = the staging project (`xkddnlxeeizaqpefhqlv.supabase.co`, or `TEST_STAGING_HOST`) | only `*.safe.test.ts` |
-| `production`      | never                                                                                                                                                  | –                     |
+| `TEST_TARGET`     | Allowed when                                                                                            | Suites that run       |
+| ----------------- | ------------------------------------------------------------------------------------------------------- | --------------------- |
+| `local` (default) | `APP_ENV=local` and `SUPABASE_URL` host is `127.0.0.1`/`localhost`                                      | every `*.test.ts`     |
+| `staging`         | `ALLOW_STAGING_TESTS=1`, `APP_ENV=staging`, `TEST_STAGING_HOST` set, and `SUPABASE_URL` host matches it | only `*.safe.test.ts` |
+| `production`      | never                                                                                                   | –                     |
 
 If the guard throws, the whole run stops before a single request is made. `vitest.config.mts` loads `server/.env` before choosing which files to include, so the file filter and the guard always read the same `TEST_TARGET`. Production is never a test target.
 
@@ -116,6 +116,6 @@ A test that fails because of a real bug is a bug report. Never weaken the assert
 
 ## Staging later (GitHub Actions)
 
-Not set up yet. When it is, a workflow sets `TEST_TARGET=staging`, `ALLOW_STAGING_TESTS=1`, `APP_ENV=staging` and
-the staging `SUPABASE_URL` / `SUPABASE_SECRET_KEY` from repository secrets, then runs `npm test` in `server/`. The
-config then picks up `*.safe.test.ts` only.
+Not set up yet. When it is, a workflow sets `TEST_TARGET=staging`, `ALLOW_STAGING_TESTS=1`, `APP_ENV=staging`,
+`TEST_STAGING_HOST` and the staging `SUPABASE_URL` / `SUPABASE_SECRET_KEY` from repository secrets, then runs
+`npm test` in `server/`. The config then picks up `*.safe.test.ts` only.

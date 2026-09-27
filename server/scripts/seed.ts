@@ -122,18 +122,24 @@ const MENU: SeedMenuItem[] = [
   },
 ];
 
-const ACCOUNTS: {
+type StagingPasswordKey = 'SEED_STAFF_PASSWORD' | 'SEED_ADMIN_PASSWORD' | 'SEED_CUSTOMER_PASSWORD';
+
+// The published passwords (README.md "Test accounts") work locally only. Shared staging is reachable by anyone who
+// reads the README, so there every account's password comes from the deployment (seedDemo checks all of them first).
+const DEMO_ACCOUNTS: {
   role: Role;
   name: string;
   email: string;
-  password: string;
+  localPassword: string;
+  stagingPassword: StagingPasswordKey;
   phone: string | null;
 }[] = [
   {
     role: 'STAFF',
     name: 'Campus Cafe Staff',
     email: 'staff@campuscafe.local',
-    password: 'staff123',
+    localPassword: 'staff123',
+    stagingPassword: 'SEED_STAFF_PASSWORD',
     phone: null,
   },
   {
@@ -141,17 +147,24 @@ const ACCOUNTS: {
     role: 'ADMIN',
     name: 'Site Admin',
     email: 'admin@campuscafe.local',
-    password: 'admin123',
+    localPassword: 'admin123',
+    stagingPassword: 'SEED_ADMIN_PASSWORD',
     phone: null,
   },
   {
     role: 'CUSTOMER',
     name: 'Anishka',
     email: 'anishka@example.com',
-    password: 'test1234',
+    localPassword: 'test1234',
+    stagingPassword: 'SEED_CUSTOMER_PASSWORD',
     phone: '9876543210',
   },
 ];
+
+const ACCOUNTS = DEMO_ACCOUNTS.map(({ localPassword, stagingPassword, ...account }) => ({
+  ...account,
+  password: env.APP_ENV === 'staging' ? (env[stagingPassword] ?? '') : localPassword,
+}));
 
 async function seedStore(): Promise<Tables<'stores'>> {
   const { data: existing } = await db
@@ -249,6 +262,15 @@ function describeMenu(store: Tables<'stores'>, menuItems: Tables<'menu_items'>[]
 }
 
 async function seedDemo(): Promise<void> {
+  // Checked before anything is wiped, so a missing secret never leaves staging half-reset.
+  if (env.APP_ENV === 'staging') {
+    const missing = DEMO_ACCOUNTS.map((a) => a.stagingPassword).filter((key) => !env[key]);
+    if (missing.length > 0) {
+      throw new Error(
+        `Set ${missing.join(', ')} (12+ characters each) to seed staging: its demo accounts must not use the passwords published in README.md.`,
+      );
+    }
+  }
   // Orders are demo data: wipe them so numbering starts from #1001 again.
   await db.rpc('reset_demo_orders').throwOnError();
 
@@ -262,22 +284,16 @@ async function seedDemo(): Promise<void> {
     .eq('id', true)
     .throwOnError();
 
-  // Credentials only go to the local developer's own terminal. Staging logs can be centralized and read by more
-  // people, so print roles there instead of the well-known demo passwords (CWE-532).
-  const accounts =
-    env.APP_ENV === 'local'
-      ? ACCOUNTS.map(
-          (account) => `  ${account.role.padEnd(8)}  ${account.email} / ${account.password}`,
-        ).join('\n')
-      : ACCOUNTS.map((account) => `  ${account.role.padEnd(8)}  ${account.email}`).join('\n');
+  // Never log emails or passwords, in any environment (CWE-532): logs can be centralized and read by more people
+  // than the terminal that ran the seed. Demo logins are documented in README.md "Test accounts" instead.
+  const accounts = ACCOUNTS.map((account) => account.role).join(', ');
 
   logger.info(`
 Seeded Food Pickup (${env.APP_ENV}: ${env.SUPABASE_URL})
 ${describeMenu(store, menuItems)}
   Orders    next order number is #1001
 
-Test accounts
-${accounts}
+Test accounts (${accounts}) — see README.md "Test accounts" for logins
 `);
 }
 

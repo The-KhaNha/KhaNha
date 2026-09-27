@@ -88,11 +88,15 @@ The Vite dev server proxies `/api/*` to `http://localhost:8000`. The only client
 
 ## Test accounts
 
-| Role     | Email                    | Password   |
-| -------- | ------------------------ | ---------- |
-| Customer | `anishka@example.com`    | `test1234` |
-| Staff    | `staff@campuscafe.local` | `staff123` |
-| Admin    | `admin@campuscafe.local` | `admin123` |
+| Role     | Email                    | Password (local) |
+| -------- | ------------------------ | ---------------- |
+| Customer | `anishka@example.com`    | `test1234`       |
+| Staff    | `staff@campuscafe.local` | `staff123`       |
+| Admin    | `admin@campuscafe.local` | `admin123`       |
+
+These passwords work on the local stack only. Shared staging uses deployment-provided passwords
+(`SEED_STAFF_PASSWORD`, `SEED_ADMIN_PASSWORD`, `SEED_CUSTOMER_PASSWORD`; see
+[DEPLOYMENT.md](docs/DEPLOYMENT.md#server-environment-variables)), and production has no demo accounts.
 
 Or tap **Create an account** in the app; new accounts are customers. The admin account is a site-wide
 developer/operator role (the `/admin` dashboard), not a restaurant role — see
@@ -132,7 +136,7 @@ Customer on the phone (or a narrow window), staff on the laptop:
 20. Tap **Mark Collected**.
 21. The customer sees **"Order collected!"** with **Order Again**; the Orders tab lists the order as Collected.
 
-Also worth showing: **Order Again** adds a past order to the cart (and says what it couldn't add in full), **–** at quantity 1 (or the **Remove** link) removes the line, **Clear cart** shows the empty state, the unavailable **Berry Smoothie** can't be added, **+** stops at 10 of one item ("Max 10 per order"), and the stock-limited **Cheese Toast** shows "Only 1 left" — its **+** stops at 1, and if someone else buys it first, checkout names it and offers **Fix cart** (see [Stock limits](#stock-limits)). The staff dashboard also has a signed-in-only **Admin dashboard** (`/admin`, `admin@campuscafe.local` / `admin123`) where the customer order history and staff board size limits can be changed.
+Also worth showing: **Order Again** adds a past order to the cart (and says what it couldn't add in full), **–** at quantity 1 (or the **Remove** link) removes the line, **Clear cart** shows the empty state, the unavailable **Berry Smoothie** can't be added, **+** stops at 10 of one item ("Max 10 per order"), and the stock-limited **Cheese Toast** shows "Only 1 left" — its **+** stops at 1, and if someone else buys it first, checkout names it and offers **Fix cart** (see [Stock limits](#stock-limits)). The staff dashboard also has a signed-in-only **Admin dashboard** (`/admin`, `admin@campuscafe.local`; local-only credentials, see [Test accounts](#test-accounts)) where the customer order history and staff board size limits can be changed.
 
 ## Project layout
 

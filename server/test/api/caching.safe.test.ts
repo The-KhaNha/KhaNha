@@ -22,4 +22,23 @@ describe('HTTP caching', () => {
     expect(res.status).toBe(200);
     expect(res.body.store).toBeTruthy();
   });
+
+  it('carries the revalidation headers on a CORS preflight, which never reaches the routes', async () => {
+    const res = await api()
+      .options('/api/menu')
+      .set('Origin', 'http://localhost:5173')
+      .set('Access-Control-Request-Method', 'GET');
+    expect(res.headers['cache-control']).toBe('no-cache');
+    expect(res.headers.vary).toMatch(/Authorization/);
+  });
+
+  it('carries the revalidation headers on a malformed-JSON 400, which never reaches the routes', async () => {
+    const res = await api()
+      .post('/api/orders')
+      .set('Content-Type', 'application/json')
+      .send('{bad');
+    expect(res.status).toBe(400);
+    expect(res.headers['cache-control']).toBe('no-cache');
+    expect(res.headers.vary).toMatch(/Authorization/);
+  });
 });

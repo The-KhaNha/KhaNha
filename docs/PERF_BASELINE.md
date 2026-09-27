@@ -165,8 +165,33 @@ None of the above were introduced by this change (the semantic diff is server-si
   but only ~300 B of headers cross the wire on repeat polls) ≈ 4.5 KB/min, matching the round-2 baseline; `/staff`
   ~15 req/min, transferSize 300 B/response (encodedBodySize 1,195 B) ≈ 4.5 KB/min, same ETag/304 behaviour — both 0
   requests over a hidden-tab window and 1 immediate request on resume. `TERMINAL_STATUSES` now reads `['COLLECTED',
-  'CANCELLED']` (`orderStatus.ts`) so polling still stops correctly at the renamed terminal state. The customer
+'CANCELLED']` (`orderStatus.ts`) so polling still stops correctly at the renamed terminal state. The customer
   `listOrders` path is no longer a fixed `CUSTOMER_LIST_LIMIT` constant — it now reads `customer_order_history_limit`
   from the (cached) site settings, defaulting to 20 — this fully resolves last round's "no `.limit(`" advisory by
   making the cap admin-configurable instead of dropping it. See report body (this run) for the full delta table and
   CONFIRM items.
+- **2026-09-27 (round 4)** · `55c3208 + uncommitted changes` (review round: `cache.ts` in-flight load shared past TTL
+  via `expiresAt: Infinity` while pending, `app.ts` cache headers moved before pino-http/cors/express.json, stale-copy
+  notice on `/` and `/menu` when a refresh fails over a persisted copy, `TopBar` logo `min-h-11`, server prod build via
+  `tsconfig.build.json`, plus non-perf test/doc/seed/hook changes) — Initial JS 144.5 KB gzip (`index-ByUvrC2x.js`
+  147,996 B; was 144.3 KB, +0.14%, noise-level, still well under the 170 KB budget); splitting unchanged (`Login`,
+  `Register`, `Checkout`, `StaffDashboard`, `Admin`, `OrderSuccess` all separate chunks, none in the initial set). No
+  new runtime dependency (`client/package.json` untouched this round). `/menu` LCP median 2268 ms (runs
+  2268/2268/2292, was 2292 ms — within noise, still within the 2.5 s budget), CLS ~0.00016, INP 48–104 ms, one 57 ms
+  long task (well under the 200 ms INP-risk line); `/` LCP median 1608 ms (runs 1616/1608/1608, was not separately
+  tracked the last two rounds — within the 2.5 s budget by a wide margin). `/cart` and `/orders/:id` were not
+  re-measured this round (untouched by the diff; carrying forward round-3 numbers: 1972 ms / 1540 ms, both
+  within budget). Confirmed the stale-copy notice adds no layout shift: with `/api/menu` and `/api/store` aborted
+  after a warm persisted-cache visit, "Showing your saved menu" / "Showing saved shop details" render and CLS stays
+  ~0.00016 / 0 respectively — no shift from the notice mounting. `cache.ts`: 20 parallel `GET /api/menu` fired
+  immediately after an order-placement invalidation (which calls `invalidate('menu')`) all completed in 9–26 ms with
+  no serial stacking (consistent with one shared in-flight load, not 20 duplicate DB round trips); warm p50/p95
+  settled back to 1 ms/1 ms afterward, matching round 3. `app.ts`: verified live that moving the `Cache-Control`/`Vary`
+  middleware before `pino-http`/`cors`/`express.json` did not drop headers on paths that never reach the routers —
+  an `OPTIONS` CORS preflight (204) and a malformed-JSON `POST /api/orders` (400) both still carry `Cache-Control:
+no-cache` and `Vary: Authorization, Origin`; normal `GET` 304 revalidation on `/api/menu`, `/api/store`,
+  `/api/orders` (customer) and `/api/orders/:id` all still return `304` with `0B` body. `cached()`/`invalidate()`
+  usage unchanged (`menu`, `store`, `site_settings` cached; `persist: true` still only on `useMenu`/`useStore`, never
+  on orders/profile). `server npm run build` (now via `tsconfig.build.json`) emits `dist/src/**` and `dist/scripts/**`
+  only — no `dist/test/**`, no `*.test.js` anywhere in `dist` (confirmed by `find dist -iname "*test*"` returning
+  nothing); `dist/` is gitignored and was removed after the check. No regressions found; nothing newly over budget.
