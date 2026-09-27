@@ -9,19 +9,20 @@ One shop, one staff screen, real-time-enough status updates. The API and web app
 
 ## Docs
 
-| Doc                                                      | What it covers                                                                  |
-| -------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)             | system overview and every flow, as diagrams                                     |
-| [docs/API.md](docs/API.md)                               | every endpoint, request and response shapes, error codes, limits                |
-| [docs/SCHEMA.md](docs/SCHEMA.md)                         | tables, enums, indexes, triggers, database functions, migrations                |
-| [docs/PERMISSIONS.md](docs/PERMISSIONS.md)               | roles, route guards, ownership rules, RLS and grants                            |
-| [docs/COMPONENTS.md](docs/COMPONENTS.md)                 | the shared components, hooks, utilities and feature rules                       |
-| [docs/FRONTEND_STRUCTURE.md](docs/FRONTEND_STRUCTURE.md) | `client/src` layout, routes, stores, services, layering rules                   |
-| [docs/BACKEND_STRUCTURE.md](docs/BACKEND_STRUCTURE.md)   | `server/src` layout, request pipeline, modules, scripts                         |
-| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)                 | environments, env vars, migrations, seeding, builds, production setup           |
-| [docs/LOGGING.md](docs/LOGGING.md)                       | log levels, request ids, redaction                                              |
-| [docs/TESTING.md](docs/TESTING.md)                       | running tests, the test-target guard, the edge-case matrix                      |
-| `docs/PERF_BASELINE.md`                                  | performance budgets and measurements (created by perf-auditor on its first run) |
+| Doc                                                      | What it covers                                                                                                                                                                                         |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)             | system overview and every flow, as diagrams                                                                                                                                                            |
+| [docs/API.md](docs/API.md)                               | every endpoint, request and response shapes, error codes, limits                                                                                                                                       |
+| [docs/SCHEMA.md](docs/SCHEMA.md)                         | tables, enums, indexes, triggers, database functions, migrations                                                                                                                                       |
+| [docs/PERMISSIONS.md](docs/PERMISSIONS.md)               | roles, route guards, ownership rules, RLS and grants                                                                                                                                                   |
+| [docs/COMPONENTS.md](docs/COMPONENTS.md)                 | the shared components, hooks, utilities and feature rules                                                                                                                                              |
+| [docs/FRONTEND_STRUCTURE.md](docs/FRONTEND_STRUCTURE.md) | `client/src` layout, routes, stores, services, layering rules                                                                                                                                          |
+| [docs/BACKEND_STRUCTURE.md](docs/BACKEND_STRUCTURE.md)   | `server/src` layout, request pipeline, modules, scripts                                                                                                                                                |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)                 | environments, env vars, migrations, seeding, builds, production setup                                                                                                                                  |
+| [docs/LOGGING.md](docs/LOGGING.md)                       | log levels, request ids, redaction                                                                                                                                                                     |
+| [docs/TESTING.md](docs/TESTING.md)                       | running tests, the test-target guard, the edge-case matrix                                                                                                                                             |
+| `docs/PERF_BASELINE.md`                                  | performance budgets and measurements (created by perf-auditor on its first run)                                                                                                                        |
+| [plans/ROADMAP.md](plans/ROADMAP.md)                     | the roadmap from V0 to the multi-store platform (P0–P10); [plans/PAYMENT_OPTIONS.md](plans/PAYMENT_OPTIONS.md) is its payment research, [plans/P0_FOUNDATIONS.md](plans/P0_FOUNDATIONS.md) the P0 plan |
 
 ## Prerequisites
 

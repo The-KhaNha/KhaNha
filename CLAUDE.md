@@ -1,7 +1,8 @@
 # CLAUDE.md
 
-Rules for working in food-pickup. `CLAUDE.md` holds the rules; `docs/` holds how things are today. When they
-disagree, the code is the truth: fix the doc in the same change.
+Rules for working in food-pickup. `CLAUDE.md` holds the rules; `docs/` holds how things are today; `plans/` holds
+where we are going (the roadmap, research and phase plans). When they disagree, the code is the truth: fix the doc in
+the same change.
 
 ## 1. Communication style (most important)
 
