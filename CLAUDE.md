@@ -102,7 +102,10 @@ are always confirmed by the server, and user-specific data is never cached where
 | Client `client/` | React 18, Vite 6, Tailwind v4 (`@theme` tokens in `src/index.css`), zustand, react-router 7, `lucide-react`, supabase-js (auth only) |
 | API `server/` | Express 5, zod, Supabase via `@supabase/server` (secret key, JWKS token checks), pino |
 | Database | Supabase Postgres; schema and RPCs in `server/supabase/migrations/` |
-| Tooling | npm, TypeScript strict, ESLint (flat config per package), Prettier (root `.prettierrc.json`), Vitest |
+| Tooling | Node 24 (≥ 24.15, which jsdom needs; `.nvmrc`, `.node-version`, `engines` + `engine-strict`: `npm ci` refuses other majors), npm, TypeScript strict, ESLint (flat config per package), Prettier (root `.prettierrc.json`), Vitest |
+
+Root (`package.json`, not a workspace; only devDependency `prettier`): `npm run format` / `format:check` over
+`scripts/**`, `.github/**` and `plans/**`.
 
 Both packages: `npm run dev`, `typecheck`, `lint`, `format`, `format:check`, `test`, `test:watch`, `build`.
 

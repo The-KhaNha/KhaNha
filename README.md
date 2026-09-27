@@ -26,7 +26,7 @@ One shop, one staff screen, real-time-enough status updates. The API and web app
 
 ## Prerequisites
 
-- **Node 20+** (`node --version`; built and tested with Node 26)
+- **Node 24.15 or later 24.x** with any installer (`.nvmrc` / `.node-version` pin it; `npm ci` refuses other majors with `EBADENGINE`)
 - **Docker** (Docker Desktop, OrbStack or Colima) for the local Supabase stack. Not needed if you develop against staging.
 
 ## Quick start
