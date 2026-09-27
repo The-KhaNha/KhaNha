@@ -174,6 +174,7 @@ Update the owning doc **in the same change**. A change that skips its doc is inc
 | a workflow in `.github/`, a `scripts/ci/` check, the bundle budget | `docs/TESTING.md` "Continuous integration" |
 | perf baselines | `docs/PERF_BASELINE.md` (owned by `perf-auditor`) |
 | a cross-cutting flow (auth, checkout, order lifecycle), a top-level dir, a system diagram | `docs/ARCHITECTURE.md` |
+| a decision worth recording | `docs/adr/NNN-title.md` from `docs/adr/0000-template.md`, indexed in `docs/adr/README.md` (`agent-skills:documentation-and-adrs`) |
 | quick start, scripts, demo | `README.md` |
 
 One owner per topic; other docs link to it instead of copying.
