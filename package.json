@@ -8,7 +8,11 @@
   "scripts": {
     "format": "prettier --write \"scripts/**\" \".github/**\" \"plans/**\" --ignore-unknown",
     "format:check": "prettier --check \"scripts/**\" \".github/**\" \"plans/**\" --ignore-unknown",
-    "test": "node --test \"scripts/**/*.test.mjs\""
+    "test": "node --test \"scripts/**/*.test.mjs\"",
+    "change": "node scripts/version/change.mjs",
+    "release": "node scripts/version/release.mjs",
+    "release:dry": "node scripts/version/release.mjs --dry-run",
+    "change:check": "node scripts/version/check.mjs --base origin/dev"
   },
   "devDependencies": {
     "prettier": "^3.9.9"

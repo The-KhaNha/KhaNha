@@ -105,8 +105,15 @@ are always confirmed by the server, and user-specific data is never cached where
 | Database | Supabase Postgres; schema and RPCs in `server/supabase/migrations/` |
 | Tooling | Node 24 (≥ 24.15, which jsdom needs; `.nvmrc`, `.node-version`, `engines` + `engine-strict`: `npm ci` refuses other majors), npm, TypeScript strict, ESLint (flat config per package), Prettier (root `.prettierrc.json`), Vitest |
 
-Root (`package.json`, not a workspace; only devDependency `prettier`): `npm run format` / `format:check` over
-`scripts/**`, `.github/**` and `plans/**`.
+Root (`package.json`, not a workspace; only devDependency `prettier`):
+
+| Script | Does |
+| --- | --- |
+| `npm run format` / `format:check` | Prettier over `scripts/**`, `.github/**` and `plans/**` |
+| `npm test` | `node --test` over `scripts/**/*.test.mjs` |
+| `npm run change -- --client <level> --server <level> "summary"` | record a change intent in `.changes/` (§21) |
+| `npm run release:dry` / `release` | print / apply the version bump from the intents (release PR only) |
+| `npm run change:check` | the `version-intent` CI check against `origin/dev` |
 
 Both packages: `npm run dev`, `typecheck`, `lint`, `format`, `format:check`, `test`, `test:watch`, `build`.
 
@@ -177,6 +184,8 @@ Update the owning doc **in the same change**. A change that skips its doc is inc
 | perf baselines | `docs/PERF_BASELINE.md` (owned by `perf-auditor`) |
 | a cross-cutting flow (auth, checkout, order lifecycle), a top-level dir, a system diagram | `docs/ARCHITECTURE.md` |
 | a decision worth recording | `docs/adr/NNN-title.md` from `docs/adr/0000-template.md`, indexed in `docs/adr/README.md` (`agent-skills:documentation-and-adrs`) |
+| the change-intent format or level rules | `.changes/README.md` (+ §21) |
+| a release (written by `npm run release`, never by hand) | `client/CHANGELOG.md`, `server/CHANGELOG.md` |
 | quick start, scripts, demo | `README.md` |
 
 One owner per topic; other docs link to it instead of copying.
@@ -274,7 +283,8 @@ One owner per topic; other docs link to it instead of copying.
   agents share one working tree; one stash wipes everyone's edits. `.claude/hooks/block-destructive-git.js` denies
   the destructive subset; the rest is policy. Read-only git is fine. If you see a subagent run one of these, tell the
   user immediately.
-- Never commit unless the user asks.
+- Never commit unless the user asks. Never create tags, and never merge into `main`: only the user merges there. The
+  release commit inside the release PR (made by `release.yml`) is the one automated commit (§21).
 
 ## 12b. Attribution policy (STRICTLY ENFORCED)
 
@@ -370,7 +380,8 @@ Load these with the `Skill` tool at the matching moment:
 - 150 or more changed lines across `client/src` + `server/src`.
 
 Docs-only changes, a single-file style tweak, copy edits and one-line fixes are not major. The same rules live in
-`.claude/hooks/major-change-gate.js` (keep them in sync).
+`.claude/hooks/major-change-gate.js` (keep them in sync; its change-intent reminder mirrors `needsIntent` in
+`scripts/version/lib.mjs`).
 
 ### The post-change pipeline
 
@@ -473,3 +484,36 @@ relationships.
 - After modifying code, run `graphify update .` (AST-only, no API cost). The graph also refreshes automatically: the
   `Stop` hook runs `graphify update .` when source files are newer than the graph, and the git `post-commit` /
   `post-checkout` hooks (`graphify hook install`) refresh it on every commit and checkout.
+
+## 21. Versioning and branches
+
+**Branches.** Feature branches → PR into `dev` (CI required; `dev` deploys staging) → a release PR into `main`
+(production, merged by the user) → a back-merge PR into `dev`. Hotfixes branch off `main` as `hotfix/*`, carry their
+own intent, get their own release run and are back-merged the same way. Migrations are immutable once merged into
+`dev`. Agents that compare against "the base" use the PR's base branch: `origin/dev` for features, `origin/main` for
+hotfixes.
+
+**Versions.** `client/package.json` and `server/package.json` keep independent semver lines (0.x until the pilot
+launch). A change that touches `client/src`, `server/src`, `server/scripts`, `server/supabase/migrations` or a
+`package.json` records its bump before it is finished:
+
+```bash
+npm run change -- --client minor --server patch "Store list and per-store menus behind the multi_store_ui flag."
+```
+
+| Package | major | minor | patch |
+| --- | --- | --- | --- |
+| server | a breaking contract change for the deployed client (a field removed or renamed, a changed meaning or error code); should not happen, given §2 | a new endpoint, field, error code, setting or migration adding behaviour | a fix, performance, refactor, logging |
+| client | a removed route, or persisted storage (`fp_cart`, `fp_cache`) reset without a migration | a new user-visible feature or screen | a fix, copy, style or performance change |
+
+Docs-only, CI and tooling changes need no intent (label the PR `no-release`). The format is in `.changes/README.md`.
+Three places enforce it: the `version-intent` CI job (`scripts/version/check.mjs`), the last step of `/post-change`,
+and a one-time reminder from `.claude/hooks/major-change-gate.js`.
+
+**Releases.** The bump happens only inside a release PR: `release.yml` → `prepare` (`workflow_dispatch`, `dry_run`
+on by default) branches `release/<date>` off `dev`, runs `npm run release` (highest level per package; versions in
+`package.json` and `package-lock.json`; CHANGELOGs; intents deleted; `major` before 1.0.0 refused without
+`--allow-major`), commits and opens the PR into `main`. The user merging it is the production approval. On the merge,
+`tag-and-backmerge` tags `client-vX` / `server-vY` and opens the back-merge PR into `dev` (`no-release`). Staging
+images are tagged `dev-<sha7>`; `package.json` keeps the last released version.
+

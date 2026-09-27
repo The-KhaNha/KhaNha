@@ -5,6 +5,8 @@ name: ci
 on:
   pull_request:
     branches: [dev, main]
+    # labeled/unlabeled: adding `no-release` re-runs version-intent.
+    types: [opened, synchronize, reopened, labeled, unlabeled]
   push:
     branches: [dev, main]
 
@@ -92,6 +94,28 @@ jobs:
           node-version-file: .node-version
       - run: node scripts/ci/check-migrations.mjs --base origin/${{ github.base_ref }} --main origin/main
 
+  version-intent:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+      # Release tags are needed for the release-PR check.
+      - run: git fetch --tags --quiet
+      - name: Check the change intent
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
+          NO_RELEASE: ${{ contains(github.event.pull_request.labels.*.name, 'no-release') }}
+        run: |
+          args=(--base "origin/$BASE_REF" --base-branch "$BASE_REF" --head-branch "$HEAD_REF")
+          if [ "$NO_RELEASE" = true ]; then args+=(--allow-missing); fi
+          node scripts/version/check.mjs "${args[@]}"
+
   repo:
     runs-on: ubuntu-latest
     steps:
@@ -107,7 +131,7 @@ jobs:
 
   ci-ok:
     if: always()
-    needs: [client, server-static, server-tests, migrations, repo]
+    needs: [client, server-static, server-tests, migrations, version-intent, repo]
     runs-on: ubuntu-latest
     steps:
       # Skipped jobs (PR-only jobs on a push) count as success.

@@ -2,7 +2,9 @@
 // Stop hook. Advisory only: it never blocks the turn.
 //   1. Classifies the files changed since the last /post-change (working tree vs HEAD, minus files whose content
 //      is unchanged since the mark). A major change is recorded in .claude/.state/pending.json and announced once.
-//   2. Refreshes the graphify graph when source files are newer than graphify-out/graph.json.
+//   2. Reminds once per set of files when package source changed but no .changes/*.md intent was added
+//      (CLAUDE.md "Versioning and branches").
+//   3. Refreshes the graphify graph when source files are newer than graphify-out/graph.json.
 //
 //   node .claude/hooks/major-change-gate.js            the Stop hook
 //   node .claude/hooks/major-change-gate.js --mark     /post-change finished: record the current state as verified
@@ -17,6 +19,7 @@ const ROOT = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 const STATE = path.join(ROOT, '.claude/.state');
 const MARK = path.join(STATE, 'post-change.json');
 const PENDING = path.join(STATE, 'pending.json');
+const INTENT_REMINDED = path.join(STATE, 'intent-reminded.json');
 
 // Keep in sync with CLAUDE.md "What counts as a major change".
 const MAJOR_PATHS = [
@@ -42,6 +45,15 @@ function classify(changes) {
     .reduce((sum, { lines: n }) => sum + n, 0);
   if (lines >= MIN_LINES) return { major: true, reason: `${lines} changed lines` };
   return { major: false, reason: 'minor' };
+}
+
+// Keep in sync with needsIntent in scripts/version/lib.mjs (this hook is CommonJS and cannot import it).
+const INTENT_SOURCE = /^(client\/src|server\/src|server\/scripts|server\/supabase\/migrations)\/|(^|\/)package\.json$/;
+const INTENT_FILE = /^\.changes\/(?!README\.md$)[^/]+\.md$/;
+
+/** files: changed paths → true when package source changed and no change intent is among them. */
+function needsIntent(files) {
+  return files.some((f) => INTENT_SOURCE.test(f)) && !files.some((f) => INTENT_FILE.test(f));
 }
 
 function git(...args) {
@@ -142,6 +154,12 @@ function selfTest() {
   assert.equal(classify(five.slice(1)).major, false);
   assert.equal(classify([c('client/src/lib/a.ts', 100), c('server/src/utils/b.ts', 50)]).major, true);
   assert.equal(classify([c('client/src/lib/a.ts', 149)]).major, false);
+  assert.equal(needsIntent([]), false);
+  assert.equal(needsIntent(['docs/API.md', '.github/workflows/ci.yml']), false);
+  assert.equal(needsIntent(['server/src/app.ts']), true);
+  assert.equal(needsIntent(['client/package.json']), true);
+  assert.equal(needsIntent(['server/src/app.ts', '.changes/20260928-090000-abcd.md']), false);
+  assert.equal(needsIntent(['server/src/app.ts', '.changes/README.md']), true);
   testMarkSurvivesCommit();
   console.log('major-change-gate: ok');
 }
@@ -236,6 +254,16 @@ function main() {
     }
   } else {
     fs.rmSync(PENDING, { force: true });
+  }
+  const changed = changes.map((c) => c.file);
+  if (needsIntent(changed)) {
+    const reminded = readJson(INTENT_REMINDED);
+    if (JSON.stringify(reminded?.files) !== JSON.stringify(changed)) {
+      writeJson(INTENT_REMINDED, { at: new Date().toISOString(), files: changed });
+      messages.push(
+        '[version] Source changed, no .changes/*.md: run `npm run change -- --client <level> --server <level> "summary"`.',
+      );
+    }
   }
   if (refreshGraph()) messages.push('[graphify] graph refreshed.');
   if (messages.length) process.stdout.write(JSON.stringify({ systemMessage: messages.join(' ') }));

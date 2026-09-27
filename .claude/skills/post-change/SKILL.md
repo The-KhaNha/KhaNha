@@ -5,13 +5,16 @@ description: Verification pipeline for a MAJOR change in food-pickup — runs th
 
 # /post-change — the major-change pipeline
 
+`$BASE` is the PR's base branch: `origin/dev` for features, `origin/main` for `hotfix/*` branches
+(`BASE=origin/dev`; `BASE=origin/main` when `git branch --show-current` starts with `hotfix/`).
+
 A major change (see CLAUDE.md "What counts as a major change") gets the full treatment once, when the piece of work
 is finished — not after every edit. The stages run in a fixed order because the early agents rewrite source and the
 later ones must check the final state. Report progress one line per stage as you go.
 
 ## 0. Preflight
 
-1. Scope: `git diff --name-only origin/main...HEAD` plus `git status --porcelain` (tracked edits and untracked
+1. Scope: `git diff --name-only $BASE...HEAD` plus `git status --porcelain` (tracked edits and untracked
    files). Also run `node .claude/hooks/major-change-gate.js --status` to see which files are unverified. Note
    whether UI changed (`client/src/**/*.tsx`, `client/src/index.css`) and which packages are touched.
 2. If the scope is not major (the gate says `minor`) and the user did not ask explicitly, say so and stop.
@@ -62,12 +65,16 @@ If anything changed after step 1, run the gate again for the touched packages.
 
 ## 6. Finish
 
-1. `graphify update .`
-2. `node .claude/hooks/major-change-gate.js --mark` — records the verified state so the Stop hook and the prompt
+1. Record the change intent if missing: when `git diff --name-status $BASE...HEAD` plus `git status --porcelain`
+   touch `client/src`, `server/src`, `server/scripts`, `server/supabase/migrations` or a `package.json` and add no
+   `.changes/*.md`, pick the levels from `.changes/README.md` and run
+   `npm run change -- --client <level> --server <level> "summary"` (CLAUDE.md "Versioning and branches").
+2. `graphify update .`
+3. `node .claude/hooks/major-change-gate.js --mark` — records the verified state so the Stop hook and the prompt
    reminder go quiet.
-3. Stop every server you started (TaskStop), then confirm those ports answer `000`. Leave the user's servers alone.
-4. Delete every screenshot or trace the agents wrote (`find . -maxdepth 3 -newer CLAUDE.md \( -name '*.png' -o -name '*.jpeg' \) -not -path '*/node_modules/*' -not -path './client/public/*'`, then check each against git before `rm`).
-5. Report: a table with one row per stage (agent, verdict, what changed), the CONFIRM answers applied, the ADVISORY
+4. Stop every server you started (TaskStop), then confirm those ports answer `000`. Leave the user's servers alone.
+5. Delete every screenshot or trace the agents wrote (`find . -maxdepth 3 -newer CLAUDE.md \( -name '*.png' -o -name '*.jpeg' \) -not -path '*/node_modules/*' -not -path './client/public/*'`, then check each against git before `rm`).
+6. Report: a table with one row per stage (agent, verdict, what changed), the CONFIRM answers applied, the ADVISORY
    list, and the final gate result. No `## In-flight` block on the final turn.
 
 ## If an agent type is not registered

@@ -5,6 +5,9 @@ tools: Read, Grep, Glob, Bash, Write, Skill, mcp__playwright__browser_navigate, 
 model: sonnet
 ---
 
+`$BASE` is the PR's base branch: `origin/dev` for features, `origin/main` for `hotfix/*` branches
+(`BASE=origin/dev`; `BASE=origin/main` when `git branch --show-current` starts with `hotfix/`).
+
 You are the **Perf Auditor** for food-pickup. You measure; you do not guess. Every finding carries a number, the budget it is measured against, and the baseline it moved from.
 
 For deep Core Web Vitals work (a trace-level LCP breakdown, render-blocking chains, INP attribution), recommend the `agent-skills:web-performance-auditor` agent in your report (ADVISORY) rather than doing it yourself.
@@ -54,7 +57,7 @@ To see what you changed, use `git diff HEAD -- <path>`, never a stash.
 ## Scope
 Compute the changed files from the repo root:
 ```bash
-{ git diff --name-only origin/main...HEAD; git status --porcelain -uall | cut -c4- | sed 's/.* -> //'; } | sort -u
+{ git diff --name-only $BASE...HEAD; git status --porcelain -uall | cut -c4- | sed 's/.* -> //'; } | sort -u
 ```
 - Measure the whole app every run, so the numbers stay comparable with the baseline.
 - Focus the static review (checks 8–9) and the findings' attribution on the changed files.
@@ -101,7 +104,7 @@ Demo logins: customer `anishka@example.com / test1234`, staff `staff@campuscafe.
    - Sum the initial JS and compare it with 170 KB (170 × 1024 bytes).
    - **Splitting:** `grep -n "lazy(\|import(" client/src/App.tsx`. `StaffDashboardPage`, `LoginPage`,
      `RegisterPage` and `CheckoutPage` must each be a separate chunk that is not in the initial set.
-   - **Heavy dependencies:** for each dependency added in `git diff origin/main...HEAD -- client/package.json`, sum its
+   - **Heavy dependencies:** for each dependency added in `git diff $BASE...HEAD -- client/package.json`, sum its
      share of the chunks from the source maps:
      ```bash
      node -e 'const fs=require("fs"),p=require("path"),d=process.argv[1];const t={};for(const f of fs.readdirSync(d).filter(f=>f.endsWith(".js.map"))){const m=JSON.parse(fs.readFileSync(p.join(d,f)));m.sources.forEach((s,i)=>{const k=(s.match(/node_modules\/((@[^/]+\/)?[^/]+)/)||[,"(app)"])[1];t[k]=(t[k]||0)+(m.sourcesContent?.[i]?.length||0)})}console.log(Object.entries(t).sort((a,b)=>b[1]-a[1]).slice(0,15).map(([k,v])=>`${(v/1024).toFixed(0)}K raw  ${k}`).join("\n"))' "$OUT/assets"

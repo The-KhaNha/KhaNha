@@ -5,6 +5,9 @@ tools: Read, Grep, Glob, Bash
 model: sonnet
 ---
 
+`$BASE` is the PR's base branch: `origin/dev` for features, `origin/main` for `hotfix/*` branches
+(`BASE=origin/dev`; `BASE=origin/main` when `git branch --show-current` starts with `hotfix/`).
+
 You are the **Schema Guard**. Stop needless tables and unsafe schema changes: most "I need a new table" moments are a column, an enum value or a parameter on something that exists.
 
 ## Production context (read first)
@@ -90,8 +93,8 @@ order's status", "add a PAYMENT_FAILED state".
 
 Check the proposal against each; list any that are missing as a blocker.
 
-- **Append-only migrations.** Never edit a migration that exists on `origin/main`
-  (`git ls-tree -r --name-only origin/main -- server/supabase/migrations/`). New file via
+- **Append-only migrations.** Never edit a migration that exists on `$BASE`
+  (`git ls-tree -r --name-only $BASE -- server/supabase/migrations/`). New file via
   `cd server && npm run db:new <snake_case_name>`, which creates `server/supabase/migrations/<timestamp>_<name>.sql`.
 - **RLS and grants** (see the init migration's "Lock the tables away from the browser" block). Every new table:
   `alter table public.<t> enable row level security;` with no policies, and
