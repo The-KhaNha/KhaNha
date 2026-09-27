@@ -7,6 +7,7 @@ import { env } from './env';
 export const supabaseEnv = {
   url: env.SUPABASE_URL,
   secretKeys: { default: env.SUPABASE_SECRET_KEY },
+  ...(env.SUPABASE_JWKS_URL && { jwks: new URL(env.SUPABASE_JWKS_URL) }),
 };
 
 /**

@@ -43,6 +43,7 @@ Read from `server/.env` (copy `server/.env.example`) or the host's environment. 
 | `SUPABASE_URL`                                                         | yes             |                                 | a URL                                                        | the project URL, e.g. `http://127.0.0.1:54321` or `https://<ref>.supabase.co`                                                                                                                                                                                              |
 | `SUPABASE_SECRET_KEY`                                                  | yes             |                                 | starts with `sb_secret_` (legacy JWT keys are rejected)      | the project's secret key (Project Settings → API Keys). Bypasses RLS. Never in the client or git                                                                                                                                                                           |
 | `NODE_ENV`                                                             | no              |                                 | any                                                          | `production` in the API image (set by the Dockerfile): turns the pretty log transport off, so logs are JSON lines                                                                                                                                                          |
+| `SUPABASE_JWKS_URL`                                                    | no              | derived from `SUPABASE_URL`     | a URL                                                        | where to fetch the token signing keys when `SUPABASE_URL` is plain `http` on a host other than localhost (a container reaching the local stack at `host.docker.internal`); see [Containers](#signed-in-requests-from-a-container-supabase_jwks_url)                        |
 | `PORT`                                                                 | no              | `8000`                          | positive integer                                             | API port. Keep 8000: `client/vite.config.ts` (proxy target) and `start.sh` hardcode it                                                                                                                                                                                     |
 | `CLIENT_ORIGIN`                                                        | no              | `http://localhost:5173`         | a URL                                                        | the one origin CORS allows                                                                                                                                                                                                                                                 |
 | `GIT_COMMIT`                                                           | no              | `unknown`                       | non-empty string                                             | the commit the build came from; reported by `GET /api/health`. Set by the image build (`--build-arg GIT_COMMIT`)                                                                                                                                                           |
@@ -340,25 +341,47 @@ included in each location because an `add_header` inside a location drops every 
 enforcing is a user decision, once staging shows no reports. gzip is on for text, CSS, JavaScript, JSON and SVG.
 `/api/` is proxied with HTTP/1.1, `Host`, `X-Forwarded-For`, `X-Forwarded-Proto` and a 30 s read timeout.
 
-### The API must reach Supabase at the browser's URL
+### Signed-in requests from a container (`SUPABASE_JWKS_URL`)
 
-Found while testing the images against the local stack: the API verifies each access token against the Supabase URL it
-was configured with, and the token names the URL the browser signed in at as its issuer. With the API at
-`SUPABASE_URL=http://host.docker.internal:54321` and the browser at `http://127.0.0.1:54321`, every signed-in request
-fails with a 500 whose log says `A JWT was provided but no JWKS is configured`, while public routes still work.
-So in any container setup the API's `SUPABASE_URL` must be the same URL the browser uses:
+Found while testing the images against the local stack: with the API at
+`SUPABASE_URL=http://host.docker.internal:54321`, every signed-in request failed with a 500 whose log says `A JWT
+was provided but no JWKS is configured`, while public routes worked. `@supabase/server` derives the token signing
+keys' URL (`<SUPABASE_URL>/auth/v1/.well-known/jwks.json`) only from an `https` or `localhost` URL, and
+`host.docker.internal` is neither, so it had no keys to verify against. The API does not check the token's issuer.
 
-- **Hosted projects** (staging, production): both use `https://<ref>.supabase.co`; nothing to do.
-- **Local stack on Linux:** run the API with `--network host` (compose: `network_mode: host`) and
-  `SUPABASE_URL=http://127.0.0.1:54321`.
-- **Docker Desktop (macOS, Windows/WSL):** `network_mode: host` needs Docker Desktop 4.34+ with host networking
-  enabled, and ports on that "host" are Docker's VM, not your shell. Otherwise run the API with `npm run dev` on the
-  host and only the web image in a container.
+The fix is `SUPABASE_JWKS_URL`: when set, `utils/supabase.ts` passes it to `@supabase/server` as an explicit `jwks`,
+which skips the derivation. `compose.yaml` sets it to
+`http://host.docker.internal:54321/auth/v1/.well-known/jwks.json`. Hosted projects need nothing: their URL is
+`https`. (Host networking with `SUPABASE_URL=http://127.0.0.1:54321` also works on Linux, but not on Docker
+Desktop, where "host" is Docker's VM.)
+
+### Local compose
+
+`compose.yaml` at the root runs both images against the Supabase stack on the host (Supabase itself stays on the host):
+
+```bash
+cd server && npm run db:start && npm run seed && cd ..
+export SUPABASE_PUBLISHABLE_KEY=$(grep VITE_SUPABASE_PUBLISHABLE_KEY client/.env.development | cut -d= -f2)
+GIT_COMMIT=$(git rev-parse --short HEAD) docker compose up --build web api     # http://localhost:8080
+docker compose ps                                                             # both (healthy)
+```
+
+| Service | Image     | Port   | Environment (on top of `server/.env` for `api`)                                                                                                                                                    |
+| ------- | --------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `api`   | `server/` | –      | `SUPABASE_URL=http://host.docker.internal:54321`, `SUPABASE_JWKS_URL` ([why](#signed-in-requests-from-a-container-supabase_jwks_url)), `CLIENT_ORIGIN=http://localhost:8080`, `TRUST_PROXY_HOPS=1` |
+| `web`   | `client/` | `8080` | `API_UPSTREAM=http://api:8000`, `SUPABASE_URL=http://127.0.0.1:54321` (the browser's view), `SUPABASE_PUBLISHABLE_KEY` from your shell                                                             |
+
+`web` waits for `api` to be healthy (`depends_on: condition: service_healthy`), because nginx resolves the upstream
+when it starts. The web container refuses to start without `SUPABASE_PUBLISHABLE_KEY`. Seed through the image with
+`docker compose run --rm api node dist/scripts/seed.js`. `worker`, `reconciler` and `minio` are commented placeholders
+for P1 and P3.
 
 ### Running the images by hand
 
 ```bash
-docker run --rm --network host --env-file server/.env fp-api   # Linux; see the section above
+docker run --rm -p 8000:8000 --env-file server/.env --add-host host.docker.internal:host-gateway \
+  -e SUPABASE_URL=http://host.docker.internal:54321 \
+  -e SUPABASE_JWKS_URL=http://host.docker.internal:54321/auth/v1/.well-known/jwks.json fp-api
 docker run --rm -p 8080:8080 -e API_UPSTREAM=http://host.docker.internal:8000 --add-host host.docker.internal:host-gateway \
   -e SUPABASE_URL=http://127.0.0.1:54321 -e SUPABASE_PUBLISHABLE_KEY=<local publishable key> fp-web
 curl -i localhost:8080/runtime-env.js   # no-cache, the runtime values; /assets/* immutable; /menu serves index.html

@@ -129,9 +129,59 @@ jobs:
       - run: npm run format:check
       - run: npm test
 
+  images:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: hadolint
+        run: |
+          for f in server/Dockerfile client/Dockerfile; do
+            docker run --rm -i hadolint/hadolint < "$f"
+          done
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: server
+          push: false
+          load: true
+          tags: fp-api:ci
+          build-args: GIT_COMMIT=${{ github.sha }}
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+      - uses: docker/build-push-action@v6
+        with:
+          context: client
+          push: false
+          load: true
+          tags: fp-web:ci
+          build-args: GIT_COMMIT=${{ github.sha }}
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+      # /api/health never touches the database, so dummy Supabase values are enough.
+      - name: Smoke test
+        run: |
+          docker run -d --name api -p 8000:8000 -e APP_ENV=local -e SUPABASE_URL=http://127.0.0.1:1 \
+            -e SUPABASE_SECRET_KEY=sb_secret_ci fp-api:ci
+          docker run -d --name web -p 8080:8080 -e API_UPSTREAM=http://127.0.0.1:1 \
+            -e SUPABASE_URL=https://ci.supabase.co -e SUPABASE_PUBLISHABLE_KEY=sb_publishable_ci fp-web:ci
+          for url in localhost:8000/api/health localhost:8080/healthz localhost:8080/runtime-env.js; do
+            for _ in $(seq 1 20); do curl -fs -o /dev/null "$url" && break; sleep 1; done
+            curl -fsS -o /dev/null -w "$url %{http_code}\n" "$url"
+          done
+          curl -fsS localhost:8000/api/health | grep -q '"commit":"${{ github.sha }}"'
+      - name: Image sizes
+        run: |
+          check() {
+            size=$(docker image inspect --format '{{.Size}}' "$1")
+            echo "$1: $((size / 1000000)) MB (budget $2 MB)"
+            [ "$size" -le $(($2 * 1000000)) ]
+          }
+          check fp-web:ci 50
+          check fp-api:ci 200
+
   ci-ok:
     if: always()
-    needs: [client, server-static, server-tests, migrations, version-intent, repo]
+    needs: [client, server-static, server-tests, migrations, version-intent, repo, images]
     runs-on: ubuntu-latest
     steps:
       # Skipped jobs (PR-only jobs on a push) count as success.

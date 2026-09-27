@@ -28,6 +28,10 @@ const envSchema = z
       ),
     /** `production` in the API image (Dockerfile), where dev dependencies such as pino-pretty are not installed. */
     NODE_ENV: z.string().optional(),
+    // Where to fetch the token signing keys, when SUPABASE_URL cannot be used for it. @supabase/server derives the JWKS
+    // URL from SUPABASE_URL but accepts plain http only for localhost, so a container reaching the local stack at
+    // http://host.docker.internal:54321 must name it here (compose.yaml does). Unset: derived from SUPABASE_URL.
+    SUPABASE_JWKS_URL: z.string().url('SUPABASE_JWKS_URL must be a URL.').optional(),
     PORT: z.coerce.number().int().positive().default(8000),
     CLIENT_ORIGIN: z
       .string()

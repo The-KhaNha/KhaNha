@@ -136,7 +136,7 @@ Server only:
 Client: `npm run dev:staging` / `build:staging` use `client/.env.staging`. `npm run build` needs
 `client/.env.production`, which does not exist yet.
 
-Ports: client `5173`, API `8000`, local Supabase `54321`. `./start.sh [--seed]` starts API + client (it kills
+Ports: client `5173`, API `8000`, local Supabase `54321`; `docker compose up web api` serves both on `8080`. `./start.sh [--seed]` starts API + client (it kills
 whatever holds 8000/5173 first — see §18). Details: `README.md`, `docs/DEPLOYMENT.md`.
 
 ## 4. Project structure
@@ -430,7 +430,8 @@ Agents added during a session are not registered until the next session; meanwhi
 
 ## 18. Long-running processes
 
-- **Always background:** `./start.sh`, dev servers, `npm run db:start` / `db:reset`, `npm install`, builds, test runs
+- **Always background:** `./start.sh`, dev servers, `docker compose up` (or run it with `-d`; stop with
+  `docker compose down`), `npm run db:start` / `db:reset`, `npm install`, builds, test runs
   that hit the database, and background agents. Quick commands (curl, git status/diff, a scoped grep) stay in the
   foreground.
 - While anything runs, every turn shows:
@@ -441,7 +442,7 @@ Agents added during a session are not registered until the next session; meanwhi
   Status is 🟢 running · 🟡 waiting · ✅ done (shown once) · 🔴 errored. Omit the block when nothing runs, and it must
   be gone on the final turn.
 - **Probe before starting:** `curl -s -o /dev/null -w '%{http_code}'` on `http://localhost:8000/api/health`,
-  `http://localhost:5173`, `http://127.0.0.1:54321/rest/v1/`. Anything answering belongs to the user: use it, never
+  `http://localhost:5173`, `http://127.0.0.1:54321/rest/v1/` and, for compose, `http://localhost:8080/healthz`. Anything answering belongs to the user: use it, never
   restart it. `start.sh` kills whatever holds 8000/5173, so never run it while the user's servers are up.
 - **Clean up only what you started** (`TaskStop`), then check those ports answer `000`. Leave the user's servers
   alone. Never `kill` by port unless you have confirmed the process is yours and told the user.

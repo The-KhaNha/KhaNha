@@ -35,6 +35,17 @@ One shop, one staff screen, real-time-enough status updates. The API and web app
 `server/Dockerfile` and `client/Dockerfile` build the API and web images; one web image serves every environment
 (Supabase values are set at start). See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#containers).
 
+### Run it in containers
+
+With the local Supabase stack running and seeded (Quick start steps 1–2):
+
+```bash
+export SUPABASE_PUBLISHABLE_KEY=$(grep VITE_SUPABASE_PUBLISHABLE_KEY client/.env.development | cut -d= -f2)
+docker compose up --build web api
+```
+
+Then open http://localhost:8080 and run the demo below. Details: [Local compose](docs/DEPLOYMENT.md#local-compose).
+
 ## Quick start
 
 The one-time setup is three commands; after that `./start.sh` runs everything.
