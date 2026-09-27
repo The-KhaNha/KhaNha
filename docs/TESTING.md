@@ -120,16 +120,22 @@ A test that fails because of a real bug is a bug report. Never weaken the assert
 job `ci-ok` is the only required check (branch rulesets); it fails when any job failed or was cancelled, and counts
 skipped jobs (the PR-only ones on a push) as passed. There are no `paths:` filters, so every PR reports `ci-ok`.
 
-| Job             | Runs                                                                                                                            | Reproduce locally                                                             |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `client`        | `npm ci`, typecheck, lint, `format:check`, test, `build:staging`, the bundle budget                                             | `cd client && npm run build:staging && node ../scripts/ci/check-bundle.mjs .` |
-| `server-static` | `npm ci --ignore-scripts`, typecheck, lint, `format:check`, build                                                               | the same commands in `server/`                                                |
-| `repo`          | root `npm ci`, `format:check` (`scripts/**`, `.github/**`, `plans/**`), `npm test` (`node --test` over `scripts/**/*.test.mjs`) | `npm run format:check && npm test` at the root                                |
-| `ci-ok`         | aggregates the jobs above                                                                                                       | –                                                                             |
+| Job                    | Runs                                                                                                                                                                                                          | Reproduce locally                                                                                                                |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `client`               | `npm ci`, typecheck, lint, `format:check`, test, `build:staging`, the bundle budget                                                                                                                           | `cd client && npm run build:staging && node ../scripts/ci/check-bundle.mjs .`                                                    |
+| `server-static`        | `npm ci --ignore-scripts`, typecheck, lint, `format:check`, build                                                                                                                                             | the same commands in `server/`                                                                                                   |
+| `server-tests`         | `npm ci`, `db:start:ci` (Postgres, GoTrue, PostgREST, Kong only), `cp .env.example .env`, seed, `npm test`, then `db:types` must leave `src/types/database.ts` unchanged; `db:stop` always; 15-minute timeout | `npm run db:start && npm run seed && npm test && npm run db:types && git diff --exit-code -- src/types/database.ts` in `server/` |
+| `migrations` (PR only) | `scripts/ci/check-migrations.mjs`: the PR may only add migrations, each with a 14-digit prefix newer than the base's newest; added files already on `main` (hotfix back-merges) are skipped                   | `node scripts/ci/check-migrations.mjs --base origin/dev`                                                                         |
+| `repo`                 | root `npm ci`, `format:check` (`scripts/**`, `.github/**`, `plans/**`), `npm test` (`node --test` over `scripts/**/*.test.mjs`)                                                                               | `npm run format:check && npm test` at the root                                                                                   |
+| `ci-ok`                | aggregates the jobs above                                                                                                                                                                                     | –                                                                                                                                |
 
 The bundle budget lives in `client/perf-budget.json` (`initialJsGzipKb`, CLAUDE.md §2b). `scripts/ci/check-bundle.mjs`
 reads `client/dist/.vite/manifest.json`, sums the entry chunk and its static imports at gzip level 9, prints a table
 (lazy chunks listed for information) and exits 1 when over.
+
+`server-tests` runs the whole server suite, destructive tests included, against a throwaway local stack. Expect 8–10
+minutes for the workflow: the Supabase image pulls take 2–4 minutes and the tests 1–3. `db:start:ci`'s `-x` list names
+the CLI's containers, which change between CLI versions (check `npx supabase start --help` after a CLI bump).
 
 Dependabot (`.github/dependabot.yml`) opens weekly grouped minor/patch PRs into `dev` for both packages, GitHub
 Actions and the Dockerfiles, labelled `dependencies` and `no-release`.

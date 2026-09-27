@@ -55,6 +55,43 @@ jobs:
       - run: npm run format:check
       - run: npm run build
 
+  server-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci
+      # Only the services the API and tests use: Postgres, GoTrue, PostgREST and Kong.
+      - run: npm run db:start:ci
+      # server/.env.example holds the local CLI's default keys and URL, so the test-target guard sees APP_ENV=local.
+      - run: cp .env.example .env
+      - run: npm run seed
+      - run: npm test
+      - name: Generated types match the migrations
+        run: npm run db:types && git diff --exit-code -- src/types/database.ts
+      - if: always()
+        run: npm run db:stop
+
+  migrations:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+      - run: node scripts/ci/check-migrations.mjs --base origin/${{ github.base_ref }} --main origin/main
+
   repo:
     runs-on: ubuntu-latest
     steps:
@@ -70,7 +107,7 @@ jobs:
 
   ci-ok:
     if: always()
-    needs: [client, server-static, repo]
+    needs: [client, server-static, server-tests, migrations, repo]
     runs-on: ubuntu-latest
     steps:
       # Skipped jobs (PR-only jobs on a push) count as success.

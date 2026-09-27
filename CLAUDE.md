@@ -27,7 +27,8 @@ settings; no staff powers). Site-wide limits live in the one-row `site_settings`
 - Security and accessibility are requirements, not polish.
 - **Never touch production.** `npm run db:push:production` and `npm run seed -- --production` are run by the user
   only. Tests run against local Supabase only (§13, `docs/TESTING.md`).
-- Migrations in `server/supabase/migrations/` are append-only once pushed.
+- Migrations in `server/supabase/migrations/` are append-only once pushed (enforced on every PR by the `migrations`
+  CI job: only added files, each newer than the base branch's newest).
 - API changes stay backward-compatible with the deployed client: add fields, do not rename or remove fields the
   client reads, and keep error codes stable.
 
@@ -114,9 +115,10 @@ Server only:
 | Script | Does |
 | --- | --- |
 | `npm run db:start` / `db:stop` | local Supabase in Docker (API `:54321`) |
+| `npm run db:start:ci` | the same without Studio, storage, realtime, mail, logs and edge functions (CI) |
 | `npm run db:reset` | reapply every migration locally (wipes local data) |
 | `npm run db:new <name>` | new migration file |
-| `npm run db:types` | regenerate `src/types/database.ts` from local |
+| `npm run db:types` | regenerate and format `src/types/database.ts` from local (CI fails on drift) |
 | `npm run seed` | demo store, menu and accounts (local/staging; wipes orders) |
 | `npm run db:push:staging` | push migrations to staging |
 | `npm run db:push:production`, `npm run seed -- --production` | **user only** |
