@@ -171,6 +171,7 @@ Update the owning doc **in the same change**. A change that skips its doc is inc
 | log levels, redaction, logging conventions | `docs/LOGGING.md` |
 | cache headers, the server read cache, client persisted caches, photo variants | `docs/API.md` "Caching" + `docs/FRONTEND_STRUCTURE.md` "Caching" |
 | test targets, helpers, the edge-case matrix | `docs/TESTING.md` |
+| a workflow in `.github/`, a `scripts/ci/` check, the bundle budget | `docs/TESTING.md` "Continuous integration" |
 | perf baselines | `docs/PERF_BASELINE.md` (owned by `perf-auditor`) |
 | a cross-cutting flow (auth, checkout, order lifecycle), a top-level dir, a system diagram | `docs/ARCHITECTURE.md` |
 | quick start, scripts, demo | `README.md` |
@@ -290,7 +291,8 @@ npm run typecheck && npm run lint && npm test
 
 `npm test` needs local Supabase running and seeded for the server (`npm run db:start`, `npm run seed`). Format with
 `npx prettier --write <files>` (or `npm run format`). Report failures with their output; never weaken a test to get
-green.
+green. CI runs the same gate on every PR into `dev` and `main` (`.github/workflows/ci.yml`, required check `ci-ok`;
+`docs/TESTING.md` "Continuous integration").
 
 ## 14. CRUD and lifecycle verification
 

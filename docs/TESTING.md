@@ -114,8 +114,30 @@ against them. `ErrorCode` exists only on the server (`server/src/utils/errors.ts
 
 A test that fails because of a real bug is a bug report. Never weaken the assertion to make it pass.
 
-## Staging later (GitHub Actions)
+## Continuous integration
 
-Not set up yet. When it is, a workflow sets `TEST_TARGET=staging`, `ALLOW_STAGING_TESTS=1`, `APP_ENV=staging`,
+`.github/workflows/ci.yml` runs on every pull request into `dev` or `main` and on every push to them. Its aggregate
+job `ci-ok` is the only required check (branch rulesets); it fails when any job failed or was cancelled, and counts
+skipped jobs (the PR-only ones on a push) as passed. There are no `paths:` filters, so every PR reports `ci-ok`.
+
+| Job             | Runs                                                                                                                            | Reproduce locally                                                             |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `client`        | `npm ci`, typecheck, lint, `format:check`, test, `build:staging`, the bundle budget                                             | `cd client && npm run build:staging && node ../scripts/ci/check-bundle.mjs .` |
+| `server-static` | `npm ci --ignore-scripts`, typecheck, lint, `format:check`, build                                                               | the same commands in `server/`                                                |
+| `repo`          | root `npm ci`, `format:check` (`scripts/**`, `.github/**`, `plans/**`), `npm test` (`node --test` over `scripts/**/*.test.mjs`) | `npm run format:check && npm test` at the root                                |
+| `ci-ok`         | aggregates the jobs above                                                                                                       | –                                                                             |
+
+The bundle budget lives in `client/perf-budget.json` (`initialJsGzipKb`, CLAUDE.md §2b). `scripts/ci/check-bundle.mjs`
+reads `client/dist/.vite/manifest.json`, sums the entry chunk and its static imports at gzip level 9, prints a table
+(lazy chunks listed for information) and exits 1 when over.
+
+Dependabot (`.github/dependabot.yml`) opens weekly grouped minor/patch PRs into `dev` for both packages, GitHub
+Actions and the Dockerfiles, labelled `dependencies` and `no-release`.
+
+Validate a workflow change with `docker run --rm -v "$PWD":/repo -w /repo rhysd/actionlint:latest -color`.
+
+### Staging tests (later)
+
+Not set up yet. When they are, a workflow sets `TEST_TARGET=staging`, `ALLOW_STAGING_TESTS=1`, `APP_ENV=staging`,
 `TEST_STAGING_HOST` and the staging `SUPABASE_URL` / `SUPABASE_SECRET_KEY` from repository secrets, then runs
 `npm test` in `server/`. The config then picks up `*.safe.test.ts` only.

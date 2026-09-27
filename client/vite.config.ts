@@ -17,6 +17,8 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react(), tailwindcss()],
+    // scripts/ci/check-bundle.mjs reads the manifest to size the initial chunk graph.
+    build: { manifest: true },
     server: {
       port: 5173,
       strictPort: true,
