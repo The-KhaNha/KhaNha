@@ -31,7 +31,7 @@ server/
 │   └── utils/                env, logger, Supabase client, errors, serializers, ids, cache
 └── test/
     ├── setup/                api.ts, guard.ts, run-lock.ts, target.ts, helpers.ts (+ target.safe.test.ts)
-    ├── api/                  one suite per router: auth, health, menu, menu-cache, orders, store, caching
+    ├── api/                  one suite per router: admin, auth, health, menu, menu-cache, orders, store, caching
     ├── unit/                 pure logic: cache, errors, schemas, serializers, validate
     └── logging.safe.test.ts
 ```
@@ -51,10 +51,13 @@ flowchart TD
   Json --> Api{"/api → apiRouter"}
   Api -->|"GET /health"| Health["{ ok: true }"]
   Api -->|"/auth, /store, /menu, /orders"| Router["resource router<br/>requireAuth / requireStaff / validate(schema)"]
+  Api -->|"/admin"| AdminR["adminRouter<br/>requireAuth / requireAdmin"]
   Router --> Ctl["controller"] --> Svc["service → supabaseAdmin → Postgres"]
+  AdminR --> Ctl
   Svc --> Ser["serializer → XDto"] --> Res["res.json"]
   Api -->|"no match"| NF["notFoundHandler → 404 NOT_FOUND"]
   Router -. "throw" .-> EH["errorHandler → { error: { code, message, details? } }"]
+  AdminR -. "throw" .-> EH
   Ctl -. "rejected promise" .-> EH
   Svc -. "throw" .-> EH
 ```
@@ -64,7 +67,7 @@ flowchart TD
 | `pino-http`       | `src/app.ts`                     | keeps a caller's `x-request-id` if it matches `^[\w.-]{1,64}$`, else a UUID; echoes it; access line at `debug` for successful GET/HEAD/OPTIONS, `info` otherwise |
 | `cors`            | `src/app.ts`                     | one allowed origin, `env.CLIENT_ORIGIN`                                                                                                                          |
 | `express.json()`  | `src/app.ts`                     | parses JSON bodies; over 100 kB is 413, malformed is 400 (mapped in the error handler)                                                                           |
-| `apiRouter`       | `src/routes/index.ts`            | `/health`, then mounts `/auth`, `/store`, `/menu`, `/orders`                                                                                                     |
+| `apiRouter`       | `src/routes/index.ts`            | `/health`, then mounts `/auth`, `/store`, `/menu`, `/orders`, `/admin`                                                                                           |
 | `notFoundHandler` | `src/middleware/errorHandler.ts` | 404 `NOT_FOUND` "No route matches <METHOD> <path>."                                                                                                              |
 | `errorHandler`    | `src/middleware/errorHandler.ts` | maps any error to status + code + safe message; logs it once (5xx `error` with the stack, 401/403 `warn`, other 4xx `info`)                                      |
 
@@ -79,17 +82,19 @@ no `try`/`catch` and throw `AppError`s directly. The error mapping is drawn in
 
 | File              | Mounted at    | Routes                                                                                                               |
 | ----------------- | ------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `index.ts`        | `/api`        | `GET /health`; mounts the four routers                                                                               |
+| `index.ts`        | `/api`        | `GET /health`; mounts the five routers                                                                               |
 | `auth.routes.ts`  | `/api/auth`   | `POST /register` (validate), `GET /me` (requireAuth)                                                                 |
 | `store.routes.ts` | `/api/store`  | `GET /`                                                                                                              |
 | `menu.routes.ts`  | `/api/menu`   | `GET /`                                                                                                              |
 | `order.routes.ts` | `/api/orders` | `requireAuth` for all; `POST /`, `GET /` (query validate), `GET /:id`, `PATCH /:id/status` (requireStaff + validate) |
+| `admin.routes.ts` | `/api/admin`  | `requireAuth` + `requireAdmin` for all; `GET /settings`, `PATCH /settings` (validate)                                |
 
 ### controllers/
 
 One file per router. Each handler reads `req.body` / `req.query` / `req.params` / `currentUser(req)`, awaits one
 service call, serializes with `utils/serializers.ts` and sends JSON. `order.controller.ts` also logs
-`Order placed` and `Order status changed` through `req.log.info`. Typed with `BodyHandler` / `QueryHandler` from
+`Order placed` and `Order status changed`, and `admin.controller.ts` logs `Site settings changed`, through
+`req.log.info`. Typed with `BodyHandler` / `QueryHandler` from
 `types/http.ts` so `req.body` and `req.query` carry the parsed schema type.
 
 | File                  | Handlers                                                     |
@@ -98,34 +103,37 @@ service call, serializes with `utils/serializers.ts` and sends JSON. `order.cont
 | `store.controller.ts` | `getStore`                                                   |
 | `menu.controller.ts`  | `getMenu`                                                    |
 | `order.controller.ts` | `createOrder`, `listOrders`, `getOrder`, `updateOrderStatus` |
+| `admin.controller.ts` | `getSettings`, `updateSettings`                              |
 
 ### services/
 
-| File                 | Exports                                                      | Notes                                                                                                                                                                                                                                                                                      |
-| -------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `auth.service.ts`    | `register(input)`, `getProfile(id)`                          | `auth.admin.createUser` (confirmed); maps Supabase Auth error codes                                                                                                                                                                                                                        |
-| `store.service.ts`   | `getStore()`, `getCachedStore()`                             | `getStore()`: first row of `stores`, 404 if none. `getCachedStore()`: the same read through `cached('store', PUBLIC_READ_TTL_MS, getStore)` for `GET /api/store` only; `createOrder`'s `is_open` check always calls the uncached `getStore()` (see [API.md#caching](API.md#caching))       |
-| `menu.service.ts`    | `getMenu()`                                                  | items by `sort_order`, `popular`, categories grouped by first item; read through `cached('menu', PUBLIC_READ_TTL_MS, loadMenu)` (see [API.md#caching](API.md#caching))                                                                                                                     |
-| `order.service.ts`   | `createOrder`, `listOrders`, `getOrder`, `updateOrderStatus` | holds `ALLOWED_TRANSITIONS`, `STAFF_LIST_LIMIT = 100` and `CUSTOMER_LIST_LIMIT = 50`; calls the `place_order` / `update_order_status` RPCs and maps their `P0001` errors; `invalidate('menu')` after `createOrder` (any outcome) and after a cancel (see [API.md#caching](API.md#caching)) |
-| `payment.service.ts` | `simulatePayment(amount)`                                    | always `PAID`; throws on a non-positive amount. The seam for a real gateway                                                                                                                                                                                                                |
+| File                  | Exports                                                      | Notes                                                                                                                                                                                                                                                                                                                                                             |
+| --------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `auth.service.ts`     | `register(input)`, `getProfile(id)`                          | `auth.admin.createUser` (confirmed); maps Supabase Auth error codes                                                                                                                                                                                                                                                                                               |
+| `store.service.ts`    | `getStore()`, `getCachedStore()`                             | `getStore()`: first row of `stores`, 404 if none. `getCachedStore()`: the same read through `cached('store', PUBLIC_READ_TTL_MS, getStore)` for `GET /api/store` only; `createOrder`'s `is_open` check always calls the uncached `getStore()` (see [API.md#caching](API.md#caching))                                                                              |
+| `menu.service.ts`     | `getMenu()`                                                  | items by `sort_order`, `popular`, categories grouped by first item; read through `cached('menu', PUBLIC_READ_TTL_MS, loadMenu)` (see [API.md#caching](API.md#caching))                                                                                                                                                                                            |
+| `order.service.ts`    | `createOrder`, `listOrders`, `getOrder`, `updateOrderStatus` | holds `ALLOWED_TRANSITIONS`; reads both list limits from `settings.service.getSettings()` (`STAFF_LIST_LIMIT`/`CUSTOMER_LIST_LIMIT` constants were removed); calls the `place_order` / `update_order_status` RPCs and maps their `P0001` errors; `invalidate('menu')` after `createOrder` (any outcome) and after a cancel (see [API.md#caching](API.md#caching)) |
+| `settings.service.ts` | `getSettings()`, `updateSettings(admin, input)`              | the single `site_settings` row. `getSettings()` is read through `cached('site_settings', PUBLIC_READ_TTL_MS, ...)`; `updateSettings()` writes `updated_by = admin.id` and calls `invalidate('site_settings')` (see [API.md#caching](API.md#caching))                                                                                                              |
+| `payment.service.ts`  | `simulatePayment(amount)`                                    | always `PAID`; throws on a non-positive amount. The seam for a real gateway                                                                                                                                                                                                                                                                                       |
 
 ### schemas/
 
-| File              | Exports                                                                                                                     |
-| ----------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `common.ts`       | `optionalField(schema)`, `phoneField`                                                                                       |
-| `auth.schema.ts`  | `registerSchema`, `RegisterInput`                                                                                           |
-| `order.schema.ts` | `MAX_QUANTITY_PER_ITEM = 20`, `createOrderSchema`, `updateOrderStatusSchema`, `listOrdersQuerySchema` and their input types |
+| File              | Exports                                                                                                                                                        |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `common.ts`       | `optionalField(schema)`, `phoneField`                                                                                                                          |
+| `auth.schema.ts`  | `registerSchema`, `RegisterInput`                                                                                                                              |
+| `order.schema.ts` | `MAX_QUANTITY_PER_ITEM = 10`, `createOrderSchema`, `updateOrderStatusSchema`, `listOrdersQuerySchema` and their input types                                    |
+| `admin.schema.ts` | `updateSettingsSchema`, `UpdateSettingsInput` (bounds mirror the `site_settings` check constraints, 1-200 / 1-500; refined so at least one field must be sent) |
 
 Field rules: [API.md](API.md#routes).
 
 ### middleware/
 
-| File              | Exports                                                     |
-| ----------------- | ----------------------------------------------------------- |
-| `auth.ts`         | `requireAuth`, `requireStaff`, `currentUser(req)`           |
-| `validate.ts`     | `validate(schema, source = 'body')`, `describeIssue(issue)` |
-| `errorHandler.ts` | `notFoundHandler`, `errorHandler`                           |
+| File              | Exports                                                           |
+| ----------------- | ----------------------------------------------------------------- |
+| `auth.ts`         | `requireAuth`, `requireStaff`, `requireAdmin`, `currentUser(req)` |
+| `validate.ts`     | `validate(schema, source = 'body')`, `describeIssue(issue)`       |
+| `errorHandler.ts` | `notFoundHandler`, `errorHandler`                                 |
 
 `validate()` strips NUL bytes from every string, parses with zod, and replaces `req.body` (or shadows the
 `req.query` getter with an own property) with the parsed value. On failure it throws a 400 `VALIDATION_ERROR` whose
@@ -133,14 +141,14 @@ message names the field.
 
 ### types/
 
-| File           | Contents                                                                                                           |
-| -------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `api.ts`       | response DTOs: `UserDto`, `StoreDto`, `MenuItemDto`, `MenuCategoryDto`, `MenuResponse`, `OrderItemDto`, `OrderDto` |
-| `database.ts`  | generated by `npm run db:types`; do not edit by hand                                                               |
-| `enums.ts`     | `Role`, `OrderStatus`, `PaymentStatus`, `ORDER_STATUSES` from the generated types                                  |
-| `auth.ts`      | `AuthUser { id, role }`                                                                                            |
-| `express.d.ts` | adds `req.user?: AuthUser`                                                                                         |
-| `http.ts`      | `BodyHandler<Body, Params>`, `QueryHandler<Query>`                                                                 |
+| File           | Contents                                                                                                                              |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `api.ts`       | response DTOs: `UserDto`, `StoreDto`, `MenuItemDto`, `MenuCategoryDto`, `MenuResponse`, `SiteSettingsDto`, `OrderItemDto`, `OrderDto` |
+| `database.ts`  | generated by `npm run db:types`; do not edit by hand                                                                                  |
+| `enums.ts`     | `Role`, `OrderStatus`, `PaymentStatus`, `ORDER_STATUSES` from the generated types                                                     |
+| `auth.ts`      | `AuthUser { id, role }`                                                                                                               |
+| `express.d.ts` | adds `req.user?: AuthUser`                                                                                                            |
+| `http.ts`      | `BodyHandler<Body, Params>`, `QueryHandler<Query>`                                                                                    |
 
 ### utils/
 

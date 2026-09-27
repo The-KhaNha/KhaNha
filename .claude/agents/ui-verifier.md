@@ -11,7 +11,9 @@ If a checklist would help, load `Skill(agent-skills:frontend-ui-engineering)` an
 
 ## Production context (read first)
 food-pickup is a **live production app**: campus-café pickup ordering. Customers browse the menu, order and track
-pickup; staff move orders through PLACED → PREPARING → READY → COMPLETED (or CANCELLED).
+pickup; staff move orders through PLACED → PREPARING → READY → COLLECTED (or CANCELLED).
+Roles: CUSTOMER, STAFF (the restaurant's order board, `/staff`), ADMIN (site-wide developer/operator, `/admin` site
+settings; no staff powers). Site-wide limits live in the one-row `site_settings` table, edited by admins.
 - Client `client/`: React 18 + Vite + Tailwind v4 (tokens in the `@theme` block of `client/src/index.css`) + zustand + react-router 7, icons `lucide-react` only.
 - API `server/`: Express 5 + zod + Supabase (Postgres RPCs `place_order` / `update_order_status`, JWKS-verified auth; `supabaseAdmin` bypasses RLS, so every query scopes by user explicitly).
 - npm in both packages. Gate per package: `npm run typecheck && npm run lint && npm test`.
@@ -133,7 +135,7 @@ Resize to 360×640 first. Throttling is per CDP session; apply it again after `b
   5. Edge: ask for more than the stock → the `INSUFFICIENT_STOCK` message names the item, and the cart line is highlighted.
 - **L6: staff golden path** (`staff@campuscafe.local / staff123`, second browser tab):
   - `/staff` lists the new order;
-  - PLACED → PREPARING → READY → COMPLETED each update the card without a manual reload;
+  - PLACED → PREPARING → READY → COLLECTED each update the card without a manual reload;
   - an invalid move is not offered, or shows the 409 message;
   - the customer's `/orders/:id` tab reflects each status within one poll (4 s) and stops polling at a terminal status;
   - a customer visiting `/staff` is redirected by `RequireStaff`.

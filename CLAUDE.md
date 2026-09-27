@@ -18,7 +18,9 @@ The user must always see what you are thinking and what background work is doing
 ## 2. Production context
 
 food-pickup is a **live production app**: campus-café pickup ordering. Customers browse the menu, order and track
-pickup; staff move orders through PLACED → PREPARING → READY → COMPLETED (or CANCELLED).
+pickup; staff move orders through PLACED → PREPARING → READY → COLLECTED (or CANCELLED).
+Roles: CUSTOMER, STAFF (the restaurant's order board, `/staff`), ADMIN (site-wide developer/operator, `/admin` site
+settings; no staff powers). Site-wide limits live in the one-row `site_settings` table, edited by admins.
 
 - Real users, real concurrency. Stock races are settled inside the `place_order` transaction, never in app code.
 - Security and accessibility are requirements, not polish.
@@ -222,6 +224,10 @@ One owner per topic; other docs link to it instead of copying.
   403. The role is read from `profiles` on every request, never from the token.
 - **`supabaseAdmin` bypasses RLS,** so every query scopes by user explicitly.
 - Public reads are cached with `cached()` and invalidated by the writes that change them (§2c).
+- Sessions: access tokens stay 1 h (refreshed by supabase-js). A sign-in ends after 7 days without use; each use
+  restarts the week (`client/src/features/auth/sessionActivity.ts` + `auth.sessions.inactivity_timeout = "168h"` in
+  `server/supabase/config.toml`; hosted projects set it in the dashboard). Never raise `jwt_expiry` to get longer
+  sign-ins: a long-lived bearer token cannot be revoked.
 - Env is read only through `utils/env.ts`. `src/types/database.ts` is generated (`npm run db:types`); never
   hand-edit it.
 - Recipes: `/new-endpoint`, `/db-migration`.
@@ -286,7 +292,7 @@ curl -s localhost:8000/api/orders -H "Authorization: Bearer $TOKEN" | jq
 ```
 
 Walk the lifecycle: create → get → list → each valid status transition (staff token: `staff@campuscafe.local` /
-`staff123`) → an invalid transition returns 409 → cancelling restores stock → another user's order returns 404. Then
+`staff123`; admin: `admin@campuscafe.local` / `admin123`) → an invalid transition returns 409 → cancelling restores stock → another user's order returns 404. Then
 confirm the UI shows the result.
 
 ## 15. Reuse-first workflow

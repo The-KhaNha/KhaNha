@@ -9,9 +9,9 @@ import {
 import type { Order, OrderStatus } from '../../types/api';
 
 /** The happy path, in order. CANCELLED sits outside the flow. */
-export const ORDER_STEPS: readonly OrderStatus[] = ['PLACED', 'PREPARING', 'READY', 'COMPLETED'];
+export const ORDER_STEPS: readonly OrderStatus[] = ['PLACED', 'PREPARING', 'READY', 'COLLECTED'];
 
-export const TERMINAL_STATUSES: readonly OrderStatus[] = ['COMPLETED', 'CANCELLED'];
+export const TERMINAL_STATUSES: readonly OrderStatus[] = ['COLLECTED', 'CANCELLED'];
 
 export interface StatusMeta {
   /** Short label for badges and staff filters. */
@@ -41,7 +41,7 @@ export interface StatusMeta {
 
 /*
  * Colour system: PLACED = paprika, PREPARING = saffron gold, READY = basil green,
- * COMPLETED = warm neutral, CANCELLED = cool slate (red never means "cancelled" in a red brand).
+ * COLLECTED = warm neutral, CANCELLED = cool slate (red never means "cancelled" in a red brand).
  */
 export const STATUS_META: Record<OrderStatus, StatusMeta> = {
   PLACED: {
@@ -82,19 +82,19 @@ export const STATUS_META: Record<OrderStatus, StatusMeta> = {
     onFillClass: 'text-white',
     railClass: 'bg-success-500',
     pulseRgb: '21 128 61',
-    next: 'COMPLETED',
-    actionLabel: 'Complete Order',
+    next: 'COLLECTED',
+    actionLabel: 'Mark Collected',
     canCancel: false,
   },
-  COMPLETED: {
-    label: 'Completed',
-    customerTitle: 'Picked up',
-    customerCopy: 'Picked up successfully. Enjoy your order!',
+  COLLECTED: {
+    label: 'Collected',
+    customerTitle: 'Collected',
+    customerCopy: 'Collected. Enjoy your order!',
     icon: CircleCheck,
-    badgeClass: 'bg-surface-2 text-complete-700',
-    fillClass: 'bg-complete-500',
+    badgeClass: 'bg-surface-2 text-collected-700',
+    fillClass: 'bg-collected-500',
     onFillClass: 'text-white',
-    railClass: 'bg-complete-500',
+    railClass: 'bg-collected-500',
     pulseRgb: '181 165 151',
     next: null,
     actionLabel: null,
@@ -130,7 +130,7 @@ export function stepIndex(status: OrderStatus): number {
 }
 
 /** Staff dashboard filter tabs. */
-export type StaffFilterKey = 'ALL' | 'NEW' | 'PREPARING' | 'READY' | 'COMPLETED';
+export type StaffFilterKey = 'ALL' | 'NEW' | 'PREPARING' | 'READY' | 'COLLECTED';
 
 export interface StaffFilter {
   key: StaffFilterKey;
@@ -144,7 +144,8 @@ export const STAFF_FILTERS: readonly StaffFilter[] = [
   { key: 'NEW', label: 'New', statuses: ['PLACED'] },
   { key: 'PREPARING', label: 'Preparing', statuses: ['PREPARING'] },
   { key: 'READY', label: 'Ready', statuses: ['READY'] },
-  { key: 'COMPLETED', label: 'Completed', statuses: ['COMPLETED', 'CANCELLED'] },
+  // Finished orders: collected and cancelled together, so the tab is "Done", not "Collected".
+  { key: 'COLLECTED', label: 'Done', statuses: ['COLLECTED', 'CANCELLED'] },
 ];
 
 export function matchesFilter(status: OrderStatus, filter: StaffFilter): boolean {
@@ -161,15 +162,15 @@ interface TimelineLabel {
   iso: string;
 }
 
-/** The one time that matters now: the ETA while it's being made, when it became ready, when it was picked up. */
+/** The one time that matters now: the ETA while it's being made, when it became ready, when it was collected. */
 export function timelineLabel(
   order: Pick<Order, 'status' | 'estimatedReadyAt' | 'updatedAt' | 'createdAt'>,
 ): TimelineLabel {
   switch (order.status) {
     case 'READY':
       return { label: 'Ready since', iso: order.updatedAt };
-    case 'COMPLETED':
-      return { label: 'Picked up', iso: order.updatedAt };
+    case 'COLLECTED':
+      return { label: 'Collected', iso: order.updatedAt };
     case 'CANCELLED':
       return { label: 'Placed', iso: order.createdAt };
     default:

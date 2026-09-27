@@ -53,6 +53,12 @@ describe('unavailableLabel', () => {
   });
 });
 
+describe('MAX_LINE_QUANTITY', () => {
+  it('is fixed at 10, matching the server cap', () => {
+    expect(MAX_LINE_QUANTITY).toBe(10);
+  });
+});
+
 describe('lineLimit', () => {
   it('is the per-order cap when there is no stock limit', () => {
     expect(lineLimit(null)).toBe(MAX_LINE_QUANTITY);
@@ -155,6 +161,10 @@ describe('limitCaption', () => {
     expect(limitCaption(null)).toBe(`Max ${MAX_LINE_QUANTITY} per order`);
     expect(limitCaption(undefined)).toBe(`Max ${MAX_LINE_QUANTITY} per order`);
     expect(limitCaption(MAX_LINE_QUANTITY)).toBe(`Max ${MAX_LINE_QUANTITY} per order`);
+  });
+
+  it('reads "Max 10 per order" (the fixed cap, spelled out)', () => {
+    expect(limitCaption(null)).toBe('Max 10 per order');
   });
 });
 

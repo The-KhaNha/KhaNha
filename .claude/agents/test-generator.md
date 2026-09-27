@@ -11,7 +11,9 @@ Before you start, load `Skill(agent-skills:test-driven-development)` for the app
 
 ## Production context (read first)
 food-pickup is a **live production app**: campus-café pickup ordering. Customers browse the menu, order and track
-pickup; staff move orders through PLACED → PREPARING → READY → COMPLETED (or CANCELLED).
+pickup; staff move orders through PLACED → PREPARING → READY → COLLECTED (or CANCELLED).
+Roles: CUSTOMER, STAFF (the restaurant's order board, `/staff`), ADMIN (site-wide developer/operator, `/admin` site
+settings; no staff powers). Site-wide limits live in the one-row `site_settings` table, edited by admins.
 - Client `client/`: React 18 + Vite + Tailwind v4 (tokens in the `@theme` block of `client/src/index.css`) + zustand + react-router 7, icons `lucide-react` only.
 - API `server/`: Express 5 + zod + Supabase (Postgres RPCs `place_order` / `update_order_status`, JWKS-verified auth; `supabaseAdmin` bypasses RLS, so every query scopes by user explicitly).
 - npm in both packages. Gate per package: `npm run typecheck && npm run lint && npm test`.
@@ -153,8 +155,8 @@ that applies to each route:
    - Prices always come from `menu_items`: the order total equals the sum of database price × quantity.
    - **The full 5×5 status transition matrix.** Use `it.each` over all 25 from→to pairs, written out literally in the
      test. Do not import `ALLOWED_TRANSITIONS`, or the test would be tautological. Allowed today: PLACED→PREPARING,
-     PLACED→CANCELLED, PREPARING→READY, PREPARING→CANCELLED and READY→COMPLETED, each returning 200. Every other pair,
-     including same→same and anything out of COMPLETED or CANCELLED, returns 409 `INVALID_STATUS_TRANSITION`. Put
+     PLACED→CANCELLED, PREPARING→READY, PREPARING→CANCELLED and READY→COLLECTED, each returning 200. Every other pair,
+     including same→same and anything out of COLLECTED or CANCELLED, returns 409 `INVALID_STATUS_TRANSITION`. Put
      each order into its "from" state through valid PATCHes.
    - Cancelling restores stock: read `stock_quantity` before and after with `supabaseAdmin`. Items with a null
      (untracked) stock stay null. A second cancel returns 409, and the stock was restored exactly once.

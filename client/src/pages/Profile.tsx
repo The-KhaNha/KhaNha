@@ -7,6 +7,7 @@ import {
   Mail,
   Phone,
   ReceiptText,
+  Settings,
   UserRound,
 } from 'lucide-react';
 import { Button, ButtonLink } from '../components/Button';
@@ -55,9 +56,9 @@ export function ProfilePage() {
           </span>
           <div className="min-w-0">
             <h2 className="truncate text-xl font-extrabold">{user.name}</h2>
-            {user.role === 'STAFF' && (
+            {user.role !== 'CUSTOMER' && (
               <span className="mt-1 inline-block rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-muted">
-                Staff
+                {user.role === 'ADMIN' ? 'Admin' : 'Staff'}
               </span>
             )}
           </div>
@@ -93,6 +94,14 @@ export function ProfilePage() {
             to="/staff"
             icon={<LayoutDashboard className="h-5 w-5" aria-hidden />}
             label="Staff dashboard"
+            className="border-t border-line/70"
+          />
+        )}
+        {user.role === 'ADMIN' && (
+          <ProfileRow
+            to="/admin"
+            icon={<Settings className="h-5 w-5" aria-hidden />}
+            label="Admin dashboard"
             className="border-t border-line/70"
           />
         )}

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   STAFF_FILTERS,
+  STATUS_META,
   amountLabel,
   isActive,
   isTerminal,
@@ -11,10 +12,10 @@ import {
 import type { Order, OrderStatus } from '../../types/api';
 
 describe('isTerminal / isActive', () => {
-  it('COMPLETED and CANCELLED are terminal', () => {
-    expect(isTerminal('COMPLETED')).toBe(true);
+  it('COLLECTED and CANCELLED are terminal', () => {
+    expect(isTerminal('COLLECTED')).toBe(true);
     expect(isTerminal('CANCELLED')).toBe(true);
-    expect(isActive('COMPLETED')).toBe(false);
+    expect(isActive('COLLECTED')).toBe(false);
   });
 
   it('PLACED, PREPARING and READY are active', () => {
@@ -26,15 +27,33 @@ describe('isTerminal / isActive', () => {
 });
 
 describe('stepIndex', () => {
-  it('locates PLACED..COMPLETED on the happy path', () => {
+  it('locates PLACED..COLLECTED on the happy path', () => {
     expect(stepIndex('PLACED')).toBe(0);
     expect(stepIndex('PREPARING')).toBe(1);
     expect(stepIndex('READY')).toBe(2);
-    expect(stepIndex('COMPLETED')).toBe(3);
+    expect(stepIndex('COLLECTED')).toBe(3);
   });
 
   it('is -1 for CANCELLED (outside the happy path)', () => {
     expect(stepIndex('CANCELLED')).toBe(-1);
+  });
+});
+
+describe('STATUS_META (COLLECTED wording)', () => {
+  it('labels COLLECTED "Collected" everywhere it appears', () => {
+    expect(STATUS_META.COLLECTED.label).toBe('Collected');
+    expect(STATUS_META.COLLECTED.customerTitle).toBe('Collected');
+  });
+
+  it('READY\'s staff action is "Mark Collected", and its next status is COLLECTED', () => {
+    expect(STATUS_META.READY.actionLabel).toBe('Mark Collected');
+    expect(STATUS_META.READY.next).toBe('COLLECTED');
+  });
+
+  it('COLLECTED has no further action and cannot be cancelled', () => {
+    expect(STATUS_META.COLLECTED.next).toBeNull();
+    expect(STATUS_META.COLLECTED.actionLabel).toBeNull();
+    expect(STATUS_META.COLLECTED.canCancel).toBe(false);
   });
 });
 
@@ -48,14 +67,14 @@ describe('matchesFilter', () => {
   const newFilter = filter('NEW');
   const preparing = filter('PREPARING');
   const ready = filter('READY');
-  const completed = filter('COMPLETED');
+  const completed = filter('COLLECTED');
 
   it('ALL matches every status', () => {
     for (const status of [
       'PLACED',
       'PREPARING',
       'READY',
-      'COMPLETED',
+      'COLLECTED',
       'CANCELLED',
     ] as OrderStatus[]) {
       expect(matchesFilter(status, all)).toBe(true);
@@ -70,8 +89,9 @@ describe('matchesFilter', () => {
     expect(matchesFilter('READY', preparing)).toBe(false);
   });
 
-  it('COMPLETED groups both COMPLETED and CANCELLED', () => {
-    expect(matchesFilter('COMPLETED', completed)).toBe(true);
+  it('COLLECTED groups both COLLECTED and CANCELLED, and its tab is labelled "Done"', () => {
+    expect(completed.label).toBe('Done');
+    expect(matchesFilter('COLLECTED', completed)).toBe(true);
     expect(matchesFilter('CANCELLED', completed)).toBe(true);
     expect(matchesFilter('PLACED', completed)).toBe(false);
   });
@@ -112,9 +132,9 @@ describe('timelineLabel', () => {
     });
   });
 
-  it('COMPLETED -> "Picked up" at updatedAt', () => {
-    expect(timelineLabel(order({ status: 'COMPLETED' }))).toEqual({
-      label: 'Picked up',
+  it('COLLECTED -> "Collected" at updatedAt', () => {
+    expect(timelineLabel(order({ status: 'COLLECTED' }))).toEqual({
+      label: 'Collected',
       iso: '2026-09-26T10:05:00.000Z',
     });
   });

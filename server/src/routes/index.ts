@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { adminRouter } from './admin.routes';
 import { authRouter } from './auth.routes';
 import { menuRouter } from './menu.routes';
 import { orderRouter } from './order.routes';
@@ -14,3 +15,4 @@ apiRouter.use('/auth', authRouter);
 apiRouter.use('/store', storeRouter);
 apiRouter.use('/menu', menuRouter);
 apiRouter.use('/orders', orderRouter);
+apiRouter.use('/admin', adminRouter);

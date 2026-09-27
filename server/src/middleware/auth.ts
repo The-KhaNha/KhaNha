@@ -44,6 +44,15 @@ export const requireStaff: RequestHandler = (req, _res, next) => {
   next();
 };
 
+/**
+ * Must run after `requireAuth`. ADMIN is the site-wide developer role (the admin dashboard), separate from staff:
+ * an admin has no staff powers and staff cannot change site settings.
+ */
+export const requireAdmin: RequestHandler = (req, _res, next) => {
+  if (currentUser(req).role !== 'ADMIN') throw forbidden('Only admins can do that.');
+  next();
+};
+
 /** Reads the user set by `requireAuth`; throws if the route forgot to require it. */
 export function currentUser(req: { user?: AuthUser }): AuthUser {
   if (!req.user) throw unauthorized();

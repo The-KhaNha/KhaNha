@@ -2,7 +2,7 @@ import type { MenuItem } from '../../types/api';
 import type { CartLine } from './cartStore';
 
 /** Mirrors the server's per-line cap (server/src/schemas/order.schema.ts). */
-export const MAX_LINE_QUANTITY = 20;
+export const MAX_LINE_QUANTITY = 10;
 
 /** Menu cards flag in-stock items with this many units left or fewer. */
 export const LOW_STOCK_MAX = 5;

@@ -1,5 +1,6 @@
-export type Role = 'CUSTOMER' | 'STAFF';
-export type OrderStatus = 'PLACED' | 'PREPARING' | 'READY' | 'COMPLETED' | 'CANCELLED';
+/** ADMIN is the site-wide developer role (/admin), not a restaurant role. */
+export type Role = 'CUSTOMER' | 'STAFF' | 'ADMIN';
+export type OrderStatus = 'PLACED' | 'PREPARING' | 'READY' | 'COLLECTED' | 'CANCELLED';
 export type PaymentStatus = 'PENDING' | 'PAID';
 
 export interface User {
@@ -85,6 +86,13 @@ export interface ApiErrorDetails {
 
 export interface ApiErrorEnvelope {
   error: { code: string; message: string; details?: ApiErrorDetails };
+}
+
+/** Site-wide limits edited on the admin dashboard. */
+export interface SiteSettings {
+  customerOrderHistoryLimit: number;
+  staffOrderListLimit: number;
+  updatedAt: string;
 }
 
 export interface CreateOrderInput {

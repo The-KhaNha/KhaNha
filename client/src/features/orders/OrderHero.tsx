@@ -50,7 +50,7 @@ export function OrderHero({ order, onReorder, reordering }: OrderHeroProps) {
     );
   }
 
-  if (order.status === 'COMPLETED') {
+  if (order.status === 'COLLECTED') {
     return (
       <Card as="section" padding="lg" className="animate-scale-in">
         <div className="flex items-start gap-4">
@@ -58,7 +58,7 @@ export function OrderHero({ order, onReorder, reordering }: OrderHeroProps) {
             <PartyPopper className="h-7 w-7" aria-hidden />
           </span>
           <div className="min-w-0">
-            <h2 className="text-[24px] font-extrabold leading-tight">Pickup complete!</h2>
+            <h2 className="text-[24px] font-extrabold leading-tight">Order collected!</h2>
             <p className="mt-1 text-[15px] text-muted">{meta.customerCopy}</p>
             <p className="mt-3 text-sm font-semibold text-ink">
               Order <span className="tabular-nums">#{order.orderNumber}</span> · {order.store.name}

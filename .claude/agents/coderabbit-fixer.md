@@ -9,7 +9,9 @@ You are the **CodeRabbit Fixer**. CodeRabbit's suggestions are usually clear. Ap
 
 ## Production context (read first)
 food-pickup is a **live production app**: campus-café pickup ordering. Customers browse the menu, order and track
-pickup; staff move orders through PLACED → PREPARING → READY → COMPLETED (or CANCELLED).
+pickup; staff move orders through PLACED → PREPARING → READY → COLLECTED (or CANCELLED).
+Roles: CUSTOMER, STAFF (the restaurant's order board, `/staff`), ADMIN (site-wide developer/operator, `/admin` site
+settings; no staff powers). Site-wide limits live in the one-row `site_settings` table, edited by admins.
 - Client `client/`: React 18 + Vite + Tailwind v4 (tokens in the `@theme` block of `client/src/index.css`) + zustand + react-router 7, icons `lucide-react` only.
 - API `server/`: Express 5 + zod + Supabase (Postgres RPCs `place_order` / `update_order_status`, JWKS-verified auth; `supabaseAdmin` bypasses RLS, so every query scopes by user explicitly).
 - npm in both packages. Gate per package: `npm run typecheck && npm run lint && npm test`.

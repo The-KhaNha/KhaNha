@@ -42,7 +42,8 @@ Successful `GET`s are logged at `debug` on purpose: the staff board polls every 
   `req.id`. Use the module `logger` only outside requests (startup, shutdown, `scripts/seed.ts`).
 - The client logs `requestId` from the response header when an API call fails, so a browser report can be matched to
   the server line.
-- Other client events: `error` "Page chunk failed to load" (`components/PageBoundary.tsx`, once per failed lazy
+- Other client events: `warn` "Session expired from inactivity" (`features/auth/authStore.ts`, `{ idleDays }`, once when
+  an unused device is signed out after 7 days); `error` "Page chunk failed to load" (`components/PageBoundary.tsx`, once per failed lazy
   route); `debug` "Resource cache unavailable" (`lib/useResource.ts`, once per key when `localStorage` is full or
   blocked).
 

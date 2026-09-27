@@ -4,6 +4,7 @@ import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { AuthCard } from '../features/auth/AuthCard';
 import { selectUser, useAuthStore } from '../features/auth/authStore';
+import { homeFor } from '../features/auth/roles';
 import { useAuthRedirect } from '../features/auth/useAuthRedirect';
 import {
   NAME_MAX_LENGTH,
@@ -33,7 +34,7 @@ export function RegisterPage() {
   const [serverError, setServerError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  if (user) return <Navigate to={user.role === 'STAFF' ? '/staff' : '/'} replace />;
+  if (user) return <Navigate to={homeFor(user.role)} replace />;
 
   const validators: Record<Field, (value: string) => string | undefined> = {
     name: validateName,

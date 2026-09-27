@@ -166,20 +166,31 @@ sequenceDiagram
   alt no session
     Store->>Store: user = null, token = null
   else session
-    Store->>API: GET /api/auth/me (Bearer access token)
-    API->>DB: profiles where id = sub
-    alt 200
-      API-->>Store: { user }
-      Store->>Store: user = profile
-    else 401 (account deleted or token rejected)
-      API-->>Store: 401
-      Store->>SB: signOut(local)
-      Store->>Store: user = null, token = null
-    else network or 5xx
-      Note over Store: keep the persisted session so the app stays usable offline
+    Store->>LS: readLastActive() (fp_last_active)
+    alt idle more than 7 days (SESSION_IDLE_TTL_MS)
+      Store->>Store: clearSession(): signOut(local), clear fp_last_active
+      Note over Store: no fp_auth.me call — the device is treated as signed out
+    else within 7 days, or no fp_last_active record yet
+      Store->>LS: markActive(): fp_last_active = now
+      Store->>API: GET /api/auth/me (Bearer access token)
+      API->>DB: profiles where id = sub
+      alt 200
+        API-->>Store: { user }
+        Store->>Store: user = profile
+      else 401 (account deleted or token rejected)
+        API-->>Store: 401
+        Store->>SB: signOut(local)
+        Store->>Store: user = null, token = null
+      else network or 5xx
+        Note over Store: keep the persisted session so the app stays usable offline
+      end
     end
   end
 ```
+
+A tab coming back from hidden re-runs the same idle check (`document.addEventListener('visibilitychange', ...)` in
+`authStore.ts`), so a device left in the background past its week is signed out the moment it is looked at again. See
+[PERMISSIONS.md#session-lifetime](PERMISSIONS.md#session-lifetime).
 
 ### 3.2 Registration
 
@@ -214,7 +225,7 @@ sequenceDiagram
     API-->>Store: 201 { user }
     Store->>Store: login(email, password), see 3.3
     Store-->>Page: user
-    Page->>U: redirect: STAFF → /staff, else ?next or /
+    Page->>U: redirect: roles.homeFor(role) for STAFF/ADMIN, else ?next or /
   end
 ```
 
@@ -255,7 +266,7 @@ sequenceDiagram
       API-->>Store: { user }
       Store->>Store: set user + token
       Store-->>Page: user
-      Page->>U: STAFF → /staff, CUSTOMER → ?next or /
+      Page->>U: roles.homeFor(role) for STAFF/ADMIN, CUSTOMER → ?next or /
     else profile could not be loaded
       Store->>Store: clearSession() so no half-signed-in state remains
       Store-->>Page: error message
@@ -350,15 +361,21 @@ flowchart TD
   Which -->|"/checkout, /orders, /orders/:id, /orders/:id/success"| RA{"RequireAuth:<br/>token in authStore?"}
   RA -->|"no"| ToLogin["Redirect /login?next=current path"]
   RA -->|"yes"| Render["Render page<br/>(API still verifies the token)"]
-  Which -->|"/staff"| RS{"RequireStaff:<br/>token?"}
+  Which -->|"/staff"| RS{"RequireRole role=STAFF:<br/>token?"}
   RS -->|"no"| ToLogin
-  RS -->|"yes"| Role{"user.role = STAFF?"}
-  Role -->|"no"| Home["Redirect /"]
-  Role -->|"yes"| Board["Staff dashboard"]
-  ToLogin --> LoginDone["After sign-in: STAFF → /staff,<br/>else the ?next path if it is same-site, else /"]
+  RS -->|"yes"| RoleS{"user.role = STAFF?"}
+  RoleS -->|"no"| Home["Redirect /"]
+  RoleS -->|"yes"| Board["Staff dashboard"]
+  Which -->|"/admin"| RAd{"RequireRole role=ADMIN:<br/>token?"}
+  RAd -->|"no"| ToLogin
+  RAd -->|"yes"| RoleA{"user.role = ADMIN?"}
+  RoleA -->|"no"| Home
+  RoleA -->|"yes"| AdminPage["Admin dashboard"]
+  ToLogin --> LoginDone["After sign-in: roles.homeFor(role)<br/>(STAFF → /staff, ADMIN → /admin),<br/>else the ?next path if it is same-site, else /"]
 ```
 
-The guards only improve the UX. The API enforces the same rules with `requireAuth` and `requireStaff`.
+The guards only improve the UX. The API enforces the same rules with `requireAuth`, `requireStaff` and
+`requireAdmin`.
 
 ---
 
@@ -409,7 +426,7 @@ The cart lives only in the browser (`fp_cart` in localStorage) and holds no serv
 ```mermaid
 flowchart TD
   Add["add(item, qty)"] --> Avail["maxQuantity = item.isAvailable ? item.stockQuantity : 0<br/>(null = not tracked)"]
-  Avail --> Limit["limit = min(20, maxQuantity or 20)"]
+  Avail --> Limit["limit = min(10, maxQuantity or 10)"]
   Limit --> Zero{"limit ≤ 0?"}
   Zero -->|"yes"| NoOp["Ignore: sold out / unavailable"]
   Zero -->|"no"| Exists{"Line already in cart?"}
@@ -419,7 +436,7 @@ flowchart TD
   Over -->|"no"| TopUp["quantity = min(limit, existing + qty)"]
 
   Inc["increment(id)"] --> AtLimit{"quantity ≥ lineLimit?"}
-  AtLimit -->|"yes"| Shake["No change: stepper shakes,<br/>caption Only N available / Max 20 per order"]
+  AtLimit -->|"yes"| Shake["No change: stepper shakes,<br/>caption Only N available / Max 10 per order"]
   AtLimit -->|"no"| Plus["quantity + 1"]
   Dec["decrement(id)"] --> One{"quantity ≤ 1?"}
   One -->|"yes"| Remove["Remove line"]
@@ -489,8 +506,8 @@ sequenceDiagram
     Svc-->>CO: 400 ITEM_NOT_FOUND { menuItemId, available 0 }
   else is_available = false
     Svc-->>CO: 400 ITEM_UNAVAILABLE { menuItemId, name, available 0 }
-  else quantity > 20
-    Svc-->>CO: 400 VALIDATION_ERROR "You can order at most 20 of ..."
+  else quantity > 10
+    Svc-->>CO: 400 VALIDATION_ERROR "You can order at most 10 of ..."
   end
   Svc->>Svc: total = Σ unit_price × quantity (prices from the database)
   Svc->>Pay: simulatePayment(total)
@@ -609,8 +626,8 @@ sequenceDiagram
     API-->>R: { order }
     R-->>P: re-render, tracker and hero keyed on status
   end
-  Note over R: stops at COMPLETED or CANCELLED<br/>pauses while the tab is hidden, fetches immediately when visible again
-  P->>U: Placed → Preparing → Ready (Your order is ready!) → Pickup complete!
+  Note over R: stops at COLLECTED or CANCELLED<br/>pauses while the tab is hidden, fetches immediately when visible again
+  P->>U: Placed → Preparing → Ready (Your order is ready!) → Order collected!
 ```
 
 ### 7.2 The polling engine (`useResource`)
@@ -636,7 +653,7 @@ flowchart TD
 
 | Hook                              | Endpoint                          | Interval                         |
 | --------------------------------- | --------------------------------- | -------------------------------- |
-| `useOrder`                        | `GET /api/orders/:id`             | 4 s until COMPLETED or CANCELLED |
+| `useOrder`                        | `GET /api/orders/:id`             | 4 s until COLLECTED or CANCELLED |
 | `useOrders` (customer Orders tab) | `GET /api/orders`                 | 8 s                              |
 | `useOrders` (staff board)         | `GET /api/orders`                 | 4 s                              |
 | `useMenu`, `useStore`             | `GET /api/menu`, `GET /api/store` | once per mount                   |
@@ -676,7 +693,7 @@ flowchart TD
   AddIt -->|"yes"| Add["cart.add(item, added) at the CURRENT price"]
   AddIt -->|"no"| N3["Notice: X already in your cart at the limit"]
   Add --> Short{"added < wanted?"}
-  Short -->|"yes"| N4["Notice: X only N left / max 20 per order, added M"]
+  Short -->|"yes"| N4["Notice: X only N left / max 10 per order, added M"]
   Short -->|"no"| Done
   N1 --> Done
   N2 --> Done
@@ -702,13 +719,13 @@ sequenceDiagram
   participant API as Express API
   participant DB as Postgres
 
-  S->>B: /staff (RequireStaff)
+  S->>B: /staff (RequireRole role="STAFF")
   B->>API: GET /api/store (name for the header)
   loop every 4 s (paused while hidden)
     B->>API: GET /api/orders (requireAuth, role STAFF)
-    API->>DB: newest 100 orders across all customers, created_at desc
+    API->>DB: newest staffOrderListLimit orders across all customers (site setting, default 100), created_at desc
     API-->>B: { orders }
-    B->>B: counts per filter: All, New (PLACED), Preparing, Ready, Completed (COMPLETED + CANCELLED)
+    B->>B: counts per filter: All, New (PLACED), Preparing, Ready, Done (COLLECTED + CANCELLED)
     B->>B: sort: active oldest-first (fair queue), finished newest-first
     B->>B: flash orders not seen since the board opened
     B->>B: header clock + last updated, offline badge when a poll fails
@@ -726,7 +743,7 @@ sequenceDiagram
   participant Svc as order.service
   participant DB as Postgres
 
-  S->>B: Start Preparing / Mark Ready / Complete Order / Cancel order
+  S->>B: Start Preparing / Mark Ready / Mark Collected / Cancel order
   B->>B: mark card pending, clear its old error
   B->>API: PATCH /api/orders/:id/status { status }
   API->>API: requireAuth → requireStaff (else 403 FORBIDDEN)
@@ -793,10 +810,10 @@ stateDiagram-v2
   [*] --> PLACED: customer pays (place_order), payment PAID
   PLACED --> PREPARING: staff Start Preparing
   PREPARING --> READY: staff Mark Ready
-  READY --> COMPLETED: staff Complete Order (customer collected)
+  READY --> COLLECTED: staff Mark Collected (customer picked up)
   PLACED --> CANCELLED: staff Cancel, stock restored
   PREPARING --> CANCELLED: staff Cancel, stock restored
-  COMPLETED --> [*]
+  COLLECTED --> [*]
   CANCELLED --> [*]
 ```
 
@@ -814,7 +831,7 @@ stateDiagram-v2
   SoldOut --> LowStock: a cancellation returns units
   SoldOut --> SoldOut: order refused, INSUFFICIENT_STOCK
   InStock --> Untracked: stock_quantity set to NULL
-  Untracked --> Untracked: orders never touch stock, only the 20 per order cap applies
+  Untracked --> Untracked: orders never touch stock, only the 10 per order cap applies
 ```
 
 ---
@@ -954,7 +971,7 @@ erDiagram
     text note
     int total "computed in place_order"
     payment_status payment_status "PENDING or PAID"
-    order_status status "PLACED to COMPLETED or CANCELLED"
+    order_status status "PLACED to COLLECTED or CANCELLED"
     timestamptz estimated_ready_at
     timestamptz created_at
     timestamptz updated_at "orders_set_updated_at trigger"

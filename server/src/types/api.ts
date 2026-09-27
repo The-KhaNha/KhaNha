@@ -47,6 +47,13 @@ export interface MenuResponse {
   categories: MenuCategoryDto[];
 }
 
+/** Site-wide limits edited on the admin dashboard (the site_settings row). */
+export interface SiteSettingsDto {
+  customerOrderHistoryLimit: number;
+  staffOrderListLimit: number;
+  updatedAt: string;
+}
+
 export interface OrderItemDto {
   id: string;
   menuItemId: string;

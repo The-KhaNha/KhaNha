@@ -92,13 +92,17 @@ The Vite dev server proxies `/api/*` to `http://localhost:8000`. The only client
 | -------- | ------------------------ | ---------- |
 | Customer | `anishka@example.com`    | `test1234` |
 | Staff    | `staff@campuscafe.local` | `staff123` |
+| Admin    | `admin@campuscafe.local` | `admin123` |
 
-Or tap **Create an account** in the app; new accounts are customers.
+Or tap **Create an account** in the app; new accounts are customers. The admin account is a site-wide
+developer/operator role (the `/admin` dashboard), not a restaurant role — see
+[docs/PERMISSIONS.md](docs/PERMISSIONS.md#roles).
 
 ## Opening the apps
 
 - **Customer app:** http://localhost:5173 — designed for a phone; on a laptop, a narrow window or the browser's device toolbar (390 × 844) shows it as intended.
 - **Staff dashboard:** http://localhost:5173/login → sign in with the staff account → you land on http://localhost:5173/staff. Non-staff accounts are sent back to the home page.
+- **Admin dashboard:** http://localhost:5173/login → sign in with the admin account → you land on http://localhost:5173/admin. Non-admin accounts are sent back to the home page.
 
 > **Demo tip:** when the customer and staff run in the _same_ browser, open the staff dashboard in a private/incognito window (or another browser). Both tabs share one login otherwise, and after a page reload the most recent login wins. In real use they are on different devices.
 
@@ -125,10 +129,10 @@ Customer on the phone (or a narrow window), staff on the laptop:
 17. The customer sees the green **"Your order is ready!"** screen with the order number.
 18. The customer walks to the counter and says the number: "1001".
 19. Staff finds the card (the **Ready** filter shows only orders waiting for pickup).
-20. Tap **Complete Order**.
-21. The customer sees **"Pickup complete!"** with **Order Again**; the Orders tab lists the order as Completed.
+20. Tap **Mark Collected**.
+21. The customer sees **"Order collected!"** with **Order Again**; the Orders tab lists the order as Collected.
 
-Also worth showing: **Order Again** adds a past order to the cart (and says what it couldn't add in full), **–** at quantity 1 (or the **Remove** link) removes the line, **Clear cart** shows the empty state, the unavailable **Berry Smoothie** can't be added, **+** stops at 20 of one item ("Max 20 per order"), and the stock-limited **Cheese Toast** shows "Only 1 left" — its **+** stops at 1, and if someone else buys it first, checkout names it and offers **Fix cart** (see [Stock limits](#stock-limits)).
+Also worth showing: **Order Again** adds a past order to the cart (and says what it couldn't add in full), **–** at quantity 1 (or the **Remove** link) removes the line, **Clear cart** shows the empty state, the unavailable **Berry Smoothie** can't be added, **+** stops at 10 of one item ("Max 10 per order"), and the stock-limited **Cheese Toast** shows "Only 1 left" — its **+** stops at 1, and if someone else buys it first, checkout names it and offers **Fix cart** (see [Stock limits](#stock-limits)). The staff dashboard also has a signed-in-only **Admin dashboard** (`/admin`, `admin@campuscafe.local` / `admin123`) where the customer order history and staff board size limits can be changed.
 
 ## Project layout
 

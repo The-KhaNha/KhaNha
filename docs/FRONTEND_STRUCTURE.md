@@ -24,7 +24,8 @@ client/
     ├── vite-env.d.ts       typed import.meta.env
     ├── components/         shared presentational atoms (catalog: COMPONENTS.md)
     ├── features/
-    │   ├── auth/           authStore, RequireAuth, RequireStaff, useAuthRedirect, validation, AuthCard
+    │   ├── admin/          settingsRules, useSiteSettings (the /admin dashboard's rules and data hook)
+    │   ├── auth/           authStore, RequireAuth, RequireRole, roles (homeFor), sessionActivity, useAuthRedirect, validation, AuthCard
     │   ├── cart/           cartStore, cartRules, useReorder, CartBar
     │   ├── menu/           useMenu, useStore, CategoryChips, ItemDetailSheet
     │   └── orders/         orderStatus, useOrder, useOrders, OrderHero, StaffHeader, StaffFilters, StaffBoard, StaffOrderCard
@@ -42,20 +43,21 @@ client/
 
 From `client/src/App.tsx`. Guards are described in [PERMISSIONS.md](PERMISSIONS.md#client).
 
-| Path                  | Page                 | Guard          | Top bar                            | Bottom nav | Cart button | Cart bar | Layout       | Loaded |
-| --------------------- | -------------------- | -------------- | ---------------------------------- | ---------- | ----------- | -------- | ------------ | ------ |
-| `/`                   | `HomePage`           | none           | wordmark, `tone: 'brand'`          | yes        | yes         | yes      | column       | eager  |
-| `/menu`               | `MenuPage`           | none           | "Menu", back to `/`                | yes        | yes         | yes      | column, wide | eager  |
-| `/cart`               | `CartPage`           | none           | "Your cart", back to `/menu`       | yes        | no          | no       | column       | eager  |
-| `/checkout`           | `CheckoutPage`       | `RequireAuth`  | "Checkout", back to `/cart`        | yes        | no          | no       | column       | lazy   |
-| `/orders`             | `OrdersPage`         | `RequireAuth`  | "Your orders", back to `/`         | yes        | yes         | no       | column       | eager  |
-| `/orders/:id`         | `OrderPage`          | `RequireAuth`  | "Order details", back to `/orders` | yes        | yes         | no       | column       | eager  |
-| `/orders/:id/success` | `OrderSuccessPage`   | `RequireAuth`  | none                               | no         | no          | no       | full         | lazy   |
-| `/profile`            | `ProfilePage`        | none           | "Profile", back to `/`             | yes        | yes         | no       | column       | eager  |
-| `/login`              | `LoginPage`          | none           | none                               | no         | no          | no       | full         | lazy   |
-| `/register`           | `RegisterPage`       | none           | none                               | no         | no          | no       | full         | lazy   |
-| `/staff`              | `StaffDashboardPage` | `RequireStaff` | none                               | no         | no          | no       | full         | lazy   |
-| `*`                   | `NotFoundPage`       | none           | "Not found", back to `/`           | yes        | no          | no       | column       | eager  |
+| Path                  | Page                 | Guard                      | Top bar                            | Bottom nav | Cart button | Cart bar | Layout       | Loaded |
+| --------------------- | -------------------- | -------------------------- | ---------------------------------- | ---------- | ----------- | -------- | ------------ | ------ |
+| `/`                   | `HomePage`           | none                       | wordmark, `tone: 'brand'`          | yes        | yes         | yes      | column       | eager  |
+| `/menu`               | `MenuPage`           | none                       | "Menu", back to `/`                | yes        | yes         | yes      | column, wide | eager  |
+| `/cart`               | `CartPage`           | none                       | "Your cart", back to `/menu`       | yes        | no          | no       | column       | eager  |
+| `/checkout`           | `CheckoutPage`       | `RequireAuth`              | "Checkout", back to `/cart`        | yes        | no          | no       | column       | lazy   |
+| `/orders`             | `OrdersPage`         | `RequireAuth`              | "Your orders", back to `/`         | yes        | yes         | no       | column       | eager  |
+| `/orders/:id`         | `OrderPage`          | `RequireAuth`              | "Order details", back to `/orders` | yes        | yes         | no       | column       | eager  |
+| `/orders/:id/success` | `OrderSuccessPage`   | `RequireAuth`              | none                               | no         | no          | no       | full         | lazy   |
+| `/profile`            | `ProfilePage`        | none                       | "Profile", back to `/`             | yes        | yes         | no       | column       | eager  |
+| `/login`              | `LoginPage`          | none                       | none                               | no         | no          | no       | full         | lazy   |
+| `/register`           | `RegisterPage`       | none                       | none                               | no         | no          | no       | full         | lazy   |
+| `/staff`              | `StaffDashboardPage` | `RequireRole role="STAFF"` | none                               | no         | no          | no       | full         | lazy   |
+| `/admin`              | `AdminPage`          | `RequireRole role="ADMIN"` | "Admin", back to `/profile`        | yes        | no          | no       | column       | lazy   |
+| `*`                   | `NotFoundPage`       | none                       | "Not found", back to `/`           | yes        | no          | no       | column       | eager  |
 
 Lazy pages are `lazy()` imports in `App.tsx`, wrapped in `PageBoundary`: the screens a customer does not need to
 browse the menu and fill a cart. See [Caching](#caching).
@@ -77,20 +79,21 @@ A new route needs an entry in both the `<Routes>` list and `SHELL_BY_ROUTE`, or 
 
 ## Pages
 
-| Page                 | Data                                                               | Notes                                                                                           |
-| -------------------- | ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
-| `Home.tsx`           | `useStore()`                                                       | paprika hero with `StoreCard`                                                                   |
-| `Menu.tsx`           | `useMenu()`                                                        | `CategoryChips`, `PopularRail`, `FoodCard` list, `ItemDetailSheet`                              |
-| `Cart.tsx`           | `useMenu()` (refreshes stock limits), `cartStore`                  | shows the Order Again notice from router state (`readReorderNotice`)                            |
-| `Checkout.tsx`       | `useMenu()`, `createOrder()`                                       | holds a green "Paid" state for 500 ms, then navigates to success with the order in router state |
-| `OrderSuccess.tsx`   | `useOrder(id, passedOrder)`                                        | renders the passed order at once, then polls                                                    |
-| `Order.tsx`          | `useOrder(id)`, `useReorder()`                                     | tracking page with `OrderHero` and `StatusTracker`                                              |
-| `Orders.tsx`         | `useOrders()`, `useReorder()`                                      | In progress / Past orders, Order Again                                                          |
-| `Profile.tsx`        | `authStore`                                                        | sign-out                                                                                        |
-| `Login.tsx`          | `authStore.login`                                                  | `AuthCard`, `useAuthRedirect`                                                                   |
-| `Register.tsx`       | `authStore.register`                                               | `AuthCard`, `useAuthRedirect`, `validation.ts`                                                  |
-| `StaffDashboard.tsx` | `useOrders({ pollMs: 4000 })`, `useStore()`, `updateOrderStatus()` | owns polling, filters and status changes; the `Staff*` components are presentational            |
-| `NotFound.tsx`       | none                                                               |                                                                                                 |
+| Page                 | Data                                                               | Notes                                                                                                                               |
+| -------------------- | ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `Home.tsx`           | `useStore()`                                                       | paprika hero with `StoreCard`                                                                                                       |
+| `Menu.tsx`           | `useMenu()`                                                        | `CategoryChips`, `PopularRail`, `FoodCard` list, `ItemDetailSheet`                                                                  |
+| `Cart.tsx`           | `useMenu()` (refreshes stock limits), `cartStore`                  | shows the Order Again notice from router state (`readReorderNotice`)                                                                |
+| `Checkout.tsx`       | `useMenu()`, `createOrder()`                                       | holds a green "Paid" state for 500 ms, then navigates to success with the order in router state                                     |
+| `OrderSuccess.tsx`   | `useOrder(id, passedOrder)`                                        | renders the passed order at once, then polls                                                                                        |
+| `Order.tsx`          | `useOrder(id)`, `useReorder()`                                     | tracking page with `OrderHero` and `StatusTracker`                                                                                  |
+| `Orders.tsx`         | `useOrders()`, `useReorder()`                                      | In progress / Past orders, Order Again                                                                                              |
+| `Profile.tsx`        | `authStore`                                                        | sign-out; a "Staff dashboard" row for `STAFF`, an "Admin dashboard" row for `ADMIN`                                                 |
+| `Login.tsx`          | `authStore.login`                                                  | `AuthCard`, `useAuthRedirect`                                                                                                       |
+| `Register.tsx`       | `authStore.register`                                               | `AuthCard`, `useAuthRedirect`, `validation.ts`                                                                                      |
+| `StaffDashboard.tsx` | `useOrders({ pollMs: 4000 })`, `useStore()`, `updateOrderStatus()` | owns polling, filters and status changes; the `Staff*` components are presentational                                                |
+| `Admin.tsx`          | `useSiteSettings()`                                                | `AdminPage` + `SettingsForm`; edits the two `site_settings` limits (see [COMPONENTS.md#featuresadmin](COMPONENTS.md#featuresadmin)) |
+| `NotFound.tsx`       | none                                                               |                                                                                                                                     |
 
 Polling intervals and the `useResource` engine are drawn in
 [ARCHITECTURE.md](ARCHITECTURE.md#72-the-polling-engine-useresource).
@@ -107,6 +110,9 @@ Both stores are zustand with the `persist` middleware (localStorage).
 - supabase-js keeps the real session in localStorage under its own key (`sb-<project-ref>-auth-token`) and refreshes
   it. `authStore` subscribes to `supabase.auth.onAuthStateChange` to keep `token` in step, and `services/api.ts` reads
   the live token from supabase-js for every request.
+- `authStore` also uses a third, plain (non-zustand) localStorage key, `fp_last_active`
+  (`features/auth/sessionActivity.ts`): the 7-day idle sign-out timestamp, updated on login and use, cleared on
+  logout. Not a store; see [PERMISSIONS.md#session-lifetime](PERMISSIONS.md#session-lifetime).
 - The cart's `migrate` fills `maxQuantity: null` for carts saved before stock limits existed.
 - Count and total are derived selectors (`selectCount`, `selectTotal`), never stored.
 
@@ -121,6 +127,7 @@ Only these modules call `request()` from `services/api.ts`. Components and hooks
 | `services/store.ts`  | `fetchStore`                                                                             | `GET /store`                                                                 |
 | `services/menu.ts`   | `fetchMenu`                                                                              | `GET /menu`                                                                  |
 | `services/orders.ts` | `createOrder`, `fetchOrders(status?)`, `fetchOrder(id)`, `updateOrderStatus(id, status)` | `POST /orders`, `GET /orders`, `GET /orders/:id`, `PATCH /orders/:id/status` |
+| `services/admin.ts`  | `fetchSiteSettings()`, `updateSiteSettings(changes)`                                     | `GET /admin/settings`, `PATCH /admin/settings`                               |
 
 `request()`:
 
@@ -136,12 +143,13 @@ Only these modules call `request()` from `services/api.ts`. Components and hooks
 
 ## Feature folders
 
-| Folder            | Rules and hooks                                       | UI                                                                         |
-| ----------------- | ----------------------------------------------------- | -------------------------------------------------------------------------- |
-| `features/auth`   | `authStore.ts`, `useAuthRedirect.ts`, `validation.ts` | `AuthCard`, `RequireAuth`, `RequireStaff`                                  |
-| `features/cart`   | `cartStore.ts`, `cartRules.ts`, `useReorder.ts`       | `CartBar`                                                                  |
-| `features/menu`   | `useMenu.ts`, `useStore.ts`                           | `CategoryChips`, `ItemDetailSheet`                                         |
-| `features/orders` | `orderStatus.ts`, `useOrder.ts`, `useOrders.ts`       | `OrderHero`, `StaffHeader`, `StaffFilters`, `StaffBoard`, `StaffOrderCard` |
+| Folder            | Rules and hooks                                                                         | UI                                                                         |
+| ----------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `features/admin`  | `settingsRules.ts`, `useSiteSettings.ts`                                                | (`pages/Admin.tsx` owns the form UI directly)                              |
+| `features/auth`   | `authStore.ts`, `roles.ts`, `sessionActivity.ts`, `useAuthRedirect.ts`, `validation.ts` | `AuthCard`, `RequireAuth`, `RequireRole`                                   |
+| `features/cart`   | `cartStore.ts`, `cartRules.ts`, `useReorder.ts`                                         | `CartBar`                                                                  |
+| `features/menu`   | `useMenu.ts`, `useStore.ts`                                                             | `CategoryChips`, `ItemDetailSheet`                                         |
+| `features/orders` | `orderStatus.ts`, `useOrder.ts`, `useOrders.ts`                                         | `OrderHero`, `StaffHeader`, `StaffFilters`, `StaffBoard`, `StaffOrderCard` |
 
 Details of each export: [COMPONENTS.md](COMPONENTS.md#feature-rules-and-hooks).
 

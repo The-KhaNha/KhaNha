@@ -1,6 +1,13 @@
 import type { QueryData } from '@supabase/supabase-js';
 import type { Tables } from '../types/database';
-import type { MenuItemDto, OrderDto, OrderItemDto, StoreDto, UserDto } from '../types/api';
+import type {
+  MenuItemDto,
+  OrderDto,
+  OrderItemDto,
+  SiteSettingsDto,
+  StoreDto,
+  UserDto,
+} from '../types/api';
 import { supabaseAdmin } from './supabase';
 
 /**
@@ -35,6 +42,14 @@ export function toUserDto(profile: Tables<'profiles'>): UserDto {
     phone: profile.phone,
     role: profile.role,
     createdAt: toIso(profile.created_at),
+  };
+}
+
+export function toSiteSettingsDto(settings: Tables<'site_settings'>): SiteSettingsDto {
+  return {
+    customerOrderHistoryLimit: settings.customer_order_history_limit,
+    staffOrderListLimit: settings.staff_order_list_limit,
+    updatedAt: settings.updated_at,
   };
 }
 

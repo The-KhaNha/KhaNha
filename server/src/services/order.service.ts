@@ -8,21 +8,17 @@ import { isUuid } from '../utils/ids';
 import { selectOrders, type OrderWithDetails } from '../utils/serializers';
 import { raisedByDatabase, supabaseAdmin } from '../utils/supabase';
 import { simulatePayment } from './payment.service';
+import { getSettings } from './settings.service';
 import { getStore } from './store.service';
 
 /** The single source of truth for which status changes staff may make. */
 const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   PLACED: ['PREPARING', 'CANCELLED'],
   PREPARING: ['READY', 'CANCELLED'],
-  READY: ['COMPLETED'],
-  COMPLETED: [],
+  READY: ['COLLECTED'],
+  COLLECTED: [],
   CANCELLED: [],
 };
-
-/** Staff poll the list every few seconds, so it is bounded to the newest orders. */
-const STAFF_LIST_LIMIT = 100;
-/** A customer's history is capped too, so a regular's polled list never grows without bound. */
-const CUSTOMER_LIST_LIMIT = 50;
 
 type MenuItem = Tables<'menu_items'>;
 
@@ -102,16 +98,18 @@ export async function createOrder(
 }
 
 /**
- * Customers see their newest CUSTOMER_LIST_LIMIT orders; staff see the newest STAFF_LIST_LIMIT across everyone.
- * Newest first.
+ * Both lists are polled, so both are bounded to the newest orders. The sizes are site settings (admin dashboard):
+ * a customer sees their newest `customer_order_history_limit`, staff the newest `staff_order_list_limit` across
+ * everyone. Newest first.
  */
 export async function listOrders(
   user: AuthUser,
   status?: OrderStatus,
 ): Promise<OrderWithDetails[]> {
+  const settings = await getSettings();
   let query = selectOrders().order('created_at', { ascending: false });
-  if (user.role === 'STAFF') query = query.limit(STAFF_LIST_LIMIT);
-  else query = query.eq('user_id', user.id).limit(CUSTOMER_LIST_LIMIT);
+  if (user.role === 'STAFF') query = query.limit(settings.staff_order_list_limit);
+  else query = query.eq('user_id', user.id).limit(settings.customer_order_history_limit);
   if (status) query = query.eq('status', status);
 
   const { data: orders } = await query.throwOnError();

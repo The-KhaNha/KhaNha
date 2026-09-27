@@ -133,6 +133,10 @@ flowchart TD
   Prod --> Deploy["Deploy the API and web app build that expect the new schema"]
 ```
 
+`20260927094610_admin_settings_collected.sql` (the `ADMIN` role, `COMPLETED` → `COLLECTED`, `site_settings`) is
+applied locally by `db:reset` already; staging needs `npm run db:push:staging` run once before a staging build (which
+ships the renamed status and the admin dashboard) can be pointed at it.
+
 ### Applying migrations
 
 `server/scripts/db-push.sh <staging|production>`:
@@ -166,15 +170,17 @@ flowchart TD
   subgraph Demo["Demo reset (local / staging)"]
     D1["rpc reset_demo_orders()<br/>TRUNCATE order_items, orders RESTART IDENTITY → next order 1001"] --> D2["Upsert the single store"]
     D2 --> D3["Upsert 11 menu items by name (ids kept),<br/>reset stock: Cheese Toast 1, Brownie 2, Muffin 5,<br/>delete items no longer in the list"]
-    D3 --> D4["For each test account: auth.admin create or update<br/>(confirmed, known password), then set profile name, phone, role"]
+    D3 --> D4["For each test account (STAFF, ADMIN, CUSTOMER): auth.admin create or update<br/>(confirmed, known password), then set profile name, phone, role"]
     D4 --> D5["Delete every other Auth user (profiles cascade)"]
-    D5 --> D6["Print summary + test logins"]
+    D5 --> D6["Reset site_settings to defaults (20 / 100)"]
+    D6 --> D7["Print summary + test logins"]
   end
 ```
 
 - **Demo reset** (`npm run seed`, `APP_ENV` local or staging): deletes every order, restarts numbering at #1001,
-  updates the store, the 11 menu items and the two test accounts in place (their ids survive, so open browsers keep
-  working), and deletes every other account.
+  updates the store, the 11 menu items and the three test accounts (staff, admin, customer) in place (their ids
+  survive, so open browsers keep working), resets `site_settings` to its defaults (20 / 100), and deletes every
+  other account.
 - **Production setup** (`npm run seed -- --production`, `APP_ENV=production`): creates the store and menu only while
   production has no store. It creates no accounts and wipes nothing.
 
@@ -226,11 +232,15 @@ Run by the user, once.
 5. Load the store and menu once, with the production values in the environment: `npm run seed -- --production`. It
    only works while production has no store, and creates no accounts. The plain `npm run seed` refuses to run
    against production.
-6. Create staff accounts in the dashboard (Authentication → Add user, with auto-confirm), then in the SQL editor:
-   `update public.profiles set role = 'STAFF' where email = '…';`
+6. Create staff and admin accounts in the dashboard (Authentication → Add user, with auto-confirm), then in the SQL
+   editor: `update public.profiles set role = 'STAFF' where email = '…';` for staff, or
+   `update public.profiles set role = 'ADMIN' where email = '…';` for the site-wide developer/operator role (the
+   `/admin` dashboard — see [PERMISSIONS.md#roles](PERMISSIONS.md#roles)).
 7. Recommended in the dashboard (Authentication → Sign In / Providers): turn off **Allow new users to sign up**.
    Accounts are created by the API's `/auth/register` with the secret key, which still works; this closes direct
    sign-ups with the publishable key.
+8. Recommended in the dashboard (Authentication → Sessions): set the same idle-session limit as local
+   (see [Hosted session timeout](#hosted-session-timeout) below).
 
 ```mermaid
 sequenceDiagram
@@ -250,10 +260,22 @@ sequenceDiagram
   Dev->>Host: set APP_ENV=production, SUPABASE_URL, SUPABASE_SECRET_KEY, PORT, CLIENT_ORIGIN
   Dev->>Seed: npm run seed -- --production (production env vars)
   Seed->>Prod: store + menu only (refuses if a store exists)
-  Dev->>Dash: Authentication → Add user for each staff member (auto-confirm)
-  Dev->>Dash: SQL editor: update public.profiles set role = 'STAFF' where email = ...
+  Dev->>Dash: Authentication → Add user for each staff/admin member (auto-confirm)
+  Dev->>Dash: SQL editor: update public.profiles set role = 'STAFF'/'ADMIN' where email = ...
   Dev->>Dash: turn off Allow new users to sign up (the API's /auth/register still works)
+  Dev->>Dash: Authentication → Sessions: set the inactivity timeout to 168h (7 days), matching local
 ```
+
+## Hosted session timeout
+
+A sign-in lasts 7 days without use (`client/src/features/auth/sessionActivity.ts`, `server/supabase/config.toml`'s
+`[auth.sessions] inactivity_timeout = "168h"` for the local stack — see
+[PERMISSIONS.md#session-lifetime](PERMISSIONS.md#session-lifetime)). `config.toml` only configures the local Docker
+stack; a hosted project (staging or production) needs the same limit set by hand, because
+**`inactivity_timeout` is a paid-plan setting only available in the Supabase dashboard** (Authentication → Sessions →
+"Time-box user sessions" / inactivity), not in a config file. `jwt_expiry` (the 1 h access token lifetime) is a
+project setting too but its default already matches `config.toml`'s `3600`. Until this is set on a hosted project,
+the client's own 7-day check still runs, but Supabase's refresh token itself will not expire on inactivity.
 
 ## Future: Docker + nginx
 

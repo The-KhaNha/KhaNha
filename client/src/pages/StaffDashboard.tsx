@@ -74,7 +74,7 @@ export function StaffDashboardPage() {
       NEW: 0,
       PREPARING: 0,
       READY: 0,
-      COMPLETED: 0,
+      COLLECTED: 0,
     };
     for (const order of orders ?? []) {
       for (const f of STAFF_FILTERS) if (matchesFilter(order.status, f)) result[f.key] += 1;

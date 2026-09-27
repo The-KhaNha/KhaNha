@@ -31,25 +31,32 @@ gets it from `supabase.auth.signInWithPassword` and supabase-js refreshes it (`j
 
 `requireStaff` must run after `requireAuth`. A role other than `STAFF` is 403 `FORBIDDEN` "Only staff can do that."
 
+`requireAdmin` (guards `/api/admin/*`) must run after `requireAuth`. A role other than `ADMIN` is 403 `FORBIDDEN`
+"Only admins can do that." `ADMIN` is a separate, site-wide developer/operator role: it has no staff powers, so it
+still gets 403 from `requireStaff` (see [PERMISSIONS.md](PERMISSIONS.md#roles)).
+
 The API has no sign-in or sign-out route. The browser signs in and out with supabase-js directly
 (`client/src/services/auth.ts`).
 
 ## Routes
 
-| Method | Path                 | Auth         | Request                                                  | Success                      |
-| ------ | -------------------- | ------------ | -------------------------------------------------------- | ---------------------------- |
-| GET    | `/health`            | none         | none                                                     | 200 `{ ok: true }`           |
-| POST   | `/auth/register`     | none         | body: [`registerSchema`](#post-authregister)             | 201 `{ user: UserDto }`      |
-| GET    | `/auth/me`           | user         | none                                                     | 200 `{ user: UserDto }`      |
-| GET    | `/store`             | none         | none                                                     | 200 `{ store: StoreDto }`    |
-| GET    | `/menu`              | none         | none                                                     | 200 `MenuResponse`           |
-| POST   | `/orders`            | user         | body: [`createOrderSchema`](#post-orders)                | 201 `{ order: OrderDto }`    |
-| GET    | `/orders`            | user         | query: [`listOrdersQuerySchema`](#get-orders)            | 200 `{ orders: OrderDto[] }` |
-| GET    | `/orders/:id`        | user         | path: `id`                                               | 200 `{ order: OrderDto }`    |
-| PATCH  | `/orders/:id/status` | user + STAFF | body: [`updateOrderStatusSchema`](#patch-ordersidstatus) | 200 `{ order: OrderDto }`    |
+| Method | Path                 | Auth         | Request                                                  | Success                             |
+| ------ | -------------------- | ------------ | -------------------------------------------------------- | ----------------------------------- |
+| GET    | `/health`            | none         | none                                                     | 200 `{ ok: true }`                  |
+| POST   | `/auth/register`     | none         | body: [`registerSchema`](#post-authregister)             | 201 `{ user: UserDto }`             |
+| GET    | `/auth/me`           | user         | none                                                     | 200 `{ user: UserDto }`             |
+| GET    | `/store`             | none         | none                                                     | 200 `{ store: StoreDto }`           |
+| GET    | `/menu`              | none         | none                                                     | 200 `MenuResponse`                  |
+| POST   | `/orders`            | user         | body: [`createOrderSchema`](#post-orders)                | 201 `{ order: OrderDto }`           |
+| GET    | `/orders`            | user         | query: [`listOrdersQuerySchema`](#get-orders)            | 200 `{ orders: OrderDto[] }`        |
+| GET    | `/orders/:id`        | user         | path: `id`                                               | 200 `{ order: OrderDto }`           |
+| PATCH  | `/orders/:id/status` | user + STAFF | body: [`updateOrderStatusSchema`](#patch-ordersidstatus) | 200 `{ order: OrderDto }`           |
+| GET    | `/admin/settings`    | user + ADMIN | none                                                     | 200 `{ settings: SiteSettingsDto }` |
+| PATCH  | `/admin/settings`    | user + ADMIN | body: [`updateSettingsSchema`](#patch-adminsettings)     | 200 `{ settings: SiteSettingsDto }` |
 
 `orderRouter.use(requireAuth)` runs before any `/orders` route matches. So any path under `/api/orders`, including
-one that matches no route, returns 401 without a valid token.
+one that matches no route, returns 401 without a valid token. `adminRouter.use(requireAuth, requireAdmin)` does the
+same for every path under `/api/admin`.
 
 ### GET /health
 
@@ -131,8 +138,8 @@ What the service checks, in this order:
      "One of the items is no longer on the menu." with `details: { menuItemId, available: 0 }`;
    - `is_available` is true, else 400 `ITEM_UNAVAILABLE` "<name> is currently unavailable. Please remove it from your
      cart." with `details: { menuItemId, name, available: 0 }`;
-   - the merged quantity is at most 20 (`MAX_QUANTITY_PER_ITEM`), else 400 `VALIDATION_ERROR` "You can order at most
-     20 of <name>. Please reduce the quantity in your cart."
+   - the merged quantity is at most 10 (`MAX_QUANTITY_PER_ITEM`, a fixed constant — not a `site_settings` value), else
+     400 `VALIDATION_ERROR` "You can order at most 10 of <name>. Please reduce the quantity in your cart."
 3. `total = Σ unit_price × quantity` from the database prices, then `simulatePayment(total)` returns `PAID`
    (`server/src/services/payment.service.ts`).
 4. `place_order` reserves stock and writes the order in one transaction. Not enough stock: 400
@@ -155,11 +162,14 @@ A new order is `paymentStatus: "PAID"`, `status: "PLACED"`, `estimatedReadyAt = 
 Code: `requireAuth` → `validate(listOrdersQuerySchema, 'query')` → `order.controller.listOrders` →
 `order.service.listOrders`.
 
-Query: `status` (optional), one of `PLACED`, `PREPARING`, `READY`, `COMPLETED`, `CANCELLED`. Anything else is 400
-`VALIDATION_ERROR` "Status must be one of PLACED, PREPARING, READY, COMPLETED, CANCELLED."
+Query: `status` (optional), one of `PLACED`, `PREPARING`, `READY`, `COLLECTED`, `CANCELLED`. Anything else is 400
+`VALIDATION_ERROR` "Status must be one of PLACED, PREPARING, READY, COLLECTED, CANCELLED."
 
-- Customers get their newest 50 orders (`CUSTOMER_LIST_LIMIT`).
-- Staff get the newest 100 orders across all customers (`STAFF_LIST_LIMIT`).
+- Customers get their newest `customerOrderHistoryLimit` orders (a `site_settings` row, default 20).
+- Staff get the newest `staffOrderListLimit` orders across all customers (a `site_settings` row, default 100).
+- Both limits are read fresh on every call (`order.service.listOrders` calls `settings.service.getSettings()`, which
+  goes through the same 10 s read cache as the menu and store — see [Caching](#caching)) and are edited only from the
+  admin dashboard, [GET/PATCH /admin/settings](#get-adminsettings). Neither is a fixed constant any more.
 - Newest first (`created_at desc`). Lines within each order are in cart order (`line_number`).
 
 ### GET /orders/:id
@@ -185,8 +195,8 @@ Allowed transitions (`ALLOWED_TRANSITIONS` in `server/src/services/order.service
 | ----------- | ------------------------ |
 | `PLACED`    | `PREPARING`, `CANCELLED` |
 | `PREPARING` | `READY`, `CANCELLED`     |
-| `READY`     | `COMPLETED`              |
-| `COMPLETED` | none                     |
+| `READY`     | `COLLECTED`              |
+| `COLLECTED` | none                     |
 | `CANCELLED` | none                     |
 
 The service passes every status that may move to the requested one as `p_from_statuses`. The database does one
@@ -202,6 +212,46 @@ tracked stock back in the same transaction (see [SCHEMA.md](SCHEMA.md#update_ord
 | 404    | `NOT_FOUND`                 | `id` not a UUID, or no such order                                                                                        |
 | 409    | `INVALID_STATUS_TRANSITION` | "Order #<number> cannot move from <current status> to <requested status>." The status quoted is the order's current one. |
 
+### GET /admin/settings
+
+Code: `requireAuth` → `requireAdmin` → `admin.controller.getSettings` → `settings.service.getSettings`. Returns the
+single `site_settings` row as `{ settings: SiteSettingsDto }`. Read through the same 10 s process cache as the menu
+and store (key `'site_settings'`; see [Caching](#caching)).
+
+| Status | Code           | When                                  |
+| ------ | -------------- | ------------------------------------- |
+| 200    |                | `{ settings: SiteSettingsDto }`       |
+| 401    | `UNAUTHORIZED` | see [Authentication](#authentication) |
+| 403    | `FORBIDDEN`    | caller is not `ADMIN`                 |
+
+### PATCH /admin/settings
+
+Code: `requireAuth` → `requireAdmin` → `validate(updateSettingsSchema)` → `admin.controller.updateSettings` →
+`settings.service.updateSettings`.
+
+Body (`server/src/schemas/admin.schema.ts`), both fields optional but at least one required:
+
+| Field                       | Type   | Rules               |
+| --------------------------- | ------ | ------------------- |
+| `customerOrderHistoryLimit` | number | whole number, 1–200 |
+| `staffOrderListLimit`       | number | whole number, 1–500 |
+
+- An out-of-range or non-integer value is 400 `VALIDATION_ERROR` ("Customer order history limit must be at least
+  1."/"...at most 200."/"...must be a whole number.", and the equivalent messages for the staff limit).
+- Sending neither field is 400 `VALIDATION_ERROR` "Send at least one setting to change."
+- The bounds mirror the `site_settings` check constraints exactly (see [SCHEMA.md](SCHEMA.md#site_settings)), so a
+  bad value is always a 400 here, never a database error.
+- On success, `updated_by` is set to the calling admin's id, `updated_at` advances, and the process cache key
+  `'site_settings'` is invalidated at once, so the very next `GET /api/orders` (on this API instance) uses the new
+  limit. The controller logs `Site settings changed` at `info` with the new values and `by: admin.id`.
+
+| Status | Code               | When                                                     |
+| ------ | ------------------ | -------------------------------------------------------- |
+| 200    |                    | `{ settings: SiteSettingsDto }`                          |
+| 400    | `VALIDATION_ERROR` | a field out of bounds, wrong type, or neither field sent |
+| 401    | `UNAUTHORIZED`     | see [Authentication](#authentication)                    |
+| 403    | `FORBIDDEN`        | caller is not `ADMIN`                                    |
+
 ## Response DTOs
 
 From `server/src/types/api.ts`. The serializers in `server/src/utils/serializers.ts` turn snake_case rows into these
@@ -209,14 +259,25 @@ camelCase shapes and every timestamp into ISO 8601 (`new Date(ts).toISOString()`
 
 `UserDto`
 
-| Field       | Type                      |
-| ----------- | ------------------------- |
-| `id`        | string (uuid)             |
-| `name`      | string                    |
-| `email`     | string                    |
-| `phone`     | string \| null            |
-| `role`      | `'CUSTOMER'` \| `'STAFF'` |
-| `createdAt` | string (ISO 8601)         |
+| Field       | Type                                   |
+| ----------- | -------------------------------------- |
+| `id`        | string (uuid)                          |
+| `name`      | string                                 |
+| `email`     | string                                 |
+| `phone`     | string \| null                         |
+| `role`      | `'CUSTOMER'` \| `'STAFF'` \| `'ADMIN'` |
+| `createdAt` | string (ISO 8601)                      |
+
+`ADMIN` is the site-wide developer/operator role (the `/admin` dashboard), not a restaurant role — see
+[PERMISSIONS.md](PERMISSIONS.md#roles).
+
+`SiteSettingsDto`
+
+| Field                       | Type              | Notes                                                |
+| --------------------------- | ----------------- | ---------------------------------------------------- |
+| `customerOrderHistoryLimit` | number            | 1–200, default 20; caps `GET /orders` for a customer |
+| `staffOrderListLimit`       | number            | 1–500, default 100; caps `GET /orders` for staff     |
+| `updatedAt`                 | string (ISO 8601) | set whenever either limit is saved                   |
 
 `StoreDto`
 
@@ -244,7 +305,7 @@ camelCase shapes and every timestamp into ISO 8601 (`new Date(ts).toISOString()`
 | `isAvailable`   | boolean        | false when switched off or tracked stock is 0                |
 | `isPopular`     | boolean        |                                                              |
 | `sortOrder`     | number         |                                                              |
-| `stockQuantity` | number \| null | units left; `null` = not tracked (only the 20-per-order cap) |
+| `stockQuantity` | number \| null | units left; `null` = not tracked (only the 10-per-order cap) |
 
 `MenuResponse`: `{ store: StoreDto, popular: MenuItemDto[], categories: { name: string, items: MenuItemDto[] }[] }`.
 
@@ -311,21 +372,21 @@ Every error response has this shape (`server/src/middleware/errorHandler.ts`):
 
 ### Error codes
 
-| Status | Code                        | Raised by                                                                                                                                                                                                                                      |
-| ------ | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 400    | `VALIDATION_ERROR`          | zod schemas; the 20-per-item cap; malformed JSON ("Malformed request body."); Postgres `22001` ("One of the values is too long."), `22021` / `22P05` ("Invalid characters in input."); Supabase Auth `email_address_invalid` / `weak_password` |
-| 400    | `BAD_REQUEST`               | bad percent-encoding in the URL ("The request URL is malformed."); any other 4xx from body-parser ("The request could not be processed.")                                                                                                      |
-| 400    | `ITEM_NOT_FOUND`            | `POST /orders`                                                                                                                                                                                                                                 |
-| 400    | `ITEM_UNAVAILABLE`          | `POST /orders`                                                                                                                                                                                                                                 |
-| 400    | `INSUFFICIENT_STOCK`        | `POST /orders` (from `place_order`)                                                                                                                                                                                                            |
-| 400    | `STORE_CLOSED`              | `POST /orders`                                                                                                                                                                                                                                 |
-| 401    | `UNAUTHORIZED`              | `requireAuth`                                                                                                                                                                                                                                  |
-| 403    | `FORBIDDEN`                 | `requireStaff`                                                                                                                                                                                                                                 |
-| 404    | `NOT_FOUND`                 | missing store, order or profile; an unmatched route ("No route matches <METHOD> <path>.")                                                                                                                                                      |
-| 409    | `EMAIL_TAKEN`               | `POST /auth/register`                                                                                                                                                                                                                          |
-| 409    | `INVALID_STATUS_TRANSITION` | `PATCH /orders/:id/status` (from `update_order_status`)                                                                                                                                                                                        |
-| 413    | `PAYLOAD_TOO_LARGE`         | JSON body over the `express.json()` default limit of 100 kB ("The request body is too large.")                                                                                                                                                 |
-| 500    | `INTERNAL`                  | anything else ("Something went wrong. Please try again."), logged with its stack                                                                                                                                                               |
+| Status | Code                        | Raised by                                                                                                                                                                                                                                                                                                  |
+| ------ | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 400    | `VALIDATION_ERROR`          | zod schemas; the 10-per-item cap; the `site_settings` bounds (`GET`/`PATCH /admin/settings`); malformed JSON ("Malformed request body."); Postgres `22001` ("One of the values is too long."), `22021` / `22P05` ("Invalid characters in input."); Supabase Auth `email_address_invalid` / `weak_password` |
+| 400    | `BAD_REQUEST`               | bad percent-encoding in the URL ("The request URL is malformed."); any other 4xx from body-parser ("The request could not be processed.")                                                                                                                                                                  |
+| 400    | `ITEM_NOT_FOUND`            | `POST /orders`                                                                                                                                                                                                                                                                                             |
+| 400    | `ITEM_UNAVAILABLE`          | `POST /orders`                                                                                                                                                                                                                                                                                             |
+| 400    | `INSUFFICIENT_STOCK`        | `POST /orders` (from `place_order`)                                                                                                                                                                                                                                                                        |
+| 400    | `STORE_CLOSED`              | `POST /orders`                                                                                                                                                                                                                                                                                             |
+| 401    | `UNAUTHORIZED`              | `requireAuth`                                                                                                                                                                                                                                                                                              |
+| 403    | `FORBIDDEN`                 | `requireStaff`, `requireAdmin`                                                                                                                                                                                                                                                                             |
+| 404    | `NOT_FOUND`                 | missing store, order or profile; an unmatched route ("No route matches <METHOD> <path>.")                                                                                                                                                                                                                  |
+| 409    | `EMAIL_TAKEN`               | `POST /auth/register`                                                                                                                                                                                                                                                                                      |
+| 409    | `INVALID_STATUS_TRANSITION` | `PATCH /orders/:id/status` (from `update_order_status`)                                                                                                                                                                                                                                                    |
+| 413    | `PAYLOAD_TOO_LARGE`         | JSON body over the `express.json()` default limit of 100 kB ("The request body is too large.")                                                                                                                                                                                                             |
+| 500    | `INTERNAL`                  | anything else ("Something went wrong. Please try again."), logged with its stack                                                                                                                                                                                                                           |
 
 `INVALID_CREDENTIALS` is listed in the server's `ErrorCode` union but the server never raises it. The client creates
 it itself for a failed Supabase sign-in, together with `UNREACHABLE`, `RATE_LIMITED` and `UNKNOWN`
@@ -348,19 +409,20 @@ Any other `P0001` or database error is a 500.
 
 ## Headers and limits
 
-| Item              | Value                                                                                              | Source                                |
-| ----------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------- |
-| `x-request-id`    | echoed on every response; a caller's value is kept if it matches `^[\w.-]{1,64}$`, else a new UUID | `server/src/app.ts`                   |
-| CORS              | one allowed origin, `CLIENT_ORIGIN` (default `http://localhost:5173`)                              | `server/src/app.ts`, `utils/env.ts`   |
-| `x-powered-by`    | disabled                                                                                           | `server/src/app.ts`                   |
-| JSON body size    | 100 kB (the `express.json()` default); larger is 413                                               | `server/src/app.ts`                   |
-| Lines per order   | 1–30, counted before merging duplicates                                                            | `order.schema.ts`                     |
-| Quantity per item | 1–20 after merging duplicates                                                                      | `order.schema.ts`, `order.service.ts` |
-| Staff order list  | newest 100                                                                                         | `order.service.ts`                    |
-| Name              | 2–60 (register); at most 60 (`customerName`)                                                       | `auth.schema.ts`, `order.schema.ts`   |
-| Note              | at most 200                                                                                        | `order.schema.ts`                     |
-| Password          | 6–72                                                                                               | `auth.schema.ts`                      |
-| Phone             | optional `+` and 10–15 digits after stripping spaces, dashes, parentheses                          | `common.ts`                           |
+| Item                   | Value                                                                                              | Source                                 |
+| ---------------------- | -------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| `x-request-id`         | echoed on every response; a caller's value is kept if it matches `^[\w.-]{1,64}$`, else a new UUID | `server/src/app.ts`                    |
+| CORS                   | one allowed origin, `CLIENT_ORIGIN` (default `http://localhost:5173`)                              | `server/src/app.ts`, `utils/env.ts`    |
+| `x-powered-by`         | disabled                                                                                           | `server/src/app.ts`                    |
+| JSON body size         | 100 kB (the `express.json()` default); larger is 413                                               | `server/src/app.ts`                    |
+| Lines per order        | 1–30, counted before merging duplicates                                                            | `order.schema.ts`                      |
+| Quantity per item      | 1–10 after merging duplicates, a fixed constant (`MAX_QUANTITY_PER_ITEM`), not editable            | `order.schema.ts`, `order.service.ts`  |
+| Customer order history | site setting, default 20 (1–200), editable at `PATCH /admin/settings`                              | `settings.service.ts`, `site_settings` |
+| Staff order list       | site setting, default 100 (1–500), editable at `PATCH /admin/settings`                             | `settings.service.ts`, `site_settings` |
+| Name                   | 2–60 (register); at most 60 (`customerName`)                                                       | `auth.schema.ts`, `order.schema.ts`    |
+| Note                   | at most 200                                                                                        | `order.schema.ts`                      |
+| Password               | 6–72                                                                                               | `auth.schema.ts`                       |
+| Phone                  | optional `+` and 10–15 digits after stripping spaces, dashes, parentheses                          | `common.ts`                            |
 
 The client logs the `x-request-id` of a failed call so it can be matched to the server's log line. See
 [LOGGING.md](LOGGING.md#request-ids).
@@ -386,8 +448,9 @@ body has not changed, the response is a bodiless `304 Not Modified` instead of t
 
 ### Server read cache (`server/src/utils/cache.ts`)
 
-`GET /api/menu` and `GET /api/store` are additionally held in an in-process cache, so concurrent requests during a
-cold cache share one database round-trip instead of repeating it:
+`GET /api/menu`, `GET /api/store` and the `site_settings` row (read by every `GET /api/orders`, and by
+`GET /api/admin/settings`) are additionally held in an in-process cache, so concurrent requests during a cold cache
+share one database round-trip instead of repeating it:
 
 | Export                        | What                                                                                                                                                                                    |
 | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -395,10 +458,11 @@ cold cache share one database round-trip instead of repeating it:
 | `invalidate(key?)`            | drops one key, or every key with no argument                                                                                                                                            |
 | `PUBLIC_READ_TTL_MS = 10_000` | the 10 s TTL used by both reads below                                                                                                                                                   |
 
-| Cached endpoint  | Key       | Loader                                      | Invalidated by                                                                                                                                                        |
-| ---------------- | --------- | ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/menu`  | `'menu'`  | `menu.service.getMenu` → `loadMenu`         | `order.service.createOrder` (in a `finally`, so a placed order and a stock-refused one both invalidate it) and `updateOrderStatus` when the new status is `CANCELLED` |
-| `GET /api/store` | `'store'` | `store.service.getCachedStore` → `getStore` | nothing today; a future store-editing endpoint must call `invalidate('store')`                                                                                        |
+| Cached endpoint                              | Key               | Loader                                      | Invalidated by                                                                                                                                                        |
+| -------------------------------------------- | ----------------- | ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/menu`                              | `'menu'`          | `menu.service.getMenu` → `loadMenu`         | `order.service.createOrder` (in a `finally`, so a placed order and a stock-refused one both invalidate it) and `updateOrderStatus` when the new status is `CANCELLED` |
+| `GET /api/store`                             | `'store'`         | `store.service.getCachedStore` → `getStore` | nothing today; a future store-editing endpoint must call `invalidate('store')`                                                                                        |
+| `GET /api/orders`, `GET /api/admin/settings` | `'site_settings'` | `settings.service.getSettings`              | `settings.service.updateSettings` (`PATCH /api/admin/settings`), at once                                                                                              |
 
 `createOrder`'s own `is_open` check calls the uncached `getStore()` directly, never `getCachedStore()` — a write
 path never trusts a stale read of the data it is about to act on. Nothing user-specific (orders, profiles) is ever
@@ -408,4 +472,5 @@ Supabase dashboard ever need to show up faster than the TTL).
 
 Tests: `server/test/unit/cache.safe.test.ts` (the cache primitive), `server/test/api/caching.safe.test.ts` (the HTTP
 headers and the 304), `server/test/api/menu-cache.test.ts` (the menu cache tracks a real order and its
-cancellation). See also [TESTING.md](TESTING.md).
+cancellation), `server/test/api/admin.test.ts` (settings bounds, `requireAdmin`, and the cache invalidation on
+save). See also [TESTING.md](TESTING.md).

@@ -20,8 +20,8 @@ export function StatusTracker({ status, className }: StatusTrackerProps) {
 
 function StepTracker({ status, className }: { status: OrderStatus; className?: string }) {
   const current = stepIndex(status);
-  // COMPLETED is the end of the road: every step reads as done and nothing pulses any more.
-  const finished = status === 'COMPLETED';
+  // COLLECTED is the end of the road: every step reads as done and nothing pulses any more.
+  const finished = status === 'COLLECTED';
   // Only pop the active disc when the status changes while the tracker is on screen (a poll transition).
   const [initialStatus] = useState(status);
   const transitioned = initialStatus !== status;

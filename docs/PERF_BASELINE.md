@@ -77,12 +77,12 @@ Total blocking time: negligible everywhere (single long task per run, all ≤ 11
 
 No serial API waterfalls observed on any route (all `/api/` calls on a page start together). The `/menu` page's 1.15 MB weight is almost entirely the 12 oversized photos (see Images above), and is the direct cause of its 6.15 s LCP.
 
-## Polling (verified on a freshly-placed, non-terminal order; the only pre-seeded order, #1001, is already `COMPLETED`)
+## Polling (verified on a freshly-placed, non-terminal order; the only pre-seeded order, #1001, is already `COLLECTED`)
 
 - `/orders/:id` (non-terminal, `POLL_MS = 4000` in `client/src/features/orders/useOrder.ts`): ~7 `/api/orders/:id` requests over 18 s (≈ 23 req/min, ≈ 23 KB/min at 1,005 B/response) — matches the coded 4 s interval.
 - Hidden tab: 0 requests over 20 s with `document.hidden` forced true — polling correctly pauses.
 - Restored visibility: fetch resumed within 1 s (2 requests observed instead of the ideal 1 — negligible, well below any budget; not investigated further).
-- Terminal order (`COMPLETED`): 0 additional requests over 60s+ — `isTerminal()` correctly stops polling. (The pre-seeded order #1001 has already reached `COMPLETED`, unlike the `PLACED`/`PREPARING` state described in scope — DB state has moved on since seeding.)
+- Terminal order (`COLLECTED`): 0 additional requests over 60s+ — `isTerminal()` correctly stops polling. (The pre-seeded order #1001 has already reached `COLLECTED` — was `COMPLETED` at measurement time, the status was later renamed — unlike the `PLACED`/`PREPARING` state described in scope — DB state has moved on since seeding.)
 - `/orders` (customer list) and `/staff` share the same `useResource` pause/resume mechanism (`client/src/lib/useResource.ts`); not independently re-verified live given it's the identical, already-verified code path. `/orders` defaults to `pollMs = 8000` (`client/src/features/orders/useOrders.ts`); `/staff` uses `STAFF_POLL_MS`.
 
 ## Long tasks and re-renders (menu/cart, 4× CPU)
@@ -143,3 +143,30 @@ None of the above were introduced by this change (the semantic diff is server-si
   using `cafe-cover-400.jpg`) — `/menu` LCP median 2532 ms (runs 2740/2532/2476; LCP element `cafe-cover-400.jpg`),
   page weight 322 KB (was 406 KB). Measured by the main agent with the check-3 method (preview build, 360×640, Slow 4G,
   4× CPU, cold cache) at DPR 1; a DPR 2–3 phone picks the 900px cover, so its gain is smaller. ~1% over budget.
+- **2026-09-27 (round 3)** · `355fff5 + uncommitted changes` (ADMIN role + `/admin` site-settings dashboard, `site_settings`
+  singleton with a 10 s in-process read cache, `listOrders` now sources its customer/staff list limits from that
+  cache instead of fixed constants, COMPLETED→COLLECTED rename, max qty 10, `authStore.hydrate` single-flight) —
+  Initial JS 144.3 KB gzip (`index-DVr1sxne.js` 147,789 B; was 143.6 KB, +0.5%, noise-level, still well under the
+  170 KB budget); `AdminPage` confirmed lazy (`Admin-CShg55gW.js`, 1,463 B gzip, no `modulepreload`/`src` link in
+  `index.html`'s initial set) — it did **not** land in the initial bundle; `roles.ts` (8 lines) and
+  `sessionActivity.ts` (38 lines) are eager as scoped, both tiny, no measurable bundle impact. No new runtime
+  dependency (`client/package.json` diff is devDependencies only — eslint/vitest/prettier toolchain). `/menu` LCP
+  median 2292 ms (runs 2560/2260/2292, was 2532 ms — back within the 2.5 s budget, first time this round); `/orders/:id`
+  LCP median 1540 ms (runs 1516/1540/1600, was 1588 ms, within noise). `cafe-cover` still serves the `srcset`
+  400w/900w pair unchanged. `GET /api/orders` (customer) p50 6 ms / p95 8 ms / 609 B, `GET /api/orders` (staff) p50
+  6 ms / p95 8 ms / 609 B, `GET /api/orders/:id` p50 6 ms / p95 7 ms / 606 B — all within noise of the round-1
+  baseline (6–9 ms); `listOrders`'s new `await getSettings()` added no measurable latency because `site_settings`
+  shares the same in-process TTL cache as menu/store (`server/src/utils/cache.ts`, 10 s TTL) — confirmed a cache hit
+  by code inspection (`cached()` returns the stored promise on every call inside the TTL window) and by latency
+  staying flat. `GET /api/admin/settings` p50 3 ms / p95 4 ms / 118 B; `PATCH /api/admin/settings` p50 6 ms / p95
+  8 ms / 118 B, and the read cache is invalidated on every PATCH (verified live: PATCH then GET returns the new value
+  immediately). Polling unchanged: `/orders/:id` (non-terminal `PLACED` order, freshly placed for this run) ~15
+  req/min, transferSize 300 B/response (encodedBodySize 595 B — the ETag/304 still lands: `Content-Length` is 595 B
+  but only ~300 B of headers cross the wire on repeat polls) ≈ 4.5 KB/min, matching the round-2 baseline; `/staff`
+  ~15 req/min, transferSize 300 B/response (encodedBodySize 1,195 B) ≈ 4.5 KB/min, same ETag/304 behaviour — both 0
+  requests over a hidden-tab window and 1 immediate request on resume. `TERMINAL_STATUSES` now reads `['COLLECTED',
+  'CANCELLED']` (`orderStatus.ts`) so polling still stops correctly at the renamed terminal state. The customer
+  `listOrders` path is no longer a fixed `CUSTOMER_LIST_LIMIT` constant — it now reads `customer_order_history_limit`
+  from the (cached) site settings, defaulting to 20 — this fully resolves last round's "no `.limit(`" advisory by
+  making the cap admin-configurable instead of dropping it. See report body (this run) for the full delta table and
+  CONFIRM items.

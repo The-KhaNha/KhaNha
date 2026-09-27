@@ -6,7 +6,7 @@ import { PageBoundary } from './components/PageBoundary';
 import { TopBar, type TopBarTone } from './components/TopBar';
 import { useAuthStore } from './features/auth/authStore';
 import { RequireAuth } from './features/auth/RequireAuth';
-import { RequireStaff } from './features/auth/RequireStaff';
+import { RequireRole } from './features/auth/RequireRole';
 import { CartBar } from './features/cart/CartBar';
 import { selectCount, useCartStore } from './features/cart/cartStore';
 import { cn } from './lib/cn';
@@ -29,6 +29,7 @@ const LoginPage = lazy(() => import('./pages/Login').then((m) => ({ default: m.L
 const RegisterPage = lazy(() =>
   import('./pages/Register').then((m) => ({ default: m.RegisterPage })),
 );
+const AdminPage = lazy(() => import('./pages/Admin').then((m) => ({ default: m.AdminPage })));
 const StaffDashboardPage = lazy(() =>
   import('./pages/StaffDashboard').then((m) => ({ default: m.StaffDashboardPage })),
 );
@@ -84,6 +85,10 @@ const SHELL_BY_ROUTE: { pattern: string; config: ShellConfig }[] = [
     config: { ...column, topBar: { title: 'Order details', backTo: '/orders' } },
   },
   { pattern: '/profile', config: { ...column, topBar: { title: 'Profile', backTo: '/' } } },
+  {
+    pattern: '/admin',
+    config: { ...column, topBar: { title: 'Admin', backTo: '/profile' }, cartButton: false },
+  },
   { pattern: '/login', config: fullScreen },
   { pattern: '/register', config: fullScreen },
   { pattern: '/staff', config: fullScreen },
@@ -161,9 +166,17 @@ function AppShell() {
         <Route
           path="/staff"
           element={
-            <RequireStaff>
+            <RequireRole role="STAFF">
               <StaffDashboardPage />
-            </RequireStaff>
+            </RequireRole>
+          }
+        />
+        <Route
+          path="/admin"
+          element={
+            <RequireRole role="ADMIN">
+              <AdminPage />
+            </RequireRole>
           }
         />
         <Route path="*" element={<NotFoundPage />} />

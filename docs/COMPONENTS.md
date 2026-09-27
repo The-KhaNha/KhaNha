@@ -64,7 +64,7 @@ Defined in the `@theme` block of `client/src/index.css` and used as Tailwind cla
 | Gold       | `gold-50`, `gold-500` (saffron), `gold-700`                                                                                                                                                                                                                      |
 | Success    | `success-50`, `success-500` (basil), `success-700`                                                                                                                                                                                                               |
 | Cancel     | `cancel-50`, `cancel-500` (slate), `cancel-700`                                                                                                                                                                                                                  |
-| Complete   | `complete-500`, `complete-700` (warm neutral for the `COMPLETED` order status)                                                                                                                                                                                   |
+| Collected  | `collected-500`, `collected-700` (warm neutral for the `COLLECTED` order status; renamed from `complete-*`)                                                                                                                                                      |
 | Shadows    | `card`, `card-hover`, `float`, `brand`, `brand-hover`, `ready`                                                                                                                                                                                                   |
 | Easings    | `ease-out-soft`, `ease-spring`, `ease-in-quick`                                                                                                                                                                                                                  |
 | Animations | `pop`, `fade-in`, `fade-up`, `fade-out`, `bar-up`, `sheet-up`, `sheet-down`, `scale-in`, `check-pop`, `draw`, `pulse-soft`, `ring`, `shimmer`, `count-in`, `stepper-in`, `bag-tilt`, `glow-pulse`, `ring-flash`, `party-in`, `photo-zoom`, `card-leave`, `shake` |
@@ -121,7 +121,7 @@ with a `StepperNote` at the limit. Reads and writes `cartStore`; calls `flyToCar
 | `label`       | `string` = `'Quantity'`            | the group's `aria-label`                                                                    |
 
 **`StepperNote`** (`QuantityStepper.tsx`). The caption under a stopped stepper: gold "Only N available" for a stock
-limit, muted "Max 20 per order" for the cap (`limitCaption`). Props: `maxQuantity: number | null | undefined`,
+limit, muted "Max 10 per order" for the cap (`limitCaption`). Props: `maxQuantity: number | null | undefined`,
 `inCart?: number = 0` (adds "· N in your cart"), `className?`.
 
 **`CartButton`** (`CartButton.tsx`). Top-bar bag icon linking to `/cart` with a count badge. Props:
@@ -216,9 +216,10 @@ and when `onReorder` is passed) and "View Order". Props: `order: Order`, `onReor
 **`StatusBadge`** (`StatusBadge.tsx`). Tinted status pill from `STATUS_META[status]`; the dot pings while the order
 is active. Props: `status: OrderStatus`, `size?: 'sm' | 'md' = 'sm'`, `className?`.
 
-**`StatusTracker`** (`StatusTracker.tsx`). Four-step progress (Placed → Preparing → Ready → Completed): done steps
-green with a check, the active step in its status colour pulsing, upcoming steps outlined. `CANCELLED` renders a
-slate "won't move forward" block instead. Props: `status: OrderStatus`, `className?`.
+**`StatusTracker`** (`StatusTracker.tsx`). Four-step progress (Placed → Preparing → Ready → Collected): done steps
+green with a check, the active step in its status colour pulsing, upcoming steps outlined. `COLLECTED` marks every
+step done and stops the pulse; `CANCELLED` renders a slate "won't move forward" block instead. Props:
+`status: OrderStatus`, `className?`.
 
 **`TimeText`** (`TimeText.tsx`). A `<time dateTime>` with `formatTime` ("7:42 PM") or, with `withDay`,
 `formatDayTime` ("Today, 7:42 PM"). Props: `iso: string`, `withDay?: boolean = false`, `className?`.
@@ -282,17 +283,17 @@ on the order success screen. Props: `className?`. Every other icon is a named im
 
 | Export                                      | Returns                                                                                                    |
 | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `MAX_LINE_QUANTITY = 20`                    | mirrors the server's per-item cap                                                                          |
+| `MAX_LINE_QUANTITY = 10`                    | mirrors the server's fixed per-item cap (`MAX_QUANTITY_PER_ITEM`, not a `site_settings` value)             |
 | `LOW_STOCK_MAX = 5`                         | "Only N left" threshold                                                                                    |
 | `availableQuantity(item)`                   | `0` when unavailable, the stock when tracked, `null` when not tracked                                      |
 | `isLowStock(item)`                          | available, tracked, and at most 5 left (type guard)                                                        |
 | `unavailableLabel(item)`                    | `"Sold out"` when stock is 0, else `"Unavailable"`                                                         |
-| `lineLimit(maxQuantity)`                    | `min(20, maxQuantity ?? 20)`                                                                               |
+| `lineLimit(maxQuantity)`                    | `min(10, maxQuantity ?? 10)`                                                                               |
 | `lineProblem(line)` → `LineProblem \| null` | `{ kind: 'sold-out' }` when the limit is ≤ 0, `{ kind: 'over-limit', available }` when quantity exceeds it |
 | `problemLabel(problem)`                     | `"Sold out"` / `"Only 1 left"`                                                                             |
 | `describeProblem(name, problem)`            | `"Cheese Toast is sold out."` / `"Only 1 Cheese Toast left."`                                              |
 | `describeProblems(lines)`                   | one sentence per flagged line, joined                                                                      |
-| `limitCaption(maxQuantity)`                 | `"Only N available"` below the cap, else `"Max 20 per order"`                                              |
+| `limitCaption(maxQuantity)`                 | `"Only N available"` below the cap, else `"Max 10 per order"`                                              |
 | `isItemErrorCode(code)`                     | true for `INSUFFICIENT_STOCK`, `ITEM_UNAVAILABLE`, `ITEM_NOT_FOUND`                                        |
 
 **`cartStore.ts`**: `useCartStore` (persisted as `fp_cart`). `CartLine { menuItemId, name, unitPrice, imageUrl,
@@ -328,18 +329,18 @@ decides what is allowed; this file decides what is shown.
 
 | Export                                                    | What                                                                                                                                                                |
 | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ORDER_STEPS`                                             | `['PLACED', 'PREPARING', 'READY', 'COMPLETED']` (the happy path)                                                                                                    |
-| `TERMINAL_STATUSES`                                       | `['COMPLETED', 'CANCELLED']`                                                                                                                                        |
+| `ORDER_STEPS`                                             | `['PLACED', 'PREPARING', 'READY', 'COLLECTED']` (the happy path)                                                                                                    |
+| `TERMINAL_STATUSES`                                       | `['COLLECTED', 'CANCELLED']`                                                                                                                                        |
 | `STATUS_META: Record<OrderStatus, StatusMeta>`            | per status: `label`, `customerTitle`, `customerCopy`, `icon`, `badgeClass`, `fillClass`, `onFillClass`, `railClass`, `pulseRgb`, `next`, `actionLabel`, `canCancel` |
 | `isTerminal(status)`, `isActive(status)`                  |                                                                                                                                                                     |
 | `stepIndex(status)`                                       | position in `ORDER_STEPS`, `-1` for `CANCELLED`                                                                                                                     |
-| `StaffFilterKey`, `StaffFilter`, `STAFF_FILTERS`          | All, New (`PLACED`), Preparing, Ready, Completed (`COMPLETED` + `CANCELLED`)                                                                                        |
+| `StaffFilterKey`, `StaffFilter`, `STAFF_FILTERS`          | All, New (`PLACED`), Preparing, Ready, Done (`COLLECTED` + `CANCELLED`, key `'COLLECTED'`, label `'Done'`)                                                          |
 | `matchesFilter(status, filter)`                           |                                                                                                                                                                     |
 | `amountLabel(order)`                                      | `"Total paid"` when paid and not cancelled, else `"Total"`                                                                                                          |
-| `timelineLabel(order)` → `{ label: string, iso: string }` | the one time that matters: "Estimated ready", "Ready since", "Picked up", or "Placed" for cancelled                                                                 |
+| `timelineLabel(order)` → `{ label: string, iso: string }` | the one time that matters: "Estimated ready", "Ready since", "Collected", or "Placed" for cancelled                                                                 |
 
-Colours: PLACED paprika, PREPARING saffron gold, READY basil green, COMPLETED warm neutral, CANCELLED cool slate.
-Staff actions: PLACED "Start Preparing", PREPARING "Mark Ready", READY "Complete Order"; cancel allowed from PLACED
+Colours: PLACED paprika, PREPARING saffron gold, READY basil green, COLLECTED warm neutral, CANCELLED cool slate.
+Staff actions: PLACED "Start Preparing", PREPARING "Mark Ready", READY "Mark Collected"; cancel allowed from PLACED
 and PREPARING.
 
 **`useOrder.ts`**: `useOrder(id, initialData = null)` → `{ order, isLoading, error, retry, mutate }`. Polls every
@@ -369,10 +370,26 @@ UI (presentational; the pages own the data):
 
 ### features/auth
 
-| Export                                                                               | What                                                                                                                                                                                                                                                          |
-| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `useAuthStore`, `selectUser`                                                         | `authStore.ts`, persisted as `fp_auth`: `user`, `token`, `login`, `register`, `logout`, `hydrate`, `clearSession` (see [ARCHITECTURE.md](ARCHITECTURE.md#3-authentication))                                                                                   |
-| `RequireAuth`, `RequireStaff`                                                        | route guards (see [PERMISSIONS.md](PERMISSIONS.md#client))                                                                                                                                                                                                    |
-| `useAuthRedirect()`                                                                  | returns `redirectAfterAuth(user)`: staff to `/staff`, others to a same-site `?next` or `/`                                                                                                                                                                    |
-| `validateName`, `validateEmail`, `validatePassword`, `validatePhone`, `validateNote` | `validation.ts`: return an error message or `undefined`. The limits mirror the server's zod schemas: `NAME_MAX_LENGTH = 60`, `PASSWORD_MIN_LENGTH = 6`, `PASSWORD_MAX_LENGTH = 72`, `PHONE_MIN_DIGITS = 10`, `PHONE_MAX_DIGITS = 15`, `NOTE_MAX_LENGTH = 200` |
-| `AuthCard({ title, subtitle, error?, children, footer, backTo? })`                   | shared frame for the Login and Register pages                                                                                                                                                                                                                 |
+| Export                                                                                                                                    | What                                                                                                                                                                                                                                                                                                          |
+| ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `useAuthStore`, `selectUser`                                                                                                              | `authStore.ts`, persisted as `fp_auth`: `user`, `token`, `login`, `register`, `logout`, `hydrate`, `clearSession` (see [ARCHITECTURE.md](ARCHITECTURE.md#3-authentication))                                                                                                                                   |
+| `RequireAuth`                                                                                                                             | route guard: no token → redirect to `/login?next=`; otherwise render (see [PERMISSIONS.md](PERMISSIONS.md#client))                                                                                                                                                                                            |
+| `RequireRole({ role, children })`                                                                                                         | `RequireRole.tsx`, replaces the old `RequireStaff.tsx`: no token → redirect to `/login?next=`; `user.role !== role` → redirect to `/`; otherwise render. Used as `<RequireRole role="STAFF">` (`/staff`) and `<RequireRole role="ADMIN">` (`/admin`)                                                          |
+| `roles.ts`: `homeFor(role)`                                                                                                               | where a role lands after sign-in (and where `/login`/`/register` send someone already signed in): `STAFF` → `/staff`, `ADMIN` → `/admin`, else `/`                                                                                                                                                            |
+| `useAuthRedirect()`                                                                                                                       | returns `redirectAfterAuth(user)`: non-customers to `homeFor(user.role)`, others to a same-site `?next` or `/`                                                                                                                                                                                                |
+| `sessionActivity.ts`: `SESSION_IDLE_TTL_MS`, `readLastActive()`, `markActive(now?)`, `clearActivity()`, `isIdleExpired(lastActive, now?)` | the 7-day idle sign-out: `localStorage` key `fp_last_active`; a missing record counts as active (the week starts now). `authStore.ts` calls these from `login`, `logout`, `clearSession`, `hydrate` and a `visibilitychange` listener. See [PERMISSIONS.md#session-lifetime](PERMISSIONS.md#session-lifetime) |
+| `validateName`, `validateEmail`, `validatePassword`, `validatePhone`, `validateNote`                                                      | `validation.ts`: return an error message or `undefined`. The limits mirror the server's zod schemas: `NAME_MAX_LENGTH = 60`, `PASSWORD_MIN_LENGTH = 6`, `PASSWORD_MAX_LENGTH = 72`, `PHONE_MIN_DIGITS = 10`, `PHONE_MAX_DIGITS = 15`, `NOTE_MAX_LENGTH = 200`                                                 |
+| `AuthCard({ title, subtitle, error?, children, footer, backTo? })`                                                                        | shared frame for the Login and Register pages                                                                                                                                                                                                                                                                 |
+
+### features/admin
+
+Site-wide developer/operator dashboard (`/admin`), not a restaurant role — see [PERMISSIONS.md](PERMISSIONS.md#roles).
+
+| Export                                                                    | What                                                                                                                                                                                                             |
+| ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `settingsRules.ts`: `SETTING_LIMITS`, `SETTING_KEYS`                      | the two editable limits, their label/hint/max, mirroring the server's `admin.schema.ts` bounds and the `site_settings` check constraints: `customerOrderHistoryLimit` (max 200), `staffOrderListLimit` (max 500) |
+| `settingsRules.ts`: `validateLimit(key, raw)`                             | error message ("Enter a whole number." / "Must be between 1 and `<max>`.") or `null` for a valid typed value                                                                                                     |
+| `settingsRules.ts`: `changedSettings(saved, draft)`                       | only the fields whose typed value differs from the saved `SiteSettings`, as `Partial<Record<LimitKey, number>>` — the `PATCH` body                                                                               |
+| `useSiteSettings()` → `{ settings, isLoading, error, retry, mutate }`     | `useSiteSettings.ts`: the admin's view of `GET /api/admin/settings` via `lib/useResource.ts` (`key: 'admin:settings'`); not persisted to `localStorage` — admin-only data never is                               |
+| `services/admin.ts`: `fetchSiteSettings()`, `updateSiteSettings(changes)` | `GET`/`PATCH /api/admin/settings`                                                                                                                                                                                |
+| `pages/Admin.tsx`: `AdminPage`                                            | the `/admin` page: a `SettingsForm` (two `Input`s, client bounds via `validateLimit`, disabled Save until dirty and valid, "Last saved `<TimeText>`") with its own `Skeleton`/`ErrorState`                       |

@@ -178,6 +178,38 @@ describe('validation', () => {
     expect(res.body.error.message).toContain(String(MAX_QUANTITY_PER_ITEM));
   });
 
+  describe('MAX_QUANTITY_PER_ITEM boundary (10)', () => {
+    it('a single line at exactly 10 passes', async () => {
+      expect(MAX_QUANTITY_PER_ITEM).toBe(10);
+      const res = await placeOrder(customer1, {
+        items: [{ menuItemId: menuItem('Cold Coffee').id, quantity: 10 }],
+      });
+      expect(res.status).toBe(201);
+    });
+
+    it('a single line at 11 is refused', async () => {
+      const res = await placeOrder(customer1, {
+        items: [{ menuItemId: menuItem('Cold Coffee').id, quantity: 11 }],
+      });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      expect(res.body.error.message).toContain('Cold Coffee');
+      expect(res.body.error.message).toContain('10');
+    });
+
+    it('duplicate lines of 5 and 6 merge to 11 and are refused', async () => {
+      const id = menuItem('Cold Coffee').id;
+      const res = await placeOrder(customer1, {
+        items: [
+          { menuItemId: id, quantity: 5 },
+          { menuItemId: id, quantity: 6 },
+        ],
+      });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    });
+  });
+
   describe('note bounds', () => {
     it('200 chars passes', async () => {
       const res = await placeOrder(customer1, { note: 'a'.repeat(200) });
@@ -396,19 +428,19 @@ describe('business rules', () => {
   });
 
   describe('the full 5x5 status transition matrix', () => {
-    const ALL_STATUSES: OrderStatus[] = ['PLACED', 'PREPARING', 'READY', 'COMPLETED', 'CANCELLED'];
+    const ALL_STATUSES: OrderStatus[] = ['PLACED', 'PREPARING', 'READY', 'COLLECTED', 'CANCELLED'];
     const ALLOWED: [OrderStatus, OrderStatus][] = [
       ['PLACED', 'PREPARING'],
       ['PLACED', 'CANCELLED'],
       ['PREPARING', 'READY'],
       ['PREPARING', 'CANCELLED'],
-      ['READY', 'COMPLETED'],
+      ['READY', 'COLLECTED'],
     ];
     const PATH_TO: Record<OrderStatus, OrderStatus[]> = {
       PLACED: [],
       PREPARING: ['PREPARING'],
       READY: ['PREPARING', 'READY'],
-      COMPLETED: ['PREPARING', 'READY', 'COMPLETED'],
+      COLLECTED: ['PREPARING', 'READY', 'COLLECTED'],
       CANCELLED: ['CANCELLED'],
     };
 

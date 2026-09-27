@@ -137,6 +137,14 @@ const ACCOUNTS: {
     phone: null,
   },
   {
+    // The site-wide admin dashboard (/admin). Not a restaurant role: it has no staff powers.
+    role: 'ADMIN',
+    name: 'Site Admin',
+    email: 'admin@campuscafe.local',
+    password: 'admin123',
+    phone: null,
+  },
+  {
     role: 'CUSTOMER',
     name: 'Anishka',
     email: 'anishka@example.com',
@@ -247,6 +255,12 @@ async function seedDemo(): Promise<void> {
   const store = await seedStore();
   const menuItems = await seedMenu(store.id);
   await seedAccounts();
+  // Back to the defaults, so every demo reset (and every test run) starts from the same limits.
+  await db
+    .from('site_settings')
+    .update({ customer_order_history_limit: 20, staff_order_list_limit: 100, updated_by: null })
+    .eq('id', true)
+    .throwOnError();
 
   logger.info(`
 Seeded Food Pickup (${env.APP_ENV}: ${env.SUPABASE_URL})
@@ -255,6 +269,7 @@ ${describeMenu(store, menuItems)}
 
 Test accounts
   STAFF     staff@campuscafe.local / staff123
+  ADMIN     admin@campuscafe.local / admin123
   CUSTOMER  anishka@example.com / test1234
 `);
 }

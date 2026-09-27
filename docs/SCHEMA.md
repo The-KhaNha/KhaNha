@@ -13,17 +13,25 @@ The Postgres schema in the Supabase project, from `server/supabase/migrations/`.
 Applied in file-name order. Once a migration is pushed to staging or production it is never edited; a change goes in
 a new file (see [DEPLOYMENT.md](DEPLOYMENT.md#schema-changes)).
 
-| File                      | What it does                                                                                     |
-| ------------------------- | ------------------------------------------------------------------------------------------------ |
-| `20260925120000_init.sql` | the three enums, the five tables, indexes, RLS and grants, the triggers and the three RPCs below |
+| File                                          | What it does                                                                                                                                                  |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `20260925120000_init.sql`                     | the three enums, the five tables, indexes, RLS and grants, the triggers and the three RPCs below                                                              |
+| `20260927094610_admin_settings_collected.sql` | adds `user_role` value `ADMIN`; renames `order_status` value `COMPLETED` to `COLLECTED`; adds `public.site_settings` (RLS, revoked, `set_updated_at` trigger) |
 
 ## Enums
 
 | Enum             | Values                                                   |
 | ---------------- | -------------------------------------------------------- |
-| `user_role`      | `CUSTOMER`, `STAFF`                                      |
-| `order_status`   | `PLACED`, `PREPARING`, `READY`, `COMPLETED`, `CANCELLED` |
+| `user_role`      | `CUSTOMER`, `STAFF`, `ADMIN`                             |
+| `order_status`   | `PLACED`, `PREPARING`, `READY`, `COLLECTED`, `CANCELLED` |
 | `payment_status` | `PENDING`, `PAID`                                        |
+
+`ADMIN` was added with `alter type ... add value` (`20260927094610_admin_settings_collected.sql`); it is the
+site-wide developer/operator role (the `/admin` dashboard), not a restaurant role — see
+[PERMISSIONS.md](PERMISSIONS.md#roles). `COMPLETED` was renamed to `COLLECTED` with `alter type ... rename value` in
+the same migration: the enum entry is relabelled in place, so existing rows read `COLLECTED` with no backfill, and no
+other SQL object names the old literal. This was a breaking API change shipped together with the client
+(see [API.md](API.md#routes)).
 
 ## Tables
 
@@ -108,6 +116,24 @@ Foreign keys without an `on delete` clause (`menu_items.store_id`, `orders.user_
 `order_items.menu_item_id`) block deleting a row that is still referenced. `npm run seed` wipes orders first for that
 reason.
 
+### site_settings
+
+Added by `20260927094610_admin_settings_collected.sql`. A singleton: `id` is always `true`, so the primary key caps
+the table at one row (the migration seeds it with `insert ... values (true)`). Edited only from the admin dashboard
+(`GET`/`PATCH /api/admin/settings`, see [API.md](API.md#get-adminsettings)); read on every `GET /api/orders`
+(`order.service.listOrders`).
+
+| Column                         | Type        | Null | Default | Constraints                                                                                                                             |
+| ------------------------------ | ----------- | ---- | ------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                           | boolean     | no   | `true`  | primary key; `check (id)` — only `true` can ever be stored                                                                              |
+| `customer_order_history_limit` | integer     | no   | `20`    | `check (customer_order_history_limit between 1 and 200)`                                                                                |
+| `staff_order_list_limit`       | integer     | no   | `100`   | `check (staff_order_list_limit between 1 and 500)`                                                                                      |
+| `updated_at`                   | timestamptz | no   | `now()` | set on every update by `site_settings_set_updated_at`                                                                                   |
+| `updated_by`                   | uuid        | yes  |         | references `profiles (id)` on delete **set null** — never cascade: deleting the admin who last saved must never delete the settings row |
+
+Only these two limits are editable. The per-item quantity cap (`MAX_QUANTITY_PER_ITEM = 10` in
+`server/src/schemas/order.schema.ts`) is a fixed constant, not a site setting (see [API.md](API.md#post-orders)).
+
 ## Indexes
 
 | Index                              | Columns                                     |
@@ -119,13 +145,16 @@ reason.
 | unique constraint                  | `order_items (order_id, line_number)`       |
 | unique constraint                  | `profiles (email)`, `orders (order_number)` |
 
+`site_settings` has no indexes on purpose (one row), including on `updated_by`.
+
 ## Triggers
 
-| Trigger                      | On                                                              | Function                     |
-| ---------------------------- | --------------------------------------------------------------- | ---------------------------- |
-| `orders_set_updated_at`      | before update on `orders`, each row                             | `set_updated_at()`           |
-| `on_auth_user_created`       | after insert on `auth.users`                                    | `handle_new_user()`          |
-| `on_auth_user_email_changed` | after update of `email` on `auth.users`, when the email changed | `handle_user_email_change()` |
+| Trigger                        | On                                                              | Function                     |
+| ------------------------------ | --------------------------------------------------------------- | ---------------------------- |
+| `orders_set_updated_at`        | before update on `orders`, each row                             | `set_updated_at()`           |
+| `site_settings_set_updated_at` | before update on `site_settings`, each row                      | `set_updated_at()`           |
+| `on_auth_user_created`         | after insert on `auth.users`                                    | `handle_new_user()`          |
+| `on_auth_user_email_changed`   | after update of `email` on `auth.users`, when the email changed | `handle_user_email_change()` |
 
 ## Functions
 
@@ -227,10 +256,13 @@ production (see [DEPLOYMENT.md](DEPLOYMENT.md#seeding)).
 
 ## Row-level security and grants
 
-- RLS is enabled on all five tables. There are no policies.
-- `revoke all` on all five tables from `anon` and `authenticated`.
+- RLS is enabled on all six tables (`site_settings` included, by the same migration that creates it). There are no
+  policies.
+- `revoke all` on all six tables from `anon` and `authenticated`.
 - Default privileges for role `postgres` in `public`: new tables grant nothing to `anon`/`authenticated`, and new
-  functions grant no `EXECUTE` to `public`, `anon` or `authenticated`. A later migration must grant explicitly.
+  functions grant no `EXECUTE` to `public`, `anon` or `authenticated`. This is why the `20260927094610` migration did
+  not need its own `revoke`/`grant` for functions — it adds no new function — but still revokes table privileges for
+  `site_settings` explicitly, matching every other table.
 - `EXECUTE` on all six functions is revoked from `public`, `anon` and `authenticated`, then granted to `service_role`
   for `place_order`, `update_order_status` and `reset_demo_orders` only.
 - The migration does not change `service_role`'s table privileges. The API connects as `service_role` (the secret

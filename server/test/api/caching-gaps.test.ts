@@ -1,5 +1,5 @@
-// Destructive: mutates shared stock and the store's is_open flag, and bulk-inserts orders for a test
-// customer (removed in afterAll). Local only.
+// Destructive: mutates shared stock, the store's is_open flag and the site_settings row, and bulk-inserts
+// orders for a test customer (removed in afterAll). Local only.
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import type { MenuItemDto, MenuResponse } from '../../src/types/api';
 import { invalidate } from '../../src/utils/cache';
@@ -8,11 +8,12 @@ import { createTestUser, deleteTestUser, resetDemoData, type TestUser } from '..
 import { api } from '../setup/api';
 
 let customer: TestUser;
+let admin: TestUser;
 let storeId: string;
 
 beforeAll(async () => {
   resetDemoData();
-  customer = await createTestUser('CUSTOMER');
+  [customer, admin] = await Promise.all([createTestUser('CUSTOMER'), createTestUser('ADMIN')]);
   const { data: store } = await supabaseAdmin
     .from('stores')
     .select('id')
@@ -23,7 +24,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await deleteTestUser(customer);
+  await Promise.all([deleteTestUser(customer), deleteTestUser(admin)]);
   resetDemoData();
 });
 
@@ -86,7 +87,67 @@ describe('cached store reflects an update once invalidated', () => {
   });
 });
 
-describe('customer order list is capped at CUSTOMER_LIST_LIMIT', () => {
+describe('site_settings cache reflects a direct DB change once invalidated', () => {
+  afterEach(async () => {
+    await supabaseAdmin
+      .from('site_settings')
+      .update({ staff_order_list_limit: 100 })
+      .eq('id', true)
+      .throwOnError();
+    invalidate('site_settings');
+  });
+
+  it('keeps serving the cached row within the TTL, then serves the fresh one after invalidate()', async () => {
+    const before = await api()
+      .get('/api/admin/settings')
+      .set('Authorization', `Bearer ${admin.token}`);
+    expect(before.body.settings.staffOrderListLimit).toBe(100); // warms the cache
+
+    // Bypasses the cache and the PATCH endpoint, the way a dashboard edit or another API instance would.
+    await supabaseAdmin
+      .from('site_settings')
+      .update({ staff_order_list_limit: 42 })
+      .eq('id', true)
+      .throwOnError();
+    const stillCached = await api()
+      .get('/api/admin/settings')
+      .set('Authorization', `Bearer ${admin.token}`);
+    expect(stillCached.body.settings.staffOrderListLimit).toBe(100); // stale on purpose: within the TTL
+
+    invalidate('site_settings');
+    const fresh = await api()
+      .get('/api/admin/settings')
+      .set('Authorization', `Bearer ${admin.token}`);
+    expect(fresh.body.settings.staffOrderListLimit).toBe(42);
+  });
+
+  it('a PATCH invalidates immediately: the next GET never serves the pre-PATCH value', async () => {
+    await supabaseAdmin
+      .from('site_settings')
+      .update({ staff_order_list_limit: 7 })
+      .eq('id', true)
+      .throwOnError();
+    invalidate('site_settings');
+    const warm = await api()
+      .get('/api/admin/settings')
+      .set('Authorization', `Bearer ${admin.token}`);
+    expect(warm.body.settings.staffOrderListLimit).toBe(7); // warms the cache at 7
+
+    const patched = await api()
+      .patch('/api/admin/settings')
+      .set('Authorization', `Bearer ${admin.token}`)
+      .send({ staffOrderListLimit: 55 });
+    expect(patched.status).toBe(200);
+    expect(patched.body.settings.staffOrderListLimit).toBe(55);
+
+    const after = await api()
+      .get('/api/admin/settings')
+      .set('Authorization', `Bearer ${admin.token}`);
+    expect(after.body.settings.staffOrderListLimit).toBe(55);
+  });
+});
+
+describe('customer order list is capped by site_settings (default 20)', () => {
   const insertedIds: string[] = [];
 
   afterAll(async () => {
@@ -95,7 +156,7 @@ describe('customer order list is capped at CUSTOMER_LIST_LIMIT', () => {
     }
   });
 
-  it('returns only the newest 50 of 55 orders for that customer', async () => {
+  it('returns only the newest 20 of 55 orders for that customer', async () => {
     const now = Date.now();
     const rows = Array.from({ length: 55 }, (_, i) => ({
       user_id: customer.id,
@@ -115,13 +176,13 @@ describe('customer order list is capped at CUSTOMER_LIST_LIMIT', () => {
 
     const res = await api().get('/api/orders').set('Authorization', `Bearer ${customer.token}`);
     expect(res.status).toBe(200);
-    expect(res.body.orders).toHaveLength(50);
+    expect(res.body.orders).toHaveLength(20);
 
     const notes: string[] = res.body.orders.map((o: { note: string | null }) => o.note as string);
-    // The 5 oldest (bulk-0..bulk-4) are cut; the 50 newest (bulk-5..bulk-54) survive, newest first.
+    // The 35 oldest (bulk-0..bulk-34) are cut; the 20 newest (bulk-35..bulk-54) survive, newest first.
     expect(notes.slice(0, 3)).toEqual(['bulk-54', 'bulk-53', 'bulk-52']);
     expect(notes).not.toContain('bulk-0');
-    expect(notes).not.toContain('bulk-4');
-    expect(notes).toContain('bulk-5');
+    expect(notes).not.toContain('bulk-34');
+    expect(notes).toContain('bulk-35');
   });
 });

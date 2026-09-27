@@ -216,6 +216,38 @@ export type Database = {
         };
         Relationships: [];
       };
+      site_settings: {
+        Row: {
+          customer_order_history_limit: number;
+          id: boolean;
+          staff_order_list_limit: number;
+          updated_at: string;
+          updated_by: string | null;
+        };
+        Insert: {
+          customer_order_history_limit?: number;
+          id?: boolean;
+          staff_order_list_limit?: number;
+          updated_at?: string;
+          updated_by?: string | null;
+        };
+        Update: {
+          customer_order_history_limit?: number;
+          id?: boolean;
+          staff_order_list_limit?: number;
+          updated_at?: string;
+          updated_by?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'site_settings_updated_by_fkey';
+            columns: ['updated_by'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       stores: {
         Row: {
           description: string;
@@ -277,9 +309,9 @@ export type Database = {
       };
     };
     Enums: {
-      order_status: 'PLACED' | 'PREPARING' | 'READY' | 'COMPLETED' | 'CANCELLED';
+      order_status: 'PLACED' | 'PREPARING' | 'READY' | 'COLLECTED' | 'CANCELLED';
       payment_status: 'PENDING' | 'PAID';
-      user_role: 'CUSTOMER' | 'STAFF';
+      user_role: 'CUSTOMER' | 'STAFF' | 'ADMIN';
     };
     CompositeTypes: {
       [_ in never]: never;
@@ -404,9 +436,9 @@ export const Constants = {
   },
   public: {
     Enums: {
-      order_status: ['PLACED', 'PREPARING', 'READY', 'COMPLETED', 'CANCELLED'],
+      order_status: ['PLACED', 'PREPARING', 'READY', 'COLLECTED', 'CANCELLED'],
       payment_status: ['PENDING', 'PAID'],
-      user_role: ['CUSTOMER', 'STAFF'],
+      user_role: ['CUSTOMER', 'STAFF', 'ADMIN'],
     },
   },
 } as const;

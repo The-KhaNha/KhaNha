@@ -36,9 +36,9 @@
   --color-cancel-500: #64748b;
   --color-cancel-700: #4b5563;
 
-  /* Completed — warm taupe (a finished order: quiet, never alarming) */
-  --color-complete-500: #b5a597;
-  --color-complete-700: #6b5b51;
+  /* Collected — warm taupe (a finished order: quiet, never alarming) */
+  --color-collected-500: #b5a597;
+  --color-collected-700: #6b5b51;
 
   /* Shadows — warm brown, never grey */
   --shadow-card: 0 1px 2px rgba(27, 20, 16, 0.04), 0 12px 32px -14px rgba(120, 60, 20, 0.18);
