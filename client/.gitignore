@@ -1,2 +1,5 @@
 node_modules
 dist
+
+# Lighthouse CI reports (perf.yml)
+lhci/

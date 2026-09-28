@@ -147,6 +147,14 @@ Validate a workflow change with `docker run --rm -v "$PWD":/repo -w /repo rhysd/
 `release.yml` is not a check: it opens the release PR (`workflow_dispatch`) and, after the merge into `main`, tags
 the versions and opens the back-merge PR into `dev` (CLAUDE.md §21).
 
+### Lighthouse (`perf.yml`)
+
+On PRs into `dev` or `main` that touch `client/**`, nightly and on demand; informational. It starts local Supabase
+(`db:start:ci`, seed), brings up `docker compose up --wait web api`, runs `npx @lhci/cli autorun` in `client/` with
+`client/lighthouserc.json` (`/` and `/menu`, 360×640, Slow 4G, 4× CPU, three runs; LCP, CLS and TBT budgets as
+warnings) and uploads `client/lhci/` as the `lighthouse-report` artifact. Numbers: `docs/PERF_BASELINE.md`
+"CI numbers".
+
 ### Security checks (`security.yml`)
 
 Runs on PRs into `dev` and `main`, weekly (Monday 03:00 UTC) and on demand. Informational, not required.

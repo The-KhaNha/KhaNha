@@ -195,3 +195,10 @@ no-cache` and `Vary: Authorization, Origin`; normal `GET` 304 revalidation on `/
   on orders/profile). `server npm run build` (now via `tsconfig.build.json`) emits `dist/src/**` and `dist/scripts/**`
   only — no `dist/test/**`, no `*.test.js` anywhere in `dist` (confirmed by `find dist -iname "*test*"` returning
   nothing); `dist/` is gitignored and was removed after the check. No regressions found; nothing newly over budget.
+
+## CI numbers
+
+Lighthouse CI (`.github/workflows/perf.yml`, config `client/lighthouserc.json`) runs `/` and `/menu` on the compose
+stack at 360×640, simulated Slow 4G (150 ms RTT, 1638 kbps) and 4× CPU, three runs each, on PRs touching `client/**`
+and nightly. LCP ≤ 2500 ms, CLS ≤ 0.1 and TBT ≤ 200 ms warn for now. The report is the `lighthouse-report` artifact.
+perf-auditor records the numbers here and re-baselines on Node 24.
