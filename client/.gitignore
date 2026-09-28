@@ -3,3 +3,4 @@ dist
 
 # Lighthouse CI reports (perf.yml)
 lhci/
+.lighthouseci/
