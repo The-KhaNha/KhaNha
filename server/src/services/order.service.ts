@@ -41,6 +41,12 @@ export async function createOrder(
   user: AuthUser,
   input: CreateOrderInput,
 ): Promise<OrderWithDetails> {
+  // A site setting, read through the cache: an admin's change can take up to the 10 s TTL on other instances, which is
+  // harmless for a cap this generous.
+  const { max_lines_per_order: maxLines } = await getSettings();
+  if (input.lineCount > maxLines)
+    throw validationError(`An order can have at most ${maxLines} items.`);
+
   const store = await getStore();
   if (!store.is_open) {
     throw new AppError(

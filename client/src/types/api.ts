@@ -44,6 +44,11 @@ export interface MenuCategory {
 }
 
 export interface MenuResponse {
+  /**
+   * Cart rules from the server. The cart still uses its own copies in features/cart/cartRules.ts until P2.3 makes them
+   * per store; optional because a menu persisted by an older build lacks it.
+   */
+  rules?: { maxQuantityPerItem: number; lowStockThreshold: number };
   store: Store;
   popular: MenuItem[];
   categories: MenuCategory[];

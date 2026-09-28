@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { MAX_QUANTITY_PER_ITEM } from '../../src/schemas/order.schema';
 import type { OrderStatus } from '../../src/types/enums';
+import { invalidate } from '../../src/utils/cache';
 import { supabaseAdmin } from '../../src/utils/supabase';
 import {
   createTestUser,
@@ -139,11 +140,51 @@ describe('validation', () => {
       expect(res.body.error.code).toBe('VALIDATION_ERROR');
     });
 
-    it('31 items -> 400 VALIDATION_ERROR (rejected before the service runs)', async () => {
+    it('31 items -> 400 VALIDATION_ERROR naming the site setting (max_lines_per_order, default 30)', async () => {
       const fake = Array.from({ length: 31 }, () => ({ menuItemId: randomUUID(), quantity: 1 }));
       const res = await placeOrder(customer1, { items: fake });
       expect(res.status).toBe(400);
-      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      expect(res.body.error).toEqual({
+        code: 'VALIDATION_ERROR',
+        message: 'An order can have at most 30 items.',
+      });
+    });
+
+    it('counts lines as sent, before duplicates merge', async () => {
+      const id = randomUUID();
+      const same = Array.from({ length: 31 }, () => ({ menuItemId: id, quantity: 1 }));
+      const res = await placeOrder(customer1, { items: same });
+      expect(res.status).toBe(400);
+      expect(res.body.error.message).toBe('An order can have at most 30 items.');
+    });
+
+    it('a lowered limit applies to the next order', async () => {
+      await supabaseAdmin
+        .from('site_settings')
+        .update({ max_lines_per_order: 2 })
+        .eq('id', true)
+        .throwOnError();
+      invalidate('site_settings');
+      try {
+        const fake = Array.from({ length: 3 }, () => ({ menuItemId: randomUUID(), quantity: 1 }));
+        const res = await placeOrder(customer1, { items: fake });
+        expect(res.status).toBe(400);
+        expect(res.body.error.message).toBe('An order can have at most 2 items.');
+      } finally {
+        await supabaseAdmin
+          .from('site_settings')
+          .update({ max_lines_per_order: 30 })
+          .eq('id', true)
+          .throwOnError();
+        invalidate('site_settings');
+      }
+    });
+
+    it('101 items -> 400 from the schema hard cap, before the service runs', async () => {
+      const fake = Array.from({ length: 101 }, () => ({ menuItemId: randomUUID(), quantity: 1 }));
+      const res = await placeOrder(customer1, { items: fake });
+      expect(res.status).toBe(400);
+      expect(res.body.error.message).toBe('An order can have at most 100 items.');
     });
 
     it('30 items passes the count check (fails downstream as ITEM_NOT_FOUND for unknown ids)', async () => {

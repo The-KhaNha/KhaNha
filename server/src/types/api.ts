@@ -42,6 +42,8 @@ export interface MenuCategoryDto {
 }
 
 export interface MenuResponse {
+  /** Cart rules: most of one item per order, and the stock at or below which the menu says "only N left". */
+  rules: { maxQuantityPerItem: number; lowStockThreshold: number };
   store: StoreDto;
   popular: MenuItemDto[];
   categories: MenuCategoryDto[];

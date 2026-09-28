@@ -125,13 +125,13 @@ service call, serializes with `utils/serializers.ts` and sends JSON. `order.cont
 
 ### schemas/
 
-| File              | Exports                                                                                                                                                        |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `limits.ts`       | `LIMITS`                                                                                                                                                       | the name, note, password and phone bounds the other schemas use; mirrored in `client/src/config/fallbacks.json` (`validation`), parity-tested |
-| `common.ts`       | `optionalField(schema)`, `phoneField`                                                                                                                          |
-| `auth.schema.ts`  | `registerSchema`, `RegisterInput`                                                                                                                              |
-| `order.schema.ts` | `MAX_QUANTITY_PER_ITEM = 10`, `createOrderSchema`, `updateOrderStatusSchema`, `listOrdersQuerySchema` and their input types                                    |
-| `admin.schema.ts` | `updateSettingsSchema`, `UpdateSettingsInput` (bounds mirror the `site_settings` check constraints, 1-200 / 1-500; refined so at least one field must be sent) |
+| File              | Exports                                                                                                                                                                                        |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `limits.ts`       | `LIMITS`                                                                                                                                                                                       | the name, note, password and phone bounds the other schemas use; mirrored in `client/src/config/fallbacks.json` (`validation`), parity-tested |
+| `common.ts`       | `optionalField(schema)`, `phoneField`                                                                                                                                                          |
+| `auth.schema.ts`  | `registerSchema`, `RegisterInput`                                                                                                                                                              |
+| `order.schema.ts` | `MAX_QUANTITY_PER_ITEM = 10`, `MAX_ITEM_LINES_HARD = 100`, `createOrderSchema` (adds `lineCount`, the lines as sent), `updateOrderStatusSchema`, `listOrdersQuerySchema` and their input types |
+| `admin.schema.ts` | `updateSettingsSchema`, `UpdateSettingsInput` (bounds mirror the `site_settings` check constraints, 1-200 / 1-500; refined so at least one field must be sent)                                 |
 
 Field rules: [API.md](API.md#routes).
 

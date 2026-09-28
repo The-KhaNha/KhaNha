@@ -5,7 +5,11 @@ import { LIMITS } from './limits';
 
 /** Most of one item in a single order, checked after duplicate lines are merged. */
 export const MAX_QUANTITY_PER_ITEM = 10;
-const MAX_ITEM_LINES = 30;
+/**
+ * A sanity bound only. The real limit is the site setting max_lines_per_order (1-100), enforced by createOrder,
+ * so an admin can change it without a deploy.
+ */
+export const MAX_ITEM_LINES_HARD = 100;
 
 const orderItemInput = z.object({
   menuItemId: z.string().min(1, 'Menu item id is required.'),
@@ -33,20 +37,26 @@ function mergeDuplicateItems(items: OrderItemInput[]): OrderItemInput[] {
  * Unknown keys (price, unitPrice, total, ...) are stripped by z.object, so the
  * client can never influence what is charged. Prices come from the database only.
  */
-export const createOrderSchema = z.object({
-  items: z
-    .array(orderItemInput)
-    .min(1, 'Add at least one item to your order.')
-    .max(MAX_ITEM_LINES, `An order can have at most ${MAX_ITEM_LINES} items.`)
-    .transform(mergeDuplicateItems),
-  customerName: optionalField(
-    z.string().trim().max(LIMITS.nameMax, `Name must be at most ${LIMITS.nameMax} characters.`),
-  ),
-  customerPhone: phoneField,
-  note: optionalField(
-    z.string().trim().max(LIMITS.noteMax, `Note must be at most ${LIMITS.noteMax} characters.`),
-  ),
-});
+export const createOrderSchema = z
+  .object({
+    items: z
+      .array(orderItemInput)
+      .min(1, 'Add at least one item to your order.')
+      .max(MAX_ITEM_LINES_HARD, `An order can have at most ${MAX_ITEM_LINES_HARD} items.`),
+    customerName: optionalField(
+      z.string().trim().max(LIMITS.nameMax, `Name must be at most ${LIMITS.nameMax} characters.`),
+    ),
+    customerPhone: phoneField,
+    note: optionalField(
+      z.string().trim().max(LIMITS.noteMax, `Note must be at most ${LIMITS.noteMax} characters.`),
+    ),
+  })
+  // Lines are counted as sent, before duplicates merge (docs/API.md): the lines limit applies to lineCount.
+  .transform((input) => ({
+    ...input,
+    lineCount: input.items.length,
+    items: mergeDuplicateItems(input.items),
+  }));
 
 export type CreateOrderInput = z.infer<typeof createOrderSchema>;
 

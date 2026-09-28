@@ -2,10 +2,18 @@ import { describe, expect, it } from 'vitest';
 import { api } from '../setup/api';
 
 describe('GET /api/menu', () => {
-  it('needs no Authorization header and returns store, popular and categories', async () => {
+  it('carries the cart rules the client applies', async () => {
     const res = await api().get('/api/menu');
     expect(res.status).toBe(200);
-    expect(Object.keys(res.body).sort()).toEqual(['store', 'popular', 'categories'].sort());
+    expect(res.body.rules).toEqual({ maxQuantityPerItem: 10, lowStockThreshold: 5 });
+  });
+
+  it('needs no Authorization header and returns store, popular, categories and rules', async () => {
+    const res = await api().get('/api/menu');
+    expect(res.status).toBe(200);
+    expect(Object.keys(res.body).sort()).toEqual(
+      ['store', 'popular', 'categories', 'rules'].sort(),
+    );
     expect(Array.isArray(res.body.popular)).toBe(true);
     expect(Array.isArray(res.body.categories)).toBe(true);
   });
