@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { ChevronLeft } from 'lucide-react';
 import { cn } from '../lib/cn';
 import { Wordmark } from './Wordmark';
+import { APP_TITLE } from '../config/app';
 
 export type TopBarTone = 'default' | 'brand';
 
@@ -56,7 +57,7 @@ export function TopBar({
             <Link
               to="/"
               className="inline-flex min-h-11 items-center rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
-              aria-label="Food Pickup home"
+              aria-label={`${APP_TITLE} home`}
             >
               <Wordmark tone={brand ? 'inverse' : 'default'} />
             </Link>

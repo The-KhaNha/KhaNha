@@ -28,12 +28,14 @@ export default defineConfig(({ mode }) => {
     define: APP_VERSION_DEFINE,
     // scripts/ci/check-bundle.mjs reads the manifest to size the initial chunk graph.
     build: { manifest: true },
+    // Ports from client/.env.<mode> (VITE_DEV_PORT, VITE_API_PROXY_TARGET), so start.sh and the API can move together.
+    // strictPort: a busy port is an error, not a silent move to the next one start.sh would not probe.
     server: {
-      port: 5173,
+      port: Number(env.VITE_DEV_PORT ?? 5173),
       strictPort: true,
       proxy: {
         '/api': {
-          target: 'http://localhost:8000',
+          target: env.VITE_API_PROXY_TARGET ?? 'http://localhost:8000',
           changeOrigin: true,
         },
       },

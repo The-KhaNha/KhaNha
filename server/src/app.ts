@@ -34,6 +34,8 @@ export function createApp(): Express {
   const app = express();
 
   app.disable('x-powered-by');
+  // req.ip from X-Forwarded-For only through the proxies we run (TRUST_PROXY_HOPS; compose's nginx is one).
+  app.set('trust proxy', env.TRUST_PROXY_HOPS);
 
   // Every API response is revalidated before reuse: the browser keeps its copy and sends If-None-Match, Express's
   // ETag check answers 304 with no body when nothing changed. That saves the whole payload on every poll on metered

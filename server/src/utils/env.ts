@@ -36,6 +36,11 @@ const envSchema = z
     // supabase/config.toml and the hosted project's dashboard; the client reads it from GET /api/config.
     SESSION_IDLE_DAYS: z.coerce.number().int().min(1).max(90).default(7),
     PORT: z.coerce.number().int().positive().default(8000),
+    /** How long public reads (menu, store, site settings) stay in the per-process cache. 0 turns it off. */
+    PUBLIC_READ_TTL_MS: z.coerce.number().int().min(0).max(600_000).default(10_000),
+    // Proxies in front of the API whose X-Forwarded-For Express should trust (compose's nginx: 1). 0 trusts none, so
+    // req.ip is the socket peer and a client cannot spoof its address.
+    TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(10).default(0),
     CLIENT_ORIGIN: z
       .string()
       .url('CLIENT_ORIGIN must be a URL such as http://localhost:5173.')

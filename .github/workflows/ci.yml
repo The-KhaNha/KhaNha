@@ -128,6 +128,7 @@ jobs:
       - run: npm ci
       - run: npm run format:check
       - run: npm test
+      - run: npm run check:durations
 
   images:
     runs-on: ubuntu-latest

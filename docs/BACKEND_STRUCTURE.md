@@ -16,6 +16,7 @@ server/
 ├── eslint.config.mjs
 ├── scripts/
 │   ├── seed.ts               demo reset (local/staging) or first-time production setup
+│   ├── seed-data.ts          the typed fixtures it writes: STORE, MENU, DEMO_ACCOUNTS
 │   └── db-push.sh            applies migrations to staging or production
 ├── Dockerfile                the API image (deps → build → runtime); DEPLOYMENT.md "Containers"
 ├── supabase/
@@ -161,17 +162,17 @@ message names the field.
 
 ### utils/
 
-| File             | Exports                                                                                                                                                                                                                                          |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `env.ts`         | `env` (validated with zod at import; exits with a list of problems if invalid)                                                                                                                                                                   |
-| `logger.ts`      | `logger` (pino), `REDACT_PATHS`, `LOG_SERIALIZERS` (`errWithCause`)                                                                                                                                                                              |
-| `supabase.ts`    | `supabaseAdmin` (secret key, bypasses RLS), `supabaseEnv`, `raisedByDatabase(err, code)`, `asDatabaseUnavailable(err)` (a transport failure as an `IntegrationError`)                                                                            |
-| `errors.ts`      | `ErrorCode`, `ItemErrorDetails`, `AppError`, `IntegrationError`, `validationError`, `unauthorized`, `forbidden`, `notFound`, `clientOutdated`, `insufficientStock`                                                                               |
-| `serializers.ts` | `selectOrders()` (the one order query with lines, store and item photos), `OrderWithDetails`, `toUserDto`, `toStoreDto`, `toMenuItemDto`, `toOrderDto`, `isPurchasable`                                                                          |
-| `ids.ts`         | `isUuid(value)`                                                                                                                                                                                                                                  |
-| `semver.ts`      | `parseSemver(version)`, `compareSemver(a, b)` on the numeric triple (prerelease ignored)                                                                                                                                                         |
-| `version.ts`     | `APP_VERSION` (`package.json` in `process.cwd()`), `GIT_COMMIT` (env)                                                                                                                                                                            |
-| `cache.ts`       | `cached<T>(key, ttlMs, load)`, `invalidate(key?)`, `PUBLIC_READ_TTL_MS = 10_000` — in-process TTL cache for public reads; shares one pending load between concurrent misses; a failed load is never cached. See [API.md#caching](API.md#caching) |
+| File             | Exports                                                                                                                                                                                                                                                         |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `env.ts`         | `env` (validated with zod at import; exits with a list of problems if invalid)                                                                                                                                                                                  |
+| `logger.ts`      | `logger` (pino), `REDACT_PATHS`, `LOG_SERIALIZERS` (`errWithCause`)                                                                                                                                                                                             |
+| `supabase.ts`    | `supabaseAdmin` (secret key, bypasses RLS), `supabaseEnv`, `raisedByDatabase(err, code)`, `asDatabaseUnavailable(err)` (a transport failure as an `IntegrationError`)                                                                                           |
+| `errors.ts`      | `ErrorCode`, `ItemErrorDetails`, `AppError`, `IntegrationError`, `validationError`, `unauthorized`, `forbidden`, `notFound`, `clientOutdated`, `insufficientStock`                                                                                              |
+| `serializers.ts` | `selectOrders()` (the one order query with lines, store and item photos), `OrderWithDetails`, `toUserDto`, `toStoreDto`, `toMenuItemDto`, `toOrderDto`, `isPurchasable`                                                                                         |
+| `ids.ts`         | `isUuid(value)`                                                                                                                                                                                                                                                 |
+| `semver.ts`      | `parseSemver(version)`, `compareSemver(a, b)` on the numeric triple (prerelease ignored)                                                                                                                                                                        |
+| `version.ts`     | `APP_VERSION` (`package.json` in `process.cwd()`), `GIT_COMMIT` (env)                                                                                                                                                                                           |
+| `cache.ts`       | `cached<T>(key, ttlMs, load)`, `invalidate(key?)`, `PUBLIC_READ_TTL_MS` (env, default 10000 ms) — in-process TTL cache for public reads; shares one pending load between concurrent misses; a failed load is never cached. See [API.md#caching](API.md#caching) |
 
 ## Adding an endpoint
 

@@ -1,4 +1,5 @@
 import type { SiteSettings } from '../../types/api';
+import { VALIDATION } from '../config/fallbacks';
 
 /** Every editable site setting: the keys of SiteSettings except the timestamp. */
 export type SettingKey = Exclude<keyof SiteSettings, 'updatedAt'>;
@@ -49,22 +50,19 @@ export const SETTING_FIELDS: Record<SettingKey, SettingField> = {
     kind: 'integer',
     label: 'Order page refresh (ms)',
     hint: 'How often a customer’s open order checks for a new status',
-    min: 2000,
-    max: 60_000,
+    ...VALIDATION.pollMs,
   },
   ordersPollMs: {
     kind: 'integer',
     label: 'Order list refresh (ms)',
     hint: 'How often the customer’s order list refreshes',
-    min: 2000,
-    max: 60_000,
+    ...VALIDATION.pollMs,
   },
   staffBoardPollMs: {
     kind: 'integer',
     label: 'Staff board refresh (ms)',
     hint: 'How often the kitchen board checks for new orders',
-    min: 2000,
-    max: 60_000,
+    ...VALIDATION.pollMs,
   },
   minClientVersion: {
     kind: 'semver',

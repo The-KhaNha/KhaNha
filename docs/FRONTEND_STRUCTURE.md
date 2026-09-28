@@ -10,7 +10,8 @@ the API is in [ARCHITECTURE.md](ARCHITECTURE.md).
 client/
 ├── index.html              font preconnect + preload (Plus Jakarta Sans, display=swap), first-paint background,
 │                           /runtime-env.js as a classic script before the app
-├── vite.config.ts          dev server :5173 (strictPort), proxies /api → http://localhost:8000; refuses to start
+├── vite.config.ts          dev server :VITE_DEV_PORT (5173, strictPort), proxies /api → VITE_API_PROXY_TARGET
+│                           (http://localhost:8000); refuses to start
 │                           or build without VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY for the mode
 │                           (except mode "container")
 ├── vitest.config.ts        unit tests (jsdom), separate from vite.config.ts
@@ -29,6 +30,7 @@ client/
     ├── index.css           Tailwind import, design tokens (@theme), keyframes, utilities, reduced-motion rules
     ├── vite-env.d.ts       typed import.meta.env
     ├── config/fallbacks.json  the server config's defaults and field bounds (the one client copy, parity-tested)
+    ├── config/app.ts       APP_TITLE, the product name, named once
     ├── components/         shared presentational atoms (catalog: COMPONENTS.md)
     ├── features/
     │   ├── admin/          settingsRules, useSiteSettings (the /admin dashboard's rules and data hook)

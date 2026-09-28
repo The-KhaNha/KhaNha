@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { LIMITS } from './limits';
 
 // Same bounds as the check constraints on public.site_settings, so a bad value is a 400, never a database error.
 const integer = (name: string, min: number, max: number) =>
@@ -8,8 +9,7 @@ const integer = (name: string, min: number, max: number) =>
     .min(min, `${name} must be at least ${min}.`)
     .max(max, `${name} must be at most ${max}.`);
 const limit = (name: string, max: number) => integer(name, 1, max);
-// Faster than every 2 s costs customers data; slower than a minute makes a status change feel lost.
-const pollMs = (name: string) => integer(name, 2000, 60_000);
+const pollMs = (name: string) => integer(name, LIMITS.pollMs.min, LIMITS.pollMs.max);
 
 export const updateSettingsSchema = z
   .object({

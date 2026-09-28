@@ -9,4 +9,7 @@ export const LIMITS = {
   // bcrypt only reads the first 72 bytes, so a longer password would silently be truncated.
   password: { min: 6, max: 72 },
   phoneDigits: { min: 10, max: 15 },
+  // The poll-interval site settings, in ms: faster than 2 s costs customers data, slower than a minute makes a status
+  // change feel lost.
+  pollMs: { min: 2000, max: 60000 },
 } as const;

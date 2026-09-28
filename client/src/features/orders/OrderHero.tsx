@@ -5,6 +5,7 @@ import { Card } from '../../components/Card';
 import { StatusBadge } from '../../components/StatusBadge';
 import { cn } from '../../lib/cn';
 import { statusMeta } from './orderStatus';
+import { APP_TITLE } from '../../config/app';
 
 interface OrderHeroProps {
   order: Order;
@@ -63,7 +64,7 @@ export function OrderHero({ order, onReorder, reordering }: OrderHeroProps) {
             <p className="mt-3 text-sm font-semibold text-ink">
               Order <span className="tabular-nums">#{order.orderNumber}</span> · {order.store.name}
             </p>
-            <p className="mt-1 text-sm text-muted">Thanks for using Food Pickup.</p>
+            <p className="mt-1 text-sm text-muted">Thanks for using {APP_TITLE}.</p>
           </div>
         </div>
         <Button

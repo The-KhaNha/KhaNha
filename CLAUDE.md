@@ -117,6 +117,7 @@ Root (`package.json`, not a workspace; only devDependency `prettier`):
 | `npm run change -- --client <level> --server <level> "summary"` | record a change intent in `.changes/` (§21) |
 | `npm run release:dry` / `release` | print / apply the version bump from the intents (release PR only) |
 | `npm run change:check` | the `version-intent` CI check against `origin/dev` |
+| `npm run check:bundle` / `check:migrations` / `check:durations` | the CI checks: initial JS budget (after a client build), migrations append-only against `origin/dev`, no hard-coded durations |
 
 Both packages: `npm run dev`, `typecheck`, `lint`, `format`, `format:check`, `test`, `test:watch`, `build`.
 
@@ -136,7 +137,8 @@ Server only:
 Client: `npm run dev:staging` / `build:staging` use `client/.env.staging`. `npm run build` needs
 `client/.env.production`, which does not exist yet.
 
-Ports: client `5173`, API `8000`, local Supabase `54321`; `docker compose up web api` serves both on `8080`. `./start.sh [--seed]` starts API + client (it kills
+Ports: client `5173` (`VITE_DEV_PORT`), API `8000` (`PORT`), local Supabase `54321` (`SUPABASE_URL`); `start.sh`
+reads all three from the env files. `docker compose up web api` serves both on `8080`. `./start.sh [--seed]` starts API + client (it kills
 whatever holds 8000/5173 first — see §18). Details: `README.md`, `docs/DEPLOYMENT.md`.
 
 ## 4. Project structure
@@ -265,6 +267,11 @@ One owner per topic; other docs link to it instead of copying.
   disables). Fix the type.
 - Comments explain *why*, not *what*.
 - Unused `_`-prefixed args/vars are allowed on purpose (Express's 4-argument error handler).
+- **No hard-coding** of anything an operator may need to change. Each value has one tier (`docs/CONFIGURATION.md`):
+  a site setting (`site_settings`, edited at `/admin`), a deployment setting (env), a platform constant with a parity
+  test where both sides need it (`server/src/schemas/limits.ts` ↔ `client/src/config/fallbacks.json`), or a
+  presentation constant, which stays in code. `npm run check:durations` (CI) fails on a `\d+_000` duration literal in
+  services, the domain layer or `*Rules.ts`.
 
 ## 12. Safety and naming conventions
 

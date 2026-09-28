@@ -12,8 +12,7 @@ import { useReorder } from '../features/cart/useReorder';
 import { OrderHero } from '../features/orders/OrderHero';
 import { amountLabel, timelineLabel } from '../features/orders/orderStatus';
 import { useOrder } from '../features/orders/useOrder';
-
-const APP_TITLE = 'Food Pickup';
+import { APP_TITLE } from '../config/app';
 
 export function OrderPage() {
   const { id } = useParams<{ id: string }>();

@@ -1,5 +1,6 @@
 import { ShoppingBag } from 'lucide-react';
 import { cn } from '../lib/cn';
+import { APP_TITLE } from '../config/app';
 
 interface WordmarkProps {
   size?: 'sm' | 'lg';
@@ -31,7 +32,7 @@ export function Wordmark({ size = 'sm', tone = 'default', className }: WordmarkP
           size === 'sm' ? 'text-[17px]' : 'text-2xl',
         )}
       >
-        Food Pickup
+        {APP_TITLE}
       </span>
     </span>
   );

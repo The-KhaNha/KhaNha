@@ -50,3 +50,10 @@ Bounds both sides need, kept in one place per side and parity-tested (`server/te
 | `noteMax`                            | 200    | `createOrderSchema.note`; `validateNote`                                        |
 | `password.min`, `password.max`       | 6, 72  | `registerSchema` (bcrypt reads 72 bytes); `validatePassword`                    |
 | `phoneDigits.min`, `phoneDigits.max` | 10, 15 | `phoneField`; `validatePhone`                                                   |
+
+## What stays in code
+
+Presentation constants (animation timings, layout sizes, the reduced-motion rules), `CACHE_PREFIX`, the Supabase
+project refs in `db-push.sh` and the product name (`APP_TITLE` in `client/src/config/app.ts`, named once) stay in
+code by design. `npm run check:durations` (CI, `repo` job) fails on a `\d+_000` duration literal in
+`server/src/services`, `server/src/domain` or a client `*Rules.ts`.

@@ -81,7 +81,7 @@ It prints the URLs and logins when both servers answer. Press **Ctrl+C** once to
 - Reads `APP_ENV` from `server/.env` and starts the web app in the matching mode (`local` → `npm run dev`, `staging` → `npm run dev:staging`), so the browser signs in to the same Supabase project the API uses. Refuses `APP_ENV=production`.
 - Stops with a clear message if `server/.env` is missing, or (for `local`) the Supabase stack is not running.
 - Runs `npm install` in `server/` and `client/` if `node_modules` is missing.
-- **Frees ports 8000 and 5173 first** — anything still listening on them (a stray `npm run dev`, an earlier `start.sh`) is killed. Don't run it while another copy of the project is deliberately serving those ports.
+- **Frees the API and web ports first** (8000 and 5173 unless configured) — anything still listening on them (a stray `npm run dev`, an earlier `start.sh`) is killed. Don't run it while another copy of the project is deliberately serving those ports.
 - `--seed` runs `npm run seed` before starting (see [Re-seeding wipes orders](#re-seeding-wipes-orders)).
 - Starts the API (`tsx watch`, auto-reloads on server edits) and the web app (Vite, hot reloads client edits). Their output goes to **`.logs/server.log`** and **`.logs/client.log`** (gitignored) — look there when something misbehaves.
 - Waits until `GET /api/health`, the web app and `GET /api/menu` all return 200. If the API is up but the menu isn't, it says **"Database looks empty or unreachable — run ./start.sh --seed"** and stops.
@@ -168,7 +168,7 @@ food-pickup/
 └── start.sh       starts both servers (see "What start.sh does")
 ```
 
-Ports: API **8000**, web app **5173**. Both are fixed: the Vite proxy target (`client/vite.config.ts`) and `start.sh` hardcode 8000, and Vite runs with `--strictPort` on 5173.
+Ports: API **8000** (`PORT` in `server/.env`), web app **5173** (`VITE_DEV_PORT` in `client/.env.<mode>`). `start.sh` reads both and points the dev proxy at the API's port; Vite fails instead of moving when its port is busy (`strictPort`). The containers serve both on **8080** (`docker compose up web api`).
 
 ## Stock limits
 

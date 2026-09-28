@@ -7,8 +7,8 @@
     "node": "^24.15.0"
   },
   "scripts": {
-    "dev": "vite --port 5173 --strictPort",
-    "dev:staging": "vite --port 5173 --strictPort --mode staging",
+    "dev": "vite",
+    "dev:staging": "vite --mode staging",
     "build": "tsc -p tsconfig.json --noEmit && vite build",
     "build:staging": "tsc -p tsconfig.json --noEmit && vite build --mode staging",
     "build:container": "tsc -p tsconfig.json --noEmit && vite build --mode container",

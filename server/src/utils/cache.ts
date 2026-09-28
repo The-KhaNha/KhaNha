@@ -5,9 +5,10 @@
 // ponytail: per-process. Edits made in the Supabase dashboard, or writes handled by another API instance, show up
 // within the TTL. Move to a shared cache (e.g. Redis) or LISTEN/NOTIFY if that window ever matters.
 // Never cache anything user-specific or anything a write path relies on (createOrder reads the store uncached).
+import { env } from './env';
 
-/** How long public reads (GET /api/menu, GET /api/store) may be served from memory. */
-export const PUBLIC_READ_TTL_MS = 10_000;
+/** How long public reads (menu, store, site settings) may be served from memory: env PUBLIC_READ_TTL_MS. */
+export const PUBLIC_READ_TTL_MS = env.PUBLIC_READ_TTL_MS;
 
 const entries = new Map<string, { expiresAt: number; value: Promise<unknown> }>();
 
