@@ -91,6 +91,7 @@ function SettingsForm({
             key={key}
             label={SETTING_FIELDS[key].label}
             hint={settingHint(key)}
+            hintPlacement="below"
             inputMode={SETTING_FIELDS[key].kind === 'integer' ? 'numeric' : 'decimal'}
             value={draft[key]}
             error={fieldErrors[key] ?? undefined}

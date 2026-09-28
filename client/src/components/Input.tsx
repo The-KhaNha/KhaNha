@@ -5,7 +5,18 @@ import { cn } from '../lib/cn';
 interface FieldProps {
   label: string;
   hint?: string;
+  /**
+   * `inline` (default): a short tag ("Optional", "3/200") right-aligned on the label's line. `below`: a sentence on
+   * its own line under the label, for hints too long to share a 360px line with it (the admin settings form).
+   */
+  hintPlacement?: 'inline' | 'below';
   error?: string;
+}
+
+/** The ids the field is described by: its hint, then its error, whichever are shown. */
+function describedBy(id: string, hint?: string, error?: string): string | undefined {
+  const ids = [hint && `${id}-hint`, error && `${id}-error`].filter(Boolean);
+  return ids.length > 0 ? ids.join(' ') : undefined;
 }
 
 const fieldClass =
@@ -13,13 +24,41 @@ const fieldClass =
   'transition-[border-color,box-shadow] duration-150 focus:border-brand-500 focus:ring-4 focus:ring-brand-500/20 ' +
   'focus-visible:ring-4 focus-visible:ring-brand-500/20';
 
-function Label({ id, label, hint }: { id: string; label: string; hint?: string }) {
+function Label({
+  id,
+  label,
+  hint,
+  hintPlacement = 'inline',
+}: {
+  id: string;
+  label: string;
+  hint?: string;
+  hintPlacement?: FieldProps['hintPlacement'];
+}) {
+  if (hintPlacement === 'below') {
+    return (
+      <div className="mb-1.5">
+        <label htmlFor={id} className="block text-sm font-semibold text-ink">
+          {label}
+        </label>
+        {hint && (
+          <p id={`${id}-hint`} className="mt-0.5 text-xs leading-snug text-muted">
+            {hint}
+          </p>
+        )}
+      </div>
+    );
+  }
   return (
-    <div className="mb-1.5 flex items-baseline justify-between">
+    <div className="mb-1.5 flex items-baseline justify-between gap-3">
       <label htmlFor={id} className="text-sm font-semibold text-ink">
         {label}
       </label>
-      {hint && <span className="text-xs text-muted">{hint}</span>}
+      {hint && (
+        <span id={`${id}-hint`} className="shrink-0 text-xs text-muted">
+          {hint}
+        </span>
+      )}
     </div>
   );
 }
@@ -41,7 +80,7 @@ function FieldError({ id, error }: { id: string; error?: string }) {
 export type InputProps = InputHTMLAttributes<HTMLInputElement> & FieldProps;
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
-  { label, hint, error, className, id: idProp, ...rest },
+  { label, hint, hintPlacement, error, className, id: idProp, ...rest },
   ref,
 ) {
   const autoId = useId();
@@ -49,12 +88,12 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
   const errorId = `${id}-error`;
   return (
     <div className={className}>
-      <Label id={id} label={label} hint={hint} />
+      <Label id={id} label={label} hint={hint} hintPlacement={hintPlacement} />
       <input
         ref={ref}
         id={id}
         aria-invalid={error ? true : undefined}
-        aria-describedby={error ? errorId : undefined}
+        aria-describedby={describedBy(id, hint, error)}
         className={cn(fieldClass, 'h-12', error ? 'border-brand-600' : 'border-line')}
         {...rest}
       />
@@ -66,7 +105,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
 export type TextareaProps = TextareaHTMLAttributes<HTMLTextAreaElement> & FieldProps;
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function Textarea(
-  { label, hint, error, className, id: idProp, rows = 3, ...rest },
+  { label, hint, hintPlacement, error, className, id: idProp, rows = 3, ...rest },
   ref,
 ) {
   const autoId = useId();
@@ -74,13 +113,13 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function 
   const errorId = `${id}-error`;
   return (
     <div className={className}>
-      <Label id={id} label={label} hint={hint} />
+      <Label id={id} label={label} hint={hint} hintPlacement={hintPlacement} />
       <textarea
         ref={ref}
         id={id}
         rows={rows}
         aria-invalid={error ? true : undefined}
-        aria-describedby={error ? errorId : undefined}
+        aria-describedby={describedBy(id, hint, error)}
         className={cn(
           fieldClass,
           'resize-none py-3 leading-relaxed',

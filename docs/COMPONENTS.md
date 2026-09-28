@@ -154,10 +154,12 @@ the chunk itself fails to load (offline, or a stale deploy whose old chunk was r
 ### Forms
 
 **`Input`** and **`Textarea`** (`Input.tsx`). Labelled fields with a hint and an error, `forwardRef`ed.
-`InputProps = InputHTMLAttributes<HTMLInputElement> & { label: string; hint?: string; error?: string }`;
+`InputProps = InputHTMLAttributes<HTMLInputElement> & { label: string; hint?: string; hintPlacement?: 'inline' | 'below'; error?: string }`;
 `TextareaProps` is the same over `TextareaHTMLAttributes` with `rows = 3`. `className` goes on the wrapper, not the
-field. The `id` defaults to `useId()`; an `error` sets `aria-invalid`, links the message with `aria-describedby`,
-and renders it with `role="alert"`. Inputs are `h-12`.
+field. The `id` defaults to `useId()`; an `error` sets `aria-invalid` and renders with `role="alert"`, and
+`aria-describedby` lists the hint, then the error. `hintPlacement="inline"` (default) keeps a short tag ("Optional",
+"3/200") right-aligned on the label's line; `"below"` puts a sentence-long hint on its own line under the label (the
+admin settings form), so neither wraps at 360px. Inputs are `h-12`.
 
 ### Food, prices and store
 
@@ -233,7 +235,7 @@ width and height), `round?: boolean = false`. `aria-hidden`.
 `icon: LucideIcon`, `title: string`, `description?: string`, `action?: ReactNode` (buttons, stacked),
 `tone?: 'brand' | 'neutral' = 'brand'`, `className?`.
 
-**`ErrorState`** (`ErrorState.tsx`). Failure block with `role="alert"`.
+**`ErrorState`** (`ErrorState.tsx`). Failure block with `role="alert"`. While the build is outdated (a 426, `useVersionStore`), its button is "Refresh" (reloads the page) instead of the retry, which could only fail again, and it shows even where no `onRetry` was given; custom `actions` are kept.
 
 | Prop          | Type                                 | Notes                                      |
 | ------------- | ------------------------------------ | ------------------------------------------ |

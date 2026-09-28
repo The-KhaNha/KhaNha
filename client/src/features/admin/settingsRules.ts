@@ -84,7 +84,10 @@ export function toDraft(settings: SiteSettings): SettingsDraft {
 /** The field's hint with its accepted range, for the input's helper text. */
 export function settingHint(key: SettingKey): string {
   const field = SETTING_FIELDS[key];
-  return field.kind === 'integer' ? `${field.hint} (${field.min}–${field.max})` : `${field.hint}`;
+  // Word joiners keep the range in one piece: a 360px line must not break it at the dash.
+  return field.kind === 'integer'
+    ? `${field.hint} (${field.min}\u2060–\u2060${field.max})`
+    : field.hint;
 }
 
 /** An error message for a typed value, or null when it is valid. */

@@ -69,7 +69,7 @@ describe('toDraft and settingHint', () => {
   });
 
   it('adds the range to integer hints only', () => {
-    expect(settingHint('maxLinesPerOrder')).toMatch(/\(1–100\)$/);
+    expect(settingHint('maxLinesPerOrder')).toMatch(/\(1\u2060–\u2060100\)$/);
     expect(settingHint('minClientVersion')).not.toMatch(/–/);
   });
 });

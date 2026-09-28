@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { CircleAlert, RefreshCw, WifiOff } from 'lucide-react';
 import { Button } from './Button';
+import { useVersionStore } from '../features/version/versionStore';
 import { cn } from '../lib/cn';
 
 interface ErrorStateProps {
@@ -30,6 +31,8 @@ export function ErrorState({
   actions,
   className,
 }: ErrorStateProps) {
+  // This build is too old (426): retrying would only fail again, so the one useful action is loading the new build.
+  const outdated = useVersionStore((s) => s.outdated);
   const Icon = unreachable ? WifiOff : CircleAlert;
   return (
     <div
@@ -55,15 +58,15 @@ export function ErrorState({
       {actions && (
         <div className="mt-6 flex w-full max-w-xs flex-col items-stretch gap-2">{actions}</div>
       )}
-      {!actions && onRetry && (
+      {!actions && (outdated || onRetry) && (
         <Button
           variant="secondary"
           className="mt-6 min-w-40"
-          onClick={onRetry}
-          loading={retrying}
+          onClick={outdated ? () => window.location.reload() : onRetry}
+          loading={!outdated && retrying}
           iconLeft={<RefreshCw className="h-4 w-4" aria-hidden />}
         >
-          {retryLabel}
+          {outdated ? 'Refresh' : retryLabel}
         </Button>
       )}
     </div>
