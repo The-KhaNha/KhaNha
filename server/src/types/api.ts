@@ -88,3 +88,17 @@ export interface OrderDto {
   store: { id: string; name: string };
   items: OrderItemDto[];
 }
+
+/** GET /api/config: what the client needs to run. The client's defaults are client/src/config/fallbacks.json. */
+export interface ConfigDto {
+  serverVersion: string;
+  minClientVersion: string;
+  /** Feature flags by name; empty until P1.7. */
+  features: Record<string, boolean>;
+  /** The payment provider's public details; null until P5. */
+  payment: { provider: string; publicKey: string | null } | null;
+  limits: { maxLinesPerOrder: number };
+  /** Poll intervals in ms: one order's page, the customer's order list, the staff board. */
+  polling: { orderMs: number; ordersMs: number; staffBoardMs: number };
+  session: { idleDays: number };
+}

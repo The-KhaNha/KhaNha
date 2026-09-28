@@ -104,6 +104,7 @@ service call, serializes with `utils/serializers.ts` and sends JSON. `order.cont
 | File                   | Handlers                                                                               |
 | ---------------------- | -------------------------------------------------------------------------------------- |
 | `health.controller.ts` | `getHealth`, `getReady`, `readinessHandler(probe)` (the probe is injectable for tests) |
+| `config.controller.ts` | `getConfig`                                                                            |
 | `auth.controller.ts`   | `register`, `me`                                                                       |
 | `store.controller.ts`  | `getStore`                                                                             |
 | `menu.controller.ts`   | `getMenu`                                                                              |
@@ -119,12 +120,14 @@ service call, serializes with `utils/serializers.ts` and sends JSON. `order.cont
 | `menu.service.ts`     | `getMenu()`                                                  | items by `sort_order`, `popular`, categories grouped by first item; read through `cached('menu', PUBLIC_READ_TTL_MS, loadMenu)` (see [API.md#caching](API.md#caching))                                                                                                                                                                                            |
 | `order.service.ts`    | `createOrder`, `listOrders`, `getOrder`, `updateOrderStatus` | holds `ALLOWED_TRANSITIONS`; reads both list limits from `settings.service.getSettings()` (`STAFF_LIST_LIMIT`/`CUSTOMER_LIST_LIMIT` constants were removed); calls the `place_order` / `update_order_status` RPCs and maps their `P0001` errors; `invalidate('menu')` after `createOrder` (any outcome) and after a cancel (see [API.md#caching](API.md#caching)) |
 | `settings.service.ts` | `getSettings()`, `updateSettings(admin, input)`              | the single `site_settings` row. `getSettings()` is read through `cached('site_settings', PUBLIC_READ_TTL_MS, ...)`; `updateSettings()` writes `updated_by = admin.id` and calls `invalidate('site_settings')` (see [API.md#caching](API.md#caching))                                                                                                              |
+| `config.service.ts`   | `getConfig()`                                                | the `ConfigDto` for `GET /api/config`, derived from the cached `getSettings()` and `env.SESSION_IDLE_DAYS` (no cache key of its own)                                                                                                                                                                                                                              |
 | `payment.service.ts`  | `simulatePayment(amount)`                                    | always `PAID`; throws on a non-positive amount. The seam for a real gateway                                                                                                                                                                                                                                                                                       |
 
 ### schemas/
 
 | File              | Exports                                                                                                                                                        |
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `limits.ts`       | `LIMITS`                                                                                                                                                       | the name, note, password and phone bounds the other schemas use; mirrored in `client/src/config/fallbacks.json` (`validation`), parity-tested |
 | `common.ts`       | `optionalField(schema)`, `phoneField`                                                                                                                          |
 | `auth.schema.ts`  | `registerSchema`, `RegisterInput`                                                                                                                              |
 | `order.schema.ts` | `MAX_QUANTITY_PER_ITEM = 10`, `createOrderSchema`, `updateOrderStatusSchema`, `listOrdersQuerySchema` and their input types                                    |

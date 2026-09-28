@@ -18,7 +18,6 @@ import { ApiError } from '../services/api';
 import { updateOrderStatus } from '../services/orders';
 import { useNow } from '../lib/useNow';
 
-const STAFF_POLL_MS = 4000;
 /** The 200ms --animate-card-leave plus a 20ms margin, so the card is removed just after it finishes fading. */
 const LEAVE_MS = 220;
 
@@ -34,7 +33,7 @@ function queueOrder(a: Order, b: Order): number {
 /** The kitchen board: owns polling, filtering and status changes; the header, filters and grid are presentational. */
 export function StaffDashboardPage() {
   const { orders, isLoading, error, retry, mutate, updatedAt } = useOrders({
-    pollMs: STAFF_POLL_MS,
+    audience: 'staff',
   });
   const { store } = useStore();
   const logout = useAuthStore((s) => s.logout);

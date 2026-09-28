@@ -347,10 +347,18 @@ Staff actions: PLACED "Start Preparing", PREPARING "Mark Ready", READY "Mark Col
 and PREPARING.
 
 **`useOrder.ts`**: `useOrder(id, initialData = null)` → `{ order, isLoading, error, retry, mutate }`. Polls every
-4 s until the order is terminal. `initialData` is used only when its `id` matches.
+`useConfig().polling.orderMs` (default 4 s) until the order is terminal. `initialData` is used only when its `id` matches.
 
-**`useOrders.ts`**: `useOrders({ status?, pollMs = 8000 })` → `{ orders, isLoading, error, retry, mutate, updatedAt }`.
-The customer list uses the default; the staff board passes 4000.
+**`useOrders.ts`**: `useOrders({ status?, audience = 'customer' })` → `{ orders, isLoading, error, retry, mutate,
+updatedAt }`. Polls every `useConfig().polling.ordersMs` (default 8 s) for the customer; the staff board passes
+`audience: 'staff'` for `polling.staffBoardMs` (default 4 s).
+
+### features/config
+
+| Export                          | File           | What                                                                                                                                                                                                                             |
+| ------------------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `useConfig()` → `Config`        | `useConfig.ts` | `GET /api/config` through `useResource({ key: 'config', persist: true })` (public, the same for everyone), returning `data ?? CONFIG_FALLBACK`: never loading, never failing                                                     |
+| `CONFIG_FALLBACK`, `VALIDATION` | `fallbacks.ts` | `client/src/config/fallbacks.json`, the client's one copy of the server's config defaults and field bounds (parity-tested by the server suite). `features/auth/validation.ts` and `sessionActivity.ts` read their bounds from it |
 
 UI (presentational; the pages own the data):
 

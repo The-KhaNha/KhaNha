@@ -109,3 +109,15 @@ export interface CreateOrderInput {
   customerPhone?: string;
   note?: string;
 }
+
+/** GET /api/config (server ConfigDto). Until it loads, config/fallbacks.json stands in (features/config/useConfig). */
+export interface Config {
+  serverVersion: string;
+  minClientVersion: string;
+  features: Record<string, boolean>;
+  payment: { provider: string; publicKey: string | null } | null;
+  limits: { maxLinesPerOrder: number };
+  /** Poll intervals in ms: one order's page, the customer's order list, the staff board. */
+  polling: { orderMs: number; ordersMs: number; staffBoardMs: number };
+  session: { idleDays: number };
+}

@@ -219,8 +219,10 @@ One owner per topic; other docs link to it instead of copying.
 - Errors are `ApiError`. The server's message is user-facing: show it. Failed loads render `ErrorState` (with
   `unreachable` when `err.isUnreachable`); cart-line problems use `describeProblem` in `features/cart/cartRules.ts`.
 - Public, non-user data is cached with `useResource({ persist: true })` (§2c); user data never is.
-- Polling goes through `useResource`'s `pollInterval`; keep the existing intervals (staff 4 s, customer 8 s) unless
-  there is a reason.
+- Polling goes through `useResource`'s `pollInterval`, with the interval from `useConfig().polling` (site settings,
+  edited at `/admin`); never a hard-coded interval.
+- Config and rules come from the API (`GET /api/config`), never mirrored by hand. The one client copy is
+  `client/src/config/fallbacks.json` (defaults and field bounds), parity-tested by the server suite.
 
 ## 9. Icons and assets
 

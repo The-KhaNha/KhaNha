@@ -45,6 +45,7 @@ The API has no sign-in or sign-out route. The browser signs in and out with supa
 | ------ | -------------------- | ------------ | -------------------------------------------------------- | ----------------------------------------------- |
 | GET    | `/health`            | none         | none                                                     | 200 `{ ok: true, version, commit }`             |
 | GET    | `/ready`             | none         | none                                                     | 200 `{ ready: true }` or 503 `{ ready: false }` |
+| GET    | `/config`            | none         | none                                                     | 200 `ConfigDto`                                 |
 | POST   | `/auth/register`     | none         | body: [`registerSchema`](#post-authregister)             | 201 `{ user: UserDto }`                         |
 | GET    | `/auth/me`           | user         | none                                                     | 200 `{ user: UserDto }`                         |
 | GET    | `/store`             | none         | none                                                     | 200 `{ store: StoreDto }`                       |
@@ -66,6 +67,29 @@ Code: `server/src/controllers/health.controller.ts`. Liveness: always 200
 `{ "ok": true, "version": "0.1.0", "commit": "1a2b3c4…" }`. `version` is `server/package.json`'s (bumped only by the
 release PR); `commit` is `GIT_COMMIT` (`unknown` outside an image build). It does not touch the database, so a
 database outage never restarts a healthy container.
+
+### GET /config
+
+Code: `server/src/services/config.service.ts`. Public (no token), registered before the [client version
+gate](#client-version-gate) so an outdated client can still read the minimum it must reach. Derived from the cached
+site settings (no cache key of its own, so an admin's `PATCH /admin/settings` reaches it at once through
+`invalidate('site_settings')`) plus `SESSION_IDLE_DAYS`. `ConfigDto`:
+
+```json
+{
+  "serverVersion": "0.1.0",
+  "minClientVersion": "0.0.0",
+  "features": {},
+  "payment": null,
+  "limits": { "maxLinesPerOrder": 30 },
+  "polling": { "orderMs": 4000, "ordersMs": 8000, "staffBoardMs": 4000 },
+  "session": { "idleDays": 7 }
+}
+```
+
+`features` stays empty until P1.7 and `payment` null until P5. The client's defaults for this shape are
+`client/src/config/fallbacks.json`; `server/test/api/config.test.ts` fails when they differ from a freshly seeded
+database.
 
 ### GET /ready
 
@@ -490,8 +514,8 @@ body has not changed, the response is a bodiless `304 Not Modified` instead of t
 
 ### Server read cache (`server/src/utils/cache.ts`)
 
-`GET /api/menu`, `GET /api/store` and the `site_settings` row (read by every `GET /api/orders`, and by
-`GET /api/admin/settings`) are additionally held in an in-process cache, so concurrent requests during a cold cache
+`GET /api/menu`, `GET /api/store` and the `site_settings` row (read by every `GET /api/orders`, by
+`GET /api/admin/settings`, by `GET /api/config` and by the client version gate) are additionally held in an in-process cache, so concurrent requests during a cold cache
 share one database round-trip instead of repeating it:
 
 | Export                        | What                                                                                                                                                                                                                                                                                                                  |
@@ -500,11 +524,11 @@ share one database round-trip instead of repeating it:
 | `invalidate(key?)`            | drops one key, or every key with no argument                                                                                                                                                                                                                                                                          |
 | `PUBLIC_READ_TTL_MS = 10_000` | the 10 s TTL used by both reads below                                                                                                                                                                                                                                                                                 |
 
-| Cached endpoint                              | Key               | Loader                                      | Invalidated by                                                                                                                                                        |
-| -------------------------------------------- | ----------------- | ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/menu`                              | `'menu'`          | `menu.service.getMenu` → `loadMenu`         | `order.service.createOrder` (in a `finally`, so a placed order and a stock-refused one both invalidate it) and `updateOrderStatus` when the new status is `CANCELLED` |
-| `GET /api/store`                             | `'store'`         | `store.service.getCachedStore` → `getStore` | nothing today; a future store-editing endpoint must call `invalidate('store')`                                                                                        |
-| `GET /api/orders`, `GET /api/admin/settings` | `'site_settings'` | `settings.service.getSettings`              | `settings.service.updateSettings` (`PATCH /api/admin/settings`), at once                                                                                              |
+| Cached endpoint                                                 | Key               | Loader                                      | Invalidated by                                                                                                                                                        |
+| --------------------------------------------------------------- | ----------------- | ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/menu`                                                 | `'menu'`          | `menu.service.getMenu` → `loadMenu`         | `order.service.createOrder` (in a `finally`, so a placed order and a stock-refused one both invalidate it) and `updateOrderStatus` when the new status is `CANCELLED` |
+| `GET /api/store`                                                | `'store'`         | `store.service.getCachedStore` → `getStore` | nothing today; a future store-editing endpoint must call `invalidate('store')`                                                                                        |
+| `GET /api/orders`, `GET /api/admin/settings`, `GET /api/config` | `'site_settings'` | `settings.service.getSettings`              | `settings.service.updateSettings` (`PATCH /api/admin/settings`), at once                                                                                              |
 
 `createOrder`'s own `is_open` check calls the uncached `getStore()` directly, never `getCachedStore()` — a write
 path never trusts a stale read of the data it is about to act on. Nothing user-specific (orders, profiles) is ever

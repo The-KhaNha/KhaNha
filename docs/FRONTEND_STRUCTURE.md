@@ -28,11 +28,13 @@ client/
     ├── App.tsx             routes, route guards, per-route shell config
     ├── index.css           Tailwind import, design tokens (@theme), keyframes, utilities, reduced-motion rules
     ├── vite-env.d.ts       typed import.meta.env
+    ├── config/fallbacks.json  the server config's defaults and field bounds (the one client copy, parity-tested)
     ├── components/         shared presentational atoms (catalog: COMPONENTS.md)
     ├── features/
     │   ├── admin/          settingsRules, useSiteSettings (the /admin dashboard's rules and data hook)
     │   ├── auth/           authStore, RequireAuth, RequireRole, roles (homeFor), sessionActivity, useAuthRedirect, validation, AuthCard
     │   ├── cart/           cartStore, cartRules, useReorder, CartBar
+    │   ├── config/         useConfig (GET /api/config, persisted), fallbacks (config/fallbacks.json)
     │   ├── menu/           useMenu, useStore, CategoryChips, ItemDetailSheet
     │   ├── version/        versionStore (the 426 "outdated" flag), OutdatedBanner
     │   └── orders/         orderStatus, useOrder, useOrders, OrderHero, StaffHeader, StaffFilters, StaffBoard, StaffOrderCard
@@ -86,21 +88,21 @@ A new route needs an entry in both the `<Routes>` list and `SHELL_BY_ROUTE`, or 
 
 ## Pages
 
-| Page                 | Data                                                               | Notes                                                                                                                                                               |
-| -------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Home.tsx`           | `useStore()`                                                       | paprika hero with `StoreCard`                                                                                                                                       |
-| `Menu.tsx`           | `useMenu()`                                                        | `CategoryChips`, `PopularRail`, `FoodCard` list, `ItemDetailSheet`                                                                                                  |
-| `Cart.tsx`           | `useMenu()` (refreshes stock limits), `cartStore`                  | shows the Order Again notice from router state (`readReorderNotice`)                                                                                                |
-| `Checkout.tsx`       | `useMenu()`, `createOrder()`                                       | holds a green "Paid" state for 500 ms, then navigates to success with the order in router state                                                                     |
-| `OrderSuccess.tsx`   | `useOrder(id, passedOrder)`                                        | renders the passed order at once, then polls                                                                                                                        |
-| `Order.tsx`          | `useOrder(id)`, `useReorder()`                                     | tracking page with `OrderHero` and `StatusTracker`                                                                                                                  |
-| `Orders.tsx`         | `useOrders()`, `useReorder()`                                      | In progress / Past orders, Order Again                                                                                                                              |
-| `Profile.tsx`        | `authStore`                                                        | sign-out; a "Staff dashboard" row for `STAFF`, an "Admin dashboard" row for `ADMIN`; a footer "Food Pickup v0.1.0 (1a2b3c4)" from `lib/appVersion.ts`               |
-| `Login.tsx`          | `authStore.login`                                                  | `AuthCard`, `useAuthRedirect`                                                                                                                                       |
-| `Register.tsx`       | `authStore.register`                                               | `AuthCard`, `useAuthRedirect`, `validation.ts`                                                                                                                      |
-| `StaffDashboard.tsx` | `useOrders({ pollMs: 4000 })`, `useStore()`, `updateOrderStatus()` | owns polling, filters and status changes; the `Staff*` components are presentational                                                                                |
-| `Admin.tsx`          | `useSiteSettings()`                                                | `AdminPage` + `SettingsForm`; edits every `site_settings` field from the `SETTING_FIELDS` registry (see [COMPONENTS.md#featuresadmin](COMPONENTS.md#featuresadmin)) |
-| `NotFound.tsx`       | none                                                               |                                                                                                                                                                     |
+| Page                 | Data                                                                    | Notes                                                                                                                                                               |
+| -------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Home.tsx`           | `useStore()`                                                            | paprika hero with `StoreCard`                                                                                                                                       |
+| `Menu.tsx`           | `useMenu()`                                                             | `CategoryChips`, `PopularRail`, `FoodCard` list, `ItemDetailSheet`                                                                                                  |
+| `Cart.tsx`           | `useMenu()` (refreshes stock limits), `cartStore`                       | shows the Order Again notice from router state (`readReorderNotice`)                                                                                                |
+| `Checkout.tsx`       | `useMenu()`, `createOrder()`                                            | holds a green "Paid" state for 500 ms, then navigates to success with the order in router state                                                                     |
+| `OrderSuccess.tsx`   | `useOrder(id, passedOrder)`                                             | renders the passed order at once, then polls                                                                                                                        |
+| `Order.tsx`          | `useOrder(id)`, `useReorder()`                                          | tracking page with `OrderHero` and `StatusTracker`                                                                                                                  |
+| `Orders.tsx`         | `useOrders()`, `useReorder()`                                           | In progress / Past orders, Order Again                                                                                                                              |
+| `Profile.tsx`        | `authStore`                                                             | sign-out; a "Staff dashboard" row for `STAFF`, an "Admin dashboard" row for `ADMIN`; a footer "Food Pickup v0.1.0 (1a2b3c4)" from `lib/appVersion.ts`               |
+| `Login.tsx`          | `authStore.login`                                                       | `AuthCard`, `useAuthRedirect`                                                                                                                                       |
+| `Register.tsx`       | `authStore.register`                                                    | `AuthCard`, `useAuthRedirect`, `validation.ts`                                                                                                                      |
+| `StaffDashboard.tsx` | `useOrders({ audience: 'staff' })`, `useStore()`, `updateOrderStatus()` | owns polling, filters and status changes; the `Staff*` components are presentational                                                                                |
+| `Admin.tsx`          | `useSiteSettings()`                                                     | `AdminPage` + `SettingsForm`; edits every `site_settings` field from the `SETTING_FIELDS` registry (see [COMPONENTS.md#featuresadmin](COMPONENTS.md#featuresadmin)) |
+| `NotFound.tsx`       | none                                                                    |                                                                                                                                                                     |
 
 Polling intervals and the `useResource` engine are drawn in
 [ARCHITECTURE.md](ARCHITECTURE.md#72-the-polling-engine-useresource).
@@ -133,6 +135,7 @@ Only these modules call `request()` from `services/api.ts`. Components and hooks
 | `services/api.ts`    | `request<T>(path, { method, body, auth, signal })`, `ApiError`                           | base `/api`; attaches the bearer token when `auth` (default true)            |
 | `services/auth.ts`   | `signIn`, `signOut` (supabase-js), `register`, `fetchMe`                                 | `POST /auth/register`, `GET /auth/me`                                        |
 | `services/store.ts`  | `fetchStore`                                                                             | `GET /store`                                                                 |
+| `services/config.ts` | `fetchConfig`                                                                            | `GET /config` without a token; concurrent callers share one request          |
 | `services/menu.ts`   | `fetchMenu`                                                                              | `GET /menu`                                                                  |
 | `services/orders.ts` | `createOrder`, `fetchOrders(status?)`, `fetchOrder(id)`, `updateOrderStatus(id, status)` | `POST /orders`, `GET /orders`, `GET /orders/:id`, `PATCH /orders/:id/status` |
 | `services/admin.ts`  | `fetchSiteSettings()`, `updateSiteSettings(changes)`                                     | `GET /admin/settings`, `PATCH /admin/settings`                               |
@@ -188,7 +191,7 @@ Public, non-user data survives across visits and paints instantly; user data nev
 `fp_cache:v1:<key>` (`CACHE_PREFIX = 'fp_cache:v1:'` + the resource's `key`) after every successful fetch. On the
 next mount or visit with the same `key`, that cached value renders at once — `isLoading` is only true while there is
 nothing at all to show — while a real fetch runs and replaces it in the background
-(stale-while-revalidate). `useMenu()` and `useStore()` both pass `persist: true`; `useOrder`/`useOrders` never do —
+(stale-while-revalidate). `useMenu()`, `useStore()` and `useConfig()` pass `persist: true`; `useOrder`/`useOrders` never do —
 orders are user-specific and must never survive a sign-out on a shared device.
 
 If a refresh fails while a saved copy is showing, `MenuPage` and `HomePage` keep the saved copy and add a compact

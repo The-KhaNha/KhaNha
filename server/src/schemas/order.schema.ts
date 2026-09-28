@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { ORDER_STATUSES } from '../types/enums';
 import { optionalField, phoneField } from './common';
+import { LIMITS } from './limits';
 
 /** Most of one item in a single order, checked after duplicate lines are merged. */
 export const MAX_QUANTITY_PER_ITEM = 10;
@@ -38,9 +39,13 @@ export const createOrderSchema = z.object({
     .min(1, 'Add at least one item to your order.')
     .max(MAX_ITEM_LINES, `An order can have at most ${MAX_ITEM_LINES} items.`)
     .transform(mergeDuplicateItems),
-  customerName: optionalField(z.string().trim().max(60, 'Name must be at most 60 characters.')),
+  customerName: optionalField(
+    z.string().trim().max(LIMITS.nameMax, `Name must be at most ${LIMITS.nameMax} characters.`),
+  ),
   customerPhone: phoneField,
-  note: optionalField(z.string().trim().max(200, 'Note must be at most 200 characters.')),
+  note: optionalField(
+    z.string().trim().max(LIMITS.noteMax, `Note must be at most ${LIMITS.noteMax} characters.`),
+  ),
 });
 
 export type CreateOrderInput = z.infer<typeof createOrderSchema>;

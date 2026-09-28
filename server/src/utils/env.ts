@@ -32,6 +32,9 @@ const envSchema = z
     // URL from SUPABASE_URL but accepts plain http only for localhost, so a container reaching the local stack at
     // http://host.docker.internal:54321 must name it here (compose.yaml does). Unset: derived from SUPABASE_URL.
     SUPABASE_JWKS_URL: z.string().url('SUPABASE_JWKS_URL must be a URL.').optional(),
+    // Days a sign-in survives without use. Must equal auth.sessions.inactivity_timeout (168h) in
+    // supabase/config.toml and the hosted project's dashboard; the client reads it from GET /api/config.
+    SESSION_IDLE_DAYS: z.coerce.number().int().min(1).max(90).default(7),
     PORT: z.coerce.number().int().positive().default(8000),
     CLIENT_ORIGIN: z
       .string()
