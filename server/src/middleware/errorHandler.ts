@@ -1,7 +1,8 @@
 import type { ErrorRequestHandler, RequestHandler } from 'express';
 import { PostgrestError } from '@supabase/supabase-js';
 import { ZodError } from 'zod';
-import { AppError, type ErrorCode, type ItemErrorDetails } from '../utils/errors';
+import { AppError, IntegrationError, type ErrorCode, type ItemErrorDetails } from '../utils/errors';
+import { asDatabaseUnavailable } from '../utils/supabase';
 import { describeIssue } from './validate';
 
 interface ErrorDescription {
@@ -11,6 +12,13 @@ interface ErrorDescription {
   /** Present on item errors only: which cart line the message is about. */
   details?: ItemErrorDetails;
 }
+
+const UPSTREAM_UNAVAILABLE: ErrorDescription = {
+  status: 503,
+  code: 'UPSTREAM_UNAVAILABLE',
+  message: 'The service is temporarily unavailable. Please try again in a moment.',
+};
+const RETRY_AFTER_SECONDS = '5';
 
 const INTERNAL: ErrorDescription = {
   status: 500,
@@ -26,13 +34,17 @@ export const notFoundHandler: RequestHandler = (req, res) => {
 };
 
 // Express only treats a 4-argument function as an error handler, so `_next` must stay.
-export const errorHandler: ErrorRequestHandler = (err: unknown, req, res, _next) => {
+export const errorHandler: ErrorRequestHandler = (thrown: unknown, req, res, _next) => {
+  const err = asDatabaseUnavailable(thrown) ?? thrown;
   const { status, code, message, details } = describeError(err);
+  if (err instanceof IntegrationError) res.set('Retry-After', RETRY_AFTER_SECONDS);
   // The one place a failed request is logged. Only 5xx carries the error and its stack; a 4xx is an expected
   // client error, and 401/403 are warn because a burst of them is worth noticing.
   // A 426 is debug: a stale tab keeps asking until it reloads, and each ask is expected.
-  if (status >= 500) req.log.error({ err, code }, 'Request failed');
-  else if (status === 426) req.log.debug({ status, code }, message);
+  if (status >= 500) {
+    const route = req.route ? `${req.baseUrl}${String(req.route.path)}` : req.path;
+    req.log.error({ err, route, status, code, userId: req.user?.id }, 'Request failed');
+  } else if (status === 426) req.log.debug({ status, code }, message);
   else req.log[status === 401 || status === 403 ? 'warn' : 'info']({ status, code }, message);
   // The envelope is { error: { code, message } }, plus `details` when an error is about one cart line.
   res.status(status).json({ error: { code, message, ...(details && { details }) } });
@@ -40,6 +52,7 @@ export const errorHandler: ErrorRequestHandler = (err: unknown, req, res, _next)
 
 function describeError(err: unknown): ErrorDescription {
   if (err instanceof AppError) return err;
+  if (err instanceof IntegrationError) return UPSTREAM_UNAVAILABLE;
   if (err instanceof ZodError) {
     return { status: 400, code: 'VALIDATION_ERROR', message: describeIssue(err.issues[0]) };
   }

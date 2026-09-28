@@ -23,7 +23,8 @@ gets it from `supabase.auth.signInWithPassword` and supabase-js refreshes it (`j
 1. Reads the bearer token. The scheme is matched case-insensitively. No token: 401 `UNAUTHORIZED`
    "Please sign in to continue."
 2. Verifies it against the project's JWKS with `verifyCredentials` from `@supabase/server` (audience `authenticated`).
-   A 5xx from the verifier (for example the JWKS cannot be fetched) becomes 500 `INTERNAL`. Any other failure (bad
+   If the signing keys cannot be fetched (`JWKS_FETCH_FAILED`), 503 `UPSTREAM_UNAVAILABLE`; any other 5xx from the
+   verifier (a misconfiguration: no JWKS, no keys) becomes 500 `INTERNAL`. Any other failure (bad
    signature, expired, another project) is 401 `UNAUTHORIZED` "Your session has expired. Please sign in again."
 3. Loads `id, role` from `profiles`. No profile: 401 `UNAUTHORIZED` "That account no longer exists. Please sign in
    again."
@@ -401,9 +402,9 @@ Every error response has this shape (`server/src/middleware/errorHandler.ts`):
 | 409    | `INVALID_STATUS_TRANSITION` | `PATCH /orders/:id/status` (from `update_order_status`)                                                                                                                                                                                                                                                    |
 | 413    | `PAYLOAD_TOO_LARGE`         | JSON body over the `express.json()` default limit of 100 kB ("The request body is too large.")                                                                                                                                                                                                             |
 | 500    | `INTERNAL`                  | anything else ("Something went wrong. Please try again."), logged with its stack                                                                                                                                                                                                                           |
+| 503    | `UPSTREAM_UNAVAILABLE`      | any route when the database or Supabase Auth cannot be reached (an `IntegrationError`): "The service is temporarily unavailable. Please try again in a moment.", with `Retry-After: 5`; logged once at `error` with the cause chain                                                                        |
 
-`INVALID_CREDENTIALS` is listed in the server's `ErrorCode` union but the server never raises it. The client creates
-it itself for a failed Supabase sign-in, together with `UNREACHABLE`, `RATE_LIMITED` and `UNKNOWN`
+The client also creates codes the server never sends: `INVALID_CREDENTIALS` for a failed Supabase sign-in, together with `UNREACHABLE`, `RATE_LIMITED` and `UNKNOWN`
 (`client/src/services/auth.ts`, `client/src/services/api.ts`, `client/src/lib/useResource.ts`). The client treats
 `ApiError.code` as a plain string.
 

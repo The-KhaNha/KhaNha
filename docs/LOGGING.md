@@ -59,6 +59,21 @@ Successful `GET`s are logged at `debug` on purpose: the staff board polls every 
   controllers throw (`AppError` or the raw error) and do not also log it. Never log and rethrow.
 - Do not log inside loops or on polling paths above `debug`.
 
+## Error classes
+
+| Error                                                        | Thrown by                                                                                                                             | Answer                                       | Logged                                        |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- | --------------------------------------------- |
+| `AppError` (factories in `utils/errors.ts`)                  | services, middleware                                                                                                                  | its status and code                          | 401/403 `warn`, 426 `debug`, other 4xx `info` |
+| `IntegrationError { provider, operation, retryable, cause }` | `utils/supabase.ts` `asDatabaseUnavailable` (the error handler applies it to every error), `middleware/auth.ts` (`JWKS_FETCH_FAILED`) | 503 `UPSTREAM_UNAVAILABLE`, `Retry-After: 5` | once, `error`                                 |
+| anything else                                                | –                                                                                                                                     | 500 `INTERNAL`                               | once, `error`                                 |
+
+The database counts as unreachable when a call fails in transport: with `.throwOnError()`, postgrest-js retries an
+idempotent read three times (1, 2, 4 s) and then rethrows undici's own `TypeError: fetch failed`, whose `cause` is the
+socket error; a non-throwing call returns an error with an empty `code` and that same message. Timeouts
+(`TimeoutError`, `AbortError`) count too. The `error` line carries `err` (serialized with `errWithCause`, so the
+whole chain appears: `err.cause.message`, `err.cause.cause.message`), `route`, `status`, `code` and `userId`.
+pino-http runs with `wrapSerializers: false` so its own `err` serializer cannot drop the cause.
+
 ## Never logged
 
 The server redacts these paths to `[Redacted]` (`REDACT_PATHS` in `server/src/utils/logger.ts`, tested in
@@ -67,6 +82,9 @@ The server redacts these paths to `[Redacted]` (`REDACT_PATHS` in `server/src/ut
 - `req.headers.authorization`, `req.headers.cookie`, `res.headers["set-cookie"]`
 - `password`, `token`, `access_token`, `refresh_token`, `email`, `phone`, `SUPABASE_SECRET_KEY`, at the top level
   and one level down (`body.email`, `user.phone`, …)
+- payment and pickup secrets, ahead of P5: `signature`, `checksum`, `secret`, `apiKey`, `api_key`, `key_secret`,
+  `webhookSecret`, `webhook_secret`, `vpa`, `pickupCode`, `pickup_code`, `customerPhone`, `customer_phone`, and
+  `headers.authorization` (an outbound call's headers), each at the top level and one level down
 
 Redaction only covers object keys. Never put a token, password, email or phone number into a message string, and
 never log a whole request body. On the client there is no redaction at all: never pass tokens or PII to `logger`.

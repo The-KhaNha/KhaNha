@@ -238,6 +238,9 @@ One owner per topic; other docs link to it instead of copying.
   in `client/src/types/api.ts` (named `X`) in the same change.
 - **Errors:** throw the `AppError` factories in `utils/errors.ts`; add new codes to `ErrorCode`. The envelope is
   `{ error: { code, message, details? } }`.
+  A dependency that fails or cannot be reached is an `IntegrationError { provider, operation, retryable, cause }`
+  (503 `UPSTREAM_UNAVAILABLE` with `Retry-After`); wrap with `{ cause }`, never swallow it (`docs/LOGGING.md`
+  "Error classes").
 - **Atomic multi-step writes** go into a SQL function (`p_` params; expected failures raise P0001 with the API error
   code as the message and JSON detail, decoded by `raisedByDatabase` in `utils/supabase.ts`).
 - **Trust nothing from the client:** prices and totals come from the database. Someone else's resource is 404, never
@@ -462,7 +465,7 @@ Agents added during a session are not registered until the next session; meanwhi
 
 | Level | Meaning | In this app |
 | --- | --- | --- |
-| `error` | 5xx or unexpected; server logs it with `err` (stack) | unhandled route error, JWKS fetch failure, database unreachable |
+| `error` | 5xx or unexpected; server logs it with `err` (stack and cause chain), `route`, `status`, `code`, `userId` | unhandled route error; 503 `UPSTREAM_UNAVAILABLE` (database or Auth unreachable, an `IntegrationError`) |
 | `warn` | expected but worth noticing | 401 / 403 (426 `CLIENT_OUTDATED` is `debug`: a stale tab keeps asking) |
 | `info` | lifecycle and business events | listening/shutdown, `Order placed`, `Order status changed`, 4xx like `INSUFFICIENT_STOCK`, access lines for writes |
 | `debug` | dev tracing | access lines for successful reads (polled lists) |

@@ -1,6 +1,9 @@
+import type { Request, Response } from 'express';
 import { describe, expect, it } from 'vitest';
+import { errorHandler } from '../../src/middleware/errorHandler';
 import {
   AppError,
+  IntegrationError,
   forbidden,
   insufficientStock,
   notFound,
@@ -64,5 +67,93 @@ describe('AppError factories', () => {
   it('every factory error has name AppError (for instanceof checks in the error handler)', () => {
     expect(validationError('x').name).toBe('AppError');
     expect(unauthorized().name).toBe('AppError');
+  });
+});
+
+describe('errorHandler mapping', () => {
+  function run(err: unknown, user?: { id: string }) {
+    const logged: { level: string; fields: Record<string, unknown> }[] = [];
+    const log = Object.fromEntries(
+      ['error', 'warn', 'info', 'debug'].map((level) => [
+        level,
+        (fields: Record<string, unknown>) => logged.push({ level, fields }),
+      ]),
+    );
+    const req = {
+      log,
+      path: '/orders',
+      baseUrl: '/api',
+      route: { path: '/orders' },
+      user,
+    } as unknown as Request;
+    const headers: Record<string, string> = {};
+    let status = 0;
+    let body: unknown;
+    const res = {
+      set: (name: string, value: string) => {
+        headers[name] = value;
+        return res;
+      },
+      status: (code: number) => {
+        status = code;
+        return res;
+      },
+      json: (value: unknown) => {
+        body = value;
+        return res;
+      },
+    } as unknown as Response;
+    errorHandler(err, req, res, () => {});
+    return { status, body, headers, logged };
+  }
+
+  const fetchFailed = () =>
+    Object.assign(new TypeError('fetch failed'), { cause: new Error('connect ECONNREFUSED') });
+
+  it.each([
+    [
+      'an IntegrationError',
+      new IntegrationError('supabase-auth', 'verify', true, { cause: new Error('x') }),
+    ],
+    ["undici's fetch failed (from .throwOnError())", fetchFailed()],
+    [
+      'a PostgREST-shaped transport error (empty code)',
+      { code: '', message: 'TypeError: fetch failed' },
+    ],
+    ['a timeout', Object.assign(new Error('The operation timed out.'), { name: 'TimeoutError' })],
+  ])('%s → 503 UPSTREAM_UNAVAILABLE with Retry-After: 5', (_label, err) => {
+    const { status, body, headers, logged } = run(err, { id: 'u1' });
+    expect(status).toBe(503);
+    expect(body).toEqual({
+      error: {
+        code: 'UPSTREAM_UNAVAILABLE',
+        message: 'The service is temporarily unavailable. Please try again in a moment.',
+      },
+    });
+    expect(headers['Retry-After']).toBe('5');
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toMatchObject({
+      level: 'error',
+      fields: { route: '/api/orders', status: 503, code: 'UPSTREAM_UNAVAILABLE', userId: 'u1' },
+    });
+  });
+
+  it('keeps an unknown error a 500 INTERNAL, without Retry-After', () => {
+    const { status, body, headers } = run(new Error('boom'));
+    expect(status).toBe(500);
+    expect(body).toEqual({
+      error: { code: 'INTERNAL', message: 'Something went wrong. Please try again.' },
+    });
+    expect(headers['Retry-After']).toBeUndefined();
+  });
+
+  it('keeps an AppError as it is, logged below error', () => {
+    const { status, logged } = run(forbidden());
+    expect(status).toBe(403);
+    expect(logged[0]?.level).toBe('warn');
+  });
+
+  it('does not treat an ordinary TypeError as a transport failure', () => {
+    expect(run(new TypeError('x is not a function')).status).toBe(500);
   });
 });

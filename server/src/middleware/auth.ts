@@ -1,7 +1,7 @@
 import type { RequestHandler } from 'express';
 import { verifyCredentials } from '@supabase/server/core';
 import type { AuthUser } from '../types/auth';
-import { forbidden, unauthorized } from '../utils/errors';
+import { forbidden, IntegrationError, unauthorized } from '../utils/errors';
 import { supabaseAdmin, supabaseEnv } from '../utils/supabase';
 
 function readBearerToken(header: string | undefined): string | undefined {
@@ -22,7 +22,11 @@ export const requireAuth: RequestHandler = async (req, _res, next) => {
     { token, apikey: null },
     { auth: 'user', audience: 'authenticated', env: supabaseEnv },
   );
-  // 5xx means this server is misconfigured (e.g. the JWKS cannot be fetched): not the caller's fault.
+  // Supabase Auth unreachable (its signing keys could not be fetched): a 503 the client may retry.
+  if (error?.code === 'JWKS_FETCH_FAILED') {
+    throw new IntegrationError('supabase-auth', 'verify', true, { cause: error });
+  }
+  // Any other 5xx means this server is misconfigured (no JWKS, no keys): not the caller's fault, and not transient.
   if (error && error.status >= 500) throw error;
   if (!auth?.userClaims) throw unauthorized('Your session has expired. Please sign in again.');
 

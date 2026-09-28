@@ -7,12 +7,12 @@ export type ErrorCode =
   | 'INSUFFICIENT_STOCK'
   | 'STORE_CLOSED'
   | 'UNAUTHORIZED'
-  | 'INVALID_CREDENTIALS'
   | 'FORBIDDEN'
   | 'NOT_FOUND'
   | 'EMAIL_TAKEN'
   | 'INVALID_STATUS_TRANSITION'
   | 'CLIENT_OUTDATED'
+  | 'UPSTREAM_UNAVAILABLE'
   | 'INTERNAL';
 
 /**
@@ -23,6 +23,22 @@ export interface ItemErrorDetails {
   menuItemId: string;
   name?: string;
   available: number;
+}
+
+/**
+ * A dependency (Supabase's database or Auth, later the payment provider) failed or could not be reached. The error
+ * handler answers 503 UPSTREAM_UNAVAILABLE with Retry-After, and logs it once at error with the whole cause chain.
+ */
+export class IntegrationError extends Error {
+  constructor(
+    public readonly provider: string,
+    public readonly operation: string,
+    public readonly retryable: boolean,
+    options: { cause: unknown },
+  ) {
+    super(`${provider} ${operation} failed`, options);
+    this.name = 'IntegrationError';
+  }
 }
 
 /** An expected failure that maps straight to an HTTP status and a user-friendly message. */

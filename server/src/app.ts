@@ -2,12 +2,13 @@ import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import cors from 'cors';
 import express, { type Express } from 'express';
+import pino from 'pino';
 import { pinoHttp } from 'pino-http';
 import { readClientVersion } from './middleware/clientVersion';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { apiRouter } from './routes/index';
 import { env } from './utils/env';
-import { logger } from './utils/logger';
+import { LOG_SERIALIZERS, logger } from './utils/logger';
 
 // A caller-supplied id is kept only if it is short and plain, so it cannot forge log content.
 const REQUEST_ID = /^[\w.-]{1,64}$/;
@@ -48,6 +49,14 @@ export function createApp(): Express {
     pinoHttp({
       logger,
       genReqId: requestId,
+      // Unwrapped: pino-http would otherwise run the standard err serializer first, which drops err.cause before
+      // errWithCause (LOG_SERIALIZERS) sees it. req/res are then named explicitly.
+      wrapSerializers: false,
+      serializers: {
+        ...LOG_SERIALIZERS,
+        req: pino.stdSerializers.req,
+        res: pino.stdSerializers.res,
+      },
       customLogLevel: accessLevel,
       // Which client build made the request: tells a stale tab from a current one when reading logs.
       customProps: (req) => ({ clientVersion: readClientVersion(req) ?? 'none' }),
