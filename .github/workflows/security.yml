@@ -1,9 +1,18 @@
 name: security
 
-# Informational, not a required check: a new advisory in a dependency should not block unrelated PRs.
+# Informational: a new advisory in a dependency should not block unrelated PRs. On PRs it runs only when dependencies
+# change (the PR's own commits are scanned for secrets by ci.yml's repo job); the full audit and the full-history
+# secret scan run weekly (GitHub Free minutes, ADR-011).
 on:
   pull_request:
     branches: [dev, main]
+    paths:
+      [
+        '**/package.json',
+        '**/package-lock.json',
+        '.gitleaks.toml',
+        '.github/workflows/security.yml',
+      ]
   schedule:
     - cron: '0 3 * * 1'
   workflow_dispatch:

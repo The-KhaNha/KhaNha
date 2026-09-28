@@ -1,7 +1,9 @@
 name: ci
 
-# The one required check is `ci-ok`. No `paths:` filters: a path-filtered required check leaves unrelated PRs stuck
-# at "Expected".
+# `ci-ok` sums up every job. GitHub Free has no required checks for a private repository (docs/adr/011-free-tiers.md),
+# so it is advisory: merge only when it is green. Heavy jobs run only when their files changed (the `changes` job), to
+# fit the 2,000 Actions minutes a month; a skipped job counts as passed. The workflow itself has no `paths:` filter, so
+# every PR still reports `ci-ok`.
 on:
   pull_request:
     branches: [dev, main]
@@ -18,7 +20,41 @@ permissions:
   contents: read
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      client: ${{ steps.filter.outputs.client }}
+      server: ${{ steps.filter.outputs.server }}
+      images: ${{ steps.filter.outputs.images }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            client:
+              - 'client/**'
+              - '.node-version'
+              - 'scripts/ci/check-bundle.mjs'
+              - '.github/workflows/ci.yml'
+            server:
+              - 'server/**'
+              # The parity tests read the client's fallbacks.
+              - 'client/src/config/fallbacks.json'
+              - '.node-version'
+              - '.github/workflows/ci.yml'
+            images:
+              - 'client/**'
+              - 'server/**'
+              - 'compose.yaml'
+              - '.github/workflows/ci.yml'
+
   client:
+    needs: changes
+    if: needs.changes.outputs.client == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -39,6 +75,8 @@ jobs:
       - run: node ../scripts/ci/check-bundle.mjs .
 
   server-static:
+    needs: changes
+    if: needs.changes.outputs.server == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -58,6 +96,8 @@ jobs:
       - run: npm run build
 
   server-tests:
+    needs: changes
+    if: needs.changes.outputs.server == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -83,7 +123,8 @@ jobs:
         run: npm run db:stop
 
   migrations:
-    if: github.event_name == 'pull_request'
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.server == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -120,6 +161,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The PR's own commits are scanned for secrets below.
+          fetch-depth: ${{ github.event_name == 'pull_request' && 0 || 1 }}
       - uses: actions/setup-node@v4
         with:
           node-version-file: .node-version
@@ -129,8 +173,20 @@ jobs:
       - run: npm run format:check
       - run: npm test
       - run: npm run check:durations
+      # The PR's commits only, here where it costs no extra job minute; security.yml scans the whole history weekly.
+      - name: Secrets in this PR's commits
+        if: github.event_name == 'pull_request'
+        env:
+          GITLEAKS_VERSION: 8.30.1
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz -C "$RUNNER_TEMP" gitleaks
+          "$RUNNER_TEMP/gitleaks" detect --source . --redact --verbose --log-opts="origin/${BASE_REF}..HEAD"
 
   images:
+    needs: changes
+    if: needs.changes.outputs.images == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -182,7 +238,7 @@ jobs:
 
   ci-ok:
     if: always()
-    needs: [client, server-static, server-tests, migrations, version-intent, repo, images]
+    needs: [changes, client, server-static, server-tests, migrations, version-intent, repo, images]
     runs-on: ubuntu-latest
     steps:
       # Skipped jobs (PR-only jobs on a push) count as success.

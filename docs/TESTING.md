@@ -119,7 +119,19 @@ A test that fails because of a real bug is a bug report. Never weaken the assert
 `.github/workflows/ci.yml` runs on every pull request into `dev` or `main` and on every push to them. Its aggregate
 job `ci-ok` sums them up. On GitHub Free a private repository has no rulesets, so it is advisory: merge only when it
 is green ([ADR-011](adr/011-free-tiers.md)). It fails when any job failed or was cancelled, and counts
-skipped jobs (the PR-only ones on a push) as passed. There are no `paths:` filters, so every PR reports `ci-ok`.
+skipped jobs as passed. The workflow has no `paths:` filter, so every PR reports `ci-ok`; inside it the `changes` job
+(`dorny/paths-filter`) skips what a PR does not touch, to fit GitHub Free's 2,000 Actions minutes a month:
+
+| Changed                                         | Jobs that run (besides `changes`, `repo`, `version-intent` on PRs, `ci-ok`) |
+| ----------------------------------------------- | --------------------------------------------------------------------------- |
+| `client/**`                                     | `client`, `images`                                                          |
+| `server/**`, `client/src/config/fallbacks.json` | `server-static`, `server-tests`, `migrations` (PRs), `images`               |
+| `compose.yaml`                                  | `images`                                                                    |
+| `.github/workflows/ci.yml`, `.node-version`     | all of them                                                                 |
+| only docs, plans, `scripts/**`, `.claude/**`    | none                                                                        |
+
+Roughly: a docs-only PR costs 4–5 billed minutes a push, a client change about 12, a server change about 20 (most of it
+`server-tests` starting Supabase). Each job is billed rounded up to a whole minute.
 
 | Job                        | Runs                                                                                                                                                                                                                                                           | Reproduce locally                                                                                                                |
 | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
@@ -127,8 +139,9 @@ skipped jobs (the PR-only ones on a push) as passed. There are no `paths:` filte
 | `server-static`            | `npm ci --ignore-scripts`, typecheck, lint, `format:check`, build                                                                                                                                                                                              | the same commands in `server/`                                                                                                   |
 | `server-tests`             | `npm ci`, `db:start:ci` (Postgres, GoTrue, PostgREST, Kong only), `cp .env.example .env`, seed, `npm test`, then `db:types` must leave `src/types/database.ts` unchanged; `db:stop` always; 15-minute timeout                                                  | `npm run db:start && npm run seed && npm test && npm run db:types && git diff --exit-code -- src/types/database.ts` in `server/` |
 | `migrations` (PR only)     | `scripts/ci/check-migrations.mjs`: the PR may only add migrations, each with a 14-digit prefix newer than the base's newest; added files already on `main` (hotfix back-merges) are skipped                                                                    | `node scripts/ci/check-migrations.mjs --base origin/dev`                                                                         |
+| `changes`                  | which parts changed (`client`, `server`, `images`), for the jobs below                                                                                                                                                                                         | –                                                                                                                                |
 | `version-intent` (PR only) | `scripts/version/check.mjs`: a PR that changes package source adds a `.changes/*.md` intent (the `no-release` label skips it); a `release/*` PR into `main` has no intents left and versions above the latest tags                                             | `npm run change:check`                                                                                                           |
-| `repo`                     | root `npm ci`, `format:check` (`scripts/**`, `.github/**`, `plans/**`), `npm test` (`node --test` over `scripts/**/*.test.mjs`)                                                                                                                                | `npm run format:check && npm test` at the root                                                                                   |
+| `repo`                     | root `npm ci`, `format:check` (`scripts/**`, `.github/**`, `plans/**`), `npm test` (`node --test` over `scripts/**/*.test.mjs`), `check:durations`, and on PRs gitleaks over the PR's own commits (`--log-opts origin/<base>..HEAD`)                           | `npm run format:check && npm test` at the root                                                                                   |
 | `images`                   | hadolint on both Dockerfiles; buildx builds of `fp-api` and `fp-web` (GitHub Actions cache, `GIT_COMMIT` = the SHA); smoke: `/api/health` with dummy Supabase env (and the commit in it), `/healthz` and `/runtime-env.js`; size budgets 200 MB API, 50 MB web | `docker compose up --build web api`, or the `docker build` / `docker run` lines in DEPLOYMENT.md                                 |
 | `ci-ok`                    | aggregates the jobs above                                                                                                                                                                                                                                      | –                                                                                                                                |
 
@@ -150,7 +163,8 @@ the versions and opens the back-merge PR into `dev` (CLAUDE.md §21).
 
 ### Lighthouse (`perf.yml`)
 
-On PRs into `dev` or `main` that touch `client/**`, nightly and on demand; informational. It starts local Supabase
+On pushes to `dev` that touch `client/**` (one run per merged client PR) and on demand (`workflow_dispatch`, before
+a release); informational. About 12 minutes a run, so it does not run on every PR push (ADR-011). It starts local Supabase
 (`db:start:ci`, seed), brings up `docker compose up --wait web api`, runs `npx @lhci/cli autorun` in `client/` with
 `client/lighthouserc.json` (`/` and `/menu`, 360×640, Slow 4G, 4× CPU, three runs; LCP, CLS and TBT budgets as
 warnings) and uploads `client/lhci/` as the `lighthouse-report` artifact. Numbers: `docs/PERF_BASELINE.md`
@@ -158,7 +172,8 @@ warnings) and uploads `client/lhci/` as the `lighthouse-report` artifact. Number
 
 ### Security checks (`security.yml`)
 
-Runs on PRs into `dev` and `main`, weekly (Monday 03:00 UTC) and on demand. Informational, not required.
+Runs weekly (Monday 03:00 UTC), on demand, and on PRs that change a `package.json`, a lockfile or `.gitleaks.toml`.
+Informational. A PR's own commits are scanned for secrets by `ci.yml`'s `repo` job on every PR.
 
 | Job       | Runs                                                                                   | Reproduce locally                                                                                  |
 | --------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |

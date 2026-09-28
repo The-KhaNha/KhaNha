@@ -1,20 +1,19 @@
 name: perf
 
-# Lighthouse on the compose stack at the CLAUDE.md §2b budgets (360×640, Slow 4G, 4× CPU). Informational: not a
-# required check, and the assertions warn for now (docs/PERF_BASELINE.md "CI numbers").
+# Lighthouse on the compose stack at the CLAUDE.md §2b budgets (360×640, Slow 4G, 4× CPU). Informational, and the
+# assertions warn for now (docs/PERF_BASELINE.md "CI numbers"). About 12 minutes a run, so it runs once per merge into
+# dev that touches the client, and on demand before a release, not on every PR push (GitHub Free minutes, ADR-011).
 on:
-  pull_request:
-    branches: [dev, main]
+  push:
+    branches: [dev]
     paths: ['client/**', '.github/workflows/perf.yml']
-  schedule:
-    - cron: '30 2 * * *'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: perf-${{ github.event.pull_request.number || github.ref }}
+  group: perf-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
