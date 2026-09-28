@@ -44,7 +44,7 @@ Read from `server/.env` (copy `server/.env.example`) or the host's environment. 
 | `SUPABASE_SECRET_KEY`                                                  | yes             |                                 | starts with `sb_secret_` (legacy JWT keys are rejected)      | the project's secret key (Project Settings → API Keys). Bypasses RLS. Never in the client or git                                                                                                                                                                           |
 | `NODE_ENV`                                                             | no              |                                 | any                                                          | `production` in the API image (set by the Dockerfile): turns the pretty log transport off, so logs are JSON lines                                                                                                                                                          |
 | `SUPABASE_JWKS_URL`                                                    | no              | derived from `SUPABASE_URL`     | a URL                                                        | where to fetch the token signing keys when `SUPABASE_URL` is plain `http` on a host other than localhost (a container reaching the local stack at `host.docker.internal`); see [Containers](#signed-in-requests-from-a-container-supabase_jwks_url)                        |
-| `SESSION_IDLE_DAYS`                                                    | no              | `7`                             | integer 1–90                                                 | days a sign-in survives without use, served as `session.idleDays` by `GET /api/config`; must equal `auth.sessions.inactivity_timeout` in `supabase/config.toml` and the hosted dashboard ([CONFIGURATION.md](CONFIGURATION.md#deployment-settings))                        |
+| `SESSION_IDLE_DAYS`                                                    | no              | `7`                             | integer 1–90                                                 | days a sign-in survives without use, served as `session.idleDays` by `GET /api/config`; must equal `auth.sessions.inactivity_timeout` in `supabase/config.toml` (hosted Supabase Free has none, ADR-011) ([CONFIGURATION.md](CONFIGURATION.md#deployment-settings))        |
 | `PORT`                                                                 | no              | `8000`                          | positive integer                                             | API port. `start.sh` reads it for its probes and passes it to the web app's dev proxy (`VITE_API_PROXY_TARGET`)                                                                                                                                                            |
 | `PUBLIC_READ_TTL_MS`                                                   | no              | `10000`                         | integer 0–600000                                             | how long public reads (menu, store, site settings) stay in the per-process cache (`utils/cache.ts`); 0 turns it off. Another instance may serve an admin's change up to this late                                                                                          |
 | `TRUST_PROXY_HOPS`                                                     | no              | `0`                             | integer 0–10                                                 | proxies in front of the API whose `X-Forwarded-For` Express trusts for `req.ip` (`app.set('trust proxy', …)`); compose sets 1 for its nginx. 0 means `req.ip` is the socket peer and cannot be spoofed                                                                     |
@@ -284,11 +284,12 @@ sequenceDiagram
 A sign-in lasts 7 days without use (`client/src/features/auth/sessionActivity.ts`, `server/supabase/config.toml`'s
 `[auth.sessions] inactivity_timeout = "168h"` for the local stack — see
 [PERMISSIONS.md#session-lifetime](PERMISSIONS.md#session-lifetime)). `config.toml` only configures the local Docker
-stack; a hosted project (staging or production) needs the same limit set by hand, because
-**`inactivity_timeout` is a paid-plan setting only available in the Supabase dashboard** (Authentication → Sessions →
-"Time-box user sessions" / inactivity), not in a config file. `jwt_expiry` (the 1 h access token lifetime) is a
-project setting too but its default already matches `config.toml`'s `3600`. Until this is set on a hosted project,
-the client's own 7-day check still runs, but Supabase's refresh token itself will not expire on inactivity.
+stack. On a hosted project the same limit is **`inactivity_timeout`, a Pro-plan setting** (Authentication → Sessions),
+not a config file. The project runs on Supabase Free ([ADR-011](adr/011-free-tiers.md)), so hosted staging and
+production do not have it: the client's own 7-day check runs, but Supabase's refresh token does not expire on
+inactivity, and a copied refresh token stays valid until the user signs out. A server-side idle check is the planned
+fix (ADR-011). `jwt_expiry` (the 1 h access token lifetime) is a project setting whose default already matches
+`config.toml`'s `3600`.
 
 ## Containers
 

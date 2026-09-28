@@ -45,8 +45,8 @@ Successful `GET`s are logged at `debug` on purpose: the staff board polls every 
 - The client logs `requestId` from the response header when an API call fails, so a browser report can be matched to
   the server line.
 - Other client events: `warn` "Session activity storage unavailable" (`features/auth/sessionActivity.ts`,
-  `{ operation, error }`, once per session when `localStorage` refuses the write, so the client-side 7-day cap is off
-  and Supabase's `inactivity_timeout` is the only enforcement); `warn` "Session expired from inactivity" (`features/auth/authStore.ts`, `{ idleDays }`, once when
+  `{ operation, error }`, once per session when `localStorage` refuses the write, so the client-side 7-day cap is off;
+  locally `inactivity_timeout` still applies, on hosted Supabase Free nothing does, see ADR-011); `warn` "Session expired from inactivity" (`features/auth/authStore.ts`, `{ idleDays }`, once when
   an unused device is signed out after 7 days); `error` "Page chunk failed to load" (`components/PageBoundary.tsx`, once per failed lazy
   route); `debug` "Resource cache unavailable" (`lib/useResource.ts`, once per key when `localStorage` is full or
   blocked).

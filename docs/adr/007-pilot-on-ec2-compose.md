@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted (2026-09-28).
 
 ## Date
 
@@ -34,7 +34,16 @@ Command. Kubernetes (EKS) comes only after a measured gate in P10.1.
 ## Consequences
 
 - Local development and production share the compose layout built in P0.6.
-- Secrets are rendered from Secrets Manager and SSM into a tmpfs file, never baked into images.
+- **Secrets** ([P8.6][p8.6]). Runtime secrets (`SUPABASE_SECRET_KEY`, later the payment keys, `PICKUP_CODE_SECRET`,
+  `VAPID_PRIVATE_KEY`) live in AWS Secrets Manager per environment; non-secret configuration in SSM Parameter Store.
+  At deploy, each host's instance role reads its own environment's values and renders them into a tmpfs env file for
+  compose. They are never baked into images, committed, or stored in GitHub.
+- **GitHub holds no AWS keys.** The deploy workflow assumes an IAM role through GitHub OIDC (short-lived credentials,
+  limited to pushing to ECR and `ssm:SendCommand` on the app's hosts). GitHub repository secrets hold only what the
+  workflows themselves need: the release App's id and key (`release.yml`). Both work on GitHub Free
+  ([ADR-011][adr-011]).
+- Cost: Secrets Manager charges per secret per month; SSM Parameter Store standard parameters are free. Keep the
+  secret count small, and put everything that is not a secret in Parameter Store.
 - P9.1 sets the real instance size and count.
 - Migrating to EKS happens when any two gate conditions are true (more than 4 hosts at peak or independent scaling
   several times a day; compose-over-SSM a bottleneck; a second region; the operational capacity). If the gate fails,
@@ -51,6 +60,7 @@ Command. Kubernetes (EKS) comes only after a measured gate in P10.1.
 - [P9.1 Load testing from 100 to 1000 concurrent][p9.1]
 - [P10.1 Kubernetes migration][p10.1]
 - [ADR-005][adr-005]
+- [ADR-011][adr-011] (the free tiers)
 
 [decisions-needed]: ../../plans/ROADMAP.md#decisions-needed
 [deployment-on-aws-pilot]: ../../plans/ROADMAP.md#deployment-on-aws-pilot
@@ -62,3 +72,5 @@ Command. Kubernetes (EKS) comes only after a measured gate in P10.1.
 [p9.1]: ../../plans/ROADMAP.md#p91-load-testing-from-100-to-1000-concurrent
 [p10.1]: ../../plans/ROADMAP.md#p101-kubernetes-migration
 [adr-005]: 005-modular-monolith-three-processes.md
+[adr-011]: 011-free-tiers.md
+[p8.6]: ../../plans/ROADMAP.md#p86-secrets-and-configuration

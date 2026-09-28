@@ -254,7 +254,8 @@ One owner per topic; other docs link to it instead of copying.
 - Public reads are cached with `cached()` and invalidated by the writes that change them (§2c).
 - Sessions: access tokens stay 1 h (refreshed by supabase-js). A sign-in ends after 7 days without use; each use
   restarts the week (`client/src/features/auth/sessionActivity.ts` + `auth.sessions.inactivity_timeout = "168h"` in
-  `server/supabase/config.toml`; hosted projects set it in the dashboard). Never raise `jwt_expiry` to get longer
+  `server/supabase/config.toml` locally; on hosted Supabase Free the inactivity timeout is a Pro setting, so the
+  client cap is the only enforcement there, `docs/adr/011-free-tiers.md`). Never raise `jwt_expiry` to get longer
   sign-ins: a long-lived bearer token cannot be revoked.
 - Env is read only through `utils/env.ts`. `src/types/database.ts` is generated (`npm run db:types`); never
   hand-edit it.
@@ -320,8 +321,9 @@ npm run typecheck && npm run lint && npm test
 
 `npm test` needs local Supabase running and seeded for the server (`npm run db:start`, `npm run seed`). Format with
 `npx prettier --write <files>` (or `npm run format`). Report failures with their output; never weaken a test to get
-green. CI runs the same gate on every PR into `dev` and `main` (`.github/workflows/ci.yml`, required check `ci-ok`;
-`docs/TESTING.md` "Continuous integration").
+green. CI runs the same gate on every PR into `dev` and `main` (`.github/workflows/ci.yml`, aggregate job `ci-ok`;
+`docs/TESTING.md` "Continuous integration"). On GitHub Free nothing enforces it (no rulesets on a private repo,
+ADR-011): never merge with `ci-ok` red or pending.
 
 ## 14. CRUD and lifecycle verification
 
@@ -505,7 +507,8 @@ relationships.
 
 ## 21. Versioning and branches
 
-**Branches.** Feature branches → PR into `dev` (CI required; `dev` deploys staging) → a release PR into `main`
+**Branches.** Feature branches → PR into `dev` (`ci-ok` green before merging, by rule: GitHub Free enforces nothing;
+`dev` deploys staging) → a release PR into `main`
 (production, merged by the user) → a back-merge PR into `dev`. Hotfixes branch off `main` as `hotfix/*`, carry their
 own intent, get their own release run and are back-merged the same way. Migrations are immutable once merged into
 `dev`. Agents that compare against "the base" use the PR's base branch: `origin/dev` for features, `origin/main` for

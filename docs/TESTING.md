@@ -117,7 +117,8 @@ A test that fails because of a real bug is a bug report. Never weaken the assert
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs on every pull request into `dev` or `main` and on every push to them. Its aggregate
-job `ci-ok` is the only required check (branch rulesets); it fails when any job failed or was cancelled, and counts
+job `ci-ok` sums them up. On GitHub Free a private repository has no rulesets, so it is advisory: merge only when it
+is green ([ADR-011](adr/011-free-tiers.md)). It fails when any job failed or was cancelled, and counts
 skipped jobs (the PR-only ones on a push) as passed. There are no `paths:` filters, so every PR reports `ci-ok`.
 
 | Job                        | Runs                                                                                                                                                                                                                                                           | Reproduce locally                                                                                                                |
@@ -165,9 +166,8 @@ Runs on PRs into `dev` and `main`, weekly (Monday 03:00 UTC) and on demand. Info
 | `secrets` | the gitleaks binary over the full history, `--redact`, with `.gitleaks.toml`           | `docker run --rm -v "$PWD":/repo -w /repo zricethezav/gitleaks:v8.30.1 detect --source . --redact` |
 
 `.gitleaks.toml` extends the default rules and allowlists by value only: Supabase publishable keys and the CLI's fixed
-local secret in `server/.env.example`. A real key anywhere else, `.env.example` included, still fails. CodeQL is not in
-the workflow: it is the repository's default setup (Settings → Code security), available only on a public repository
-or with GitHub Code Security, and is a user step.
+local secret in `server/.env.example`. A real key anywhere else, `.env.example` included, still fails. CodeQL is not run: it
+needs GitHub Code Security, which a private repository on GitHub Free does not have (ADR-011).
 
 ### Staging tests (later)
 

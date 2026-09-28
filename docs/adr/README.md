@@ -18,15 +18,16 @@ and later phases link to the ADRs they depend on.
 | ADR   | Title                                                           | Status   | Roadmap step                 |
 | ----- | --------------------------------------------------------------- | -------- | ---------------------------- |
 | [001] | Brands own stores                                               | Proposed | [P2][p2], [P3.1][p3.1]       |
-| [002] | Background work: outbox, pgmq and pg_cron                       | Proposed | [P1.2][p1.2]                 |
+| [002] | Background work: outbox, pgmq and pg_cron                       | Accepted | [P1.2][p1.2]                 |
 | [003] | The payment aggregator and money model are chosen in P4         | Proposed | [P4][p4], [P5][p5]           |
 | [004] | Rupees for orders and menus, paise for payments and the ledger  | Proposed | [P5.1][p5.1], [P5.6][p5.6]   |
 | [005] | A modular monolith with three processes                         | Proposed | [P1.2][p1.2], [P5.10][p5.10] |
 | [006] | Media in S3 behind CloudFront                                   | Proposed | [P3.3][p3.3], [P8.3][p8.3]   |
-| [007] | Pilot on EC2 with docker compose                                | Proposed | [P0.6][p0.6], [P8.4][p8.4]   |
+| [007] | Pilot on EC2 with docker compose                                | Accepted | [P0.6][p0.6], [P8.4][p8.4]   |
 | [008] | Semantic versioning from change intents                         | Proposed | [P0.3][p0.3]                 |
 | [009] | Rate limiting with token buckets, database limits and WAF rules | Proposed | [P1.6][p1.6], [P9.3][p9.3]   |
 | [010] | Live updates through polling plus Web Push                      | Proposed | [P6.3][p6.3], [P10.3][p10.3] |
+| [011] | Supabase Free and GitHub Free                                   | Accepted | all (constraints)            |
 
 [p0.3]: ../../plans/ROADMAP.md#p03-semantic-versioning-with-change-intents
 [p0.6]: ../../plans/ROADMAP.md#p06-docker-images-and-local-compose
@@ -57,3 +58,4 @@ and later phases link to the ADRs they depend on.
 [008]: 008-semver-from-change-intents.md
 [009]: 009-rate-limiting-token-buckets.md
 [010]: 010-polling-plus-web-push.md
+[011]: 011-free-tiers.md

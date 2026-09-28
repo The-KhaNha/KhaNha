@@ -123,10 +123,10 @@ A sign-in lasts **7 days without use**; using the app (which refreshes the 1 h a
 > `localStorage` (`fp_last_active`) and signs the device out locally (`clearSession()`, `signOut('local')`) once 7
 > days pass with no activity; `server/supabase/config.toml`'s `[auth.sessions]` sets `inactivity_timeout = "168h"` so
 > Supabase also expires the refresh token server-side (`jwt_expiry`, the 1 h access token lifetime, is unchanged).
-> **Consequences:** a device idle for a week is signed out even if it never calls the API; a hosted (non-local)
-> project needs the same value set by hand, because `inactivity_timeout` is a paid-plan setting only available in the
-> Supabase dashboard (Authentication → Sessions), not in `config.toml` (see
-> [DEPLOYMENT.md](DEPLOYMENT.md#hosted-session-timeout)); a missing `fp_last_active` record (a session that predates
+> **Consequences:** a device idle for a week is signed out even if it never calls the API; on hosted projects the
+> server-side half is missing, because `inactivity_timeout` is a Pro-plan setting and the project runs on Supabase
+> Free ([ADR-011](adr/011-free-tiers.md), [DEPLOYMENT.md](DEPLOYMENT.md#hosted-session-timeout)): there the client
+> cap is the only enforcement until a server-side idle check lands; a missing `fp_last_active` record (a session that predates
 > this feature) counts as active, so the week starts fresh instead of expiring at once.
 
 - `markActive()` runs on login and whenever `hydrate()` or a tab-visible check finds the session still within its

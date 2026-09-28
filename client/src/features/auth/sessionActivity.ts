@@ -4,7 +4,8 @@ import { CONFIG_FALLBACK } from '../config/fallbacks';
 /**
  * A sign-in lasts a week without use; every day the app is used restarts that week. Access tokens stay short (1 h,
  * refreshed in the background by supabase-js); this caps how long an unused device stays signed in.
- * The same limit is Supabase's auth.sessions.inactivity_timeout (server/supabase/config.toml; hosted: dashboard).
+ * Locally Supabase's auth.sessions.inactivity_timeout enforces the same limit (server/supabase/config.toml); hosted
+ * Supabase Free has no such setting, so there this cap is the only one (docs/adr/011-free-tiers.md).
  */
 const DAY_MS = 24 * 60 * 60 * 1000;
 // From config/fallbacks.json (the server's SESSION_IDLE_DAYS, parity-tested): read before any request can run.

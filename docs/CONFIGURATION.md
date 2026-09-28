@@ -33,9 +33,9 @@ The client reads them through `GET /api/config` (`useConfig()`, persisted) and f
 
 ## Deployment settings
 
-| Variable            | Default | Bounds | Read by                                                                                                                                                                                                                                                                       |
-| ------------------- | ------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SESSION_IDLE_DAYS` | 7       | 1–90   | `GET /api/config` (`session.idleDays`); must equal `auth.sessions.inactivity_timeout` (168h) in `server/supabase/config.toml` and the hosted project's dashboard. The client's sign-in cap (`sessionActivity.ts`) reads the fallback copy, because it runs before any request |
+| Variable            | Default | Bounds | Read by                                                                                                                                                                                                                                                                                                                 |
+| ------------------- | ------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SESSION_IDLE_DAYS` | 7       | 1–90   | `GET /api/config` (`session.idleDays`); must equal `auth.sessions.inactivity_timeout` (168h) in `server/supabase/config.toml` (hosted Supabase Free has no such setting, [ADR-011](adr/011-free-tiers.md)). The client's sign-in cap (`sessionActivity.ts`) reads the fallback copy, because it runs before any request |
 
 Every other environment variable is in [DEPLOYMENT.md](DEPLOYMENT.md).
 

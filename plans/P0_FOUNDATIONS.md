@@ -532,14 +532,18 @@ Deferred, per the roadmap: `MAX_QUANTITY_PER_ITEM`, `MAX_LINE_QUANTITY` and `LOW
 
 ## User steps (cannot be done from the repository)
 
-- Rulesets on `dev` and `main`: require a PR and the `ci-ok` check; `main` accepts PRs from `release/*` and
-  `hotfix/*` only; no bypass list.
+> **GitHub Free and Supabase Free** ([ADR-011](../docs/adr/011-free-tiers.md), 28 September 2026): the repository is
+> private on GitHub Free, so rulesets, required checks and CodeQL are not available and those steps are dropped;
+> `ci-ok` is advisory and merging only on green is a rule. `ci.yml` gates its heavy jobs by changed paths to fit the
+> 2,000 Actions minutes a month. The remaining steps below still apply.
+
+- ~~Rulesets on `dev` and `main`~~ (not on GitHub Free for a private repository).
 - Make `dev` the GitHub default branch.
 - Labels `no-release` and `dependencies`.
 - The release GitHub App (contents and pull-requests write), installed on the repository, with `RELEASE_APP_ID` and
   `RELEASE_APP_PRIVATE_KEY` as secrets.
-- CodeQL default setup, if the repository is eligible.
-- Accept or amend ADR-001..010; ADR-002 and ADR-007 before PR 09.
+- ~~CodeQL default setup~~ (not eligible: private repository on GitHub Free).
+- Accept or amend ADR-001..010; ADR-002 and ADR-007 were accepted on 28 September 2026.
 - Decide when the CSP moves from Report-Only to enforced.
 
 ## Risks and gotchas
