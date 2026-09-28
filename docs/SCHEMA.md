@@ -13,11 +13,12 @@ The Postgres schema in the Supabase project, from `server/supabase/migrations/`.
 Applied in file-name order. Once a migration is pushed to staging or production it is never edited; a change goes in
 a new file (see [DEPLOYMENT.md](DEPLOYMENT.md#schema-changes)).
 
-| File                                          | What it does                                                                                                                                                  |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `20260925120000_init.sql`                     | the three enums, the five tables, indexes, RLS and grants, the triggers and the three RPCs below                                                              |
-| `20260927094610_admin_settings_collected.sql` | adds `user_role` value `ADMIN`; renames `order_status` value `COMPLETED` to `COLLECTED`; adds `public.site_settings` (RLS, revoked, `set_updated_at` trigger) |
-| `20260927222002_min_client_version.sql`       | adds `site_settings.min_client_version` (the 426 gate's minimum)                                                                                              |
+| File                                          | What it does                                                                                                                                                          |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `20260925120000_init.sql`                     | the three enums, the five tables, indexes, RLS and grants, the triggers and the three RPCs below                                                                      |
+| `20260927094610_admin_settings_collected.sql` | adds `user_role` value `ADMIN`; renames `order_status` value `COMPLETED` to `COLLECTED`; adds `public.site_settings` (RLS, revoked, `set_updated_at` trigger)         |
+| `20260927222002_min_client_version.sql`       | adds `site_settings.min_client_version` (the 426 gate's minimum)                                                                                                      |
+| `20260928180445_site_settings_config.sql`     | adds `site_settings.max_lines_per_order`, `order_poll_ms`, `orders_poll_ms`, `staff_board_poll_ms` (the configuration registry, [CONFIGURATION.md](CONFIGURATION.md)) |
 
 ## Enums
 
@@ -130,6 +131,10 @@ the table at one row (the migration seeds it with `insert ... values (true)`). E
 | `customer_order_history_limit` | integer     | no   | `20`      | `check (customer_order_history_limit between 1 and 200)`                                                                                                            |
 | `staff_order_list_limit`       | integer     | no   | `100`     | `check (staff_order_list_limit between 1 and 500)`                                                                                                                  |
 | `min_client_version`           | text        | no   | `'0.0.0'` | `check (min_client_version ~ '^\d+\.\d+\.\d+$')`; the oldest client the API serves (older: 426 `CLIENT_OUTDATED`); added by `20260927222002_min_client_version.sql` |
+| `max_lines_per_order`          | integer     | no   | `30`      | `check (max_lines_per_order between 1 and 100)`; most lines one order may have; added by `20260928180445_site_settings_config.sql`                                  |
+| `order_poll_ms`                | integer     | no   | `4000`    | `check (order_poll_ms between 2000 and 60000)`; how often an open order's page polls                                                                                |
+| `orders_poll_ms`               | integer     | no   | `8000`    | `check (orders_poll_ms between 2000 and 60000)`; how often the customer's order list polls                                                                          |
+| `staff_board_poll_ms`          | integer     | no   | `4000`    | `check (staff_board_poll_ms between 2000 and 60000)`; how often the staff board polls                                                                               |
 | `updated_at`                   | timestamptz | no   | `now()`   | set on every update by `site_settings_set_updated_at`                                                                                                               |
 | `updated_by`                   | uuid        | yes  |           | references `profiles (id)` on delete **set null** — never cascade: deleting the admin who last saved must never delete the settings row                             |
 

@@ -243,17 +243,20 @@ Code: `requireAuth` → `requireAdmin` → `validate(updateSettingsSchema)` → 
 
 Body (`server/src/schemas/admin.schema.ts`), every field optional but at least one required:
 
-| Field                       | Type   | Rules                                                              |
-| --------------------------- | ------ | ------------------------------------------------------------------ |
-| `customerOrderHistoryLimit` | number | whole number, 1–200                                                |
-| `staffOrderListLimit`       | number | whole number, 1–500                                                |
-| `minClientVersion`          | string | `^\d+\.\d+\.\d+$` ("Minimum client version must look like 1.2.3.") |
+| Field                                             | Type   | Rules                                                                                                |
+| ------------------------------------------------- | ------ | ---------------------------------------------------------------------------------------------------- |
+| `customerOrderHistoryLimit`                       | number | whole number, 1–200                                                                                  |
+| `staffOrderListLimit`                             | number | whole number, 1–500                                                                                  |
+| `maxLinesPerOrder`                                | number | whole number, 1–100 ("Items per order must be …")                                                    |
+| `orderPollMs`, `ordersPollMs`, `staffBoardPollMs` | number | whole number, 2000–60000 ("Order page refresh / Order list refresh / Staff board refresh must be …") |
+| `minClientVersion`                                | string | `^\d+\.\d+\.\d+$` ("Minimum client version must look like 1.2.3.")                                   |
 
 - An out-of-range or non-integer value is 400 `VALIDATION_ERROR` ("Customer order history limit must be at least
   1."/"...at most 200."/"...must be a whole number.", and the equivalent messages for the staff limit).
 - Sending neither field is 400 `VALIDATION_ERROR` "Send at least one setting to change."
 - The bounds mirror the `site_settings` check constraints exactly (see [SCHEMA.md](SCHEMA.md#site_settings)), so a
   bad value is always a 400 here, never a database error.
+- Only the fields sent are written (`settings.service.ts` maps each defined field to its column).
 - On success, `updated_by` is set to the calling admin's id, `updated_at` advances, and the process cache key
   `'site_settings'` is invalidated at once, so the very next `GET /api/orders` (on this API instance) uses the new
   limit. The controller logs `Site settings changed` at `info` with the new values and `by: admin.id`.
@@ -290,6 +293,10 @@ camelCase shapes and every timestamp into ISO 8601 (`new Date(ts).toISOString()`
 | --------------------------- | ----------------- | ------------------------------------------------------------------------------------------ |
 | `customerOrderHistoryLimit` | number            | 1–200, default 20; caps `GET /orders` for a customer                                       |
 | `staffOrderListLimit`       | number            | 1–500, default 100; caps `GET /orders` for staff                                           |
+| `maxLinesPerOrder`          | number            | 1–100, default 30; most lines one order may have                                           |
+| `orderPollMs`               | number            | 2000–60000, default 4000; an open order's page poll interval (ms)                          |
+| `ordersPollMs`              | number            | 2000–60000, default 8000; the customer's order list poll interval (ms)                     |
+| `staffBoardPollMs`          | number            | 2000–60000, default 4000; the staff board poll interval (ms)                               |
 | `minClientVersion`          | string            | default `0.0.0`; clients below it get 426 `CLIENT_OUTDATED` ([gate](#client-version-gate)) |
 | `updatedAt`                 | string (ISO 8601) | set whenever a setting is saved                                                            |
 

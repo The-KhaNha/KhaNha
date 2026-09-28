@@ -71,6 +71,10 @@ describe('admin settings: read and validate', () => {
       settings: {
         customerOrderHistoryLimit: 20,
         staffOrderListLimit: 100,
+        maxLinesPerOrder: 30,
+        orderPollMs: 4000,
+        ordersPollMs: 8000,
+        staffBoardPollMs: 4000,
         minClientVersion: '0.0.0',
         updatedAt: expect.any(String),
       },
@@ -84,6 +88,12 @@ describe('admin settings: read and validate', () => {
     [{ staffOrderListLimit: 501 }, 'at most 500'],
     [{ staffOrderListLimit: 2.5 }, 'whole number'],
     [{ customerOrderHistoryLimit: '20' }, 'must be a number'],
+    [{ maxLinesPerOrder: 0 }, 'Items per order must be at least 1'],
+    [{ maxLinesPerOrder: 101 }, 'Items per order must be at most 100'],
+    [{ orderPollMs: 1999 }, 'Order page refresh must be at least 2000'],
+    [{ ordersPollMs: 60_001 }, 'Order list refresh must be at most 60000'],
+    [{ staffBoardPollMs: 2500.5 }, 'Staff board refresh must be a whole number'],
+    [{ staffBoardPollMs: '4000' }, 'Staff board refresh must be a number'],
     [{ minClientVersion: '1.2' }, 'must look like 1.2.3'],
     [{ minClientVersion: '1.2.3-beta' }, 'must look like 1.2.3'],
     [{ minClientVersion: 123 }, 'must be text'],
@@ -103,6 +113,42 @@ describe('admin settings: read and validate', () => {
     expect(res.body.settings).toMatchObject({
       customerOrderHistoryLimit: 200,
       staffOrderListLimit: 1,
+    });
+  });
+});
+
+describe('admin settings: configuration fields', () => {
+  it('accepts every new field at its bounds and returns them', async () => {
+    const low = {
+      maxLinesPerOrder: 1,
+      orderPollMs: 2000,
+      ordersPollMs: 2000,
+      staffBoardPollMs: 2000,
+    };
+    const high = {
+      maxLinesPerOrder: 100,
+      orderPollMs: 60_000,
+      ordersPollMs: 60_000,
+      staffBoardPollMs: 60_000,
+    };
+    for (const body of [low, high]) {
+      const res = await api().patch('/api/admin/settings').set(bearer(admin)).send(body);
+      expect(res.status).toBe(200);
+      expect(res.body.settings).toMatchObject(body);
+    }
+  });
+
+  it('changes only the fields sent', async () => {
+    const before = (await api().get('/api/admin/settings').set(bearer(admin))).body.settings;
+    const res = await api()
+      .patch('/api/admin/settings')
+      .set(bearer(admin))
+      .send({ ordersPollMs: 12_000 });
+    expect(res.status).toBe(200);
+    expect(res.body.settings).toEqual({
+      ...before,
+      ordersPollMs: 12_000,
+      updatedAt: expect.any(String),
     });
   });
 });

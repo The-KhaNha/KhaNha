@@ -25,6 +25,10 @@ const { ApiError } = await import('../services/api');
 const saved: SiteSettings = {
   customerOrderHistoryLimit: 20,
   staffOrderListLimit: 100,
+  maxLinesPerOrder: 30,
+  orderPollMs: 4000,
+  ordersPollMs: 8000,
+  staffBoardPollMs: 4000,
   minClientVersion: '0.0.0',
   updatedAt: '2026-09-27T00:00:00Z',
 };
@@ -40,6 +44,52 @@ describe('AdminPage', () => {
 
     expect(await screen.findByLabelText('Customer order history')).toHaveValue('20');
     expect(screen.getByLabelText('Staff board size')).toHaveValue('100');
+  });
+
+  it('renders every setting in the registry, the poll intervals and the minimum version included', async () => {
+    admin.fetchSiteSettings.mockResolvedValue(saved);
+    render(<AdminPage />);
+
+    expect(await screen.findByLabelText('Items per order')).toHaveValue('30');
+    expect(screen.getByLabelText('Order page refresh (ms)')).toHaveValue('4000');
+    expect(screen.getByLabelText('Order list refresh (ms)')).toHaveValue('8000');
+    expect(screen.getByLabelText('Staff board refresh (ms)')).toHaveValue('4000');
+    expect(screen.getByLabelText('Minimum app version')).toHaveValue('0.0.0');
+  });
+
+  it('sends a changed poll interval as a number and a version as text', async () => {
+    admin.fetchSiteSettings.mockResolvedValue(saved);
+    admin.updateSiteSettings.mockResolvedValue({
+      ...saved,
+      orderPollMs: 6000,
+      minClientVersion: '0.2.0',
+    });
+    render(<AdminPage />);
+
+    fireEvent.change(await screen.findByLabelText('Order page refresh (ms)'), {
+      target: { value: '6000' },
+    });
+    fireEvent.change(screen.getByLabelText('Minimum app version'), { target: { value: '0.2.0' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      expect(admin.updateSiteSettings).toHaveBeenCalledWith({
+        orderPollMs: 6000,
+        minClientVersion: '0.2.0',
+      });
+    });
+  });
+
+  it('rejects a malformed version before sending', async () => {
+    admin.fetchSiteSettings.mockResolvedValue(saved);
+    render(<AdminPage />);
+
+    fireEvent.change(await screen.findByLabelText('Minimum app version'), {
+      target: { value: '1.2' },
+    });
+
+    expect(await screen.findByText('Enter a version like 1.2.3.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
   });
 
   it('disables Save until a field changes', async () => {

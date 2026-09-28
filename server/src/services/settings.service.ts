@@ -1,10 +1,31 @@
 import type { AuthUser } from '../types/auth';
-import type { Tables } from '../types/database';
+import type { Tables, TablesUpdate } from '../types/database';
 import { cached, invalidate, PUBLIC_READ_TTL_MS } from '../utils/cache';
 import { supabaseAdmin } from '../utils/supabase';
 import type { UpdateSettingsInput } from '../schemas/admin.schema';
 
 type SiteSettings = Tables<'site_settings'>;
+type SettingsUpdate = TablesUpdate<'site_settings'>;
+
+// API field → column. Only the fields the admin sent go into the update.
+const COLUMN: { [K in keyof UpdateSettingsInput]-?: keyof SettingsUpdate } = {
+  customerOrderHistoryLimit: 'customer_order_history_limit',
+  staffOrderListLimit: 'staff_order_list_limit',
+  maxLinesPerOrder: 'max_lines_per_order',
+  orderPollMs: 'order_poll_ms',
+  ordersPollMs: 'orders_poll_ms',
+  staffBoardPollMs: 'staff_board_poll_ms',
+  minClientVersion: 'min_client_version',
+};
+
+function toColumns(input: UpdateSettingsInput): SettingsUpdate {
+  const update: Record<string, unknown> = {};
+  for (const [field, column] of Object.entries(COLUMN)) {
+    const value = input[field as keyof UpdateSettingsInput];
+    if (value !== undefined) update[column] = value;
+  }
+  return update as SettingsUpdate;
+}
 
 /**
  * The single site_settings row. Read on every order list, so it goes through the read cache; the admin's update
@@ -23,12 +44,7 @@ export async function updateSettings(
 ): Promise<SiteSettings> {
   const { data } = await supabaseAdmin
     .from('site_settings')
-    .update({
-      customer_order_history_limit: input.customerOrderHistoryLimit,
-      staff_order_list_limit: input.staffOrderListLimit,
-      min_client_version: input.minClientVersion,
-      updated_by: admin.id,
-    })
+    .update({ ...toColumns(input), updated_by: admin.id })
     .eq('id', true)
     .select()
     .single()

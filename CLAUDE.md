@@ -186,6 +186,7 @@ Update the owning doc **in the same change**. A change that skips its doc is inc
 | a workflow in `.github/`, a `scripts/ci/` check, the bundle budget | `docs/TESTING.md` "Continuous integration" |
 | perf baselines | `docs/PERF_BASELINE.md` (owned by `perf-auditor`) |
 | a cross-cutting flow (auth, checkout, order lifecycle), a top-level dir, a system diagram | `docs/ARCHITECTURE.md` |
+| a site setting, a deployment setting or a platform limit | `docs/CONFIGURATION.md` (the registry) |
 | a decision worth recording | `docs/adr/NNN-title.md` from `docs/adr/0000-template.md`, indexed in `docs/adr/README.md` (`agent-skills:documentation-and-adrs`) |
 | the change-intent format or level rules | `.changes/README.md` (+ §21) |
 | a release (written by `npm run release`, never by hand) | `client/CHANGELOG.md`, `server/CHANGELOG.md` |

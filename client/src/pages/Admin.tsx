@@ -6,24 +6,20 @@ import { Input } from '../components/Input';
 import { Skeleton } from '../components/Skeleton';
 import { TimeText } from '../components/TimeText';
 import {
+  SETTING_FIELDS,
   SETTING_KEYS,
-  SETTING_LIMITS,
   changedSettings,
-  validateLimit,
+  settingHint,
+  toDraft,
+  validateSetting,
+  type SettingsDraft,
 } from '../features/admin/settingsRules';
 import { useSiteSettings } from '../features/admin/useSiteSettings';
 import { ApiError } from '../services/api';
 import { updateSiteSettings } from '../services/admin';
 import type { SiteSettings } from '../types/api';
 
-type Draft = Record<(typeof SETTING_KEYS)[number], string>;
-
-const toDraft = (settings: SiteSettings): Draft => ({
-  customerOrderHistoryLimit: String(settings.customerOrderHistoryLimit),
-  staffOrderListLimit: String(settings.staffOrderListLimit),
-});
-
-/** Site-wide admin dashboard (developer/operator, not the restaurant): the limits in site_settings. */
+/** Site-wide admin dashboard (developer/operator, not the restaurant): everything in site_settings. */
 export function AdminPage() {
   const { settings, isLoading, error, retry, mutate } = useSiteSettings();
 
@@ -62,12 +58,12 @@ function SettingsForm({
   settings: SiteSettings;
   onSaved: (settings: SiteSettings) => void;
 }) {
-  const [draft, setDraft] = useState<Draft>(() => toDraft(settings));
+  const [draft, setDraft] = useState<SettingsDraft>(() => toDraft(settings));
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const fieldErrors = Object.fromEntries(
-    SETTING_KEYS.map((key) => [key, validateLimit(key, draft[key])]),
+    SETTING_KEYS.map((key) => [key, validateSetting(key, draft[key])]),
   );
   const valid = SETTING_KEYS.every((key) => fieldErrors[key] === null);
   const changes = valid ? changedSettings(settings, draft) : {};
@@ -93,9 +89,9 @@ function SettingsForm({
         {SETTING_KEYS.map((key) => (
           <Input
             key={key}
-            label={SETTING_LIMITS[key].label}
-            hint={`${SETTING_LIMITS[key].hint} (1–${SETTING_LIMITS[key].max})`}
-            inputMode="numeric"
+            label={SETTING_FIELDS[key].label}
+            hint={settingHint(key)}
+            inputMode={SETTING_FIELDS[key].kind === 'integer' ? 'numeric' : 'decimal'}
             value={draft[key]}
             error={fieldErrors[key] ?? undefined}
             onChange={(event) => setDraft((d) => ({ ...d, [key]: event.target.value }))}

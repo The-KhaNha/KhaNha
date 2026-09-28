@@ -92,6 +92,12 @@ export interface ApiErrorEnvelope {
 export interface SiteSettings {
   customerOrderHistoryLimit: number;
   staffOrderListLimit: number;
+  /** Most lines one order may have. */
+  maxLinesPerOrder: number;
+  /** Poll intervals in ms: one order's page, the customer's order list, the staff board. */
+  orderPollMs: number;
+  ordersPollMs: number;
+  staffBoardPollMs: number;
   /** The oldest client version the API serves; older clients get 426 CLIENT_OUTDATED. */
   minClientVersion: string;
   updatedAt: string;

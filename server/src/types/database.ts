@@ -220,7 +220,11 @@ export type Database = {
         Row: {
           customer_order_history_limit: number;
           id: boolean;
+          max_lines_per_order: number;
           min_client_version: string;
+          order_poll_ms: number;
+          orders_poll_ms: number;
+          staff_board_poll_ms: number;
           staff_order_list_limit: number;
           updated_at: string;
           updated_by: string | null;
@@ -228,7 +232,11 @@ export type Database = {
         Insert: {
           customer_order_history_limit?: number;
           id?: boolean;
+          max_lines_per_order?: number;
           min_client_version?: string;
+          order_poll_ms?: number;
+          orders_poll_ms?: number;
+          staff_board_poll_ms?: number;
           staff_order_list_limit?: number;
           updated_at?: string;
           updated_by?: string | null;
@@ -236,7 +244,11 @@ export type Database = {
         Update: {
           customer_order_history_limit?: number;
           id?: boolean;
+          max_lines_per_order?: number;
           min_client_version?: string;
+          order_poll_ms?: number;
+          orders_poll_ms?: number;
+          staff_board_poll_ms?: number;
           staff_order_list_limit?: number;
           updated_at?: string;
           updated_by?: string | null;

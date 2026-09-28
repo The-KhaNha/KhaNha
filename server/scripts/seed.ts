@@ -283,6 +283,10 @@ async function seedDemo(): Promise<void> {
     .update({
       customer_order_history_limit: 20,
       staff_order_list_limit: 100,
+      max_lines_per_order: 30,
+      order_poll_ms: 4000,
+      orders_poll_ms: 8000,
+      staff_board_poll_ms: 4000,
       min_client_version: '0.0.0',
       updated_by: null,
     })
