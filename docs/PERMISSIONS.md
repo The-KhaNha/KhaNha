@@ -172,7 +172,7 @@ flowchart LR
 - Default privileges are changed so tables and functions created by later migrations also start closed. A migration
   that needs something public must grant it explicitly (and should not: the browser talks to Supabase only for
   sign-in).
-- The browser uses Supabase only to sign in, refresh the token and sign out (`client/src/lib/supabase.ts`).
+- The browser uses Supabase only to sign in, refresh the token and sign out (`client/src/lib/supabase.ts`, which loads supabase-js on first use).
 
 ## Sign-ups
 

@@ -4,7 +4,7 @@ import { useVersionStore } from '../features/version/versionStore';
 import { APP_VERSION } from '../lib/appVersion';
 import { logger } from '../lib/logger';
 import { runtimeEnv } from '../lib/runtimeEnv';
-import { supabase } from '../lib/supabase';
+import { getSupabase } from '../lib/supabase';
 
 const BASE_URL = '/api';
 /** Longest wait for a response (headers and body) before the request counts as unreachable. */
@@ -49,10 +49,26 @@ function isErrorEnvelope(value: unknown): value is ApiErrorEnvelope {
   );
 }
 
+async function currentAccessToken(): Promise<string | undefined> {
+  let supabase;
+  try {
+    supabase = await getSupabase();
+  } catch {
+    // The supabase-js chunk did not load: the network is gone, the same as any unreachable request.
+    throw new ApiError(
+      0,
+      'UNREACHABLE',
+      "We couldn't reach the server. Check your connection and try again.",
+    );
+  }
+  return (await supabase.auth.getSession()).data.session?.access_token;
+}
+
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { method = 'GET', body, auth = true, signal } = options;
-  // supabase-js hands out the current access token, refreshing it first when it has expired.
-  const token = auth ? (await supabase.auth.getSession()).data.session?.access_token : undefined;
+  // supabase-js hands out the current access token, refreshing it first when it has expired. Public requests
+  // (auth: false) never load it.
+  const token = auth ? await currentAccessToken() : undefined;
 
   // Same origin (Vite proxy, nginx), so the custom header costs no CORS preflight.
   const headers: Record<string, string> = {

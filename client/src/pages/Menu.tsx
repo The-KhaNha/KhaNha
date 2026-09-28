@@ -3,6 +3,7 @@ import { Clock } from 'lucide-react';
 import type { MenuItem } from '../types/api';
 import { ErrorState } from '../components/ErrorState';
 import { FoodCard, FoodCardSkeleton } from '../components/FoodCard';
+import { FoodPhotoGate } from '../components/FoodPhoto';
 import { OpenPill } from '../components/OpenPill';
 import { PopularRail, PopularRailSkeleton } from '../components/PopularRail';
 import { Skeleton } from '../components/Skeleton';
@@ -10,7 +11,11 @@ import { CategoryChips, type MenuSection } from '../features/menu/CategoryChips'
 import { ItemDetailSheet } from '../features/menu/ItemDetailSheet';
 import { useMenu } from '../features/menu/useMenu';
 import { formatPrepRange } from '../lib/format';
-import { photoSrcSet } from '../lib/photo';
+import { LCP_IMAGE_PROPS, photoSrcSet } from '../lib/photo';
+import { useImagePainted } from '../lib/useImagePainted';
+
+/** Longest the food photos wait for the cover before loading anyway (a stalled cover must not hide the food). */
+const COVER_MAX_WAIT_MS = 2000;
 
 interface Section extends MenuSection {
   items: MenuItem[];
@@ -27,6 +32,7 @@ function slugify(value: string): string {
 
 export function MenuPage() {
   const { menu, isLoading, error, retry } = useMenu();
+  const { ref: coverRef, painted: coverPainted } = useImagePainted(COVER_MAX_WAIT_MS);
   const [selected, setSelected] = useState<MenuItem | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [scrolled, setScrolled] = useState(false);
@@ -90,7 +96,8 @@ export function MenuPage() {
   const { store } = menu;
 
   return (
-    <div className="animate-fade-up">
+    // The storefront header paints at once (it holds the page's largest paint); only the lists below fade in.
+    <div>
       {/* The saved menu stays usable when a refresh fails; say so instead of hiding it (checkout re-checks stock). */}
       {error && (
         <ErrorState
@@ -108,9 +115,11 @@ export function MenuPage() {
         <div className="relative aspect-[21/9] overflow-hidden rounded-[28px] bg-surface-2 shadow-card">
           {store.imageUrl && (
             <img
+              ref={coverRef}
               src={store.imageUrl}
               srcSet={photoSrcSet(store.imageUrl)}
               sizes="(min-width: 768px) 640px, calc(100vw - 32px)"
+              {...LCP_IMAGE_PROPS}
               alt=""
               className="h-full w-full object-cover"
             />
@@ -137,32 +146,37 @@ export function MenuPage() {
         scrolled={scrolled}
       />
 
-      {sections.map((section) =>
-        section.isPopular ? (
-          <PopularRail
-            key={section.id}
-            id={section.id}
-            items={section.items}
-            onOpen={setSelected}
-          />
-        ) : (
-          <section
-            key={section.id}
-            id={`section-${section.id}`}
-            aria-labelledby={`heading-${section.id}`}
-            className="pt-6"
-          >
-            <h2 id={`heading-${section.id}`} className="eyebrow mb-3 text-muted">
-              {section.name}
-            </h2>
-            <div className="space-y-3 md:grid md:grid-cols-2 md:gap-3 md:space-y-0">
-              {section.items.map((item) => (
-                <FoodCard key={item.id} item={item} onOpen={setSelected} />
-              ))}
-            </div>
-          </section>
-        ),
-      )}
+      {/* Food photos wait until the cover (the page's largest paint) is on screen, so it gets the bandwidth first. */}
+      <FoodPhotoGate held={Boolean(store.imageUrl) && !coverPainted}>
+        <div className="animate-fade-up">
+          {sections.map((section) =>
+            section.isPopular ? (
+              <PopularRail
+                key={section.id}
+                id={section.id}
+                items={section.items}
+                onOpen={setSelected}
+              />
+            ) : (
+              <section
+                key={section.id}
+                id={`section-${section.id}`}
+                aria-labelledby={`heading-${section.id}`}
+                className="pt-6"
+              >
+                <h2 id={`heading-${section.id}`} className="eyebrow mb-3 text-muted">
+                  {section.name}
+                </h2>
+                <div className="space-y-3 md:grid md:grid-cols-2 md:gap-3 md:space-y-0">
+                  {section.items.map((item) => (
+                    <FoodCard key={item.id} item={item} onOpen={setSelected} />
+                  ))}
+                </div>
+              </section>
+            ),
+          )}
+        </div>
+      </FoodPhotoGate>
 
       <ItemDetailSheet item={selected} onClose={closeSheet} />
     </div>

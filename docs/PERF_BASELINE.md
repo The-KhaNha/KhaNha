@@ -202,3 +202,11 @@ Lighthouse CI (`.github/workflows/perf.yml`, config `client/lighthouserc.json`) 
 stack at 360×640, simulated Slow 4G (150 ms RTT, 1638 kbps) and 4× CPU, three runs each, on PRs touching `client/**`
 and nightly. LCP ≤ 2500 ms, CLS ≤ 0.1 and TBT ≤ 200 ms warn for now. The report is the `lighthouse-report` artifact.
 perf-auditor records the numbers here and re-baselines on Node 24.
+
+### 2026-09-28: LCP fix on the compose stack
+
+Lighthouse (simulated, `client/lighthouserc.json`, three runs, median), before → after: `/` LCP 2704 → 2253 ms,
+FCP 1953 → 1502 ms, score 94 → 98; `/menu` LCP 3755 → 2252 ms (runs 2104–2328), FCP 1953 → 1502 ms, score 88 → 98;
+CLS unchanged (0.053 / 0.002), TBT 0. Initial JS 145.5 → 87.4 KB gzip (supabase-js on demand), transferred JS
+173 → 88 KB (gzip_static at level 9), page weight `/menu` 528 → 419 KB. Applied throttling (Playwright + CDP, Slow 4G,
+4× CPU, 360×640): `/menu` LCP 1.66–2.05 s, `/` 1.63–1.78 s. `lhci autorun` assertions pass with no warnings.

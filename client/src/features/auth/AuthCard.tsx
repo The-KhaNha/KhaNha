@@ -1,7 +1,8 @@
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronLeft, CircleAlert } from 'lucide-react';
 import { Wordmark } from '../../components/Wordmark';
+import { getSupabase } from '../../lib/supabase';
 
 interface AuthCardProps {
   title: string;
@@ -21,6 +22,12 @@ export function AuthCard({
   footer,
   backTo = '/',
 }: AuthCardProps) {
+  // Sign-in needs supabase-js, which the app does not load up front: fetch it while the form is being filled in. A
+  // failure here is retried when the form is sent.
+  useEffect(() => {
+    getSupabase().catch(() => {});
+  }, []);
+
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col px-4 pb-10 pt-4 md:max-w-lg md:justify-center">
       <div className="flex items-center justify-between">

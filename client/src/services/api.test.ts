@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../lib/supabase', () => ({
-  supabase: { auth: { getSession: async () => ({ data: { session: null } }) } },
-}));
+const getSupabase = vi.hoisted(() =>
+  vi.fn(async () => ({ auth: { getSession: async () => ({ data: { session: null } }) } })),
+);
+vi.mock('../lib/supabase', () => ({ getSupabase }));
 vi.mock('../features/auth/authStore', () => ({
   useAuthStore: { getState: () => ({ clearSession: () => {} }) },
 }));
@@ -99,5 +100,28 @@ describe('426 CLIENT_OUTDATED', () => {
       (err) => err instanceof ApiError && err.code === 'CLIENT_OUTDATED',
     );
     expect(useVersionStore.getState().outdated).toBe(true);
+  });
+});
+
+describe('supabase-js loading', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    getSupabase.mockClear();
+  });
+
+  it('never loads it for a public request (auth: false)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('{}', { status: 200 })),
+    );
+    await request('/menu', { auth: false });
+    expect(getSupabase).not.toHaveBeenCalled();
+  });
+
+  it('turns a failed load into an unreachable ApiError', async () => {
+    getSupabase.mockRejectedValueOnce(new TypeError('Failed to fetch dynamically imported module'));
+    await expect(request('/orders')).rejects.toSatisfy(
+      (err) => err instanceof ApiError && err.isUnreachable,
+    );
   });
 });

@@ -54,7 +54,10 @@ Rules that follow:
 
 - Mobile-first layouts. Tap targets ≥ 44px. Animate only `transform`/`opacity`, and honor
   `prefers-reduced-motion` (the global rule in `client/src/index.css`).
-- No heavy dependency without checking its gzip cost first (`perf-auditor` or `npx vite build` output).
+- No heavy dependency without checking its gzip cost first (`perf-auditor` or `npx vite build` output). supabase-js
+  is loaded on demand: go through `getSupabase()` (`lib/supabase.ts`), never import `lib/supabaseClient.ts`.
+- The page's largest paint (the store cover) gets `LCP_IMAGE_PROPS`, never sits inside an entrance fade, and does
+  not share the link with food photos (`FoodPhotoGate`); see `docs/FRONTEND_STRUCTURE.md` "The largest paint".
 - Fonts keep `display=swap` and the preconnect in `client/index.html`.
 - Every network call has a visible loading state, an abort/timeout path, and a graceful unreachable state with retry
   (`ErrorState unreachable`). A spinner never hangs forever.
@@ -86,8 +89,8 @@ are always confirmed by the server, and user-specific data is never cached where
   (`fp_cache:v1:<key>`) renders instantly on the next visit and is refreshed at once (stale-while-revalidate). Bump
   the version in `CACHE_PREFIX` (`lib/useResource.ts`) when a persisted response shape changes. Never `persist`
   orders, the profile, or anything else user-specific.
-- Every bundled photo has a 400px thumbnail next to it: run `python3 client/scripts/optimize-images.py` after adding
-  one (`lib/photo.test.ts` fails otherwise). `FoodPhoto`'s `sizes` must be the photo's real rendered width, so
+- Every bundled photo has a 400px thumbnail next to it and fits ~80 KB: run `python3 client/scripts/optimize-images.py`
+  after adding one (`--refit` for an existing one over budget; `lib/photo.test.ts` fails otherwise). `FoodPhoto`'s `sizes` must be the photo's real rendered width, so
   thumbnails download the small file.
 - Screens a customer does not need to browse and fill a cart (checkout, order success, login, register, staff) are
   `lazy()` routes in `App.tsx`, behind `PageBoundary` (skeleton while loading, retry if the chunk fails).

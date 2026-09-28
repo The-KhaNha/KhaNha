@@ -17,7 +17,8 @@ export function HomePage() {
   const { store, isLoading, error, retry } = useStore();
 
   return (
-    <div className="pb-6 animate-fade-up">
+    // No page-level fade: the store card's cover is the page's largest paint, and a fading ancestor delays it.
+    <div className="pb-6">
       {/* The one permitted decorative gradient in the app. */}
       <section className="-mx-4 rounded-b-[28px] bg-[linear-gradient(180deg,#d13711,#b72e0e)] text-white lg:mx-[calc(50%-50vw)]">
         <div className="mx-auto w-full max-w-md px-4 pb-[72px] pt-4 md:max-w-lg">
@@ -63,7 +64,7 @@ export function HomePage() {
         )}
       </div>
 
-      <section className="mt-8" aria-labelledby="how-it-works">
+      <section className="mt-8 animate-fade-up" aria-labelledby="how-it-works">
         <h2 id="how-it-works" className="eyebrow text-muted">
           How it works
         </h2>

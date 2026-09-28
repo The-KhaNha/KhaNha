@@ -89,7 +89,7 @@ Types: `client/src/vite-env.d.ts`. Template: `client/.env.example`.
 
 `client/vite.config.ts` throws `Missing VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY for mode "<mode>". Create
 client/.env.<mode> (see client/.env.example).` when either required variable is missing, for the dev server and for
-builds alike. `client/src/lib/supabase.ts` throws at runtime for the same reason.
+builds alike. `client/src/lib/supabaseClient.ts` throws when it first loads for the same reason.
 
 The client calls the API at `/api` on its own origin (`BASE_URL` in `client/src/services/api.ts`). Only the Vite dev
 server proxies `/api` to `http://localhost:8000`. A production host has to serve the API under `/api` on the client's
@@ -110,9 +110,11 @@ In the web image, each of these values can also be set at start ([runtime enviro
 ### Compressing photos before a build
 
 `python3 client/scripts/optimize-images.py` (needs Pillow: `pip3 install pillow`) re-encodes every `<name>.jpg`
-under `client/public/images/` in place (≤900px wide, quality 72, progressive) and writes the `<name>-400.jpg`
+under `client/public/images/` in place (≤900px wide, progressive, quality 72 or lower, down to 50, until it fits the
+~80 KB photo budget) and writes the `<name>-400.jpg`
 thumbnail `FoodPhoto`'s `srcset` needs (`lib/photo.ts`). Run it once after adding or replacing a photo, before
-committing — `client/src/lib/photo.test.ts` fails on a photo missing its thumbnail. It skips a photo that already
+committing — `client/src/lib/photo.test.ts` fails on a photo missing its thumbnail or over the budget; `--refit`
+re-encodes the full-size photos that are over it. It skips a photo that already
 has a thumbnail, so running it again never re-compresses (and degrades) an image twice. See
 [FRONTEND_STRUCTURE.md#photo-thumbnails](FRONTEND_STRUCTURE.md#photo-thumbnails).
 
@@ -344,7 +346,8 @@ Every location also sends `X-Content-Type-Options: nosniff`, `Referrer-Policy: s
 script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com;
 img-src 'self' data:; connect-src 'self' ${SUPABASE_URL}; frame-ancestors 'none'; base-uri 'self'`. The snippet is
 included in each location because an `add_header` inside a location drops every inherited one. Moving the CSP to
-enforcing is a user decision, once staging shows no reports. gzip is on for text, CSS, JavaScript, JSON and SVG.
+enforcing is a user decision, once staging shows no reports. The image build pre-compresses the built JS, CSS, HTML, SVG and JSON at gzip level 9 (`gzip_static on` serves the
+`.gz` twins); everything else, such as the API's JSON, is compressed on the fly at level 6.
 `/api/` is proxied with HTTP/1.1, `Host`, `X-Forwarded-For`, `X-Forwarded-Proto` and a 30 s read timeout.
 
 ### Signed-in requests from a container (`SUPABASE_JWKS_URL`)

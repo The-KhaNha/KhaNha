@@ -1,4 +1,4 @@
-import { forwardRef, type ReactNode } from 'react';
+import { createContext, forwardRef, useContext, type ReactNode } from 'react';
 import { cn } from '../lib/cn';
 import { photoSrcSet } from '../lib/photo';
 
@@ -21,6 +21,17 @@ interface FoodPhotoProps {
   children?: ReactNode;
 }
 
+const HeldContext = createContext(false);
+
+/**
+ * While `held`, every FoodPhoto inside shows its placeholder instead of downloading its photo. A page wraps its lists
+ * in it until its largest image (the store cover) has loaded, so on a slow connection the cover gets the bandwidth
+ * first instead of sharing it with every photo discovered at the same moment. Photos keep their boxes, so nothing shifts.
+ */
+export function FoodPhotoGate({ held, children }: { held: boolean; children: ReactNode }) {
+  return <HeldContext.Provider value={held}>{children}</HeldContext.Provider>;
+}
+
 /**
  * Every food photo in the app: object-cover, a +6% saturation lift so sauces and crema pop,
  * and a hairline inset ring so pale foods never bleed into white cards.
@@ -39,6 +50,7 @@ export const FoodPhoto = forwardRef<HTMLSpanElement, FoodPhotoProps>(function Fo
   },
   ref,
 ) {
+  const held = useContext(HeldContext);
   return (
     <span
       ref={ref}
@@ -49,7 +61,7 @@ export const FoodPhoto = forwardRef<HTMLSpanElement, FoodPhotoProps>(function Fo
         className,
       )}
     >
-      {src && (
+      {src && !held && (
         <img
           src={src}
           srcSet={photoSrcSet(src)}

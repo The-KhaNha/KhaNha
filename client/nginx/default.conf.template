@@ -5,7 +5,11 @@ server {
     root /usr/share/nginx/html;
     server_tokens off;
 
+    # Built files have a .gz twin made at level 9 in the image build (Dockerfile); everything else, such as the API's
+    # JSON, is compressed on the fly at a moderate level.
+    gzip_static on;
     gzip on;
+    gzip_comp_level 6;
     gzip_vary on;
     gzip_min_length 1024;
     gzip_types text/plain text/css application/javascript application/json image/svg+xml;

@@ -11,7 +11,11 @@ ARG GIT_COMMIT=local
 ENV GIT_COMMIT=$GIT_COMMIT
 # Mode "container" builds with placeholder Supabase values (.env.container); nginx/runtime-env.sh supplies the real
 # ones at start, so one image serves every environment.
-RUN npm run build:container
+# Then pre-compress at the highest level once, so nginx serves them with gzip_static instead of compressing each
+# response at its fast default level (about 17% smaller JavaScript on the first visit).
+RUN npm run build:container \
+  && find dist -type f \( -name '*.js' -o -name '*.css' -o -name '*.html' -o -name '*.svg' -o -name '*.json' \) \
+      -exec gzip -9 -k {} +
 
 FROM nginxinc/nginx-unprivileged:1.27-alpine
 COPY --from=build /app/dist /usr/share/nginx/html

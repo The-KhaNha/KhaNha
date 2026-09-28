@@ -136,9 +136,9 @@ Only these modules call `request()` from `services/api.ts`. Components and hooks
 | -------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
 | `services/api.ts`    | `request<T>(path, { method, body, auth, signal })`, `ApiError`                           | base `/api`; attaches the bearer token when `auth` (default true)            |
 | `services/auth.ts`   | `signIn`, `signOut` (supabase-js), `register`, `fetchMe`                                 | `POST /auth/register`, `GET /auth/me`                                        |
-| `services/store.ts`  | `fetchStore`                                                                             | `GET /store`                                                                 |
+| `services/store.ts`  | `fetchStore`, `prefetchStore`                                                            | `GET /store`                                                                 |
 | `services/config.ts` | `fetchConfig`                                                                            | `GET /config` without a token; concurrent callers share one request          |
-| `services/menu.ts`   | `fetchMenu`                                                                              | `GET /menu`                                                                  |
+| `services/menu.ts`   | `fetchMenu`, `prefetchMenu`                                                              | `GET /menu`                                                                  |
 | `services/orders.ts` | `createOrder`, `fetchOrders(status?)`, `fetchOrder(id)`, `updateOrderStatus(id, status)` | `POST /orders`, `GET /orders`, `GET /orders/:id`, `PATCH /orders/:id/status` |
 | `services/admin.ts`  | `fetchSiteSettings()`, `updateSiteSettings(changes)`                                     | `GET /admin/settings`, `PATCH /admin/settings`                               |
 
@@ -177,7 +177,7 @@ Details of each export: [COMPONENTS.md](COMPONENTS.md#feature-rules-and-hooks).
 - Business rules live in `features/cart/cartRules.ts` and `features/orders/orderStatus.ts`, not in components.
   `orderStatus.ts` is the single source of truth for status labels, colours and staff actions on the client; the
   server's `ALLOWED_TRANSITIONS` decides what is actually allowed.
-- `lib/*` has no app knowledge except `lib/supabase.ts` (the sign-in client) and `lib/useResource.ts` (which uses
+- `lib/*` has no app knowledge except `lib/supabase.ts` (the sign-in client, loaded on demand from `supabaseClient.ts`) and `lib/useResource.ts` (which uses
   `ApiError`).
 - Types for API shapes come from `types/api.ts` only.
 - Logging goes through `lib/logger.ts`; `console.*` elsewhere fails lint (see [LOGGING.md](LOGGING.md)).
@@ -207,13 +207,22 @@ quota just means no head start, not a crash.
 
 Every bundled photo in `client/public/images/` ships two files: `<name>.jpg` (≤900px) and `<name>-400.jpg` (400px),
 produced by `python3 client/scripts/optimize-images.py` (see
-[DEPLOYMENT.md#future-docker--nginx](DEPLOYMENT.md#future-docker--nginx) for where static-asset serving eventually
-lives). `lib/photo.ts`'s `photoSrcSet(src)` turns a bundled `/images/<name>.jpg` URL into
+[DEPLOYMENT.md#containers](DEPLOYMENT.md#containers) for how the web image serves them). `lib/photo.ts`'s `photoSrcSet(src)` turns a bundled `/images/<name>.jpg` URL into
 `"/images/<name>-400.jpg 400w, /images/<name>.jpg 900w"`; any other URL (a future Supabase Storage upload) gets no
 srcset. `components/FoodPhoto.tsx` renders it with a `sizes` prop that must match the photo's real rendered width so
 the browser downloads the small file: the default is `112px` (menu and cart list photos), `PopularRail` passes
 `188px`, `ItemDetailSheet` passes `"(min-width: 768px) 480px, 100vw"`. `lib/photo.test.ts` fails if a bundled photo
-is missing its `-400` thumbnail.
+is missing its `-400` thumbnail or is over the ~80 KB budget (CLAUDE.md §2b; `optimize-images.py --refit` fixes it).
+
+### The largest paint
+
+On `/` and `/menu` the LCP element is the store cover. It gets `LCP_IMAGE_PROPS` (`fetchpriority="high"`), is
+never inside an entrance fade (a fading ancestor delays the LCP until the fade ends, so `HomePage`, `MenuPage` and
+`StoreCard` fade only what is below it), and `MenuPage` holds its food photos in a `FoodPhotoGate` until the cover is
+painted, so it does not share a slow link with ten photos. `main.tsx` starts `/api/menu` (on `/menu`) or `/api/store`
+(on `/`) before the first render (`prefetchMenu`, `prefetchStore`: the next fetch takes that response, once).
+supabase-js loads only when a session may exist or on the sign-in screens (`getSupabase`), keeping the entry chunk
+at about 88 KB gzip.
 
 ### Lazy routes
 

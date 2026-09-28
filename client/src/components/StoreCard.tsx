@@ -1,7 +1,7 @@
 import { ArrowRight, Clock } from 'lucide-react';
 import type { Store } from '../types/api';
 import { formatPrepRange } from '../lib/format';
-import { photoSrcSet } from '../lib/photo';
+import { LCP_IMAGE_PROPS, photoSrcSet } from '../lib/photo';
 import { ButtonLink } from './Button';
 import { Card } from './Card';
 import { OpenPill } from './OpenPill';
@@ -18,7 +18,8 @@ export function StoreCard({ store, className }: StoreCardProps) {
     <Card
       as="section"
       padding="none"
-      className={`overflow-hidden animate-fade-up ${className ?? ''}`}
+      // No entrance fade: the cover is the page's largest paint, which an animating opacity would delay.
+      className={`overflow-hidden ${className ?? ''}`}
     >
       <div className="relative aspect-[16/9] bg-surface-2">
         {store.imageUrl && (
@@ -26,6 +27,7 @@ export function StoreCard({ store, className }: StoreCardProps) {
             src={store.imageUrl}
             srcSet={photoSrcSet(store.imageUrl)}
             sizes="(min-width: 768px) 480px, calc(100vw - 32px)"
+            {...LCP_IMAGE_PROPS}
             alt={`${store.name} storefront`}
             className="h-full w-full object-cover"
           />
