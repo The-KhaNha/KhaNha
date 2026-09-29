@@ -3,11 +3,11 @@ import { LogOut, UserRound } from 'lucide-react';
 import { Button, ButtonLink } from '../../components/Button';
 import { Wordmark } from '../../components/Wordmark';
 import { formatAgo, formatTime } from '../../lib/format';
+import { useNow } from '../../lib/useNow';
 
 interface StaffHeaderProps {
   /** From GET /api/store; undefined while it loads. */
   storeName?: string;
-  now: Date;
   /** Timestamp of the last successful orders fetch. */
   updatedAt: number | null;
   /** True when the last fetch failed and nothing has loaded yet. */
@@ -20,12 +20,13 @@ interface StaffHeaderProps {
 /** Sticky dashboard header: wordmark, shop name, live clock + freshness, log out. */
 export function StaffHeader({
   storeName,
-  now,
   updatedAt,
   offline,
   onLogout,
   children,
 }: StaffHeaderProps) {
+  // The clock lives here, not in the page: a tick re-renders the header, never the board of cards below it.
+  const now = useNow(1000);
   return (
     <header className="sticky top-0 z-40 border-b border-line/60 bg-bg/90 backdrop-blur-md">
       {/* min-h + wrap: at large text the clock and Log out move to a second line instead of off the screen. */}

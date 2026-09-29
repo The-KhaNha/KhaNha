@@ -8,7 +8,7 @@ describe('StaffHeader', () => {
   it('links to the profile next to Log out', () => {
     render(
       <MemoryRouter>
-        <StaffHeader now={new Date()} updatedAt={null} offline={false} onLogout={() => {}} />
+        <StaffHeader updatedAt={null} offline={false} onLogout={() => {}} />
       </MemoryRouter>,
     );
     expect(screen.getByRole('link', { name: 'Profile' })).toHaveAttribute('href', '/profile');

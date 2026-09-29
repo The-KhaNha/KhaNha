@@ -21,7 +21,6 @@ import {
 } from '../features/orders/staffBoardRules';
 import { ApiError } from '../services/api';
 import { updateOrderStatus } from '../services/orders';
-import { useNow } from '../lib/useNow';
 
 /** The 200ms --animate-card-leave plus a 20ms margin, so the card is removed just after it finishes fading. */
 const LEAVE_MS = 220;
@@ -34,7 +33,6 @@ export function StaffDashboardPage() {
   const { store } = useStore();
   const logout = useAuthStore((s) => s.logout);
   const navigate = useNavigate();
-  const now = useNow(1000);
 
   const [filterKey, setFilterKey] = useState<StaffFilterKey>('ALL');
   const [pendingIds, setPendingIds] = useState<ReadonlySet<string>>(new Set());
@@ -126,7 +124,6 @@ export function StaffDashboardPage() {
     <div className="min-h-dvh">
       <StaffHeader
         storeName={store?.name}
-        now={now}
         updatedAt={updatedAt}
         offline={error !== null}
         onLogout={handleLogout}
