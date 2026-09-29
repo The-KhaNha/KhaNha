@@ -6,7 +6,7 @@ import pino from 'pino';
 import { pinoHttp } from 'pino-http';
 import { readClientVersion } from './middleware/clientVersion';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
-import { ipLimiter } from './middleware/rateLimit';
+import { floodLimiter } from './middleware/rateLimit';
 import { securityHeaders } from './middleware/securityHeaders';
 import { payloadTooLarge } from './utils/errors';
 import { apiRouter } from './routes/index';
@@ -75,12 +75,12 @@ export function createApp(): Express {
   // Preflights are counted here, before cors() answers them itself and ends the request: a limiter mounted only after
   // it never saw one, so a scripted flood of OPTIONS went uncounted. Every other request is counted below.
   app.use('/api', (req, res, next) =>
-    req.method === 'OPTIONS' ? ipLimiter(req, res, next) : next(),
+    req.method === 'OPTIONS' ? floodLimiter(req, res, next) : next(),
   );
   app.use(cors({ origin: env.CLIENT_ORIGIN }));
   // After the access log (a refused request still gets its line) and before the body is parsed (a flood is refused
   // before it costs anything). The probes in routes/index.ts count too: they are only cheaper, not exempt.
-  app.use('/api', ipLimiter);
+  app.use('/api', floodLimiter);
   // body-parser reads an oversized body to its end before answering 413. Refusing on the declared length instead
   // tells a phone on a slow link at once, and Connection: close drops the rest of the upload unread.
   app.use('/api', (req, res, next) => {

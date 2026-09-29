@@ -38,7 +38,7 @@ The client reads them through `GET /api/config` (`useConfig()`, persisted) and f
 | `SESSION_IDLE_DAYS` | 7       | 1–90   | `GET /api/config` (`session.idleDays`); must equal `auth.sessions.inactivity_timeout` (168h) in `server/supabase/config.toml` (hosted Supabase Free has no such setting, [ADR-011](adr/011-free-tiers.md)). The client's sign-in cap (`sessionActivity.ts`) reads the fallback copy, because it runs before any request |
 
 | `RATE_LIMIT_WINDOW_MS` | 60000 | 1000–3600000 | `middleware/rateLimit.ts`: the fixed window every limit below counts in |
-| `RATE_LIMIT_IP_MAX` | 600 | ≥ 0 (0 = off) | requests per address per window on all of `/api`: a flood guard only, since campus Wi-Fi puts many customers behind one address ([ADR-009](adr/009-rate-limiting-token-buckets.md)) |
+| `RATE_LIMIT_IP_MAX` | 600 | ≥ 0 (0 = off) | requests per window on all of `/api`, per signed-in account (verified token) or else per address: a flood guard only; campus Wi-Fi puts many customers behind one address, so a signed-in customer never shares it ([ADR-009](adr/009-rate-limiting-token-buckets.md)) |
 | `RATE_LIMIT_WRITE_MAX` | 30 | ≥ 0 (0 = off) | writes per signed-in user per window (`POST /orders`, `PATCH /orders/:id/status`, `PATCH /admin/settings`): the real abuse limit |
 | `RATE_LIMIT_REGISTER_MAX` | 10 | ≥ 0 (0 = off) | `POST /auth/register` per address per window |
 

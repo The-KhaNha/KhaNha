@@ -168,13 +168,19 @@ describe('errorHandler mapping', () => {
     ['idempotencyKeyReused', 409, 'info', idempotencyKeyReused('o1', 7)],
     ['payloadTooLarge', 413, 'info', payloadTooLarge()],
     ['clientOutdated', 426, 'debug', clientOutdated()],
-    ['rateLimited', 429, 'warn', rateLimited()],
+    ['rateLimited', 429, 'warn', rateLimited('flood', 'ip')],
   ])('%s → %i, logged once at %s without err', (_name, status, level, err) => {
     const result = run(err, { id: 'u1' });
     expect(result.status).toBe(status);
     expect(result.logged).toHaveLength(1);
     expect(result.logged[0]?.level).toBe(level);
     expect(result.logged[0]?.fields).not.toHaveProperty('err');
+  });
+
+  it('a 429 log line says which limiter refused and what it counted, and the client never sees it', () => {
+    const { logged, body } = run(rateLimited('write', 'user'), { id: 'u1' });
+    expect(logged[0]?.fields).toMatchObject({ status: 429, limiter: 'write', keyedBy: 'user' });
+    expect(JSON.stringify(body)).not.toMatch(/limiter|keyedBy/);
   });
 
   it('does not treat an ordinary TypeError as a transport failure', () => {

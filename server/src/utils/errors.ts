@@ -61,6 +61,8 @@ export class AppError extends Error {
     public readonly code: ErrorCode,
     message: string,
     public readonly details?: ItemErrorDetails | ReplayedOrderDetails | FieldErrorDetails,
+    /** Extra fields for the error handler's log line only; never sent to the client. */
+    public readonly logFields?: Record<string, string>,
   ) {
     super(message);
     this.name = 'AppError';
@@ -84,9 +86,18 @@ export const notFound = (message = 'We could not find what you were looking for.
 export const payloadTooLarge = (): AppError =>
   new AppError(413, 'PAYLOAD_TOO_LARGE', 'The request body is too large.');
 
-/** Too many requests from one account or address in the window (middleware/rateLimit.ts). */
-export const rateLimited = (): AppError =>
-  new AppError(429, 'RATE_LIMITED', 'Too many requests. Please wait a minute and try again.');
+/**
+ * Too many requests from one account or address in the window (middleware/rateLimit.ts). The log line says which
+ * limiter refused and whether it counted an account or an address, so a burst can be told apart.
+ */
+export const rateLimited = (limiter: string, keyedBy: 'user' | 'ip'): AppError =>
+  new AppError(
+    429,
+    'RATE_LIMITED',
+    'Too many requests. Please wait a minute and try again.',
+    undefined,
+    { limiter, keyedBy },
+  );
 
 /**
  * The key already placed an order, and this request asks for something else under it (a cart changed after a Pay

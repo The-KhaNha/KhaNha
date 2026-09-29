@@ -53,7 +53,10 @@ export const errorHandler: ErrorRequestHandler = (thrown: unknown, req, res, _ne
     const route = req.route ? `${req.baseUrl}${String(req.route.path)}` : req.path;
     req.log.error({ err, route, status, code, userId: req.user?.id }, 'Request failed');
   } else if (status === 426) req.log.debug({ status, code }, message);
-  else req.log[[401, 403, 429].includes(status) ? 'warn' : 'info']({ status, code }, message);
+  else {
+    const fields = { status, code, ...(err instanceof AppError && err.logFields) };
+    req.log[[401, 403, 429].includes(status) ? 'warn' : 'info'](fields, message);
+  }
   // The envelope is { error: { code, message } }, plus `details` for a cart-line error, a reused idempotency key or
   // the request field a validation error is about.
   res.status(status).json({ error: { code, message, ...(details && { details }) } });

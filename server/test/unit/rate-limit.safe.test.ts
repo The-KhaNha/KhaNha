@@ -25,7 +25,7 @@ function app(options: RateLimitOptions) {
 
 describe('createRateLimiter', () => {
   it('answers 429 RATE_LIMITED in the envelope, with Retry-After and RateLimit headers, past the limit', async () => {
-    const http = app({ windowMs: 60_000, limit: 2, keyBy: 'user' });
+    const http = app({ name: 'test', windowMs: 60_000, limit: 2, keyBy: 'user' });
     const first = await http.post('/write').set('X-Test-User', 'a');
     expect(first.status).toBe(200);
     expect(first.headers['ratelimit-policy']).toBe('2;w=60');
@@ -45,31 +45,31 @@ describe('createRateLimiter', () => {
   });
 
   it('counts per user: one account at its limit does not block another from the same address', async () => {
-    const http = app({ windowMs: 60_000, limit: 1, keyBy: 'user' });
+    const http = app({ name: 'test', windowMs: 60_000, limit: 1, keyBy: 'user' });
     expect((await http.post('/write').set('X-Test-User', 'a')).status).toBe(200);
     expect((await http.post('/write').set('X-Test-User', 'a')).status).toBe(429);
     expect((await http.post('/write').set('X-Test-User', 'b')).status).toBe(200);
   });
 
   it('falls back to the address for a request without a user, and keyBy ip ignores the user', async () => {
-    const byUser = app({ windowMs: 60_000, limit: 1, keyBy: 'user' });
+    const byUser = app({ name: 'test', windowMs: 60_000, limit: 1, keyBy: 'user' });
     expect((await byUser.post('/write')).status).toBe(200);
     expect((await byUser.post('/write')).status).toBe(429);
 
-    const byIp = app({ windowMs: 60_000, limit: 1, keyBy: 'ip' });
+    const byIp = app({ name: 'test', windowMs: 60_000, limit: 1, keyBy: 'ip' });
     expect((await byIp.post('/write').set('X-Test-User', 'a')).status).toBe(200);
     expect((await byIp.post('/write').set('X-Test-User', 'b')).status).toBe(429);
   });
 
   it('keys a proxied request by X-Forwarded-For when the proxy is trusted', async () => {
-    const http = app({ windowMs: 60_000, limit: 1, keyBy: 'ip' });
+    const http = app({ name: 'test', windowMs: 60_000, limit: 1, keyBy: 'ip' });
     expect((await http.post('/write').set('X-Forwarded-For', '203.0.113.1')).status).toBe(200);
     expect((await http.post('/write').set('X-Forwarded-For', '203.0.113.2')).status).toBe(200);
     expect((await http.post('/write').set('X-Forwarded-For', '203.0.113.1')).status).toBe(429);
   });
 
   it('Retry-After is the time left in the window, not the whole window', async () => {
-    const http = app({ windowMs: 2_000, limit: 1, keyBy: 'user' });
+    const http = app({ name: 'test', windowMs: 2_000, limit: 1, keyBy: 'user' });
     expect((await http.post('/write').set('X-Test-User', 'a')).status).toBe(200);
     expect((await http.post('/write').set('X-Test-User', 'a')).headers['retry-after']).toBe('2');
     await new Promise((resolve) => setTimeout(resolve, 1_100));
@@ -79,7 +79,7 @@ describe('createRateLimiter', () => {
   });
 
   it('a limit of 0 turns the limiter off', async () => {
-    const http = app({ windowMs: 60_000, limit: 0, keyBy: 'user' });
+    const http = app({ name: 'test', windowMs: 60_000, limit: 0, keyBy: 'user' });
     for (let i = 0; i < 5; i += 1) expect((await http.post('/write')).status).toBe(200);
   });
 });
