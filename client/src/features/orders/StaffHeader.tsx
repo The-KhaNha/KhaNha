@@ -43,9 +43,12 @@ export function StaffHeader({
           )}
         </h1>
         <div className="ml-auto flex flex-wrap items-center justify-end gap-x-3 gap-y-2 text-right">
-          <div className="leading-tight">
+          {/* As wide as the longest status ("Updated 59 min ago"): if its width followed the text, the cluster would
+              fit beside the wordmark while "Connecting…" and wrap under it once the first poll landed, moving the
+              board down. */}
+          <div className="min-w-[7.5rem] leading-tight">
             <p className="text-body font-bold tabular-nums">{formatTime(now)}</p>
-            <p className="text-2xs text-muted">
+            <p className="whitespace-nowrap text-2xs text-muted">
               {updatedAt
                 ? `Updated ${formatAgo(updatedAt, now.getTime())}`
                 : offline

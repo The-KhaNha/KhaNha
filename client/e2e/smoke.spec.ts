@@ -518,31 +518,51 @@ for (const status of ['PLACED', 'READY', 'COLLECTED'] as const) {
   });
 }
 
-// A lazy page's loading fallback must not move the page: a top margin on it collapsed through <body> on the
-// full-screen routes, so everything jumped 16px down and back while the chunk loaded.
-for (const { path, role } of [
-  { path: '/login' },
-  { path: '/register' },
-  { path: '/staff', role: 'STAFF' as const },
+// Loading a page must move nothing: a top margin on the lazy fallback collapsed through <body> on the full-screen
+// routes (everything jumped 16px down and back), and the staff header wrapped when "Connecting…" became "Updated just
+// now" (the board jumped 36px). The staff board's first poll is held back so its loading state paints first.
+// Held to 0.01: the web font's own swap moves a line by a pixel (about 0.001); a real jump is 0.025 and up.
+for (const { path, role, width } of [
+  { path: '/login', width: 360 },
+  { path: '/register', width: 360 },
+  // Whether the header's clock cluster fits beside the wordmark depends on the width: check the phone range.
+  ...[360, 390, 412].map((width) => ({ path: '/staff', role: 'STAFF' as const, width })),
 ]) {
-  test(`${path}: loading the page never moves the document`, async ({ page, browserName }) => {
+  test(`${path} at ${width}px: loading the page moves nothing`, async ({ page, browserName }) => {
     test.skip(browserName !== 'chromium', 'layout-shift entries are Chromium-only');
-    if (role) await signIn(page, role);
+    await page.setViewportSize({ width, height: 640 });
+    if (role) {
+      await signIn(page, role);
+      await page.route('**/api/orders**', async (route) => {
+        await new Promise((resolve) => setTimeout(resolve, 800));
+        await route.fallback();
+      });
+    }
     await page.addInitScript(() => {
-      const w = window as unknown as { __bodyShifts: number };
-      w.__bodyShifts = 0;
+      const w = window as unknown as { __shifts: string[]; __cls: number };
+      w.__shifts = [];
+      w.__cls = 0;
       new PerformanceObserver((list) => {
-        for (const entry of list.getEntries() as unknown as { sources: { node?: Node }[] }[]) {
-          if (entry.sources.some((s) => s.node === document.body)) w.__bodyShifts += 1;
+        for (const entry of list.getEntries() as unknown as {
+          value: number;
+          sources: { node?: Node }[];
+        }[]) {
+          const nodes = entry.sources.map((s) => (s.node as Element | undefined)?.tagName ?? '?');
+          w.__shifts.push(`${entry.value.toFixed(4)} ${nodes.join(',')}`);
+          w.__cls += entry.value;
         }
       }).observe({ type: 'layout-shift', buffered: true });
     });
     await page.goto(path);
     await page.waitForLoadState('networkidle');
-    expect(
-      await page.evaluate(() => (window as unknown as { __bodyShifts: number }).__bodyShifts),
-      'shifts of <body> while the page loaded',
-    ).toBe(0);
+    await page.waitForTimeout(300);
+    const { cls, shifts } = await page.evaluate(() => {
+      const w = window as unknown as { __shifts: string[]; __cls: number };
+      return { cls: w.__cls, shifts: w.__shifts };
+    });
+    expect(cls, `layout shift while the page loaded: ${shifts.join(' | ')}`).toBeLessThanOrEqual(
+      0.01,
+    );
   });
 }
 
