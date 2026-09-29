@@ -50,7 +50,7 @@ To see what you changed, use `git diff HEAD -- <path>`, never a stash.
 | CLS | ≤ 0.1 | same |
 | Initial JS | ≤ ~170 KB gzipped | `vite build` output: entry + modulepreload chunks |
 | Code splitting | route-level for staff, auth and checkout | `client/src/App.tsx` + build chunks |
-| Menu photo | ≤ ~80 KB each, sized to its box, lazy below the fold, aspect box (no shift) | `client/public/images/`, rendered at 360px |
+| Menu photo | ≤ ~80 KB each (80 KiB = 81,920 bytes, what `client/src/lib/photo.test.ts` enforces; count in bytes, not decimal kB), sized to its box, lazy below the fold, aspect box (no shift) | `client/public/images/`, rendered at 360px |
 | API payloads | lean JSON, no over-fetching; no chatty request waterfalls | per route |
 | Polling | paused while the tab is hidden; conservative intervals (metered data) | `/orders/:id`, `/orders`, `/staff` |
 
@@ -118,7 +118,7 @@ Demo logins: customer `anishka@example.com / test1234`, staff `staff@campuscafe.
    Then, at 360×640 on `/` and `/menu`, run this with `browser_evaluate`:
    `[...document.images].map(i => ({ src: i.currentSrc, natural: [i.naturalWidth, i.naturalHeight], box: [Math.round(i.clientWidth*devicePixelRatio), Math.round(i.clientHeight*devicePixelRatio)], loading: i.loading, belowFold: i.getBoundingClientRect().top > innerHeight, boxH: i.parentElement.clientHeight }))`.
    Flag each of these:
-   - a menu photo over ~80 KB;
+   - a menu photo over 81,920 bytes (80 KiB);
    - a natural width more than 2× the rendered box in device pixels;
    - an image below the fold without `loading="lazy"`;
    - an image with no fixed-size or aspect box (a `boxH` of 0 before load means it will shift).
