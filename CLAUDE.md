@@ -459,6 +459,10 @@ A subagent's report is the start of action, not the end of the turn. Classify ev
 After the user answers, apply the answer yourself or spawn a fresh agent of the same type with the answer. The
 original agent has exited: never `SendMessage` it. `SendMessage` is only for a still-running background agent.
 
+`.claude/settings.json` is shared by every developer (the hooks above and the plugins) and stays committed; it
+holds no machine paths, and the graphify hooks skip when graphify is not installed. Personal overrides go in
+`.claude/settings.local.json`, which is gitignored.
+
 Agents added during a session are not registered until the next session; meanwhile spawn `general-purpose` with
 "Read `.claude/agents/<name>.md` and act as that agent".
 

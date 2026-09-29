@@ -14,3 +14,6 @@ graphify-out/
 
 # npm run release output, read by release.yml
 release.json
+
+# Per-machine Claude Code overrides; the shared hooks and plugins live in .claude/settings.json
+.claude/settings.local.json
