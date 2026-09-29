@@ -84,7 +84,7 @@ const SIDEWAYS_WITHOUT_FADE_ALLOWED: Record<string, string> = {
 describe('sideways-scrolling rows', () => {
   it('show EdgeFades', () => {
     const missing = Object.entries(sources)
-      .filter(([file, text]) => /\boverflow-x-auto\b/.test(text) && !text.includes('<EdgeFades'))
+      .filter(([, text]) => /\boverflow-x-auto\b/.test(text) && !text.includes('<EdgeFades'))
       .map(([file]) => file)
       .filter((file) => !(file in SIDEWAYS_WITHOUT_FADE_ALLOWED));
     expect(missing).toEqual([]);
