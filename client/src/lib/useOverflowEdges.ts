@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+/** Scroll positions round to fractions of a pixel: an edge this close counts as reached, so no fade flickers there. */
+const EDGE_SLACK_PX = 4;
+
 export interface OverflowEdges {
   left: boolean;
   right: boolean;
@@ -18,7 +21,10 @@ export function useOverflowEdges<T extends HTMLElement>() {
     const el = ref.current;
     if (!el) return;
     const max = el.scrollWidth - el.clientWidth;
-    const next = { left: el.scrollLeft > 4, right: max > 4 && el.scrollLeft < max - 4 };
+    const next = {
+      left: el.scrollLeft > EDGE_SLACK_PX,
+      right: max > EDGE_SLACK_PX && el.scrollLeft < max - EDGE_SLACK_PX,
+    };
     setEdges((prev) => (prev.left === next.left && prev.right === next.right ? prev : next));
   }, []);
 

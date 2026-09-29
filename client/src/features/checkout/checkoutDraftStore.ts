@@ -3,7 +3,7 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 import { randomUuid } from '../../lib/uuid';
 
 /** The checkout form as typed so far, plus the key that makes a retried "Pay" the same order. null = never typed. */
-export interface CheckoutDraft {
+interface CheckoutDraft {
   name: string | null;
   phone: string | null;
   note: string | null;
@@ -14,7 +14,7 @@ export interface CheckoutDraft {
   idempotencyKey: string | null;
 }
 
-export type CheckoutDraftField = 'name' | 'phone' | 'note';
+type CheckoutDraftField = 'name' | 'phone' | 'note';
 
 interface CheckoutDraftState extends CheckoutDraft {
   setField: (field: CheckoutDraftField, value: string) => void;

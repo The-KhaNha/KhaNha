@@ -60,9 +60,6 @@ export function CheckoutPage() {
   const name = draft.name ?? user?.name ?? '';
   const phone = draft.phone ?? user?.phone ?? '';
   const note = draft.note ?? '';
-  const setName = (value: string) => draft.setField('name', value);
-  const setPhone = (value: string) => draft.setField('phone', value);
-  const setNote = (value: string) => draft.setField('note', value);
   const [errors, setErrors] = useState<{ name?: string; phone?: string; note?: string }>({});
   const [submitting, setSubmitting] = useState(false);
   const [paid, setPaid] = useState(false);
@@ -242,7 +239,7 @@ export function CheckoutPage() {
           placeholder="Who's picking up?"
           maxLength={NAME_MAX_LENGTH}
           value={name}
-          onChange={(e) => setName(e.target.value)}
+          onChange={(e) => draft.setField('name', e.target.value)}
           onBlur={() => setErrors((prev) => ({ ...prev, name: validateName(name) }))}
           error={errors.name}
         />
@@ -255,7 +252,7 @@ export function CheckoutPage() {
           inputMode="tel"
           placeholder="98765 43210"
           value={phone}
-          onChange={(e) => setPhone(e.target.value)}
+          onChange={(e) => draft.setField('phone', e.target.value)}
           onBlur={() => setErrors((prev) => ({ ...prev, phone: validatePhone(phone) }))}
           error={errors.phone}
         />
@@ -266,7 +263,7 @@ export function CheckoutPage() {
           placeholder="e.g. Less spicy"
           maxLength={NOTE_MAX_LENGTH}
           value={note}
-          onChange={(e) => setNote(e.target.value)}
+          onChange={(e) => draft.setField('note', e.target.value)}
           error={errors.note}
         />
       </Card>

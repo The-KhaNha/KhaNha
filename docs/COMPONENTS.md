@@ -358,6 +358,7 @@ UI (presentational; the pages own the data):
 | Export                                                                                  | What                                                                                                                                                                                               |
 | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `staffBoardRules.ts`: `visibleActionErrors(errors, boardUpdatedAt)`, `StaffActionError` | the order-card messages to show on `/staff`: an "unreachable" failure goes stale once the board has loaded again after it (the network is back); other failures stay until that card's next action |
+| `staffBoardRules.ts`: `queueOrder(a, b)`, `countByFilter(orders)`                       | the board's sort (active orders oldest first, then finished ones newest first) and the count shown on each filter chip (`StaffFilterKey` → number)                                                 |
 
 ### features/menu
 

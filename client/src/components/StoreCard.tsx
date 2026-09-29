@@ -20,7 +20,7 @@ export function StoreCard({ store, className }: StoreCardProps) {
       as="section"
       padding="none"
       // No entrance fade: the cover is the page's largest paint, which an animating opacity would delay.
-      className={`overflow-hidden ${className ?? ''}`}
+      className={cn('overflow-hidden', className)}
     >
       <div className="relative aspect-[16/9] bg-surface-2">
         {store.imageUrl && (

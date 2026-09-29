@@ -5,7 +5,6 @@ import { useAuthStore } from '../features/auth/authStore';
 import { useStore } from '../features/menu/useStore';
 import {
   STAFF_FILTERS,
-  isTerminal,
   matchesFilter,
   type StaffFilter,
   type StaffFilterKey,
@@ -14,22 +13,18 @@ import { StaffBoard } from '../features/orders/StaffBoard';
 import { StaffFilters } from '../features/orders/StaffFilters';
 import { StaffHeader } from '../features/orders/StaffHeader';
 import { useOrders } from '../features/orders/useOrders';
-import { visibleActionErrors, type StaffActionError } from '../features/orders/staffBoardRules';
+import {
+  countByFilter,
+  queueOrder,
+  visibleActionErrors,
+  type StaffActionError,
+} from '../features/orders/staffBoardRules';
 import { ApiError } from '../services/api';
 import { updateOrderStatus } from '../services/orders';
 import { useNow } from '../lib/useNow';
 
 /** The 200ms --animate-card-leave plus a 20ms margin, so the card is removed just after it finishes fading. */
 const LEAVE_MS = 220;
-
-/** Active orders oldest-first (fair queue); finished orders newest-first after them. */
-function queueOrder(a: Order, b: Order): number {
-  const aDone = isTerminal(a.status) ? 1 : 0;
-  const bDone = isTerminal(b.status) ? 1 : 0;
-  if (aDone !== bDone) return aDone - bDone;
-  const diff = Date.parse(a.createdAt) - Date.parse(b.createdAt);
-  return aDone ? -diff : diff;
-}
 
 /** The kitchen board: owns polling, filtering and status changes; the header, filters and grid are presentational. */
 export function StaffDashboardPage() {
@@ -68,19 +63,7 @@ export function StaffDashboardPage() {
 
   const filter: StaffFilter = STAFF_FILTERS.find((f) => f.key === filterKey) ?? STAFF_FILTERS[0]!;
 
-  const counts = useMemo(() => {
-    const result: Record<StaffFilterKey, number> = {
-      ALL: 0,
-      NEW: 0,
-      PREPARING: 0,
-      READY: 0,
-      COLLECTED: 0,
-    };
-    for (const order of orders ?? []) {
-      for (const f of STAFF_FILTERS) if (matchesFilter(order.status, f)) result[f.key] += 1;
-    }
-    return result;
-  }, [orders]);
+  const counts = useMemo(() => countByFilter(orders ?? []), [orders]);
 
   const visible = useMemo(
     () =>
