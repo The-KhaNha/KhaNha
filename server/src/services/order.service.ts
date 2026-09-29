@@ -34,7 +34,7 @@ const TERMINAL_STATUSES = ORDER_STATUSES.filter((s) => ALLOWED_TRANSITIONS[s].le
  * A safety bound on active orders per staff request, far above any café's queue. Oldest first, so if it is ever hit
  * the newest wait, never the ones that have waited longest.
  */
-export const ACTIVE_ORDERS_HARD_MAX = 500;
+const ACTIVE_ORDERS_HARD_MAX = 500;
 
 type MenuItem = Tables<'menu_items'>;
 
@@ -47,7 +47,7 @@ type OrderLine = {
 };
 
 /** What createOrder placed, and whether it was placed now or already existed under the same idempotency key. */
-export interface PlacedOrder {
+interface PlacedOrder {
   order: OrderWithDetails;
   replayed: boolean;
 }

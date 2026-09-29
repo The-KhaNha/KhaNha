@@ -8,7 +8,7 @@ import { rateLimited } from '../utils/errors';
  * an unauthenticated request; `ip` is the address alone. The campus Wi-Fi puts hundreds of customers behind one
  * address, so the per-address limits are generous and the per-user ones do the real work (docs/CONFIGURATION.md).
  */
-export type RateLimitKey = 'user' | 'ip';
+type RateLimitKey = 'user' | 'ip';
 
 export interface RateLimitOptions {
   /** The window in ms. */

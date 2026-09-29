@@ -4,6 +4,7 @@ import { ZodError } from 'zod';
 import {
   AppError,
   IntegrationError,
+  payloadTooLarge,
   type ErrorCode,
   type ItemErrorDetails,
   type FieldErrorDetails,
@@ -93,9 +94,7 @@ function describeHttpError(err: unknown): ErrorDescription | undefined {
   if (typeof err !== 'object' || err === null) return undefined;
   const { type, status } = err as { type?: unknown; status?: unknown };
 
-  if (type === 'entity.too.large') {
-    return { status: 413, code: 'PAYLOAD_TOO_LARGE', message: 'The request body is too large.' };
-  }
+  if (type === 'entity.too.large') return payloadTooLarge();
   if (type === 'entity.parse.failed') {
     return { status: 400, code: 'VALIDATION_ERROR', message: 'Malformed request body.' };
   }

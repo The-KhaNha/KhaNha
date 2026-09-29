@@ -4,9 +4,13 @@ import { errorHandler } from '../../src/middleware/errorHandler';
 import {
   AppError,
   IntegrationError,
+  clientOutdated,
   forbidden,
+  idempotencyKeyReused,
   insufficientStock,
   notFound,
+  payloadTooLarge,
+  rateLimited,
   unauthorized,
   validationError,
 } from '../../src/utils/errors';
@@ -151,6 +155,26 @@ describe('errorHandler mapping', () => {
     const { status, logged } = run(forbidden());
     expect(status).toBe(403);
     expect(logged[0]?.level).toBe('warn');
+  });
+
+  // docs/LOGGING.md: 401/403/429 warn (a burst is worth noticing), 426 debug (a stale tab keeps asking), other 4xx
+  // info. A 4xx never carries err: the stack is only for 5xx.
+  it.each([
+    ['validationError', 400, 'info', validationError('x')],
+    ['unauthorized', 401, 'warn', unauthorized()],
+    ['forbidden', 403, 'warn', forbidden()],
+    ['notFound', 404, 'info', notFound()],
+    ['insufficientStock', 400, 'info', insufficientStock('i1', 'Tea', 0)],
+    ['idempotencyKeyReused', 409, 'info', idempotencyKeyReused('o1', 7)],
+    ['payloadTooLarge', 413, 'info', payloadTooLarge()],
+    ['clientOutdated', 426, 'debug', clientOutdated()],
+    ['rateLimited', 429, 'warn', rateLimited()],
+  ])('%s → %i, logged once at %s without err', (_name, status, level, err) => {
+    const result = run(err, { id: 'u1' });
+    expect(result.status).toBe(status);
+    expect(result.logged).toHaveLength(1);
+    expect(result.logged[0]?.level).toBe(level);
+    expect(result.logged[0]?.fields).not.toHaveProperty('err');
   });
 
   it('does not treat an ordinary TypeError as a transport failure', () => {

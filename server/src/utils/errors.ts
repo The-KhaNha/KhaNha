@@ -80,6 +80,10 @@ export const forbidden = (message = 'You do not have permission to do that.'): A
 export const notFound = (message = 'We could not find what you were looking for.'): AppError =>
   new AppError(404, 'NOT_FOUND', message);
 
+/** The body is over JSON_BODY_LIMIT_BYTES: refused on its declared length (app.ts) or by body-parser (errorHandler). */
+export const payloadTooLarge = (): AppError =>
+  new AppError(413, 'PAYLOAD_TOO_LARGE', 'The request body is too large.');
+
 /** Too many requests from one account or address in the window (middleware/rateLimit.ts). */
 export const rateLimited = (): AppError =>
   new AppError(429, 'RATE_LIMITED', 'Too many requests. Please wait a minute and try again.');

@@ -8,7 +8,7 @@ import { readClientVersion } from './middleware/clientVersion';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { ipLimiter } from './middleware/rateLimit';
 import { securityHeaders } from './middleware/securityHeaders';
-import { AppError } from './utils/errors';
+import { payloadTooLarge } from './utils/errors';
 import { apiRouter } from './routes/index';
 import { env } from './utils/env';
 import { LOG_SERIALIZERS, logger } from './utils/logger';
@@ -86,7 +86,7 @@ export function createApp(): Express {
   app.use('/api', (req, res, next) => {
     if (Number(req.headers['content-length']) > JSON_BODY_LIMIT_BYTES) {
       res.set('Connection', 'close');
-      next(new AppError(413, 'PAYLOAD_TOO_LARGE', 'The request body is too large.'));
+      next(payloadTooLarge());
       return;
     }
     next();

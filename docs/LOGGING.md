@@ -56,7 +56,8 @@ Successful `GET`s are logged at `debug` on purpose: the staff board polls every 
 - Pass structured fields first and a short constant message second:
   `req.log.info({ orderId, status }, 'Order status changed')`, not string concatenation.
 - Log a failure once, at the boundary. `middleware/errorHandler.ts` logs every failed request. Services and
-  controllers throw (`AppError` or the raw error) and do not also log it. Never log and rethrow.
+  controllers throw (`AppError` or the raw error) and do not also log it. Never log and rethrow. The level each
+  error factory lands on is pinned by the table in `server/test/unit/errors.safe.test.ts`: a new factory gets a row.
 - Do not log inside loops or on polling paths above `debug`.
 
 ## Error classes
