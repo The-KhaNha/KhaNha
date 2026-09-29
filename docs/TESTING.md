@@ -23,13 +23,16 @@ The full gate for a touched package is `npm run typecheck && npm run lint && npm
 
 ## Where tests live
 
-| Package | Location                                                                                                                       | Environment |
-| ------- | ------------------------------------------------------------------------------------------------------------------------------ | ----------- |
-| server  | `server/test/**/*.test.ts`: `test/api/` one suite per router, `test/unit/` pure logic (schemas, serializers, errors, validate) | node        |
-| client  | next to the code: `src/**/<name>.test.ts(x)`                                                                                   | jsdom       |
+| Package | Location                                                                                                                                                                                                                                                                                                                                                                                                                | Environment      |
+| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| server  | `server/test/**/*.test.ts`: `test/api/` one suite per router, `test/unit/` pure logic (schemas, serializers, errors, validate)                                                                                                                                                                                                                                                                                          | node             |
+| client  | next to the code: `src/**/<name>.test.ts(x)`                                                                                                                                                                                                                                                                                                                                                                            | jsdom            |
+| client  | `e2e/smoke.spec.ts` at 360×640, every `/api` call mocked, Vite reused or started by `playwright.config.ts`: the add-to-cart path, and on `/`, `/menu`, `/cart`, `/login`, `/register` every control at least 44px and nothing past the screen edge at 200% text (sideways scrollers exempt). `npm run e2e:chromium` (CI, every client PR) and `npm run e2e:webkit` (`browsers.yml`, weekly; `npm run e2e:install` once) | Chromium, WebKit |
 
 - Server config: `server/vitest.config.mts`. Files run one at a time (`fileParallelism: false`), because the suites
-  share one database.
+  share one database. It sets `RATE_LIMIT_IP_MAX`, `RATE_LIMIT_WRITE_MAX` and `RATE_LIMIT_REGISTER_MAX` to `0`
+  (off), since the suites fire hundreds of writes a minute as one user; the limiter itself is tested through its
+  factory in `test/unit/rate-limit.safe.test.ts`.
 - Client config: `client/vitest.config.ts`. It is separate from `vite.config.ts`, which refuses to load without a
   mode's Supabase env. The setup in `src/test/setup.ts` loads the jest-dom matchers and cleans up after each test.
 
@@ -105,6 +108,9 @@ Each endpoint suite covers the rows that apply to it:
 | Concurrency    | `Promise.all` race for the last unit of stock → exactly one order succeeds; concurrent status updates on one order                                                                                                                                                                                                                                                                                                                                                                |
 | Accounts       | `EMAIL_TAKEN`, password length bounds                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | Error envelope | every error is `{ error: { code, message, details? } }`, with no stack trace or SQL text                                                                                                                                                                                                                                                                                                                                                                                          |
+| Idempotency    | the same `idempotencyKey` twice → the same order, stock reserved once; two simultaneous requests with one key → one order; the same key from two users, or no key → two orders; the same key with a different cart, note or name → 409 `IDEMPOTENCY_KEY_REUSED` naming the placed order, stock untouched (also when the two race); a non-UUID key → 400; the key never appears in a response                                                                                      |
+| Rate limits    | past the limit → 429 `RATE_LIMITED` in the envelope with `Retry-After` and `RateLimit-Policy` / `RateLimit`; per user (one account at its limit never blocks another from the same address); the address fallback and `X-Forwarded-For` behind a trusted proxy; `0` turns a limit off                                                                                                                                                                                             |
+| Headers        | `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy` and the CSP on a 200, a 404 and a 401; no HSTS over plain http; no `X-Powered-By`; the menu answers at most `MENU_ITEMS_MAX` items                                                                                                                                                                                                                                                                                 |
 | Caching        | `Cache-Control: no-cache` + `Vary: Authorization` on an `/api` response, a bodiless 304 on a matching `If-None-Match`; the cached menu reflects a real order and its cancellation; saved `site_settings` are reflected by the next `GET /api/orders`/`GET /api/admin/settings`; `cached()` shares one load between concurrent misses, reloads after its TTL, never caches a rejected load, and `invalidate()` drops one key or all of them — see [API.md#caching](API.md#caching) |
 
 The response shapes in `server/src/types/api.ts` (`XDto`) and `client/src/types/api.ts` (`X`) are kept in sync by
@@ -113,6 +119,17 @@ against them. `ErrorCode` exists only on the server (`server/src/utils/errors.ts
 `ApiError.code` as a string.
 
 A test that fails because of a real bug is a bug report. Never weaken the assertion to make it pass.
+
+**Every fix ships with its guard** (CLAUDE.md §13): the test or check that fails if the same class of bug returns,
+seen failing with the fix reverted. The guards added with the break-test fixes:
+
+| Class of bug                                                  | Guard                                                                                                                                         |
+| ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| user-typed data left in browser storage after sign-out        | `client/src/lib/storageKeys.test.ts`: every `fp_` key classified; user-typed keys cleared by the auth store alone                             |
+| a reused idempotency key silently answering a different order | `server/test/api/orders.test.ts` "idempotencyKey" (409, stock untouched, the race); `client/src/pages/Checkout.test.tsx` (new key, cart kept) |
+| an oversized body read to the end before its 413              | `server/test/api/body-limit.safe.test.ts`; the `images` job's nginx 413 check                                                                 |
+| layout past the screen, or controls under 44px, at large text | `client/e2e/smoke.spec.ts` (every client PR on Chromium, weekly on WebKit), `ui-verifier` L11                                                 |
+| a staff card's stale "unreachable" error                      | `client/src/features/orders/staffBoardRules.test.ts`                                                                                          |
 
 ## Continuous integration
 
@@ -133,17 +150,17 @@ skipped jobs as passed. The workflow has no `paths:` filter, so every PR reports
 Roughly: a docs-only PR costs 4–5 billed minutes a push, a client change about 12, a server change about 20 (most of it
 `server-tests` starting Supabase). Each job is billed rounded up to a whole minute.
 
-| Job                        | Runs                                                                                                                                                                                                                                                           | Reproduce locally                                                                                                                |
-| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `client`                   | `npm ci`, typecheck, lint, `format:check`, test, `build:staging`, the bundle budget                                                                                                                                                                            | `cd client && npm run build:staging && node ../scripts/ci/check-bundle.mjs .`                                                    |
-| `server-static`            | `npm ci --ignore-scripts`, typecheck, lint, `format:check`, build                                                                                                                                                                                              | the same commands in `server/`                                                                                                   |
-| `server-tests`             | `npm ci`, `db:start:ci` (Postgres, GoTrue, PostgREST, Kong only), `cp .env.example .env`, seed, `npm test`, then `db:types` must leave `src/types/database.ts` unchanged; `db:stop` always; 15-minute timeout                                                  | `npm run db:start && npm run seed && npm test && npm run db:types && git diff --exit-code -- src/types/database.ts` in `server/` |
-| `migrations` (PR only)     | `scripts/ci/check-migrations.mjs`: the PR may only add migrations, each with a 14-digit prefix newer than the base's newest; added files already on `main` (hotfix back-merges) are skipped                                                                    | `node scripts/ci/check-migrations.mjs --base origin/dev`                                                                         |
-| `changes`                  | which parts changed (`client`, `server`, `images`), for the jobs below                                                                                                                                                                                         | –                                                                                                                                |
-| `version-intent` (PR only) | `scripts/version/check.mjs`: a PR that changes package source adds a `.changes/*.md` intent (the `no-release` label skips it); a `release/*` PR into `main` has no intents left and versions above the latest tags                                             | `npm run change:check`                                                                                                           |
-| `repo`                     | root `npm ci`, `format:check` (`scripts/**`, `.github/**`, `plans/**`), `npm test` (`node --test` over `scripts/**/*.test.mjs`), `check:durations`, and on PRs gitleaks over the PR's own commits (`--log-opts origin/<base>..HEAD`)                           | `npm run format:check && npm test` at the root                                                                                   |
-| `images`                   | hadolint on both Dockerfiles; buildx builds of `fp-api` and `fp-web` (GitHub Actions cache, `GIT_COMMIT` = the SHA); smoke: `/api/health` with dummy Supabase env (and the commit in it), `/healthz` and `/runtime-env.js`; size budgets 200 MB API, 50 MB web | `docker compose up --build web api`, or the `docker build` / `docker run` lines in DEPLOYMENT.md                                 |
-| `ci-ok`                    | aggregates the jobs above                                                                                                                                                                                                                                      | –                                                                                                                                |
+| Job                        | Runs                                                                                                                                                                                                                                                                                                                                                       | Reproduce locally                                                                                                                |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `client`                   | `npm ci`, typecheck, lint, `format:check`, test, `build:staging`, the bundle budget, then `scripts/ci/check-dist-secrets.mjs` over `dist/` (a Supabase secret key, a `service_role` JWT, a private key or a server-only env name in the built bundle fails), then `npm run e2e:chromium` (the smoke spec; failure screenshots as `chromium-smoke`)         | `cd client && npm run build:staging && node ../scripts/ci/check-bundle.mjs . && node ../scripts/ci/check-dist-secrets.mjs .`     |
+| `server-static`            | `npm ci --ignore-scripts`, typecheck, lint, `format:check`, build                                                                                                                                                                                                                                                                                          | the same commands in `server/`                                                                                                   |
+| `server-tests`             | `npm ci`, `db:start:ci` (Postgres, GoTrue, PostgREST, Kong only), `cp .env.example .env`, seed, `npm test`, then `db:types` must leave `src/types/database.ts` unchanged; `db:stop` always; 15-minute timeout                                                                                                                                              | `npm run db:start && npm run seed && npm test && npm run db:types && git diff --exit-code -- src/types/database.ts` in `server/` |
+| `migrations` (PR only)     | `scripts/ci/check-migrations.mjs`: the PR may only add migrations, each with a 14-digit prefix newer than the base's newest; added files already on `main` (hotfix back-merges) are skipped                                                                                                                                                                | `node scripts/ci/check-migrations.mjs --base origin/dev`                                                                         |
+| `changes`                  | which parts changed (`client`, `server`, `images`), for the jobs below                                                                                                                                                                                                                                                                                     | –                                                                                                                                |
+| `version-intent` (PR only) | `scripts/version/check.mjs`: a PR that changes package source adds a `.changes/*.md` intent (the `no-release` label skips it); a `release/*` PR into `main` has no intents left and versions above the latest tags                                                                                                                                         | `npm run change:check`                                                                                                           |
+| `repo`                     | root `npm ci`, `format:check` (`scripts/**`, `.github/**`, `plans/**`), `npm test` (`node --test` over `scripts/**/*.test.mjs`), `check:durations`, and on PRs gitleaks over the PR's own commits (`--log-opts origin/<base>..HEAD`)                                                                                                                       | `npm run format:check && npm test` at the root                                                                                   |
+| `images`                   | hadolint on both Dockerfiles; buildx builds of `fp-api` and `fp-web` (GitHub Actions cache, `GIT_COMMIT` = the SHA); smoke: `/api/health` with dummy Supabase env (and the commit in it), `/healthz` and `/runtime-env.js`, `X-Frame-Options` + `nosniff` on both, and nginx answering a 200 kB body with the JSON 413; size budgets 200 MB API, 50 MB web | `docker compose up --build web api`, or the `docker build` / `docker run` lines in DEPLOYMENT.md                                 |
+| `ci-ok`                    | aggregates the jobs above                                                                                                                                                                                                                                                                                                                                  | –                                                                                                                                |
 
 The bundle budget lives in `client/perf-budget.json` (`initialJsGzipKb`, CLAUDE.md §2b). `scripts/ci/check-bundle.mjs`
 reads `client/dist/.vite/manifest.json`, sums the entry chunk and its static imports at gzip level 9, prints a table
@@ -170,6 +187,13 @@ a release); informational. About 12 minutes a run, so it does not run on every P
 warnings) and uploads `client/lhci/` as the `lighthouse-report` artifact. Numbers: `docs/PERF_BASELINE.md`
 "CI numbers".
 
+### WebKit smoke (`browsers.yml`)
+
+Weekly (Monday 03:30 UTC) and on demand; informational. Installs WebKit with its system libraries and runs
+`npm run e2e:webkit` (`client/e2e/smoke.spec.ts`: home, menu, add to cart, cart at 360px, no sideways scroll,
+clean console, every `/api` call mocked). Failure screenshots are uploaded as `webkit-smoke`. Locally,
+`npm run e2e:chromium` runs the same spec on Chromium where WebKit cannot launch (WSL without its libraries).
+
 ### Security checks (`security.yml`)
 
 Runs weekly (Monday 03:00 UTC), on demand, and on PRs that change a `package.json`, a lockfile or `.gitleaks.toml`.
@@ -183,6 +207,18 @@ Informational. A PR's own commits are scanned for secrets by `ci.yml`'s `repo` j
 `.gitleaks.toml` extends the default rules and allowlists by value only: Supabase publishable keys and the CLI's fixed
 local secret in `server/.env.example`. A real key anywhere else, `.env.example` included, still fails. CodeQL is not run: it
 needs GitHub Code Security, which a private repository on GitHub Free does not have (ADR-011).
+
+### Break testing (`/break`)
+
+Not a CI job: the `app-breaker` agent (`.claude/agents/app-breaker.md`) is run through `/break` before a release
+and after a change to auth, orders, money or the request pipeline. Four groups (`security` at effort `xhigh`,
+`data`, `flow`, `env`) attack the local servers with curl, throwaway scripts and the Playwright browser: secrets
+in the built bundle and history, direct API calls logged out or as someone else, tampered prices and roles, floods
+(the rate limits), stored script in names and notes, missing headers, a menu past `MENU_ITEMS_MAX`, long emoji
+names, email capitalisation, empty forms, double submit with and without an `idempotencyKey`, refresh mid-form,
+saves while offline, dead buttons, text at 200%, the WebKit smoke, time zones and a throttled golden path. Every
+BREAK comes with a repro, evidence and a fix; what cannot be tested is listed as untested with the reason. Read-only
+for source; the main session fixes and re-runs the failed group.
 
 ### Staging tests (later)
 

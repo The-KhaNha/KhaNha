@@ -14,6 +14,7 @@
     "release:dry": "node scripts/version/release.mjs --dry-run",
     "change:check": "node scripts/version/check.mjs --base origin/dev",
     "check:bundle": "node scripts/ci/check-bundle.mjs client",
+    "check:dist-secrets": "node scripts/ci/check-dist-secrets.mjs client",
     "check:migrations": "node scripts/ci/check-migrations.mjs --base origin/dev",
     "check:durations": "node scripts/ci/check-durations.mjs"
   },

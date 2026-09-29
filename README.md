@@ -209,6 +209,7 @@ Menu items can carry a `stockQuantity` (`null` = not tracked, which is the defau
 | client/ | `npm run build` / `build:staging`                | Type-check + build into `dist/` for production / staging. `build` needs `client/.env.production` (see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#builds))                                                |
 | client/ | `npm run preview`                                | `vite preview` of the last build                                                                                                                                                                      |
 | client/ | `python3 scripts/optimize-images.py`             | Compress a new/replaced photo in `public/images/` and write its 400px thumbnail (needs Pillow: `pip3 install pillow`; see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#compressing-photos-before-a-build)) |
+| client/ | `npm run e2e:webkit`                             | The WebKit smoke (Safari's engine, 360px, API mocked); `npm run e2e:install` once first                                                                                                               |
 
 The gate for a changed package is `npm run typecheck && npm run lint && npm test`.
 

@@ -41,14 +41,14 @@ slower CPU than a laptop) on a slow or flaky connection (Slow 4G / 3G, drops).**
 secondary. Budgets, measured at 360×640 on Slow 4G with 4× CPU throttling (recorded and enforced by `perf-auditor`
 in `docs/PERF_BASELINE.md`):
 
-| Metric | Budget |
-| --- | --- |
-| LCP | ≤ 2.5 s |
-| INP | ≤ 200 ms |
-| CLS | ≤ 0.1 |
-| Initial JS | ≤ ~170 KB gzip; staff, auth and checkout routes code-split |
-| Menu photo | ≤ ~80 KB each, sized to its box, `loading="lazy"` below the fold, aspect box so nothing shifts |
-| API payloads | lean (no over-fetching); no request waterfalls |
+| Metric       | Budget                                                                                         |
+| ------------ | ---------------------------------------------------------------------------------------------- |
+| LCP          | ≤ 2.5 s                                                                                        |
+| INP          | ≤ 200 ms                                                                                       |
+| CLS          | ≤ 0.1                                                                                          |
+| Initial JS   | ≤ ~170 KB gzip; staff, auth and checkout routes code-split                                     |
+| Menu photo   | ≤ ~80 KB each, sized to its box, `loading="lazy"` below the fold, aspect box so nothing shifts |
+| API payloads | lean (no over-fetching); no request waterfalls                                                 |
 
 Rules that follow:
 
@@ -73,6 +73,7 @@ and the cheapest body is a 304. "Safe" means a stale copy can never mislead or l
 are always confirmed by the server, and user-specific data is never cached where it can outlive a sign-out.
 
 **Server**
+
 - Every `/api` response carries `Cache-Control: no-cache` and `Vary: Authorization` (`server/src/app.ts`). With
   Express's ETag, an unchanged body comes back as a bodiless 304, including on every poll. Never give stock, menu or
   order responses a `max-age`.
@@ -85,6 +86,10 @@ are always confirmed by the server, and user-specific data is never cached where
   Nothing user-specific ever goes into `cached()`.
 
 **Client**
+
+- What a person typed, or their own data, in browser storage is cleared when a session starts or ends, from
+  `features/auth/authStore.ts` (always loaded), never from a lazy chunk: a sign-out before that chunk loads leaks it
+  to the next account on a shared phone. `lib/storageKeys.test.ts` fails for any `fp_` key nobody classified.
 - Public data uses `useResource({ persist: true })` (menu, store): the last good copy in `localStorage`
   (`fp_cache:v1:<key>`) renders instantly on the next visit and is refreshed at once (stale-while-revalidate). Bump
   the version in `CACHE_PREFIX` (`lib/useResource.ts`) when a persisted response shape changes. Never `persist`
@@ -105,40 +110,41 @@ gzip on. See `docs/DEPLOYMENT.md` "Containers".
 
 ## 3. Tech stack and commands
 
-| Part | Stack |
-| --- | --- |
-| Client `client/` | React 18, Vite 6, Tailwind v4 (`@theme` tokens in `src/index.css`), zustand, react-router 7, `lucide-react`, supabase-js (auth only) |
-| API `server/` | Express 5, zod, Supabase via `@supabase/server` (secret key, JWKS token checks), pino |
-| Database | Supabase Postgres; schema and RPCs in `server/supabase/migrations/` |
-| Tooling | Node 24 (≥ 24.15, which jsdom needs; `.nvmrc`, `.node-version`, `engines` + `engine-strict`: `npm ci` refuses other majors), npm, TypeScript strict, ESLint (flat config per package), Prettier (root `.prettierrc.json`), Vitest |
+| Part             | Stack                                                                                                                                                                                                                             |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Client `client/` | React 18, Vite 6, Tailwind v4 (`@theme` tokens in `src/index.css`), zustand, react-router 7, `lucide-react`, supabase-js (auth only)                                                                                              |
+| API `server/`    | Express 5, zod, Supabase via `@supabase/server` (secret key, JWKS token checks), pino                                                                                                                                             |
+| Database         | Supabase Postgres; schema and RPCs in `server/supabase/migrations/`                                                                                                                                                               |
+| Tooling          | Node 24 (≥ 24.15, which jsdom needs; `.nvmrc`, `.node-version`, `engines` + `engine-strict`: `npm ci` refuses other majors), npm, TypeScript strict, ESLint (flat config per package), Prettier (root `.prettierrc.json`), Vitest |
 
 Root (`package.json`, not a workspace; only devDependency `prettier`):
 
-| Script | Does |
-| --- | --- |
-| `npm run format` / `format:check` | Prettier over `scripts/**`, `.github/**` and `plans/**` |
-| `npm test` | `node --test` over `scripts/**/*.test.mjs` |
-| `npm run change -- --client <level> --server <level> "summary"` | record a change intent in `.changes/` (§21) |
-| `npm run release:dry` / `release` | print / apply the version bump from the intents (release PR only) |
-| `npm run change:check` | the `version-intent` CI check against `origin/dev` |
-| `npm run check:bundle` / `check:migrations` / `check:durations` | the CI checks: initial JS budget (after a client build), migrations append-only against `origin/dev`, no hard-coded durations |
+| Script                                                                                 | Does                                                                                                                                                         |
+| -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `npm run format` / `format:check`                                                      | Prettier over `scripts/**`, `.github/**` and `plans/**`                                                                                                      |
+| `npm test`                                                                             | `node --test` over `scripts/**/*.test.mjs`                                                                                                                   |
+| `npm run change -- --client <level> --server <level> "summary"`                        | record a change intent in `.changes/` (§21)                                                                                                                  |
+| `npm run release:dry` / `release`                                                      | print / apply the version bump from the intents (release PR only)                                                                                            |
+| `npm run change:check`                                                                 | the `version-intent` CI check against `origin/dev`                                                                                                           |
+| `npm run check:bundle` / `check:migrations` / `check:durations` / `check:dist-secrets` | the CI checks: initial JS budget (after a client build), migrations append-only against `origin/dev`, no hard-coded durations, no secret in the built bundle |
 
 Both packages: `npm run dev`, `typecheck`, `lint`, `format`, `format:check`, `test`, `test:watch`, `build`.
 
 Server only:
 
-| Script | Does |
-| --- | --- |
-| `npm run db:start` / `db:stop` | local Supabase in Docker (API `:54321`) |
-| `npm run db:start:ci` | the same without Studio, storage, realtime, mail, logs and edge functions (CI) |
-| `npm run db:reset` | reapply every migration locally (wipes local data) |
-| `npm run db:new <name>` | new migration file |
-| `npm run db:types` | regenerate and format `src/types/database.ts` from local (CI fails on drift) |
-| `npm run seed` | demo store, menu and accounts (local/staging; wipes orders) |
-| `npm run db:push:staging` | push migrations to staging |
-| `npm run db:push:production`, `npm run seed -- --production` | **user only** |
+| Script                                                       | Does                                                                           |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------ |
+| `npm run db:start` / `db:stop`                               | local Supabase in Docker (API `:54321`)                                        |
+| `npm run db:start:ci`                                        | the same without Studio, storage, realtime, mail, logs and edge functions (CI) |
+| `npm run db:reset`                                           | reapply every migration locally (wipes local data)                             |
+| `npm run db:new <name>`                                      | new migration file                                                             |
+| `npm run db:types`                                           | regenerate and format `src/types/database.ts` from local (CI fails on drift)   |
+| `npm run seed`                                               | demo store, menu and accounts (local/staging; wipes orders)                    |
+| `npm run db:push:staging`                                    | push migrations to staging                                                     |
+| `npm run db:push:production`, `npm run seed -- --production` | **user only**                                                                  |
 
-Client: `npm run dev:staging` / `build:staging` use `client/.env.staging`. `npm run build` needs
+Client: `npm run dev:staging` / `build:staging` use `client/.env.staging`; `npm run e2e:webkit` runs the WebKit smoke
+(`npm run e2e:install` once). `npm run build` needs
 `client/.env.production`, which does not exist yet.
 
 Ports: client `5173` (`VITE_DEV_PORT`), API `8000` (`PORT`), local Supabase `54321` (`SUPABASE_URL`); `start.sh`
@@ -169,6 +175,7 @@ utils, and the `features/*` rules and hooks.
 3. Build new only when nothing fits, then add it to the catalog in the same change.
 
 Mandates:
+
 - Every food photo goes through `FoodPhoto`.
 - Every data view has a Skeleton, an EmptyState and an ErrorState.
 - Buttons use `Button` / `ButtonLink` / `buttonClasses()`.
@@ -177,34 +184,36 @@ Mandates:
 
 Update the owning doc **in the same change**. A change that skips its doc is incomplete.
 
-| You changed | Update |
-| --- | --- |
-| an endpoint, request/response shape, error code or server rule | `docs/API.md` (+ `ErrorCode` in `server/src/utils/errors.ts`, DTOs on both sides) |
-| a migration, table, column, enum, index or SQL function | `docs/SCHEMA.md` |
-| a role, route guard, RLS, grant, ownership rule or staff-only action | `docs/PERMISSIONS.md` |
-| a shared atom or variant, a `lib/` hook/util, feature rules | `docs/COMPONENTS.md` |
-| a page, route, feature folder, store or client service | `docs/FRONTEND_STRUCTURE.md` |
-| a route, controller, service, middleware, schema or util module | `docs/BACKEND_STRUCTURE.md` |
-| an env var, environment, db push step, build step, production setup | `docs/DEPLOYMENT.md` + the `.env.example` |
-| log levels, redaction, logging conventions | `docs/LOGGING.md` |
-| cache headers, the server read cache, client persisted caches, photo variants | `docs/API.md` "Caching" + `docs/FRONTEND_STRUCTURE.md` "Caching" |
-| test targets, helpers, the edge-case matrix | `docs/TESTING.md` |
-| a workflow in `.github/`, a `scripts/ci/` check, the bundle budget | `docs/TESTING.md` "Continuous integration" |
-| perf baselines | `docs/PERF_BASELINE.md` (owned by `perf-auditor`) |
-| a cross-cutting flow (auth, checkout, order lifecycle), a top-level dir, a system diagram | `docs/ARCHITECTURE.md` |
-| a site setting, a deployment setting or a platform limit | `docs/CONFIGURATION.md` (the registry) |
-| a decision worth recording | `docs/adr/NNN-title.md` from `docs/adr/0000-template.md`, indexed in `docs/adr/README.md` (`agent-skills:documentation-and-adrs`) |
-| the change-intent format or level rules | `.changes/README.md` (+ §21) |
-| a release (written by `npm run release`, never by hand) | `client/CHANGELOG.md`, `server/CHANGELOG.md` |
-| quick start, scripts, demo | `README.md` |
+| You changed                                                                               | Update                                                                                                                            |
+| ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| an endpoint, request/response shape, error code or server rule                            | `docs/API.md` (+ `ErrorCode` in `server/src/utils/errors.ts`, DTOs on both sides)                                                 |
+| a migration, table, column, enum, index or SQL function                                   | `docs/SCHEMA.md`                                                                                                                  |
+| a role, route guard, RLS, grant, ownership rule or staff-only action                      | `docs/PERMISSIONS.md`                                                                                                             |
+| a design token (colour, type, radius, shadow, motion) or a design rule                    | `docs/DESIGN.md`                                                                                                                  |
+| a shared atom or variant, a `lib/` hook/util, feature rules                               | `docs/COMPONENTS.md`                                                                                                              |
+| a page, route, feature folder, store or client service                                    | `docs/FRONTEND_STRUCTURE.md`                                                                                                      |
+| a route, controller, service, middleware, schema or util module                           | `docs/BACKEND_STRUCTURE.md`                                                                                                       |
+| an env var, environment, db push step, build step, production setup                       | `docs/DEPLOYMENT.md` + the `.env.example`                                                                                         |
+| log levels, redaction, logging conventions                                                | `docs/LOGGING.md`                                                                                                                 |
+| cache headers, the server read cache, client persisted caches, photo variants             | `docs/API.md` "Caching" + `docs/FRONTEND_STRUCTURE.md` "Caching"                                                                  |
+| test targets, helpers, the edge-case matrix                                               | `docs/TESTING.md`                                                                                                                 |
+| a workflow in `.github/`, a `scripts/ci/` check, the bundle budget                        | `docs/TESTING.md` "Continuous integration"                                                                                        |
+| perf baselines                                                                            | `docs/PERF_BASELINE.md` (owned by `perf-auditor`)                                                                                 |
+| a cross-cutting flow (auth, checkout, order lifecycle), a top-level dir, a system diagram | `docs/ARCHITECTURE.md`                                                                                                            |
+| a site setting, a deployment setting or a platform limit                                  | `docs/CONFIGURATION.md` (the registry)                                                                                            |
+| a decision worth recording                                                                | `docs/adr/NNN-title.md` from `docs/adr/0000-template.md`, indexed in `docs/adr/README.md` (`agent-skills:documentation-and-adrs`) |
+| the change-intent format or level rules                                                   | `.changes/README.md` (+ §21)                                                                                                      |
+| a release (written by `npm run release`, never by hand)                                   | `client/CHANGELOG.md`, `server/CHANGELOG.md`                                                                                      |
+| quick start, scripts, demo                                                                | `README.md`                                                                                                                       |
 
 One owner per topic; other docs link to it instead of copying.
 
 ## 7. Visual fidelity
 
 - Given a screenshot or design, describe what you see (layout, spacing, type, colors, states) before writing code.
-- Colors, radii, shadows and fonts come from the `@theme` tokens in `client/src/index.css`. No new hard-coded hex;
-  add a token instead.
+- Colors, type sizes, radii, shadows and fonts come from the `@theme` tokens in `client/src/index.css`, documented in
+  `docs/DESIGN.md`. No new hard-coded hex, arbitrary `text-[Npx]`, `rounded-[Npx]` or `shadow-[…]`: add a token or
+  use the nearest step (`lib/designTokens.test.ts` fails otherwise).
 - Mobile-first: bottom nav, `pb-safe` for the home indicator, sheets on phones and dialogs on desktop.
 - Design rules written in component comments are binding. For example: `PopularBadge` is the ONLY thing allowed on
   top of a food photo; `OpenPill`'s pulse is one of only two looping animations in the app.
@@ -252,8 +261,7 @@ One owner per topic; other docs link to it instead of copying.
   "Error classes").
 - **Atomic multi-step writes** go into a SQL function (`p_` params; expected failures raise P0001 with the API error
   code as the message and JSON detail, decoded by `raisedByDatabase` in `utils/supabase.ts`).
-- **Trust nothing from the client:** prices and totals come from the database. Someone else's resource is 404, never
-  403. The role is read from `profiles` on every request, never from the token.
+- **Trust nothing from the client:** prices and totals come from the database. Someone else's resource is 404, never 403. The role is read from `profiles` on every request, never from the token.
 - **`supabaseAdmin` bypasses RLS,** so every query scopes by user explicitly.
 - Public reads are cached with `cached()` and invalidated by the writes that change them (§2c).
 - Sessions: access tokens stay 1 h (refreshed by supabase-js). A sign-in ends after 7 days without use; each use
@@ -270,7 +278,7 @@ One owner per topic; other docs link to it instead of copying.
 - A file over 1000 lines gets split below 800, by responsibility.
 - No `any`, `@ts-ignore`, `@ts-expect-error` or `eslint-disable` (lint enforces the first two and flags unused
   disables). Fix the type.
-- Comments explain *why*, not *what*.
+- Comments explain _why_, not _what_.
 - Unused `_`-prefixed args/vars are allowed on purpose (Express's 4-argument error handler).
 - **No hard-coding** of anything an operator may need to change. Each value has one tier (`docs/CONFIGURATION.md`):
   a site setting (`site_settings`, edited at `/admin`), a deployment setting (env), a platform constant with a parity
@@ -280,17 +288,17 @@ One owner per topic; other docs link to it instead of copying.
 
 ## 12. Safety and naming conventions
 
-| Thing | Convention |
-| --- | --- |
-| Pages | `pages/<Name>.tsx` exporting `<Name>Page` |
-| Component props | `<Name>Props` |
-| Loading placeholders | `<Name>Skeleton` |
-| Hooks | `useX` in `lib/` or `features/*/` |
-| Stores | `features/*/<x>Store.ts`, `use<X>Store` |
-| Server modules | `<area>.routes.ts`, `.controller.ts`, `.service.ts`, `.schema.ts` |
-| Response types | `XDto` on the server, `X` on the client |
-| Database | snake_case; JSON is camelCase (serializers convert) |
-| Tests | `*.test.ts(x)`; staging-safe server suites `*.safe.test.ts` |
+| Thing                | Convention                                                        |
+| -------------------- | ----------------------------------------------------------------- |
+| Pages                | `pages/<Name>.tsx` exporting `<Name>Page`                         |
+| Component props      | `<Name>Props`                                                     |
+| Loading placeholders | `<Name>Skeleton`                                                  |
+| Hooks                | `useX` in `lib/` or `features/*/`                                 |
+| Stores               | `features/*/<x>Store.ts`, `use<X>Store`                           |
+| Server modules       | `<area>.routes.ts`, `.controller.ts`, `.service.ts`, `.schema.ts` |
+| Response types       | `XDto` on the server, `X` on the client                           |
+| Database             | snake_case; JSON is camelCase (serializers convert)               |
+| Tests                | `*.test.ts(x)`; staging-safe server suites `*.safe.test.ts`       |
 
 - **Secrets:** never print `.env` files or secret values. Only `VITE_` publishable values may reach the client;
   `sb_secret_…` never leaves the server.
@@ -323,9 +331,15 @@ In every package you touched:
 npm run typecheck && npm run lint && npm test
 ```
 
-`npm test` needs local Supabase running and seeded for the server (`npm run db:start`, `npm run seed`). Format with
+`npm test` needs local Supabase running and seeded for the server (`npm run db:start`, `npm run seed`). In `client/`,
+also `npm run e2e:chromium` (the 360×640 smoke: 200% text, 44px targets; `npm run e2e:webkit` for Safari's engine). Format with
 `npx prettier --write <files>` (or `npm run format`). Report failures with their output; never weaken a test to get
-green. CI runs the same gate on every PR into `dev` and `main` (`.github/workflows/ci.yml`, aggregate job `ci-ok`;
+green.
+
+**Every fix ships with its guard.** A bug fix is done only when the check that would have caught it exists and you
+have seen it fail without the fix: a unit or API test, an e2e smoke case, a `scripts/ci/` check or CI step, or a
+numbered item in `ui-verifier` / `app-breaker`. Guard the class of bug, not the one line (a storage-key registry, not
+one key; a layout check over every route, not one card), at the cheapest layer that catches it. CI runs the same gate on every PR into `dev` and `main` (`.github/workflows/ci.yml`, aggregate job `ci-ok`;
 `docs/TESTING.md` "Continuous integration"). On GitHub Free nothing enforces it (no rulesets on a private repo,
 ADR-011): never merge with `ci-ok` red or pending.
 
@@ -346,9 +360,9 @@ confirm the UI shows the result.
 
 ## 15. Reuse-first workflow
 
-You self-trigger this; the user almost never says "create a new table". The moment you think *"I'll build a new
-component / hook / util / service for …"* run `reuse-scout`; *"I'll add a table / column / migration / SQL function
-for …"* run `schema-guard`; *"this is like X but different enough to fork"* — almost always wrong, run `reuse-scout`.
+You self-trigger this; the user almost never says "create a new table". The moment you think _"I'll build a new
+component / hook / util / service for …"_ run `reuse-scout`; _"I'll add a table / column / migration / SQL function
+for …"_ run `schema-guard`; _"this is like X but different enough to fork"_ — almost always wrong, run `reuse-scout`.
 `/before-write <intent>` runs both and returns REUSE / EXTEND / BUILD NEW. A `PreToolUse(Write)` hook reminds you when
 a new file appears under `client/src/components/`, `client/src/lib/`, `server/src/services/` or
 `server/supabase/migrations/`, but your judgment is the gate.
@@ -357,42 +371,43 @@ a new file appears under `client/src/components/`, `client/src/lib/`, `server/sr
 
 Load these with the `Skill` tool at the matching moment:
 
-| Moment | Skill |
-| --- | --- |
-| a vague or underspecified ask | `agent-skills:interview-me`, then `agent-skills:spec` |
-| a feature | `agent-skills:plan` → `agent-skills:build` |
-| a bug | `agent-skills:test` (prove it with a failing test), `agent-skills:debugging-and-error-recovery` |
-| an endpoint or auth change | `agent-skills:api-and-interface-design` + `agent-skills:security-and-hardening` |
-| UI work | `agent-skills:frontend-ui-engineering` |
-| before merge | `agent-skills:review` or the `agent-skills:code-reviewer` agent |
-| auth, orders, money, user data | the `agent-skills:security-auditor` agent |
-| performance | `agent-skills:webperf`, `agent-skills:performance-optimization` |
-| a decision worth recording | `agent-skills:documentation-and-adrs` |
-| branches, commits, PRs, releases | `agent-skills:git-workflow-and-versioning` |
-| before a release | `agent-skills:ship` |
-| over-engineering creeping in | `ponytail:ponytail` |
-| a workflow repeated three times | `anthropic-skills:skill-creator` to make it a project skill |
+| Moment                           | Skill                                                                                           |
+| -------------------------------- | ----------------------------------------------------------------------------------------------- |
+| a vague or underspecified ask    | `agent-skills:interview-me`, then `agent-skills:spec`                                           |
+| a feature                        | `agent-skills:plan` → `agent-skills:build`                                                      |
+| a bug                            | `agent-skills:test` (prove it with a failing test), `agent-skills:debugging-and-error-recovery` |
+| an endpoint or auth change       | `agent-skills:api-and-interface-design` + `agent-skills:security-and-hardening`                 |
+| UI work                          | `agent-skills:frontend-ui-engineering`                                                          |
+| before merge                     | `agent-skills:review` or the `agent-skills:code-reviewer` agent                                 |
+| auth, orders, money, user data   | the `agent-skills:security-auditor` agent                                                       |
+| performance                      | `agent-skills:webperf`, `agent-skills:performance-optimization`                                 |
+| a decision worth recording       | `agent-skills:documentation-and-adrs`                                                           |
+| branches, commits, PRs, releases | `agent-skills:git-workflow-and-versioning`                                                      |
+| before a release                 | `agent-skills:ship`                                                                             |
+| over-engineering creeping in     | `ponytail:ponytail`                                                                             |
+| a workflow repeated three times  | `anthropic-skills:skill-creator` to make it a project skill                                     |
 
 ## 17. Multi-agent workflows
 
 **Agents** (`.claude/agents/`):
 
-| Agent | Writes | Use |
-| --- | --- | --- |
-| `reuse-scout` | – | before any new component, hook, util, service or endpoint |
-| `schema-guard` | – | before any new table, column, enum, function or migration |
-| `coderabbit-fixer` | source | CodeRabbit comments (auto-delegated, one per file) |
-| `merge-conflict-resolver` | source | conflict markers, migration order, lockfiles |
-| `refactorer` | source | post-change: size, duplication, dead code, misplaced logic |
-| `responsive-fixer` | client UI | post-change when UI changed: 360–412px first |
-| `logging-auditor` | logging lines | post-change: levels, redaction, request ids, no `console` |
-| `test-generator` | tests | post-change: unit tests + the endpoint edge-case matrix |
-| `docs-writer` | docs | post-change: the §6 ownership map |
-| `ui-verifier` | – | post-change: static checks + throttled Playwright run; ✅/❌ READY |
-| `perf-auditor` | `docs/PERF_BASELINE.md` | post-change: budgets from §2b, caching from §2c, API latency, queries |
+| Agent                     | Writes                  | Use                                                                                                                                                    |
+| ------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `reuse-scout`             | –                       | before any new component, hook, util, service or endpoint                                                                                              |
+| `schema-guard`            | –                       | before any new table, column, enum, function or migration                                                                                              |
+| `coderabbit-fixer`        | source                  | CodeRabbit comments (auto-delegated, one per file)                                                                                                     |
+| `merge-conflict-resolver` | source                  | conflict markers, migration order, lockfiles                                                                                                           |
+| `refactorer`              | source                  | post-change: size, duplication, dead code, misplaced logic                                                                                             |
+| `responsive-fixer`        | client UI               | post-change when UI changed: 360–412px first                                                                                                           |
+| `logging-auditor`         | logging lines           | post-change: levels, redaction, request ids, no `console`                                                                                              |
+| `test-generator`          | tests                   | post-change: unit tests + the endpoint edge-case matrix                                                                                                |
+| `docs-writer`             | docs                    | post-change: the §6 ownership map                                                                                                                      |
+| `ui-verifier`             | –                       | post-change: static checks + throttled Playwright run; ✅/❌ READY                                                                                     |
+| `perf-auditor`            | `docs/PERF_BASELINE.md` | post-change: budgets from §2b, caching from §2c, API latency, queries                                                                                  |
+| `app-breaker`             | –                       | `/break` before a release or after auth, orders, money or pipeline changes: security (xhigh), data, flow, env groups; ranked BREAKs with repro and fix |
 
 **Skills** (`.claude/skills/`): `/post-change`, `/fix-coderabbit`, `/resolve-conflicts`, `/before-write`,
-`/new-endpoint`, `/db-migration`.
+`/new-endpoint`, `/db-migration`, `/break`.
 
 ### What counts as a major change
 
@@ -435,11 +450,11 @@ reminder when the markers appear.
 
 A subagent's report is the start of action, not the end of the turn. Classify every item and act in the same turn:
 
-| Class | Examples | Main agent |
-| --- | --- | --- |
-| AUTO-EXECUTE | REUSE verdicts, SAFE fixes (already applied), ✅ READY | apply / accept now; never end the turn with one un-actioned |
-| CONFIRM | EXTEND / NO MATCH / NEW TABLE, STRUCTURAL and FLAGGED fixes, ❌ blockers, budget regressions, missing logging on a new flow | one batched `AskUserQuestion` with file:line and concrete options |
-| ADVISORY | AMBIGUOUS comments, coverage notes, perf opportunities without one fix | list them |
+| Class        | Examples                                                                                                                    | Main agent                                                        |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| AUTO-EXECUTE | REUSE verdicts, SAFE fixes (already applied), ✅ READY                                                                      | apply / accept now; never end the turn with one un-actioned       |
+| CONFIRM      | EXTEND / NO MATCH / NEW TABLE, STRUCTURAL and FLAGGED fixes, ❌ blockers, budget regressions, missing logging on a new flow | one batched `AskUserQuestion` with file:line and concrete options |
+| ADVISORY     | AMBIGUOUS comments, coverage notes, perf opportunities without one fix                                                      | list them                                                         |
 
 After the user answers, apply the answer yourself or spawn a fresh agent of the same type with the answer. The
 original agent has exited: never `SendMessage` it. `SendMessage` is only for a still-running background agent.
@@ -460,6 +475,9 @@ Agents added during a session are not registered until the next session; meanwhi
   ```
   Status is 🟢 running · 🟡 waiting · ✅ done (shown once) · 🔴 errored. Omit the block when nothing runs, and it must
   be gone on the final turn.
+- **Never pipe a long-running process** (dev servers, `start.sh`, `docker compose up`) through `head`, `grep -m` or
+  anything else that exits early: when it exits, the pipe kills the server mid-session. Redirect to a log file in the
+  scratchpad and filter that.
 - **Probe before starting:** `curl -s -o /dev/null -w '%{http_code}'` on `http://localhost:8000/api/health`,
   `http://localhost:5173`, `http://127.0.0.1:54321/rest/v1/` and, for compose, `http://localhost:8080/healthz`. Anything answering belongs to the user: use it, never
   restart it. `start.sh` kills whatever holds 8000/5173, so never run it while the user's servers are up.
@@ -479,12 +497,12 @@ Agents added during a session are not registered until the next session; meanwhi
   production) and `VITE_LOG_LEVEL` on the client (default `debug` in dev, `warn` in builds; `debug`/`info` are
   compiled out of production builds).
 
-| Level | Meaning | In this app |
-| --- | --- | --- |
-| `error` | 5xx or unexpected; server logs it with `err` (stack and cause chain), `route`, `status`, `code`, `userId` | unhandled route error; 503 `UPSTREAM_UNAVAILABLE` (database or Auth unreachable, an `IntegrationError`) |
-| `warn` | expected but worth noticing | 401 / 403 (426 `CLIENT_OUTDATED` is `debug`: a stale tab keeps asking) |
-| `info` | lifecycle and business events | listening/shutdown, `Order placed`, `Order status changed`, 4xx like `INSUFFICIENT_STOCK`, access lines for writes |
-| `debug` | dev tracing | access lines for successful reads (polled lists) |
+| Level   | Meaning                                                                                                   | In this app                                                                                                        |
+| ------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `error` | 5xx or unexpected; server logs it with `err` (stack and cause chain), `route`, `status`, `code`, `userId` | unhandled route error; 503 `UPSTREAM_UNAVAILABLE` (database or Auth unreachable, an `IntegrationError`)            |
+| `warn`  | expected but worth noticing                                                                               | 401 / 403 / 429 (426 `CLIENT_OUTDATED` is `debug`: a stale tab keeps asking)                                       |
+| `info`  | lifecycle and business events                                                                             | listening/shutdown, `Order placed`, `Order status changed`, 4xx like `INSUFFICIENT_STOCK`, access lines for writes |
+| `debug` | dev tracing                                                                                               | access lines for successful reads (polled lists)                                                                   |
 
 - Access lines carry `clientVersion` (the `X-Client-Version` header, `none` when missing or malformed).
 - Structured fields first, a short constant message second: `req.log.info({ orderId, status }, 'Order status changed')`.
@@ -526,10 +544,10 @@ launch). A change that touches `client/src`, `server/src`, `server/scripts`, `se
 npm run change -- --client minor --server patch "Store list and per-store menus behind the multi_store_ui flag."
 ```
 
-| Package | major | minor | patch |
-| --- | --- | --- | --- |
-| server | a breaking contract change for the deployed client (a field removed or renamed, a changed meaning or error code); should not happen, given §2 | a new endpoint, field, error code, setting or migration adding behaviour | a fix, performance, refactor, logging |
-| client | a removed route, or persisted storage (`fp_cart`, `fp_cache`) reset without a migration | a new user-visible feature or screen | a fix, copy, style or performance change |
+| Package | major                                                                                                                                         | minor                                                                    | patch                                    |
+| ------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ | ---------------------------------------- |
+| server  | a breaking contract change for the deployed client (a field removed or renamed, a changed meaning or error code); should not happen, given §2 | a new endpoint, field, error code, setting or migration adding behaviour | a fix, performance, refactor, logging    |
+| client  | a removed route, or persisted storage (`fp_cart`, `fp_cache`) reset without a migration                                                       | a new user-visible feature or screen                                     | a fix, copy, style or performance change |
 
 Docs-only, CI and tooling changes need no intent (label the PR `no-release`). The format is in `.changes/README.md`.
 Three places enforce it: the `version-intent` CI job (`scripts/version/check.mjs`), the last step of `/post-change`,
@@ -541,4 +559,3 @@ on by default) branches `release/<date>` off `dev`, runs `npm run release` (high
 `--allow-major`), commits and opens the PR into `main`. The user merging it is the production approval. On the merge,
 `tag-and-backmerge` tags `client-vX` / `server-vY` and opens the back-merge PR into `dev` (`no-release`). Staging
 images are tagged `dev-<sha7>`; `package.json` keeps the last released version.
-

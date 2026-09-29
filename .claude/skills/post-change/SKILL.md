@@ -27,7 +27,7 @@ later ones must check the final state. Report progress one line per stage as you
 
 ## 1. Gate
 
-In every touched package: `npm run typecheck && npm run lint && npm test`. Fix failures inside the scope before
+In every touched package: `npm run typecheck && npm run lint && npm test` (and `npm run e2e:chromium` in `client/`). Fix failures inside the scope before
 going on; the agents assume a green baseline. A failure outside the scope is reported, not fixed.
 
 ## 2. Source editors — one at a time
@@ -62,6 +62,9 @@ Classify each item with the agent's handoff table (CLAUDE.md "Verdict handoff"):
 - ADVISORY: list it in the final report.
 
 If anything changed after step 1, run the gate again for the touched packages.
+
+Every fix applied in this stage ships with its guard (CLAUDE.md §13): the test, check or agent item that fails if the
+same class of bug returns. Run it once with the fix reverted to see it fail, then restore the fix.
 
 ## 6. Finish
 
