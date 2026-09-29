@@ -13,12 +13,13 @@ The Postgres schema in the Supabase project, from `server/supabase/migrations/`.
 Applied in file-name order. Once a migration is pushed to staging or production it is never edited; a change goes in
 a new file (see [DEPLOYMENT.md](DEPLOYMENT.md#schema-changes)).
 
-| File                                          | What it does                                                                                                                                                          |
-| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `20260925120000_init.sql`                     | the three enums, the five tables, indexes, RLS and grants, the triggers and the three RPCs below                                                                      |
-| `20260927094610_admin_settings_collected.sql` | adds `user_role` value `ADMIN`; renames `order_status` value `COMPLETED` to `COLLECTED`; adds `public.site_settings` (RLS, revoked, `set_updated_at` trigger)         |
-| `20260927222002_min_client_version.sql`       | adds `site_settings.min_client_version` (the 426 gate's minimum)                                                                                                      |
-| `20260928180445_site_settings_config.sql`     | adds `site_settings.max_lines_per_order`, `order_poll_ms`, `orders_poll_ms`, `staff_board_poll_ms` (the configuration registry, [CONFIGURATION.md](CONFIGURATION.md)) |
+| File                                          | What it does                                                                                                                                                                                                                                 |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `20260925120000_init.sql`                     | the three enums, the five tables, indexes, RLS and grants, the triggers and the three RPCs below                                                                                                                                             |
+| `20260927094610_admin_settings_collected.sql` | adds `user_role` value `ADMIN`; renames `order_status` value `COMPLETED` to `COLLECTED`; adds `public.site_settings` (RLS, revoked, `set_updated_at` trigger)                                                                                |
+| `20260927222002_min_client_version.sql`       | adds `site_settings.min_client_version` (the 426 gate's minimum)                                                                                                                                                                             |
+| `20260928180445_site_settings_config.sql`     | adds `site_settings.max_lines_per_order`, `order_poll_ms`, `orders_poll_ms`, `staff_board_poll_ms` (the configuration registry, [CONFIGURATION.md](CONFIGURATION.md))                                                                        |
+| `20260928193552_order_idempotency_key.sql`    | adds `orders.idempotency_key` and its partial unique index; drops and recreates `place_order` with `p_idempotency_key` (a function's argument list is its identity, so a new parameter cannot use `create or replace`), reissuing its grants |
 
 ## Enums
 
@@ -85,21 +86,22 @@ V0 has exactly one row, created by `npm run seed`.
 
 ### orders
 
-| Column               | Type             | Null | Default             | Constraints                                              |
-| -------------------- | ---------------- | ---- | ------------------- | -------------------------------------------------------- |
-| `id`                 | uuid             | no   | `gen_random_uuid()` | primary key                                              |
-| `order_number`       | integer          | no   | identity            | `generated always as identity (start with 1001)`, unique |
-| `user_id`            | uuid             | no   |                     | references `profiles (id)`                               |
-| `store_id`           | uuid             | no   |                     | references `stores (id)`                                 |
-| `customer_name`      | text             | no   |                     |                                                          |
-| `customer_phone`     | text             | yes  |                     |                                                          |
-| `note`               | text             | yes  |                     |                                                          |
-| `total`              | integer          | no   |                     | computed in `place_order`                                |
-| `payment_status`     | `payment_status` | no   | `PENDING`           |                                                          |
-| `status`             | `order_status`   | no   | `PLACED`            |                                                          |
-| `estimated_ready_at` | timestamptz      | no   |                     |                                                          |
-| `created_at`         | timestamptz      | no   | `now()`             |                                                          |
-| `updated_at`         | timestamptz      | no   | `now()`             | set on every update by `orders_set_updated_at`           |
+| Column               | Type             | Null | Default             | Constraints                                                                                |
+| -------------------- | ---------------- | ---- | ------------------- | ------------------------------------------------------------------------------------------ |
+| `id`                 | uuid             | no   | `gen_random_uuid()` | primary key                                                                                |
+| `order_number`       | integer          | no   | identity            | `generated always as identity (start with 1001)`, unique                                   |
+| `user_id`            | uuid             | no   |                     | references `profiles (id)`                                                                 |
+| `store_id`           | uuid             | no   |                     | references `stores (id)`                                                                   |
+| `customer_name`      | text             | no   |                     |                                                                                            |
+| `customer_phone`     | text             | yes  |                     |                                                                                            |
+| `note`               | text             | yes  |                     |                                                                                            |
+| `total`              | integer          | no   |                     | computed in `place_order`                                                                  |
+| `payment_status`     | `payment_status` | no   | `PENDING`           |                                                                                            |
+| `status`             | `order_status`   | no   | `PLACED`            |                                                                                            |
+| `estimated_ready_at` | timestamptz      | no   |                     |                                                                                            |
+| `created_at`         | timestamptz      | no   | `now()`             |                                                                                            |
+| `updated_at`         | timestamptz      | no   | `now()`             | set on every update by `orders_set_updated_at`                                             |
+| `idempotency_key`    | uuid             | yes  |                     | the client's per-attempt key; unique per `user_id` when set ([API.md](API.md#post-orders)) |
 
 ### order_items
 
@@ -143,14 +145,15 @@ Only these two limits are editable. The per-item quantity cap (`MAX_QUANTITY_PER
 
 ## Indexes
 
-| Index                              | Columns                                     |
-| ---------------------------------- | ------------------------------------------- |
-| `menu_items_store_id_category_idx` | `menu_items (store_id, category)`           |
-| `orders_user_id_created_at_idx`    | `orders (user_id, created_at)`              |
-| `orders_status_created_at_idx`     | `orders (status, created_at)`               |
-| `order_items_menu_item_id_idx`     | `order_items (menu_item_id)`                |
-| unique constraint                  | `order_items (order_id, line_number)`       |
-| unique constraint                  | `profiles (email)`, `orders (order_number)` |
+| Index                                | Columns                                                                          |
+| ------------------------------------ | -------------------------------------------------------------------------------- |
+| `menu_items_store_id_category_idx`   | `menu_items (store_id, category)`                                                |
+| `orders_user_id_created_at_idx`      | `orders (user_id, created_at)`                                                   |
+| `orders_status_created_at_idx`       | `orders (status, created_at)`                                                    |
+| `order_items_menu_item_id_idx`       | `order_items (menu_item_id)`                                                     |
+| `orders_user_id_idempotency_key_idx` | `orders (user_id, idempotency_key)`, unique, `where idempotency_key is not null` |
+| unique constraint                    | `order_items (order_id, line_number)`                                            |
+| unique constraint                    | `profiles (email)`, `orders (order_number)`                                      |
 
 `site_settings` has no indexes on purpose (one row), including on `updated_by`.
 
@@ -206,12 +209,16 @@ place_order(
   p_payment_status payment_status,
   p_lines jsonb,              -- [{ menu_item_id, name, unit_price, quantity }] in cart order
   p_customer_phone text default null,
-  p_note text default null
-) returns uuid                -- the new order's id
+  p_note text default null,
+  p_idempotency_key uuid default null  -- the client's per-attempt key (API.md "POST /orders")
+) returns uuid                -- the new order's id, or the id of the order this key already placed
 ```
 
 The API has already checked and priced every line from the database. The function:
 
+0. With a `p_idempotency_key`: takes `pg_advisory_xact_lock` on a hash of `(user_id, key)` (held until the
+   transaction ends, so two simultaneous repeats run one after the other), then returns the id of the order this
+   user already placed under that key, if any, without touching stock. The partial unique index is the backstop.
 1. Loops over `p_lines` ordered by `menu_item_id`, so concurrent orders lock rows in the same order. For each line it
    runs `update menu_items set stock_quantity = stock_quantity - quantity where id = … and stock_quantity >= quantity`.
 2. When no row was updated, it reads the item's `stock_quantity`:
@@ -219,7 +226,8 @@ The API has already checked and priced every line from the database. The functio
    - otherwise (too few left, or the item does not exist): raises `INSUFFICIENT_STOCK` with detail
      `{ menuItemId, name, available }`, where `available` is the stock left (0 when the item is missing).
 3. Inserts the `orders` row: `total = sum(unit_price * quantity)` over `p_lines`, `status = 'PLACED'`,
-   `payment_status = p_payment_status`, `estimated_ready_at = now() + stores.prep_time_max_minutes` minutes.
+   `payment_status = p_payment_status`, `estimated_ready_at = now() + stores.prep_time_max_minutes` minutes,
+   `idempotency_key = p_idempotency_key`.
 4. Inserts one `order_items` row per line with `line_number` = the line's position in `p_lines` (1-based) and
    `line_total = unit_price * quantity`.
 

@@ -11,7 +11,9 @@ export type ErrorCode =
   | 'NOT_FOUND'
   | 'EMAIL_TAKEN'
   | 'INVALID_STATUS_TRANSITION'
+  | 'IDEMPOTENCY_KEY_REUSED'
   | 'CLIENT_OUTDATED'
+  | 'RATE_LIMITED'
   | 'UPSTREAM_UNAVAILABLE'
   | 'INTERNAL';
 
@@ -23,6 +25,12 @@ export interface ItemErrorDetails {
   menuItemId: string;
   name?: string;
   available: number;
+}
+
+/** Which order an idempotency key already placed, so the client can send the customer to it. */
+export interface ReplayedOrderDetails {
+  orderId: string;
+  orderNumber: number;
 }
 
 /**
@@ -47,7 +55,7 @@ export class AppError extends Error {
     public readonly status: number,
     public readonly code: ErrorCode,
     message: string,
-    public readonly details?: ItemErrorDetails,
+    public readonly details?: ItemErrorDetails | ReplayedOrderDetails,
   ) {
     super(message);
     this.name = 'AppError';
@@ -65,6 +73,23 @@ export const forbidden = (message = 'You do not have permission to do that.'): A
 
 export const notFound = (message = 'We could not find what you were looking for.'): AppError =>
   new AppError(404, 'NOT_FOUND', message);
+
+/** Too many requests from one account or address in the window (middleware/rateLimit.ts). */
+export const rateLimited = (): AppError =>
+  new AppError(429, 'RATE_LIMITED', 'Too many requests. Please wait a minute and try again.');
+
+/**
+ * The key already placed an order, and this request asks for something else under it (a cart changed after a Pay
+ * whose answer was lost). Refused rather than replayed, so the customer is never told they paid for items the
+ * kitchen will not see.
+ */
+export const idempotencyKeyReused = (orderId: string, orderNumber: number): AppError =>
+  new AppError(
+    409,
+    'IDEMPOTENCY_KEY_REUSED',
+    `Your earlier order #${orderNumber} already went through. Pay again to order what is in your cart now.`,
+    { orderId, orderNumber },
+  );
 
 /** The client build is older than site_settings.min_client_version: it must reload to get the current one. */
 export const clientOutdated = (): AppError =>

@@ -42,6 +42,12 @@ const envSchema = z
     // Proxies in front of the API whose X-Forwarded-For Express should trust (compose's nginx: 1). 0 trusts none, so
     // req.ip is the socket peer and a client cannot spoof its address.
     TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(10).default(0),
+    // Rate limits (middleware/rateLimit.ts), per fixed window. The campus Wi-Fi puts many customers behind one
+    // address, so the per-address limits are flood guards only; the per-user write limit is the real one. 0 = off.
+    RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(1_000).max(3_600_000).default(60_000),
+    RATE_LIMIT_IP_MAX: z.coerce.number().int().min(0).default(600),
+    RATE_LIMIT_WRITE_MAX: z.coerce.number().int().min(0).default(30),
+    RATE_LIMIT_REGISTER_MAX: z.coerce.number().int().min(0).default(10),
     CLIENT_ORIGIN: z
       .string()
       .url('CLIENT_ORIGIN must be a URL such as http://localhost:5173.')

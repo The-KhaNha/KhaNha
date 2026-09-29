@@ -3,7 +3,13 @@ import type { AuthUser } from '../types/auth';
 import type { Tables } from '../types/database';
 import { ORDER_STATUSES, type OrderStatus } from '../types/enums';
 import { invalidate } from '../utils/cache';
-import { AppError, insufficientStock, notFound, validationError } from '../utils/errors';
+import {
+  AppError,
+  idempotencyKeyReused,
+  insufficientStock,
+  notFound,
+  validationError,
+} from '../utils/errors';
 import { isUuid } from '../utils/ids';
 import { selectOrders, type OrderWithDetails } from '../utils/serializers';
 import { raisedByDatabase, supabaseAdmin } from '../utils/supabase';
@@ -30,17 +36,36 @@ type OrderLine = {
   quantity: number;
 };
 
+/** What createOrder placed, and whether it was placed now or already existed under the same idempotency key. */
+export interface PlacedOrder {
+  order: OrderWithDetails;
+  replayed: boolean;
+}
+
 /**
  * Places a paid order. Prices are read from the database, never from the request:
  * store must be open -> validate items -> price lines -> total -> simulated payment -> place_order.
+ * A repeated `idempotencyKey` returns the order that key already placed (the fast path below; place_order settles
+ * the race of two simultaneous repeats), so a retry after a lost response never charges or reserves twice.
  *
  * place_order reserves the stock and writes the order in ONE transaction, so a refused order (sold out)
  * leaves no order rows and no stock decrements behind.
  */
-export async function createOrder(
-  user: AuthUser,
-  input: CreateOrderInput,
-): Promise<OrderWithDetails> {
+export async function createOrder(user: AuthUser, input: CreateOrderInput): Promise<PlacedOrder> {
+  if (input.idempotencyKey) {
+    const { data: existing } = await selectOrders()
+      .eq('user_id', user.id)
+      .eq('idempotency_key', input.idempotencyKey)
+      .maybeSingle()
+      .throwOnError();
+    if (existing) {
+      if (!matchesRequest(existing, input)) {
+        throw idempotencyKeyReused(existing.id, existing.order_number);
+      }
+      return { order: existing, replayed: true };
+    }
+  }
+
   // A site setting, read through the cache: an admin's change can take up to the 10 s TTL on other instances, which is
   // harmless for a cap this generous.
   const { max_lines_per_order: maxLines } = await getSettings();
@@ -82,6 +107,7 @@ export async function createOrder(
         p_note: input.note,
         p_payment_status: paymentStatus,
         p_lines: lines,
+        p_idempotency_key: input.idempotencyKey,
       })
       .throwOnError());
   } catch (err) {
@@ -100,7 +126,33 @@ export async function createOrder(
   }
 
   const { data: order } = await selectOrders().eq('id', orderId).single().throwOnError();
-  return order;
+  // place_order answers a key it already saw (two requests racing past the check above) with the stored order, which
+  // must be the same order this request asked for.
+  if (input.idempotencyKey && !matchesRequest(order, input, customerName)) {
+    throw idempotencyKeyReused(order.id, order.order_number);
+  }
+  return { order, replayed: false };
+}
+
+/**
+ * Whether a stored order is what this request asks for: the same items and quantities (after merging), and the same
+ * pickup details. `customerName` is the resolved name; without it, a request that sent none matches any name.
+ */
+function matchesRequest(
+  order: OrderWithDetails,
+  input: CreateOrderInput,
+  customerName = input.customerName,
+): boolean {
+  const stored = new Map(order.order_items.map((line) => [line.menu_item_id, line.quantity]));
+  const sameItems =
+    input.items.length === stored.size &&
+    input.items.every((line) => stored.get(line.menuItemId) === line.quantity);
+  return (
+    sameItems &&
+    (customerName === undefined || customerName === order.customer_name) &&
+    (input.customerPhone ?? null) === order.customer_phone &&
+    (input.note ?? null) === order.note
+  );
 }
 
 /**

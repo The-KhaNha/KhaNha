@@ -10,12 +10,12 @@ configs; the client logger file is the only exception, set in `client/eslint.con
 
 ## Levels
 
-| Level   | Use it for                                                                 | Examples in this app                                                                                                                                                         |
-| ------- | -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `error` | a 5xx, or anything unexpected. Server: always with `err` (gives the stack) | unhandled error in a route, JWKS fetch failure, database unreachable                                                                                                         |
-| `warn`  | expected but worth noticing; a degraded path                               | 401 / 403 responses                                                                                                                                                          |
-| `info`  | lifecycle and business events                                              | API listening / shutting down, `Order placed`, `Order status changed`, 4xx such as `INSUFFICIENT_STOCK` or `INVALID_STATUS_TRANSITION`, access lines for writes and failures |
-| `debug` | tracing while developing                                                   | access lines for successful reads (the menu, polled order lists)                                                                                                             |
+| Level   | Use it for                                                                 | Examples in this app                                                                                                                                                                                                                  |
+| ------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `error` | a 5xx, or anything unexpected. Server: always with `err` (gives the stack) | unhandled error in a route, JWKS fetch failure, database unreachable                                                                                                                                                                  |
+| `warn`  | expected but worth noticing; a degraded path                               | 401 / 403 / 429 responses                                                                                                                                                                                                             |
+| `info`  | lifecycle and business events                                              | API listening / shutting down, `Order placed`, `Order placement replayed` (a retried `idempotencyKey`), `Order status changed`, 4xx such as `INSUFFICIENT_STOCK` or `INVALID_STATUS_TRANSITION`, access lines for writes and failures |
+| `debug` | tracing while developing                                                   | access lines for successful reads (the menu, polled order lists)                                                                                                                                                                      |
 
 Successful `GET`s are logged at `debug` on purpose: the staff board polls every 4 s and the customer screens every
 8 s, so at `info` they would flood production logs.
@@ -61,11 +61,11 @@ Successful `GET`s are logged at `debug` on purpose: the staff board polls every 
 
 ## Error classes
 
-| Error                                                        | Thrown by                                                                                                                             | Answer                                       | Logged                                        |
-| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- | --------------------------------------------- |
-| `AppError` (factories in `utils/errors.ts`)                  | services, middleware                                                                                                                  | its status and code                          | 401/403 `warn`, 426 `debug`, other 4xx `info` |
-| `IntegrationError { provider, operation, retryable, cause }` | `utils/supabase.ts` `asDatabaseUnavailable` (the error handler applies it to every error), `middleware/auth.ts` (`JWKS_FETCH_FAILED`) | 503 `UPSTREAM_UNAVAILABLE`, `Retry-After: 5` | once, `error`                                 |
-| anything else                                                | –                                                                                                                                     | 500 `INTERNAL`                               | once, `error`                                 |
+| Error                                                        | Thrown by                                                                                                                             | Answer                                       | Logged                                            |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- | ------------------------------------------------- |
+| `AppError` (factories in `utils/errors.ts`)                  | services, middleware                                                                                                                  | its status and code                          | 401/403/429 `warn`, 426 `debug`, other 4xx `info` |
+| `IntegrationError { provider, operation, retryable, cause }` | `utils/supabase.ts` `asDatabaseUnavailable` (the error handler applies it to every error), `middleware/auth.ts` (`JWKS_FETCH_FAILED`) | 503 `UPSTREAM_UNAVAILABLE`, `Retry-After: 5` | once, `error`                                     |
+| anything else                                                | –                                                                                                                                     | 500 `INTERNAL`                               | once, `error`                                     |
 
 The database counts as unreachable when a call fails in transport: with `.throwOnError()`, postgrest-js retries an
 idempotent read three times (1, 2, 4 s) and then rethrows undici's own `TypeError: fetch failed`, whose `cause` is the

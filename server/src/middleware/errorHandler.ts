@@ -1,7 +1,13 @@
 import type { ErrorRequestHandler, RequestHandler } from 'express';
 import { PostgrestError } from '@supabase/supabase-js';
 import { ZodError } from 'zod';
-import { AppError, IntegrationError, type ErrorCode, type ItemErrorDetails } from '../utils/errors';
+import {
+  AppError,
+  IntegrationError,
+  type ErrorCode,
+  type ItemErrorDetails,
+  type ReplayedOrderDetails,
+} from '../utils/errors';
 import { asDatabaseUnavailable } from '../utils/supabase';
 import { describeIssue } from './validate';
 
@@ -9,8 +15,8 @@ interface ErrorDescription {
   status: number;
   code: ErrorCode;
   message: string;
-  /** Present on item errors only: which cart line the message is about. */
-  details?: ItemErrorDetails;
+  /** Which cart line an item error is about, or which order a reused idempotency key placed. */
+  details?: ItemErrorDetails | ReplayedOrderDetails;
 }
 
 const UPSTREAM_UNAVAILABLE: ErrorDescription = {
@@ -39,14 +45,14 @@ export const errorHandler: ErrorRequestHandler = (thrown: unknown, req, res, _ne
   const { status, code, message, details } = describeError(err);
   if (err instanceof IntegrationError) res.set('Retry-After', RETRY_AFTER_SECONDS);
   // The one place a failed request is logged. Only 5xx carries the error and its stack; a 4xx is an expected
-  // client error, and 401/403 are warn because a burst of them is worth noticing.
+  // client error, and 401/403/429 are warn because a burst of them is worth noticing.
   // A 426 is debug: a stale tab keeps asking until it reloads, and each ask is expected.
   if (status >= 500) {
     const route = req.route ? `${req.baseUrl}${String(req.route.path)}` : req.path;
     req.log.error({ err, route, status, code, userId: req.user?.id }, 'Request failed');
   } else if (status === 426) req.log.debug({ status, code }, message);
-  else req.log[status === 401 || status === 403 ? 'warn' : 'info']({ status, code }, message);
-  // The envelope is { error: { code, message } }, plus `details` when an error is about one cart line.
+  else req.log[[401, 403, 429].includes(status) ? 'warn' : 'info']({ status, code }, message);
+  // The envelope is { error: { code, message } }, plus `details` for a cart-line error or a reused idempotency key.
   res.status(status).json({ error: { code, message, ...(details && { details }) } });
 };
 

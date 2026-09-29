@@ -29,13 +29,13 @@ server/
 │   ├── controllers/          thin handlers: read req → call a service → serialize → res.json
 │   ├── services/             business logic and every database call
 │   ├── schemas/              zod request schemas
-│   ├── middleware/           auth.ts, validate.ts, errorHandler.ts, clientVersion.ts
+│   ├── middleware/           auth.ts, validate.ts, errorHandler.ts, clientVersion.ts, rateLimit.ts, securityHeaders.ts
 │   ├── types/                API DTOs, generated database types, enums, AuthUser, Express augmentation
 │   └── utils/                env, logger, Supabase client, errors, serializers, ids, cache, version
 └── test/
     ├── setup/                api.ts, guard.ts, run-lock.ts, target.ts, helpers.ts (+ target.safe.test.ts)
-    ├── api/                  one suite per router: admin, auth, health, menu, menu-cache, orders, store, caching
-    ├── unit/                 pure logic: cache, errors, schemas, serializers, validate
+    ├── api/                  one suite per router: admin, auth, health, menu, menu-cache, menu-cap, orders, store, caching, security-headers
+    ├── unit/                 pure logic: cache, errors, schemas, serializers, validate, rate-limit
     └── logging.safe.test.ts
 ```
 
@@ -50,12 +50,14 @@ calls `listen`, so tests drive it with Supertest.
 ```mermaid
 flowchart TD
   Req["HTTP request"] --> XPB["x-powered-by disabled"]
-  XPB --> Pino["pino-http<br/>request id (x-request-id), req.log, one access line per request"]
+  XPB --> Sec["securityHeaders<br/>nosniff, X-Frame-Options DENY, Referrer-Policy, CSP none, HSTS over TLS"]
+  Sec --> Pino["pino-http<br/>request id (x-request-id), req.log, one access line per request"]
   Pino --> Cors["cors({ origin: CLIENT_ORIGIN })"]
-  Cors --> Json["express.json() (100 kB default limit)"]
+  Cors --> IpL["ipLimiter (/api, per address)"]
+  IpL --> Json["express.json() (100 kB default limit)"]
   Json --> Api{"/api → apiRouter"}
   Api -->|"GET /health, GET /ready"| Health["health.controller<br/>{ ok, version, commit } / { ready }"]
-  Api -->|"/auth, /store, /menu, /orders"| Router["resource router<br/>requireAuth / requireStaff / validate(schema)"]
+  Api -->|"/auth, /store, /menu, /orders"| Router["resource router<br/>requireAuth / requireStaff / writeLimiter, registerLimiter / validate(schema)"]
   Api -->|"/admin"| AdminR["adminRouter<br/>requireAuth / requireAdmin"]
   Router --> Ctl["controller"] --> Svc["service → supabaseAdmin → Postgres"]
   AdminR --> Ctl
@@ -67,14 +69,16 @@ flowchart TD
   Svc -. "throw" .-> EH
 ```
 
-| Step              | File                             | What it does                                                                                                                                                     |
-| ----------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pino-http`       | `src/app.ts`                     | keeps a caller's `x-request-id` if it matches `^[\w.-]{1,64}$`, else a UUID; echoes it; access line at `debug` for successful GET/HEAD/OPTIONS, `info` otherwise |
-| `cors`            | `src/app.ts`                     | one allowed origin, `env.CLIENT_ORIGIN`                                                                                                                          |
-| `express.json()`  | `src/app.ts`                     | parses JSON bodies; over 100 kB is 413, malformed is 400 (mapped in the error handler)                                                                           |
-| `apiRouter`       | `src/routes/index.ts`            | `/health`, `/ready`, then mounts `/auth`, `/store`, `/menu`, `/orders`, `/admin`                                                                                 |
-| `notFoundHandler` | `src/middleware/errorHandler.ts` | 404 `NOT_FOUND` "No route matches <METHOD> <path>."                                                                                                              |
-| `errorHandler`    | `src/middleware/errorHandler.ts` | maps any error to status + code + safe message; logs it once (5xx `error` with the stack, 401/403 `warn`, other 4xx `info`)                                      |
+| Step              | File                                | What it does                                                                                                                                                     |
+| ----------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `securityHeaders` | `src/middleware/securityHeaders.ts` | browser-hardening headers on every response, HSTS only when `req.secure` ([API.md](API.md#headers-and-limits))                                                   |
+| `pino-http`       | `src/app.ts`                        | keeps a caller's `x-request-id` if it matches `^[\w.-]{1,64}$`, else a UUID; echoes it; access line at `debug` for successful GET/HEAD/OPTIONS, `info` otherwise |
+| `cors`            | `src/app.ts`                        | one allowed origin, `env.CLIENT_ORIGIN`                                                                                                                          |
+| `ipLimiter`       | `src/middleware/rateLimit.ts`       | `RATE_LIMIT_IP_MAX` requests per address per window on `/api`, before the body is parsed; 429 `RATE_LIMITED`                                                     |
+| `express.json()`  | `src/app.ts`                        | parses JSON bodies; over 100 kB is 413, malformed is 400 (mapped in the error handler)                                                                           |
+| `apiRouter`       | `src/routes/index.ts`               | `/health`, `/ready`, then mounts `/auth`, `/store`, `/menu`, `/orders`, `/admin`                                                                                 |
+| `notFoundHandler` | `src/middleware/errorHandler.ts`    | 404 `NOT_FOUND` "No route matches <METHOD> <path>."                                                                                                              |
+| `errorHandler`    | `src/middleware/errorHandler.ts`    | maps any error to status + code + safe message; logs it once (5xx `error` with the stack, 401/403/429 `warn`, other 4xx `info`)                                  |
 
 Express 5 forwards a rejected promise from an async handler to the error handler, so controllers and middleware have
 no `try`/`catch` and throw `AppError`s directly. The error mapping is drawn in
@@ -138,12 +142,14 @@ Field rules: [API.md](API.md#routes).
 
 ### middleware/
 
-| File               | Exports                                                                                                                                                                                                                                    |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `auth.ts`          | `requireAuth`, `requireStaff`, `requireAdmin`, `currentUser(req)`                                                                                                                                                                          |
-| `validate.ts`      | `validate(schema, source = 'body')`, `describeIssue(issue)`                                                                                                                                                                                |
-| `errorHandler.ts`  | `notFoundHandler`, `errorHandler`                                                                                                                                                                                                          |
-| `clientVersion.ts` | `readClientVersion(req)`: the `X-Client-Version` header if it is a plain semver (≤ 32 chars), else `undefined`; `clientVersionGate`: 426 `CLIENT_OUTDATED` below `site_settings.min_client_version` ([API.md](API.md#client-version-gate)) |
+| File                 | Exports                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `auth.ts`            | `requireAuth`, `requireStaff`, `requireAdmin`, `currentUser(req)`                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `validate.ts`        | `validate(schema, source = 'body')`, `describeIssue(issue)`                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `errorHandler.ts`    | `notFoundHandler`, `errorHandler`                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `rateLimit.ts`       | `createRateLimiter({ windowMs, limit, keyBy: 'user' \| 'ip' })` (express-rate-limit, in-process fixed windows, 429 `RATE_LIMITED` through the error handler with `Retry-After` and draft-7 `RateLimit` headers; `limit: 0` is a pass-through); `ipLimiter` (all of `/api`), `writeLimiter` (per user: order placement, status changes, settings), `registerLimiter` (per address). Sizes from `RATE_LIMIT_*` ([CONFIGURATION.md](CONFIGURATION.md#deployment-settings)) |
+| `securityHeaders.ts` | `securityHeaders`: `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, a `default-src 'none'` CSP, and HSTS when `req.secure` ([API.md](API.md#headers-and-limits))                                                                                                                                                                                                                                                                                         |
+| `clientVersion.ts`   | `readClientVersion(req)`: the `X-Client-Version` header if it is a plain semver (≤ 32 chars), else `undefined`; `clientVersionGate`: 426 `CLIENT_OUTDATED` below `site_settings.min_client_version` ([API.md](API.md#client-version-gate))                                                                                                                                                                                                                              |
 
 `validate()` strips NUL bytes from every string, parses with zod, and replaces `req.body` (or shadows the
 `req.query` getter with an own property) with the parsed value. On failure it throws a 400 `VALIDATION_ERROR` whose

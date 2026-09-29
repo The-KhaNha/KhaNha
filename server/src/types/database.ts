@@ -133,6 +133,7 @@ export type Database = {
           customer_phone: string | null;
           estimated_ready_at: string;
           id: string;
+          idempotency_key: string | null;
           note: string | null;
           order_number: number;
           payment_status: Database['public']['Enums']['payment_status'];
@@ -148,6 +149,7 @@ export type Database = {
           customer_phone?: string | null;
           estimated_ready_at: string;
           id?: string;
+          idempotency_key?: string | null;
           note?: string | null;
           order_number?: never;
           payment_status?: Database['public']['Enums']['payment_status'];
@@ -163,6 +165,7 @@ export type Database = {
           customer_phone?: string | null;
           estimated_ready_at?: string;
           id?: string;
+          idempotency_key?: string | null;
           note?: string | null;
           order_number?: never;
           payment_status?: Database['public']['Enums']['payment_status'];
@@ -305,6 +308,7 @@ export type Database = {
         Args: {
           p_customer_name: string;
           p_customer_phone?: string;
+          p_idempotency_key?: string;
           p_lines: Json;
           p_note?: string;
           p_payment_status: Database['public']['Enums']['payment_status'];

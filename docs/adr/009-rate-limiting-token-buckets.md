@@ -41,6 +41,14 @@ When the limiter's store is unavailable, reads fail open, and auth and money wri
 - In-memory buckets are per instance. The Redis store is needed once more than 2 API instances run.
 - The P9.1 load test must show 1000 simulated users behind one IP staying under the IP bucket.
 
+## Interim (P0)
+
+Until P1.6, the API runs the in-process half of this decision with `express-rate-limit` fixed windows
+(`server/src/middleware/rateLimit.ts`): per-user limits on writes, generous per-address limits on all of `/api` and
+on registration, sizes from `RATE_LIMIT_*` env, 429 `RATE_LIMITED` with `Retry-After` and the draft-7 `RateLimit`
+headers, logged at `warn`. No database limits, no WAF, no Redis: P1.6 replaces the store and adds the other two
+layers without changing the contract.
+
 ## Links
 
 - [P1.6 Rate limiting and abuse protection v1][p1.6]

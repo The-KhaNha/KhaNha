@@ -37,6 +37,11 @@ The client reads them through `GET /api/config` (`useConfig()`, persisted) and f
 | ------------------- | ------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `SESSION_IDLE_DAYS` | 7       | 1–90   | `GET /api/config` (`session.idleDays`); must equal `auth.sessions.inactivity_timeout` (168h) in `server/supabase/config.toml` (hosted Supabase Free has no such setting, [ADR-011](adr/011-free-tiers.md)). The client's sign-in cap (`sessionActivity.ts`) reads the fallback copy, because it runs before any request |
 
+| `RATE_LIMIT_WINDOW_MS` | 60000 | 1000–3600000 | `middleware/rateLimit.ts`: the fixed window every limit below counts in |
+| `RATE_LIMIT_IP_MAX` | 600 | ≥ 0 (0 = off) | requests per address per window on all of `/api`: a flood guard only, since campus Wi-Fi puts many customers behind one address ([ADR-009](adr/009-rate-limiting-token-buckets.md)) |
+| `RATE_LIMIT_WRITE_MAX` | 30 | ≥ 0 (0 = off) | writes per signed-in user per window (`POST /orders`, `PATCH /orders/:id/status`, `PATCH /admin/settings`): the real abuse limit |
+| `RATE_LIMIT_REGISTER_MAX` | 10 | ≥ 0 (0 = off) | `POST /auth/register` per address per window |
+
 Every other environment variable is in [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Platform constants
@@ -50,6 +55,13 @@ Bounds both sides need, kept in one place per side and parity-tested (`server/te
 | `noteMax`                            | 200    | `createOrderSchema.note`; `validateNote`                                        |
 | `password.min`, `password.max`       | 6, 72  | `registerSchema` (bcrypt reads 72 bytes); `validatePassword`                    |
 | `phoneDigits.min`, `phoneDigits.max` | 10, 15 | `phoneField`; `validatePhone`                                                   |
+
+Server-only platform constants (no client copy, so not in the parity test):
+
+| Constant                | Value  | Enforced by                                                                                                                                      |
+| ----------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `JSON_BODY_LIMIT_BYTES` | 100 kB | `server/src/app.ts` (refused on the declared length) and `client_max_body_size 100k` in `client/nginx/default.conf.template`; keep the two equal |
+| `MENU_ITEMS_MAX`        | 500    | `menu.service.ts`: most items one `GET /api/menu` carries (lowest `sort_order` first); pagination comes with the P3.1 catalog                    |
 
 ## What stays in code
 
