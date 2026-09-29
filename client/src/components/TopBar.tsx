@@ -36,7 +36,8 @@ export function TopBar({
           : 'border-b border-line/60 bg-bg/90 text-ink backdrop-blur-md',
       )}
     >
-      <div className={cn('mx-auto flex h-14 items-center gap-1 px-4', widthClass)}>
+      {/* min-h, not h: at large text the title takes a second line instead of ending in "…". */}
+      <div className={cn('mx-auto flex min-h-14 items-center gap-1 px-4 py-1', widthClass)}>
         {backTo && (
           <Link
             to={backTo}
@@ -52,7 +53,9 @@ export function TopBar({
         )}
         <div className="min-w-0 flex-1">
           {title ? (
-            <h1 className="truncate text-lead font-bold">{title}</h1>
+            <h1 className="line-clamp-2 text-lead leading-tight font-bold wrap-break-word">
+              {title}
+            </h1>
           ) : (
             <Link
               to="/"

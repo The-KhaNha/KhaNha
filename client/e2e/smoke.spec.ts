@@ -364,6 +364,17 @@ async function fitsScreen(page: Page, when: string): Promise<void> {
   expect(await overflowingPastScreen(page), `elements past the right edge ${when}`).toEqual([]);
   expect(await labelsWiderThanControl(page), `labels past their button ${when}`).toEqual([]);
   expect(await textCutOff(page), `text cut off ${when}`).toEqual([]);
+  // A page title says where you are: it wraps rather than ending in "…" ("Orde…" told nobody anything).
+  expect(
+    await page.evaluate(() =>
+      Array.from(document.querySelectorAll('h1'))
+        .filter(
+          (h) => getComputedStyle(h).textOverflow === 'ellipsis' && h.scrollWidth > h.clientWidth,
+        )
+        .map((h) => h.textContent ?? ''),
+    ),
+    `page titles cut short ${when}`,
+  ).toEqual([]);
   // Text spilling out of its own box (a word wider than a narrow tile) is not an element past the edge, but it
   // still scrolls the page sideways.
   expect(
