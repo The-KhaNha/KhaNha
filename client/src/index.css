@@ -1,9 +1,56 @@
 @import 'tailwindcss';
 
+/* Plus Jakarta Sans arrives after the first paint (non-blocking, display=swap). Until then text is set in a system font
+   stretched to its metrics, so the swap moves nothing (CLS; e2e "a late web font does not shift the layout"). Values
+   come from the fonts' hhea metrics and letter-frequency-weighted widths, per weight: Roboto for Android and ChromeOS,
+   Arial (or the metric-identical Liberation Sans / Arimo on Linux) elsewhere. Recompute them if the web font changes. */
+@font-face {
+  font-family: 'Jakarta Fallback Roboto';
+  src: local('Roboto'), local('Roboto-Regular');
+  font-weight: 100 599;
+  size-adjust: 105.49%;
+  ascent-override: 98.4%;
+  descent-override: 21.05%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: 'Jakarta Fallback Roboto';
+  src: local('Roboto Bold'), local('Roboto-Bold'), local('Roboto');
+  font-weight: 600 900;
+  size-adjust: 107.22%;
+  ascent-override: 96.81%;
+  descent-override: 20.7%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: 'Jakarta Fallback Arial';
+  src:
+    local('Arial'), local('ArialMT'), local('Liberation Sans'), local('LiberationSans'),
+    local('Arimo'), local('Arimo Regular');
+  font-weight: 100 599;
+  size-adjust: 106.05%;
+  ascent-override: 97.88%;
+  descent-override: 20.93%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: 'Jakarta Fallback Arial';
+  src:
+    local('Arial Bold'), local('Arial-BoldMT'), local('Liberation Sans Bold'),
+    local('LiberationSans-Bold'), local('Arimo Bold'), local('Arimo-Bold');
+  font-weight: 600 900;
+  size-adjust: 100.89%;
+  ascent-override: 102.89%;
+  descent-override: 22%;
+  line-gap-override: 0%;
+}
+
 /* "Paprika & Saffron" — one paprika accent, saffron gold for highlights, basil green for success,
    cool slate for cancelled. Warm butter-cream base so white cards and food photos read warmer. */
 @theme {
-  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-sans:
+    'Plus Jakarta Sans', 'Jakarta Fallback Roboto', 'Jakarta Fallback Arial', system-ui,
+    -apple-system, 'Segoe UI', Roboto, sans-serif;
 
   /* Neutrals */
   --color-bg: #fbf5ec;

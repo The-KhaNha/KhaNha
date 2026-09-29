@@ -67,13 +67,17 @@
         margin: 0;
         background: #fbf5ec;
         color: #1b1410;
-        font-family:
+        /* Unlayered, so it would beat Tailwind's layered base: defer to --font-sans (with its metric-matched fallback
+           faces) once src/index.css lands, and use the same stack for the first frame before it. */
+        font-family: var(
+          --font-sans,
           'Plus Jakarta Sans',
           system-ui,
           -apple-system,
           'Segoe UI',
           Roboto,
-          sans-serif;
+          sans-serif
+        );
       }
       /* Dark first frame, matching the dark tokens in src/index.css. */
       @media (prefers-color-scheme: dark) {

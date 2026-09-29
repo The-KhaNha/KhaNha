@@ -87,7 +87,8 @@ export function OrderHero({ order, onReorder, reordering }: OrderHeroProps) {
   if (order.status === 'CANCELLED') {
     return (
       <Card as="section" padding="lg" tone="cancel" className="animate-scale-in">
-        <div className="flex flex-wrap items-start justify-between gap-3">
+        {/* On a phone the badge always takes its own line: beside the heading it only just fits, so the web font arriving (a few px narrower than the fallback) would pull it up and shift the page. */}
+        <div className="flex flex-col items-start gap-2 sm:flex-row sm:justify-between sm:gap-3">
           <div>
             <h2 className="text-2xl font-extrabold leading-tight">
               Order <span className="tabular-nums">#{order.orderNumber}</span>
@@ -114,7 +115,7 @@ export function OrderHero({ order, onReorder, reordering }: OrderHeroProps) {
   const Icon = meta.icon;
   return (
     <Card as="section" padding="lg" className="animate-scale-in">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex flex-col items-start gap-2 sm:flex-row sm:justify-between sm:gap-3">
         <div>
           <h2 className="text-title font-extrabold leading-[1.15]">
             Order <span className="tabular-nums">#{order.orderNumber}</span>

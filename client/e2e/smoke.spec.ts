@@ -402,6 +402,75 @@ for (const { path, role, status } of LAYOUT_ROUTES) {
   });
 }
 
+// A slow network delivers the web font after the content has painted in the fallback. The fallback faces in index.css
+// are metric-matched, so the swap must not move anything (CLS budget 0.1, CLAUDE.md §2b). Chromium only: WebKit has no
+// layout-shift entries.
+for (const { path, role } of [
+  { path: '/' },
+  { path: '/menu' },
+  { path: '/orders/o1', role: 'CUSTOMER' as const },
+  { path: '/staff', role: 'STAFF' as const },
+]) {
+  test(`${path}: a late web font does not shift the layout`, async ({ page, browserName }) => {
+    test.skip(browserName !== 'chromium', 'layout-shift entries are Chromium-only');
+    if (role) await signIn(page, role);
+    await page.route('https://fonts.googleapis.com/**', async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      await route.continue();
+    });
+    await page.addInitScript(() => {
+      const w = window as unknown as { __cls: number };
+      w.__cls = 0;
+      new PerformanceObserver((list) => {
+        for (const entry of list.getEntries() as unknown as {
+          value: number;
+          hadRecentInput: boolean;
+        }[]) {
+          if (!entry.hadRecentInput) w.__cls += entry.value;
+        }
+      }).observe({ type: 'layout-shift', buffered: true });
+    });
+    await page.goto(path);
+    // Before the web font lands, the text must be drawn in a metric-matched fallback: an unlayered rule (the boot
+    // style) overriding --font-sans, or a stack without the fallback faces, would draw it in whatever sans is left.
+    // They need Roboto, Arial or Liberation Sans on the machine: CI has Liberation Sans (Playwright's --with-deps); a
+    // laptop with none of them skips instead of failing, and CI never skips.
+    const heading = page.locator(':is(h1, h2, h3, p):visible').first();
+    await expect(heading).toBeVisible();
+    await heading.evaluate((el) => el.setAttribute('data-font-probe', ''));
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('DOM.enable');
+    await cdp.send('CSS.enable');
+    const { root } = await cdp.send('DOM.getDocument');
+    const { nodeId } = await cdp.send('DOM.querySelector', {
+      nodeId: root.nodeId,
+      selector: '[data-font-probe]',
+    });
+    const { fonts } = await cdp.send('CSS.getPlatformFontsForNode', { nodeId });
+    const drawnIn = fonts.map((f) => f.familyName);
+    const matched = drawnIn.some((name) => /^(Roboto|Arial|Liberation Sans|Arimo)$/.test(name));
+    const installed = await page.evaluate(async () => {
+      const faces = [...document.fonts].filter((f) => f.family.includes('Jakarta Fallback'));
+      await Promise.all(faces.map((f) => f.load().catch(() => undefined)));
+      return faces.some((f) => f.status === 'loaded');
+    });
+    test.skip(!process.env.CI && !installed, 'no Roboto, Arial or Liberation Sans installed');
+    expect(matched, `heading drawn in ${drawnIn.join(', ')} before the web font arrives`).toBe(
+      true,
+    );
+    await page.waitForFunction(() => document.fonts.check('700 16px "Plus Jakarta Sans"'), null, {
+      timeout: 15_000,
+    });
+    await page.evaluate(() => document.fonts.ready);
+    // Two frames for the swap to lay out and report.
+    await page.evaluate(
+      () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+    );
+    const cls = await page.evaluate(() => (window as unknown as { __cls: number }).__cls);
+    expect(cls, 'layout shift when the web font arrives').toBeLessThanOrEqual(0.1);
+  });
+}
+
 test('following a link titles the new page and moves keyboard focus to it', async ({ page }) => {
   await page.goto('/');
   await expect(page).toHaveTitle('Food Pickup');

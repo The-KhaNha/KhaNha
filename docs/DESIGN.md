@@ -52,7 +52,7 @@ exist so a fill never doubles as text:
 
 ## Type
 
-Plus Jakarta Sans (`--font-sans`, `display=swap`). Tailwind's default steps plus the in-between sizes this design uses
+Plus Jakarta Sans (`--font-sans`, `display=swap`), loaded after the first paint. Until it lands, text is set in a metric-matched fallback: the `Jakarta Fallback Roboto` / `Jakarta Fallback Arial` faces at the top of `src/index.css` stretch the system font to Jakarta's width and line box, so the swap moves nothing (the e2e "a late web font does not shift the layout"). Recompute their `size-adjust` / `ascent-override` / `descent-override` if the web font changes. A layout that only just fits (a badge beside a heading on a phone) still flips when the font swaps: give it a line of its own below `sm`. Tailwind's default steps plus the in-between sizes this design uses
 on purpose, all rem:
 
 | Class               | Size                                    | Use                                                                                                |
