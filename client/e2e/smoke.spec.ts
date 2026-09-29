@@ -156,6 +156,49 @@ async function smallTapTargets(page: Page): Promise<string[]> {
   );
 }
 
+/**
+ * Controls whose label text runs past their own edges. Measures the text, not the box's scrollWidth: a badge pinned
+ * to the corner (the cart count) overhangs on purpose, and text clipped on purpose (truncate) is not visible outside.
+ */
+async function labelsWiderThanControl(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const out: string[] = [];
+    for (const el of Array.from(document.querySelectorAll<HTMLElement>('button, a[href]'))) {
+      if (el.getClientRects().length === 0) continue;
+      const box = el.getBoundingClientRect();
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const label = node.textContent?.trim();
+        let placedOrClipped = false;
+        for (
+          let p = node.parentElement;
+          p && !placedOrClipped;
+          p = p === el ? null : p.parentElement
+        ) {
+          const style = getComputedStyle(p);
+          placedOrClipped =
+            style.position === 'absolute' ||
+            style.position === 'fixed' ||
+            style.overflowX !== 'visible';
+        }
+        if (!label || placedOrClipped) continue;
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        const text = range.getBoundingClientRect();
+        // A label hidden on phones (the staff header's "Profile") has no box at all.
+        if (text.width === 0) continue;
+        if (text.left < box.left - 1 || text.right > box.right + 1) {
+          out.push(
+            `${el.tagName.toLowerCase()} "${label.slice(0, 30)}" ${Math.round(text.width)}px in ${Math.round(box.width)}px`,
+          );
+          break;
+        }
+      }
+    }
+    return out;
+  });
+}
+
 const CART_LINE = {
   menuItemId: 'i1',
   name: 'Cold Coffee',
@@ -268,6 +311,7 @@ for (const { path, role } of LAYOUT_ROUTES) {
     expect(await overflowingPastScreen(page), 'elements past the right edge at 200% text').toEqual(
       [],
     );
+    expect(await labelsWiderThanControl(page), 'labels past their button at 200% text').toEqual([]);
     // Text spilling out of its own box (a word wider than a narrow tile) is not an element past the edge, but it
     // still scrolls the page sideways.
     expect(

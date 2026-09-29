@@ -14,7 +14,7 @@ interface StyleProps {
 }
 
 const base =
-  'inline-flex items-center justify-center gap-2 rounded-control font-semibold select-none whitespace-nowrap ' +
+  'inline-flex items-center justify-center gap-2 rounded-control font-semibold select-none ' +
   'transition-[background-color,color,translate,scale,box-shadow,opacity] duration-[120ms] ease-out active:scale-[0.97] ' +
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-bg ' +
   'disabled:pointer-events-none disabled:opacity-50';
@@ -33,15 +33,28 @@ const variants: Record<ButtonVariant, string> = {
 };
 
 const sizes: Record<ButtonSize, string> = {
-  md: 'h-11 px-4 text-body',
-  lg: 'h-14 px-6 text-base',
+  md: 'px-4 text-body',
+  lg: 'px-6 text-base',
 };
+
+// An auto-width button sizes to its one-line label. A full-width one cannot grow sideways, so at large text its label
+// wraps and the button grows taller instead of the words running past its edges (the e2e smoke checks both at 200%).
+const heights: Record<ButtonSize, string> = { md: 'h-11', lg: 'h-14' };
+const fullWidthHeights: Record<ButtonSize, string> = { md: 'min-h-11', lg: 'min-h-14' };
 
 export function buttonClasses(
   { variant = 'primary', size = 'md', fullWidth = false }: StyleProps,
   extra?: string,
 ) {
-  return cn(base, variants[variant], sizes[size], fullWidth && 'w-full', extra);
+  return cn(
+    base,
+    variants[variant],
+    sizes[size],
+    fullWidth
+      ? cn('w-full py-2 text-center', fullWidthHeights[size])
+      : cn('whitespace-nowrap', heights[size]),
+    extra,
+  );
 }
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement>, StyleProps {
