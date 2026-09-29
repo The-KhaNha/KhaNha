@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import fallbacks from '../src/config/fallbacks.json' with { type: 'json' };
-import type { Config, MenuItem, MenuResponse, Store } from '../src/types/api';
+import type { Config, MenuItem, MenuResponse, Order, Role, Store, User } from '../src/types/api';
 
 // Safari's engine on a 360px-class phone, with every API call mocked: this checks the client alone (layout,
 // hydration, the cart) so it needs no backend and runs the same on a laptop and in CI.
@@ -165,15 +165,97 @@ const CART_LINE = {
   maxQuantity: null,
 };
 
-// The routes a signed-out customer reaches; the signed-in ones are covered by ui-verifier L11 and /break env.
-for (const path of ['/', '/menu', '/cart', '/login', '/register']) {
-  test(`${path}: every control is at least 44px, and nothing leaves the screen at 200% text`, async ({
+/**
+ * Signs the page in as `role` without a backend: the persisted auth store, a supabase-js session that is not near
+ * expiry (so it makes no network call; the key's `127` is the host in the tracked client/.env.development) and a
+ * fresh activity stamp. /api/auth/me and the order endpoints answer with fixtures.
+ */
+async function signIn(page: Page, role: Role): Promise<void> {
+  const now = new Date().toISOString();
+  const user: User = {
+    id: 'u1',
+    name: 'Anishka',
+    email: 'a@example.com',
+    phone: null,
+    role,
+    createdAt: now,
+  };
+  const order: Order = {
+    id: 'o1',
+    orderNumber: 1042,
+    status: 'PLACED',
+    paymentStatus: 'PAID',
+    total: 240,
+    customerName: user.name,
+    customerPhone: null,
+    note: 'Less sugar, please',
+    estimatedReadyAt: now,
+    createdAt: now,
+    updatedAt: now,
+    store: { id: store.id, name: store.name },
+    items: [
+      {
+        id: 'l1',
+        menuItemId: 'i1',
+        name: 'Cold Coffee',
+        unitPrice: 120,
+        quantity: 2,
+        lineTotal: 240,
+      },
+    ],
+  };
+  await page.route('**/api/auth/me', (route) => route.fulfill({ json: { user } }));
+  await page.route('**/api/orders**', (route) =>
+    route.fulfill({
+      json:
+        new URL(route.request().url()).pathname === '/api/orders' ? { orders: [order] } : { order },
+    }),
+  );
+  await page.addInitScript((user) => {
+    const expiresAt = Math.floor(Date.now() / 1000) + 3600;
+    localStorage.setItem('fp_auth', JSON.stringify({ state: { user, token: 'e2e' }, version: 0 }));
+    localStorage.setItem('fp_last_active', String(Date.now()));
+    localStorage.setItem(
+      'sb-127-auth-token',
+      JSON.stringify({
+        access_token: 'e2e',
+        refresh_token: 'e2e',
+        token_type: 'bearer',
+        expires_in: 3600,
+        expires_at: expiresAt,
+        user: {
+          id: user.id,
+          aud: 'authenticated',
+          email: user.email,
+          app_metadata: {},
+          user_metadata: {},
+        },
+      }),
+    );
+  }, user);
+}
+
+const LAYOUT_ROUTES: { path: string; role?: Role }[] = [
+  { path: '/' },
+  { path: '/menu' },
+  { path: '/cart' },
+  { path: '/login' },
+  { path: '/register' },
+  { path: '/orders', role: 'CUSTOMER' },
+  { path: '/profile', role: 'CUSTOMER' },
+  { path: '/staff', role: 'STAFF' },
+];
+
+for (const { path, role } of LAYOUT_ROUTES) {
+  test(`${path}${role ? ` (${role})` : ''}: every control is at least 44px, and nothing leaves the screen at 200% text`, async ({
     page,
   }) => {
+    if (role) await signIn(page, role);
     await page.addInitScript((line) => {
       localStorage.setItem('fp_cart', JSON.stringify({ state: { lines: [line] }, version: 1 }));
     }, CART_LINE);
     await page.goto(path);
+    await expect(page).toHaveURL(new RegExp(`${path}$`));
     await expect(page.locator('main, #root > *').first()).toBeVisible();
     await page.waitForLoadState('networkidle');
 
@@ -186,6 +268,12 @@ for (const path of ['/', '/menu', '/cart', '/login', '/register']) {
     expect(await overflowingPastScreen(page), 'elements past the right edge at 200% text').toEqual(
       [],
     );
+    // Text spilling out of its own box (a word wider than a narrow tile) is not an element past the edge, but it
+    // still scrolls the page sideways.
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+      'page width at 200% text',
+    ).toBeLessThanOrEqual(page.viewportSize()?.width ?? 0);
   });
 }
 

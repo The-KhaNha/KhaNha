@@ -69,7 +69,7 @@ export function HomePage() {
         <h2 id="how-it-works" className="eyebrow text-muted">
           How it works
         </h2>
-        <ol className="mt-3 grid grid-cols-3 gap-2">
+        <ol className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(min(100%,6rem),1fr))] gap-2">
           {steps.map(({ icon: Icon, title, copy }, index) => (
             <li key={title} className={cardClasses('p-3.5', 'tile')}>
               <div className="flex items-center justify-between">
