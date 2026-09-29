@@ -30,6 +30,8 @@ export function validateEmail(value: string): string | undefined {
 
 export function validatePassword(value: string): string | undefined {
   if (!value) return 'Please enter your password.';
+  // Never trimmed, but a password of only spaces is refused, as the server's registerSchema does.
+  if (!value.trim()) return 'Password cannot be only spaces.';
   if (value.length < PASSWORD_MIN_LENGTH) return `Use at least ${PASSWORD_MIN_LENGTH} characters.`;
   if (value.length > PASSWORD_MAX_LENGTH) return `Use at most ${PASSWORD_MAX_LENGTH} characters.`;
   return undefined;

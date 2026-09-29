@@ -104,12 +104,12 @@ Code: `auth.routes.ts` → `validate(registerSchema)` → `auth.controller.regis
 
 Body (`server/src/schemas/auth.schema.ts`):
 
-| Field      | Type   | Rules                                                            |
-| ---------- | ------ | ---------------------------------------------------------------- |
-| `name`     | string | required, trimmed, 2–60 characters                               |
-| `email`    | string | required, trimmed, lowercased, must be an email                  |
-| `password` | string | required, 6–72 characters (bcrypt reads only the first 72 bytes) |
-| `phone`    | string | optional; see [phone numbers](#shared-field-rules)               |
+| Field      | Type   | Rules                                                                                                                                |
+| ---------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `name`     | string | required, trimmed, 2–60 characters                                                                                                   |
+| `email`    | string | required, trimmed, lowercased, must be an email                                                                                      |
+| `password` | string | required, 6–72 characters (bcrypt reads only the first 72 bytes), never trimmed, not only spaces ("Password cannot be only spaces.") |
+| `phone`    | string | optional; see [phone numbers](#shared-field-rules)                                                                                   |
 
 The service calls `auth.admin.createUser` with `email_confirm: true` and `user_metadata: { name, phone }`. The
 `on_auth_user_created` trigger creates a `CUSTOMER` profile (see [SCHEMA.md](SCHEMA.md#handle_new_user)). No email is

@@ -14,6 +14,14 @@ const validOrder = {
 };
 
 describe('registerSchema', () => {
+  it('refuses a password of only spaces, and keeps spaces inside one', () => {
+    const base = { name: 'Ravi Kumar', email: 'ravi@example.com' };
+    const spaces = registerSchema.safeParse({ ...base, password: '        ' });
+    expect(spaces.success).toBe(false);
+    expect(spaces.error?.issues[0]?.message).toBe('Password cannot be only spaces.');
+    expect(registerSchema.safeParse({ ...base, password: 'open sesame' }).success).toBe(true);
+  });
+
   const base = { name: 'Ann', email: 'ann@example.test', password: 'pw123456' };
 
   it.each([

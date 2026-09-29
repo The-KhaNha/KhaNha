@@ -50,6 +50,11 @@ describe('validateEmail', () => {
 });
 
 describe('validatePassword', () => {
+  it('refuses a password of only spaces, and keeps spaces inside one', () => {
+    expect(validatePassword('        ')).toBe('Password cannot be only spaces.');
+    expect(validatePassword('open sesame')).toBeUndefined();
+  });
+
   it.each([
     [`${PASSWORD_MIN_LENGTH - 1} chars`, PASSWORD_MIN_LENGTH - 1, false],
     [`${PASSWORD_MIN_LENGTH} chars (min)`, PASSWORD_MIN_LENGTH, true],
