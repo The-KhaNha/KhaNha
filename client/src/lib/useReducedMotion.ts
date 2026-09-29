@@ -11,6 +11,11 @@ export function prefersReducedMotion(): boolean {
   );
 }
 
+/** How a JS-driven scroll moves: smooth, or a jump under reduced motion (the CSS rule cannot reach `scrollTo`). */
+export function scrollBehavior(): ScrollBehavior {
+  return prefersReducedMotion() ? 'auto' : 'smooth';
+}
+
 /** Reactive version for render-time gates (e.g. skipping a JS-driven image zoom). */
 export function useReducedMotion(): boolean {
   const [reduced, setReduced] = useState(prefersReducedMotion);

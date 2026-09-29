@@ -11,10 +11,12 @@ interface WordmarkProps {
 
 export function Wordmark({ size = 'sm', tone = 'default', className }: WordmarkProps) {
   return (
-    <span className={cn('inline-flex items-center gap-2.5', className)}>
+    // min-w-0 + truncate: at large text the name gives way and the mark stays whole, instead of pushing the header
+    // past the screen edge.
+    <span className={cn('inline-flex min-w-0 items-center gap-2.5', className)}>
       <span
         className={cn(
-          'grid place-items-center text-white',
+          'grid shrink-0 place-items-center text-white',
           tone === 'inverse' ? 'bg-white/15 ring-1 ring-white/25' : 'bg-brand-500 shadow-brand',
           size === 'sm' ? 'h-8 w-8 rounded-xl' : 'h-11 w-11 rounded-2xl',
         )}
@@ -27,9 +29,9 @@ export function Wordmark({ size = 'sm', tone = 'default', className }: WordmarkP
       </span>
       <span
         className={cn(
-          'font-extrabold tracking-tight',
+          'truncate font-extrabold tracking-tight',
           tone === 'inverse' ? 'text-white' : 'text-ink',
-          size === 'sm' ? 'text-[17px]' : 'text-2xl',
+          size === 'sm' ? 'text-lead' : 'text-2xl',
         )}
       >
         {APP_TITLE}

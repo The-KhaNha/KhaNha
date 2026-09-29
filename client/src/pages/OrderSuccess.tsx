@@ -27,27 +27,27 @@ export function OrderSuccessPage() {
         </div>
       </div>
 
-      <h1 className="mt-8 text-[32px] font-extrabold leading-tight animate-fade-up">
+      <h1 className="mt-8 text-number font-extrabold leading-tight animate-fade-up">
         Order placed!
       </h1>
 
       {order ? (
         <div className="mt-2 flex w-full flex-col items-center">
-          <p className="text-[64px] font-extrabold leading-none tabular-nums tracking-tight animate-fade-up [animation-delay:80ms]">
+          <p className="text-7xl font-extrabold leading-none tabular-nums tracking-tight animate-fade-up [animation-delay:80ms]">
             #{order.orderNumber}
           </p>
           <div className="flex flex-col items-center animate-fade-up [animation-delay:160ms]">
-            <p className="mt-2 text-[17px] font-semibold text-ink">{order.store.name}</p>
+            <p className="mt-2 text-lead font-semibold text-ink">{order.store.name}</p>
             <span className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-success-50 px-3.5 py-1.5 text-sm font-bold text-success-700">
               <Check className="h-4 w-4 text-success-500" strokeWidth={3} aria-hidden />
               {formatPrice(order.total)}{' '}
               {order.paymentStatus === 'PAID' ? 'Paid' : 'Payment pending'}
             </span>
-            <p className="mt-5 inline-flex items-center gap-2 text-[15px] font-semibold">
+            <p className="mt-5 inline-flex items-center gap-2 text-body font-semibold">
               <Clock className="h-4 w-4 text-brand-600" strokeWidth={2.5} aria-hidden /> Ready
               around {formatTime(order.estimatedReadyAt)}
             </p>
-            <p className="mt-3 max-w-xs text-[15px] leading-relaxed text-muted">
+            <p className="mt-3 max-w-xs text-body leading-relaxed text-muted">
               Skip the queue and pick it up when it&rsquo;s ready.
             </p>
           </div>
@@ -78,7 +78,7 @@ export function OrderSuccessPage() {
         </ButtonLink>
         <Link
           to="/"
-          className="inline-flex h-11 items-center justify-center rounded-[14px] text-[15px] font-semibold text-muted transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
+          className="inline-flex h-11 items-center justify-center rounded-control text-body font-semibold text-muted transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
         >
           Back to home
         </Link>

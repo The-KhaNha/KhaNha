@@ -51,6 +51,8 @@ describe('MenuPage with a saved menu', () => {
   it('shows the saved menu with no notice when the refresh succeeded', () => {
     renderMenu();
     expect(screen.getByRole('heading', { name: 'Campus Cafe' })).toBeInTheDocument();
+    // An empty menu (this one has no items) is an EmptyState, never a blank page under the cover.
+    expect(screen.getByText('Nothing on the menu right now.')).toBeInTheDocument();
     expect(screen.queryByText('Showing your saved menu')).not.toBeInTheDocument();
   });
 

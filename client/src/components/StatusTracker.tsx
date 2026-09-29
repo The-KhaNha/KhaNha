@@ -62,7 +62,7 @@ function StepTracker({ status, className }: { status: OrderStatus; className?: s
               </span>
               <span
                 className={cn(
-                  'mt-2 text-center text-[11px] font-semibold leading-tight transition-colors duration-300',
+                  'mt-2 text-center text-2xs font-semibold leading-tight transition-colors duration-300',
                   active ? 'text-ink' : done ? 'text-success-700' : 'text-muted',
                 )}
               >
@@ -97,8 +97,8 @@ function CancelledTracker({ className }: { className?: string }) {
         <CircleX className="h-5 w-5" aria-hidden />
       </span>
       <div>
-        <p className="text-[15px] font-bold">{meta.customerTitle}</p>
-        <p className="text-[13px] text-muted">This order won't move forward.</p>
+        <p className="text-body font-bold">{meta.customerTitle}</p>
+        <p className="text-caption text-muted">This order won't move forward.</p>
       </div>
     </div>
   );

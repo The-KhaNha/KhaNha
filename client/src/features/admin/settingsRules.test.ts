@@ -37,6 +37,11 @@ describe('SETTING_FIELDS', () => {
 });
 
 describe('validateSetting', () => {
+  it('gives a negative number the range message, not "whole number"', () => {
+    expect(validateSetting('customerOrderHistoryLimit', '-5')).toBe('Must be between 1 and 200.');
+    expect(validateSetting('customerOrderHistoryLimit', '2.5')).toBe('Enter a whole number.');
+  });
+
   it('accepts whole numbers within the bounds, including the edges', () => {
     expect(validateSetting('customerOrderHistoryLimit', '1')).toBeNull();
     expect(validateSetting('customerOrderHistoryLimit', '200')).toBeNull();
@@ -50,9 +55,11 @@ describe('validateSetting', () => {
     expect(validateSetting('customerOrderHistoryLimit', '201')).toBe('Must be between 1 and 200.');
     expect(validateSetting('maxLinesPerOrder', '101')).toBe('Must be between 1 and 100.');
     expect(validateSetting('ordersPollMs', '1999')).toBe('Must be between 2000 and 60000.');
-    for (const raw of ['', '2.5', '-3', 'abc', '1e2']) {
+    for (const raw of ['', '2.5', 'abc', '1e2', '--3']) {
       expect(validateSetting('staffOrderListLimit', raw)).toBe('Enter a whole number.');
     }
+    // A negative number is a whole number out of range: say the range.
+    expect(validateSetting('staffOrderListLimit', '-3')).toBe('Must be between 1 and 500.');
   });
 
   it('accepts only a plain x.y.z version for the minimum app version', () => {

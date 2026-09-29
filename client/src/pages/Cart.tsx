@@ -2,6 +2,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ArrowRight, Check, CircleAlert, Info, Plus, ShoppingBag, X } from 'lucide-react';
 import { Button, ButtonLink } from '../components/Button';
 import { Card } from '../components/Card';
+import { IconButton } from '../components/IconButton';
 import { CartItem } from '../components/CartItem';
 import { EmptyState } from '../components/EmptyState';
 import { Price } from '../components/Price';
@@ -57,24 +58,21 @@ export function CartPage() {
         </ul>
       </Card>
 
-      <div className="mt-3 flex items-center justify-between">
+      {/* Wraps at large text so "Clear cart" drops to its own line instead of off the screen. */}
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-x-3">
         <Link
           to="/menu"
-          className="inline-flex h-11 items-center gap-1 rounded-[14px] px-2 text-[15px] font-semibold text-brand-600 transition-colors hover:bg-brand-50 hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
+          className="inline-flex h-11 items-center gap-1 rounded-control px-2 text-body font-semibold text-brand-600 transition-colors hover:bg-brand-50 hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
         >
           <Plus className="h-4 w-4" aria-hidden /> Continue shopping
         </Link>
-        <button
-          type="button"
-          onClick={clear}
-          className="h-11 rounded-[14px] px-3 text-[15px] font-semibold text-muted transition-colors hover:bg-surface-2 hover:text-cancel-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
-        >
+        <Button variant="ghost-danger" onClick={clear}>
           Clear cart
-        </button>
+        </Button>
       </div>
 
       <Card className="mt-4" padding="lg">
-        <dl className="space-y-2.5 text-[15px]">
+        <dl className="space-y-2.5 text-body">
           <div className="flex justify-between text-muted">
             <dt>
               Items <span className="tabular-nums">({count})</span>
@@ -86,11 +84,11 @@ export function CartPage() {
           <div className="flex items-baseline justify-between border-t border-line/70 pt-3">
             <dt className="text-base font-bold">Total</dt>
             <dd>
-              <Price value={total} className="text-[32px] font-extrabold leading-none" />
+              <Price value={total} className="text-number font-extrabold leading-none" />
             </dd>
           </div>
         </dl>
-        <p className="mt-3 inline-flex items-center gap-1.5 text-[13px] text-muted">
+        <p className="mt-3 inline-flex items-center gap-1.5 text-caption text-muted">
           <Check className="h-3.5 w-3.5 text-success-500" strokeWidth={3} aria-hidden />
           No taxes or hidden fees. You pay exactly this.
         </p>
@@ -107,7 +105,7 @@ export function CartPage() {
             </Button>
             <p
               role="status"
-              className="mt-3 flex items-start justify-center gap-1.5 text-center text-[13px] font-semibold text-brand-700"
+              className="mt-3 flex items-start justify-center gap-1.5 text-center text-caption font-semibold text-brand-700"
             >
               <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={2.5} aria-hidden />
               <span>
@@ -149,7 +147,7 @@ function ReorderNotice({ lines, onDismiss, className }: ReorderNoticeProps) {
       )}
     >
       <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-      <div className="min-w-0 flex-1 text-[14px] leading-snug">
+      <div className="min-w-0 flex-1 text-sm leading-snug">
         <p className="font-bold">Not everything could be added</p>
         <ul className="mt-1 space-y-0.5">
           {lines.map((line) => (
@@ -159,14 +157,14 @@ function ReorderNotice({ lines, onDismiss, className }: ReorderNoticeProps) {
           ))}
         </ul>
       </div>
-      <button
-        type="button"
+      {/* 44px to tap; the negative margins keep the 32px look of the notice's corner. */}
+      <IconButton
+        label="Dismiss"
+        tone="gold"
         onClick={onDismiss}
-        aria-label="Dismiss"
-        className="-mr-1.5 -mt-1 grid h-8 w-8 shrink-0 place-items-center rounded-full transition-colors hover:bg-gold-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
-      >
-        <X className="h-4 w-4" aria-hidden />
-      </button>
+        className="-mr-3 -mt-2.5"
+        icon={<X className="h-4 w-4" aria-hidden />}
+      />
     </div>
   );
 }

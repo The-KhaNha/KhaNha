@@ -20,7 +20,7 @@ function describedBy(id: string, hint?: string, error?: string): string | undefi
 }
 
 const fieldClass =
-  'w-full rounded-xl border bg-surface px-4 text-[15px] text-ink placeholder:text-hint outline-none ' +
+  'w-full rounded-xl border bg-surface px-4 text-body text-ink placeholder:text-hint outline-none ' +
   'transition-[border-color,box-shadow] duration-150 focus:border-brand-500 focus:ring-4 focus:ring-brand-500/20 ' +
   'focus-visible:ring-4 focus-visible:ring-brand-500/20';
 
@@ -50,12 +50,13 @@ function Label({
     );
   }
   return (
-    <div className="mb-1.5 flex items-baseline justify-between gap-3">
+    // Wraps so a long hint drops under the label at large text instead of running off the screen.
+    <div className="mb-1.5 flex flex-wrap items-baseline justify-between gap-x-3">
       <label htmlFor={id} className="text-sm font-semibold text-ink">
         {label}
       </label>
       {hint && (
-        <span id={`${id}-hint`} className="shrink-0 text-xs text-muted">
+        <span id={`${id}-hint`} className="min-w-0 text-xs text-muted">
           {hint}
         </span>
       )}
@@ -69,7 +70,7 @@ function FieldError({ id, error }: { id: string; error?: string }) {
     <p
       id={id}
       role="alert"
-      className="mt-1.5 inline-flex items-center gap-1.5 text-[13px] font-medium text-brand-700 animate-fade-in"
+      className="mt-1.5 inline-flex items-center gap-1.5 text-caption font-medium text-brand-700 animate-fade-in"
     >
       <CircleAlert className="h-3.5 w-3.5 shrink-0" aria-hidden />
       {error}

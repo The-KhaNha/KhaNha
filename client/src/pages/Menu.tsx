@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Clock } from 'lucide-react';
+import { Clock, UtensilsCrossed } from 'lucide-react';
 import type { MenuItem } from '../types/api';
+import { EmptyState } from '../components/EmptyState';
 import { ErrorState } from '../components/ErrorState';
 import { FoodCard, FoodCardSkeleton } from '../components/FoodCard';
 import { FoodPhotoGate } from '../components/FoodPhoto';
@@ -13,6 +14,7 @@ import { useMenu } from '../features/menu/useMenu';
 import { formatPrepRange } from '../lib/format';
 import { LCP_IMAGE_PROPS, photoSrcSet } from '../lib/photo';
 import { useImagePainted } from '../lib/useImagePainted';
+import { scrollBehavior } from '../lib/useReducedMotion';
 
 /** Longest the food photos wait for the cover before loading anyway (a stalled cover must not hide the food). */
 const COVER_MAX_WAIT_MS = 2000;
@@ -76,7 +78,7 @@ export function MenuPage() {
     const el = document.getElementById(`section-${id}`);
     if (!el) return;
     const top = el.getBoundingClientRect().top + window.scrollY - SCROLL_OFFSET;
-    window.scrollTo({ top, behavior: 'smooth' });
+    window.scrollTo({ top, behavior: scrollBehavior() });
   }
 
   if (isLoading) return <MenuSkeleton />;
@@ -112,7 +114,9 @@ export function MenuPage() {
       )}
       {/* Storefront header: name + tagline live on the photo so food appears sooner. */}
       <section className="pt-4">
-        <div className="relative aspect-[21/9] overflow-hidden rounded-[28px] bg-surface-2 shadow-card">
+        {/* In-flow pills and title, and no overflow clip, so enlarged text makes the cover taller instead of stacking
+            the title under the pills (the photo and scrim carry the rounding). */}
+        <div className="relative flex aspect-[21/9] flex-col justify-between rounded-card bg-surface-2 shadow-card">
           {store.imageUrl && (
             <img
               ref={coverRef}
@@ -121,18 +125,23 @@ export function MenuPage() {
               sizes="(min-width: 768px) 640px, calc(100vw - 32px)"
               {...LCP_IMAGE_PROPS}
               alt=""
-              className="h-full w-full object-cover"
+              className="absolute inset-0 h-full w-full rounded-card object-cover"
             />
           )}
-          <div aria-hidden className="absolute inset-x-0 bottom-0 h-[72%] store-scrim" />
-          <OpenPill isOpen={store.isOpen} className="absolute left-3 top-3" />
-          <span className="absolute right-3 top-3 inline-flex h-9 items-center gap-1.5 rounded-full bg-surface/92 px-3 text-[13px] font-semibold text-ink shadow-sm backdrop-blur-md">
-            <Clock className="h-4 w-4 text-brand-600" strokeWidth={2.5} aria-hidden />
-            {formatPrepRange(store.prepTimeMinMinutes, store.prepTimeMaxMinutes)}
-          </span>
-          <div className="absolute inset-x-4 bottom-4 text-white">
-            <h1 className="text-[26px] font-extrabold leading-[1.15]">{store.name}</h1>
-            <p className="mt-0.5 text-[14px] font-semibold text-white">{store.tagline}</p>
+          <div
+            aria-hidden
+            className="absolute inset-x-0 bottom-0 h-[72%] rounded-b-card store-scrim"
+          />
+          <div className="relative flex flex-wrap items-start justify-between gap-2 p-3">
+            <OpenPill isOpen={store.isOpen} />
+            <span className="inline-flex h-9 items-center gap-1.5 rounded-full bg-surface/92 px-3 text-caption font-semibold text-ink shadow-sm backdrop-blur-md">
+              <Clock className="h-4 w-4 text-brand-600" strokeWidth={2.5} aria-hidden />
+              {formatPrepRange(store.prepTimeMinMinutes, store.prepTimeMaxMinutes)}
+            </span>
+          </div>
+          <div className="relative px-4 pb-4 text-white">
+            <h1 className="text-title font-extrabold leading-[1.15]">{store.name}</h1>
+            <p className="mt-0.5 text-sm font-semibold text-white">{store.tagline}</p>
           </div>
         </div>
       </section>
@@ -149,6 +158,13 @@ export function MenuPage() {
       {/* Food photos wait until the cover (the page's largest paint) is on screen, so it gets the bandwidth first. */}
       <FoodPhotoGate held={Boolean(store.imageUrl) && !coverPainted}>
         <div className="animate-fade-up">
+          {sections.length === 0 && (
+            <EmptyState
+              icon={UtensilsCrossed}
+              title="Nothing on the menu right now."
+              description="The kitchen is updating it. Check back in a little while."
+            />
+          )}
           {sections.map((section) =>
             section.isPopular ? (
               <PopularRail
@@ -186,7 +202,7 @@ export function MenuPage() {
 function MenuSkeleton() {
   return (
     <div className="pt-4" aria-busy aria-label="Loading menu">
-      <Skeleton className="aspect-[21/9] w-full rounded-[28px]" />
+      <Skeleton className="aspect-[21/9] w-full rounded-card" />
       <div className="mt-3 flex gap-2 py-3">
         <Skeleton className="h-11 w-20" round />
         <Skeleton className="h-11 w-24" round />

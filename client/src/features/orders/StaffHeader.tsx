@@ -28,10 +28,11 @@ export function StaffHeader({
 }: StaffHeaderProps) {
   return (
     <header className="sticky top-0 z-40 border-b border-line/60 bg-bg/90 backdrop-blur-md">
-      <div className="mx-auto flex h-16 max-w-6xl items-center gap-4 px-4 sm:px-6">
+      {/* min-h + wrap: at large text the clock and Log out move to a second line instead of off the screen. */}
+      <div className="mx-auto flex min-h-16 max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2 sm:px-6">
         <Wordmark />
         <span className="hidden text-line sm:inline">|</span>
-        <h1 className="hidden min-w-0 truncate text-[15px] font-bold sm:block">
+        <h1 className="hidden min-w-0 truncate text-body font-bold sm:block">
           {storeName ? (
             <>
               {storeName} <span className="text-muted">· Staff</span>
@@ -42,8 +43,8 @@ export function StaffHeader({
         </h1>
         <div className="ml-auto flex items-center gap-3 text-right">
           <div className="leading-tight">
-            <p className="text-[15px] font-bold tabular-nums">{formatTime(now)}</p>
-            <p className="text-[11px] text-muted">
+            <p className="text-body font-bold tabular-nums">{formatTime(now)}</p>
+            <p className="text-2xs text-muted">
               {updatedAt
                 ? `Updated ${formatAgo(updatedAt, now.getTime())}`
                 : offline

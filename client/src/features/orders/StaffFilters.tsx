@@ -26,8 +26,8 @@ export function StaffFilters({ value, counts, onChange }: StaffFiltersProps) {
             aria-pressed={active}
             onClick={() => onChange(f.key)}
             className={cn(
-              'relative flex h-12 shrink-0 items-center gap-2 px-3 text-[14px] font-semibold transition-colors',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500/40',
+              'relative flex h-12 shrink-0 items-center gap-2 px-3 text-sm font-semibold transition-colors',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus',
               active ? 'text-ink' : 'text-muted hover:text-ink',
             )}
           >
@@ -35,7 +35,7 @@ export function StaffFilters({ value, counts, onChange }: StaffFiltersProps) {
             <span
               key={count}
               className={cn(
-                'rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums transition-colors duration-200 animate-pop',
+                'rounded-full px-2 py-0.5 text-2xs font-bold tabular-nums transition-colors duration-200 animate-pop',
                 hot
                   ? 'bg-brand-500 text-white'
                   : active

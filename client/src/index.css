@@ -40,7 +40,28 @@
   --color-collected-500: #b5a597;
   --color-collected-700: #6b5b51;
 
+  /* Type scale (docs/DESIGN.md). Tailwind's defaults (xs 12, sm 14, base 16, lg 18, xl 20, 2xl 24, 7xl 72) plus the
+     in-between steps this design uses on purpose. rem, so text grows with the reader's font setting. */
+  --text-2xs: 0.6875rem; /* 11px: badges, eyebrow counts */
+  --text-caption: 0.8125rem; /* 13px: secondary lines, hints */
+  --text-body: 0.9375rem; /* 15px: controls, list text */
+  --text-lead: 1.0625rem; /* 17px: prices, card titles */
+  --text-title: 1.75rem; /* 28px: page and store titles */
+  --text-number: 2rem; /* 32px: order numbers, big totals */
+  --text-display: 2.5rem; /* 40px: the hero line, the amount to pay */
+
+  /* Keyboard focus ring: solid, at least 3:1 against bg and surface (WCAG 2.2 focus appearance). */
+  --color-focus: var(--color-brand-600);
+
+  /* Radius scale: controls and photos, compact tiles, page cards */
+  --radius-control: 14px;
+  --radius-tile: 20px;
+  --radius-card: 28px;
+
   /* Shadows — warm brown, never grey */
+  --shadow-hairline: 0 1px 2px rgba(27, 20, 16, 0.05);
+  --shadow-success: 0 10px 24px -10px rgba(21, 128, 61, 0.55);
+  --shadow-photo-edge: inset 0 0 0 1px rgba(27, 20, 16, 0.06);
   --shadow-card: 0 1px 2px rgba(27, 20, 16, 0.04), 0 12px 32px -14px rgba(120, 60, 20, 0.18);
   --shadow-card-hover: 0 2px 4px rgba(27, 20, 16, 0.05), 0 18px 40px -16px rgba(120, 60, 20, 0.28);
   --shadow-float: 0 4px 12px rgba(27, 20, 16, 0.1), 0 24px 48px -16px rgba(27, 20, 16, 0.32);

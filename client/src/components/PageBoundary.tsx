@@ -39,7 +39,7 @@ export class PageBoundary extends Component<PageBoundaryProps, { failed: boolean
       );
     }
     return (
-      <Suspense fallback={<Skeleton className="mt-4 h-48 w-full rounded-[20px]" />}>
+      <Suspense fallback={<Skeleton className="mt-4 h-48 w-full rounded-tile" />}>
         {this.props.children}
       </Suspense>
     );

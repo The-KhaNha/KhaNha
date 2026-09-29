@@ -111,6 +111,29 @@ describe('AdminPage', () => {
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
   });
 
+  it('confirms a save and keeps keyboard focus on the page, not <body>', async () => {
+    admin.fetchSiteSettings.mockResolvedValue(saved);
+    admin.updateSiteSettings.mockResolvedValue({
+      ...saved,
+      customerOrderHistoryLimit: 25,
+      updatedAt: '2026-09-28T00:00:00Z',
+    });
+    render(<AdminPage />);
+    fireEvent.change(await screen.findByLabelText('Customer order history'), {
+      target: { value: '25' },
+    });
+    const save = screen.getByRole('button', { name: 'Save' });
+    save.focus();
+    fireEvent.click(save);
+
+    const status = await screen.findByRole('status');
+    expect(status).toHaveTextContent('Saved');
+    expect(document.activeElement).toBe(status);
+    // Typing again hides the confirmation until the next save.
+    fireEvent.change(screen.getByLabelText('Customer order history'), { target: { value: '26' } });
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
   it('sends only the field that changed', async () => {
     admin.fetchSiteSettings.mockResolvedValue(saved);
     admin.updateSiteSettings.mockResolvedValue({ ...saved, customerOrderHistoryLimit: 25 });

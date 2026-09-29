@@ -1,5 +1,6 @@
 import { ArrowRight, Clock } from 'lucide-react';
 import type { Store } from '../types/api';
+import { cn } from '../lib/cn';
 import { formatPrepRange } from '../lib/format';
 import { LCP_IMAGE_PROPS, photoSrcSet } from '../lib/photo';
 import { ButtonLink } from './Button';
@@ -35,9 +36,9 @@ export function StoreCard({ store, className }: StoreCardProps) {
         <OpenPill isOpen={store.isOpen} className="absolute left-4 top-4" />
       </div>
       <div className="p-5">
-        <h2 className="text-[24px] font-extrabold leading-tight">{store.name}</h2>
-        <p className="mt-1 text-[15px] text-muted">{store.tagline}</p>
-        <div className="mt-4 inline-flex h-9 items-center gap-2 rounded-full bg-brand-50 pl-1.5 pr-3.5 text-[14px] font-semibold text-brand-600">
+        <h2 className="text-2xl font-extrabold leading-tight">{store.name}</h2>
+        <p className="mt-1 text-body text-muted">{store.tagline}</p>
+        <div className="mt-4 inline-flex h-9 items-center gap-2 rounded-full bg-brand-50 pl-1.5 pr-3.5 text-sm font-semibold text-brand-600">
           <span className="grid h-6 w-6 place-items-center rounded-full bg-surface text-brand-600">
             <Clock className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden />
           </span>
@@ -59,16 +60,14 @@ export function StoreCard({ store, className }: StoreCardProps) {
 
 export function StoreCardSkeleton({ className }: { className?: string }) {
   return (
-    <div
-      className={`overflow-hidden rounded-[28px] border border-line/70 bg-surface shadow-card ${className ?? ''}`}
-    >
+    <Card padding="none" className={cn('overflow-hidden', className)}>
       <Skeleton className="aspect-[16/9] w-full rounded-none" />
       <div className="p-5">
         <Skeleton className="h-7 w-40" />
         <Skeleton className="mt-2.5 h-4 w-56" />
         <Skeleton className="mt-4 h-9 w-44" round />
-        <Skeleton className="mt-5 h-14 w-full rounded-[14px]" />
+        <Skeleton className="mt-5 h-14 w-full rounded-control" />
       </div>
-    </div>
+    </Card>
   );
 }

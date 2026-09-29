@@ -30,7 +30,9 @@ export function FoodCard({ item, onOpen, showPopularBadge = true }: FoodCardProp
   return (
     <article
       className={cn(
-        'group flex gap-3.5 rounded-[20px] border border-line/70 bg-surface p-3 shadow-card',
+        // flex-wrap + the text column's basis: at large text the column drops under the photo instead of pushing
+        // the price and Add off the screen.
+        'group flex flex-wrap gap-3.5 rounded-tile border border-line/70 bg-surface p-3 shadow-card',
         'transition-[translate,scale,box-shadow] duration-[180ms] ease-out hover:-translate-y-0.5 hover:shadow-card-hover',
       )}
     >
@@ -40,34 +42,34 @@ export function FoodCard({ item, onOpen, showPopularBadge = true }: FoodCardProp
         onClick={() => onOpen(item)}
         tabIndex={-1}
         aria-hidden
-        className="relative shrink-0 self-start rounded-[14px] transition-transform duration-[120ms] active:scale-[0.98] focus:outline-none"
+        className="relative shrink-0 self-start rounded-control transition-transform duration-[120ms] active:scale-[0.98] focus:outline-none"
       >
         <FoodPhoto
           ref={photoRef}
           src={item.imageUrl}
           muted={unavailable}
-          className="h-28 w-28 rounded-[14px]"
+          className="h-28 w-28 rounded-control"
           imgClassName="transition-transform duration-[400ms] ease-out group-hover:scale-[1.04]"
         >
           {showPopularBadge && item.isPopular && !unavailable && <PopularBadge />}
         </FoodPhoto>
       </button>
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-w-0 flex-[1_1_9.5rem] flex-col">
         <button
           type="button"
           onClick={() => onOpen(item)}
-          className="min-h-11 min-w-0 flex-1 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
+          className="min-h-11 min-w-0 flex-1 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
         >
           <h3
             className={cn(
-              'truncate text-[16px] font-bold leading-[1.3]',
+              'truncate text-base font-bold leading-[1.3]',
               unavailable && 'text-muted',
             )}
           >
             {item.name}
           </h3>
-          <p className="mt-0.5 line-clamp-2 text-[13px] leading-snug text-muted">
+          <p className="mt-0.5 line-clamp-2 text-caption leading-snug text-muted">
             {item.description}
           </p>
         </button>
@@ -75,11 +77,11 @@ export function FoodCard({ item, onOpen, showPopularBadge = true }: FoodCardProp
         {showStock && <StockPill item={item} className="mt-1.5 self-start" />}
 
         {/* items-start + a 44px price box keeps the price centred on the stepper even when a note hangs below it. */}
-        <div className="mt-2 flex items-start justify-between gap-2">
+        <div className="mt-2 flex flex-wrap items-start justify-between gap-2">
           <Price
             value={item.price}
             className={cn(
-              'inline-flex h-11 items-center text-[17px] font-extrabold',
+              'inline-flex h-11 items-center text-lead font-extrabold',
               unavailable && 'text-muted',
             )}
           />
@@ -92,8 +94,8 @@ export function FoodCard({ item, onOpen, showPopularBadge = true }: FoodCardProp
 
 export function FoodCardSkeleton() {
   return (
-    <div className="flex gap-3.5 rounded-[20px] border border-line/70 bg-surface p-3 shadow-card">
-      <Skeleton className="h-28 w-28 shrink-0 rounded-[14px]" />
+    <div className="flex gap-3.5 rounded-tile border border-line/70 bg-surface p-3 shadow-card">
+      <Skeleton className="h-28 w-28 shrink-0 rounded-control" />
       <div className="flex flex-1 flex-col">
         <Skeleton className="h-4 w-2/3" />
         <Skeleton className="mt-2 h-3 w-full" />

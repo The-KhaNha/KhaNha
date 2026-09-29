@@ -53,19 +53,19 @@ export function ProfilePage() {
     <div className="space-y-4 pt-4 animate-fade-up">
       <Card padding="lg">
         <div className="flex items-center gap-4">
-          <span className="grid h-16 w-16 shrink-0 place-items-center rounded-full bg-brand-50 text-[24px] font-extrabold text-brand-700">
+          <span className="grid h-16 w-16 shrink-0 place-items-center rounded-full bg-brand-50 text-2xl font-extrabold text-brand-700">
             {initialOf(user.name)}
           </span>
           <div className="min-w-0">
             <h2 className="truncate text-xl font-extrabold">{user.name}</h2>
             {user.role !== 'CUSTOMER' && (
-              <span className="mt-1 inline-block rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-muted">
+              <span className="mt-1 inline-block rounded-full bg-surface-2 px-2 py-0.5 text-2xs font-bold uppercase tracking-wider text-muted">
                 {user.role === 'ADMIN' ? 'Admin' : 'Staff'}
               </span>
             )}
           </div>
         </div>
-        <dl className="mt-5 space-y-3 border-t border-line/70 pt-5 text-[15px]">
+        <dl className="mt-5 space-y-3 border-t border-line/70 pt-5 text-body">
           <div className="flex items-center gap-3">
             <dt className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-surface-2 text-muted">
               <Mail className="h-4 w-4" aria-hidden />
@@ -140,8 +140,8 @@ function ProfileRow({ to, icon, label, className }: ProfileRowProps) {
     <Link
       to={to}
       className={cn(
-        'flex h-16 items-center gap-3 px-5 text-[15px] font-semibold transition-colors hover:bg-surface-2 active:bg-line/60',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500/40',
+        'flex h-16 items-center gap-3 px-5 text-body font-semibold transition-colors hover:bg-surface-2 active:bg-line/60',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus',
         className,
       )}
     >

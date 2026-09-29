@@ -20,13 +20,13 @@ export function HomePage() {
     // No page-level fade: the store card's cover is the page's largest paint, and a fading ancestor delays it.
     <div className="pb-6">
       {/* The one permitted decorative gradient in the app. */}
-      <section className="-mx-4 rounded-b-[28px] bg-[linear-gradient(180deg,#d13711,#b72e0e)] text-white lg:mx-[calc(50%-50vw)]">
+      <section className="-mx-4 rounded-b-card bg-[linear-gradient(180deg,var(--color-brand-500),var(--color-brand-600))] text-white lg:mx-[calc(50%-50vw)]">
         <div className="mx-auto w-full max-w-md px-4 pb-[72px] pt-4 md:max-w-lg">
           <p className="eyebrow text-white">Campus pickup</p>
-          <h1 className="mt-2 text-[44px] font-extrabold leading-none tracking-[-0.02em]">
+          <h1 className="mt-2 text-display font-extrabold leading-none tracking-[-0.02em]">
             Skip the queue.
           </h1>
-          <p className="mt-3 max-w-sm text-[16px] font-medium leading-relaxed text-white">
+          <p className="mt-3 max-w-sm text-base font-medium leading-relaxed text-white">
             Order ahead. We&rsquo;ll prepare it while you make your way.
           </p>
         </div>
@@ -72,7 +72,7 @@ export function HomePage() {
           {steps.map(({ icon: Icon, title, copy }, index) => (
             <li
               key={title}
-              className="rounded-[20px] border border-line/70 bg-surface p-3.5 shadow-card"
+              className="rounded-tile border border-line/70 bg-surface p-3.5 shadow-card"
             >
               <div className="flex items-center justify-between">
                 <span className="grid h-9 w-9 place-items-center rounded-xl bg-brand-50 text-brand-600">
@@ -82,8 +82,8 @@ export function HomePage() {
                   0{index + 1}
                 </span>
               </div>
-              <p className="mt-3 text-[13px] font-bold leading-tight">{title}</p>
-              <p className="mt-1 text-[12px] leading-snug text-muted">{copy}</p>
+              <p className="mt-3 text-caption font-bold leading-tight">{title}</p>
+              <p className="mt-1 text-xs leading-snug text-muted">{copy}</p>
             </li>
           ))}
         </ol>

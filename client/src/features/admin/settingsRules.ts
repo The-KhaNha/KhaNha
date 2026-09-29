@@ -97,7 +97,8 @@ export function validateSetting(key: SettingKey, raw: string): string | null {
   if (field.kind === 'semver') {
     return /^\d+\.\d+\.\d+$/.test(value) ? null : 'Enter a version like 1.2.3.';
   }
-  if (!/^\d+$/.test(value)) return 'Enter a whole number.';
+  // A sign is a whole number too: -5 is out of range, and the message should say so.
+  if (!/^-?\d+$/.test(value)) return 'Enter a whole number.';
   const n = Number(value);
   if (n < field.min || n > field.max) return `Must be between ${field.min} and ${field.max}.`;
   return null;

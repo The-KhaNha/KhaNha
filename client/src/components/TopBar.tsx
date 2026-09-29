@@ -43,7 +43,7 @@ export function TopBar({
             aria-label="Back"
             className={cn(
               '-ml-2 grid h-11 w-11 place-items-center rounded-full transition-[background-color,translate,scale] duration-150 active:scale-95',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus',
               brand ? 'hover:bg-white/15' : 'hover:bg-surface-2',
             )}
           >
@@ -52,11 +52,11 @@ export function TopBar({
         )}
         <div className="min-w-0 flex-1">
           {title ? (
-            <h1 className="truncate text-[17px] font-bold">{title}</h1>
+            <h1 className="truncate text-lead font-bold">{title}</h1>
           ) : (
             <Link
               to="/"
-              className="inline-flex min-h-11 items-center rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
+              className="inline-flex min-h-11 max-w-full items-center rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
               aria-label={`${APP_TITLE} home`}
             >
               <Wordmark tone={brand ? 'inverse' : 'default'} />

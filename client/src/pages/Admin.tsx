@@ -1,4 +1,5 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { Check } from 'lucide-react';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { ErrorState } from '../components/ErrorState';
@@ -22,6 +23,8 @@ import type { SiteSettings } from '../types/api';
 /** Site-wide admin dashboard (developer/operator, not the restaurant): everything in site_settings. */
 export function AdminPage() {
   const { settings, isLoading, error, retry, mutate } = useSiteSettings();
+  // Held here, not in the form: a save changes updatedAt, which remounts the form with the saved values.
+  const [savedAt, setSavedAt] = useState<string | null>(null);
 
   return (
     <div className="space-y-4 pt-4 animate-fade-up">
@@ -32,7 +35,16 @@ export function AdminPage() {
         </p>
       </div>
       {isLoading ? (
-        <Skeleton className="h-64 w-full rounded-[20px]" />
+        <Card as="section" padding="lg" aria-busy aria-label="Loading settings">
+          <div className="space-y-5">
+            {SETTING_KEYS.map((key) => (
+              <div key={key}>
+                <Skeleton className="h-4 w-40" />
+                <Skeleton className="mt-2 h-11 w-full rounded-control" />
+              </div>
+            ))}
+          </div>
+        </Card>
       ) : error || !settings ? (
         <ErrorState
           unreachable={error?.isUnreachable}
@@ -44,7 +56,11 @@ export function AdminPage() {
         <SettingsForm
           key={settings.updatedAt}
           settings={settings}
-          onSaved={(saved) => mutate(() => saved)}
+          justSaved={savedAt === settings.updatedAt}
+          onSaved={(saved) => {
+            setSavedAt(saved.updatedAt);
+            mutate(() => saved);
+          }}
         />
       )}
     </div>
@@ -53,14 +69,23 @@ export function AdminPage() {
 
 function SettingsForm({
   settings,
+  justSaved,
   onSaved,
 }: {
   settings: SiteSettings;
+  /** This form was just remounted by a successful save: confirm it and keep keyboard focus. */
+  justSaved: boolean;
   onSaved: (settings: SiteSettings) => void;
 }) {
   const [draft, setDraft] = useState<SettingsDraft>(() => toDraft(settings));
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [edited, setEdited] = useState(false);
+  const savedRef = useRef<HTMLParagraphElement>(null);
+  // Save turns disabled once nothing differs, which would drop keyboard focus: it moves to the confirmation.
+  useEffect(() => {
+    if (justSaved) savedRef.current?.focus();
+  }, [justSaved]);
 
   const fieldErrors = Object.fromEntries(
     SETTING_KEYS.map((key) => [key, validateSetting(key, draft[key])]),
@@ -95,7 +120,10 @@ function SettingsForm({
             inputMode={SETTING_FIELDS[key].kind === 'integer' ? 'numeric' : 'decimal'}
             value={draft[key]}
             error={fieldErrors[key] ?? undefined}
-            onChange={(event) => setDraft((d) => ({ ...d, [key]: event.target.value }))}
+            onChange={(event) => {
+              setEdited(true);
+              setDraft((d) => ({ ...d, [key]: event.target.value }));
+            }}
           />
         ))}
         {saveError && (
@@ -104,9 +132,20 @@ function SettingsForm({
           </p>
         )}
         <div className="flex items-center justify-between gap-3 border-t border-line/70 pt-4">
-          <p className="text-[13px] text-muted">
-            Last saved <TimeText iso={settings.updatedAt} withDay />
-          </p>
+          {justSaved && !edited ? (
+            <p
+              ref={savedRef}
+              tabIndex={-1}
+              role="status"
+              className="inline-flex items-center gap-1.5 text-caption font-semibold text-success-700 focus:outline-none"
+            >
+              <Check className="h-4 w-4" strokeWidth={2.5} aria-hidden /> Saved
+            </p>
+          ) : (
+            <p className="text-caption text-muted">
+              Last saved <TimeText iso={settings.updatedAt} withDay />
+            </p>
+          )}
           <Button type="submit" loading={saving} disabled={!valid || !dirty}>
             Save
           </Button>

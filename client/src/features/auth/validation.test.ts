@@ -22,6 +22,11 @@ describe('validateName', () => {
     expect(error === undefined).toBe(ok as boolean);
   });
 
+  it('says what is wrong: missing, or too short', () => {
+    expect(validateName('')).toBe('Please enter your name.');
+    expect(validateName('R')).toBe(`Your name needs at least 2 characters.`);
+  });
+
   it('trims before counting', () => {
     expect(validateName(`  ${'a'.repeat(NAME_MAX_LENGTH)}  `)).toBeUndefined();
     expect(validateName('   ')).toBeDefined();

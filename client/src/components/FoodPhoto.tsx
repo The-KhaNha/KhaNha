@@ -5,7 +5,7 @@ import { photoSrcSet } from '../lib/photo';
 interface FoodPhotoProps {
   src: string | null;
   alt?: string;
-  /** Size + radius live here (e.g. "h-28 w-28 rounded-[14px]"). */
+  /** Size + radius live here (e.g. "h-28 w-28 rounded-control"). */
   className?: string;
   /** Extra classes for the <img> itself (hover scale, zoom-in). */
   imgClassName?: string;
@@ -77,7 +77,7 @@ export const FoodPhoto = forwardRef<HTMLSpanElement, FoodPhotoProps>(function Fo
       )}
       <span
         aria-hidden
-        className="pointer-events-none absolute inset-0 rounded-[inherit] shadow-[inset_0_0_0_1px_rgba(27,20,16,0.06)]"
+        className="pointer-events-none absolute inset-0 rounded-[inherit] shadow-photo-edge"
       />
       {children}
     </span>

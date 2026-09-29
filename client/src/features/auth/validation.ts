@@ -14,7 +14,9 @@ export const NOTE_MAX_LENGTH = VALIDATION.noteMax;
 
 export function validateName(value: string): string | undefined {
   const trimmed = value.trim();
-  if (trimmed.length < NAME_MIN_LENGTH) return 'Please enter your name.';
+  if (trimmed.length === 0) return 'Please enter your name.';
+  if (trimmed.length < NAME_MIN_LENGTH)
+    return `Your name needs at least ${NAME_MIN_LENGTH} characters.`;
   if (trimmed.length > NAME_MAX_LENGTH)
     return `Keep your name to ${NAME_MAX_LENGTH} characters or fewer.`;
   return undefined;

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { cn } from '../../lib/cn';
+import { scrollBehavior } from '../../lib/useReducedMotion';
 
 export interface MenuSection {
   id: string;
@@ -62,7 +63,7 @@ export function CategoryChips({
     const chip = container.querySelector<HTMLElement>(`[data-chip="${activeId}"]`);
     if (!chip) return;
     const target = chip.offsetLeft - container.clientWidth / 2 + chip.clientWidth / 2;
-    container.scrollTo({ left: Math.max(0, target), behavior: 'smooth' });
+    container.scrollTo({ left: Math.max(0, target), behavior: scrollBehavior() });
   }, [activeId]);
 
   return (
@@ -92,7 +93,7 @@ export function CategoryChips({
                 className={cn(
                   'inline-flex h-11 shrink-0 items-center rounded-full px-4 text-sm font-semibold',
                   'transition-[background-color,color,border-color,scale] duration-150 active:scale-95',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-bg',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-bg',
                   active
                     ? 'bg-ink text-white'
                     : 'border border-line bg-surface text-muted hover:border-brand-100 hover:bg-brand-50 hover:text-ink',

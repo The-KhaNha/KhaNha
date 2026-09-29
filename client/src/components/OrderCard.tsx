@@ -28,10 +28,10 @@ export function OrderCard({ order, onReorder, reordering = false }: OrderCardPro
 
   return (
     <Card as="article" className="animate-fade-up">
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h3 className="text-[17px] font-bold tabular-nums">Order #{order.orderNumber}</h3>
-          <p className="mt-0.5 text-[13px] text-muted">
+          <h3 className="text-lead font-bold tabular-nums">Order #{order.orderNumber}</h3>
+          <p className="mt-0.5 text-caption text-muted">
             {order.store.name} · <TimeText iso={order.createdAt} withDay />
           </p>
         </div>
@@ -49,7 +49,7 @@ export function OrderCard({ order, onReorder, reordering = false }: OrderCardPro
             />
           ))}
           {overflow > 0 && (
-            <span className="grid h-10 w-10 place-items-center rounded-full bg-surface-2 text-[12px] font-bold tabular-nums text-muted ring-2 ring-surface">
+            <span className="grid h-10 w-10 place-items-center rounded-full bg-surface-2 text-xs font-bold tabular-nums text-muted ring-2 ring-surface">
               +{overflow}
             </span>
           )}
@@ -59,9 +59,9 @@ export function OrderCard({ order, onReorder, reordering = false }: OrderCardPro
         </p>
       </div>
 
-      <div className="mt-4 flex items-center justify-between gap-3 border-t border-line/70 pt-4">
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-line/70 pt-4">
         <Price value={order.total} className="text-lg font-extrabold" />
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {finished && onReorder && (
             <Button
               variant="tint"
@@ -84,7 +84,7 @@ export function OrderCard({ order, onReorder, reordering = false }: OrderCardPro
 
 export function OrderCardSkeleton() {
   return (
-    <div className="rounded-[28px] border border-line/70 bg-surface p-4 shadow-card">
+    <Card>
       <div className="flex items-start justify-between">
         <div>
           <Skeleton className="h-5 w-28" />
@@ -101,8 +101,8 @@ export function OrderCardSkeleton() {
       </div>
       <div className="mt-4 flex items-center justify-between border-t border-line/70 pt-4">
         <Skeleton className="h-6 w-16" />
-        <Skeleton className="h-11 w-28 rounded-[14px]" />
+        <Skeleton className="h-11 w-28 rounded-control" />
       </div>
-    </div>
+    </Card>
   );
 }

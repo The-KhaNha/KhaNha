@@ -81,7 +81,7 @@ function RailCard({ item, onOpen }: { item: MenuItem; onOpen: (item: MenuItem) =
     <li className={cn(CARD_WIDTH_CLASS, 'flex shrink-0 snap-start')}>
       <article
         className={cn(
-          'group flex w-full flex-col rounded-[20px] border border-line/70 bg-surface p-2 shadow-card',
+          'group flex w-full flex-col rounded-tile border border-line/70 bg-surface p-2 shadow-card',
           'transition-[translate,scale,box-shadow] duration-[180ms] ease-out hover:-translate-y-0.5 hover:shadow-card-hover',
         )}
       >
@@ -89,7 +89,7 @@ function RailCard({ item, onOpen }: { item: MenuItem; onOpen: (item: MenuItem) =
           type="button"
           onClick={() => onOpen(item)}
           aria-label={`View ${item.name}`}
-          className="block w-full rounded-[14px] transition-transform duration-[120ms] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+          className="block w-full rounded-control transition-transform duration-[120ms] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
         >
           <FoodPhoto
             ref={photoRef}
@@ -97,13 +97,13 @@ function RailCard({ item, onOpen }: { item: MenuItem; onOpen: (item: MenuItem) =
             muted={unavailable}
             eager
             sizes="188px"
-            className="h-40 w-full rounded-[14px]"
+            className="h-40 w-full rounded-control"
             imgClassName="transition-transform duration-[400ms] ease-out group-hover:scale-[1.04]"
           />
         </button>
         <h3
           className={cn(
-            'mt-2.5 truncate px-1 text-[15px] font-bold leading-snug',
+            'mt-2.5 truncate px-1 text-body font-bold leading-snug',
             unavailable && 'text-muted',
           )}
         >
@@ -114,7 +114,7 @@ function RailCard({ item, onOpen }: { item: MenuItem; onOpen: (item: MenuItem) =
           <Price
             value={item.price}
             className={cn(
-              'inline-flex h-11 shrink-0 items-center text-[17px] font-extrabold',
+              'inline-flex h-11 shrink-0 items-center text-lead font-extrabold',
               unavailable && 'text-muted',
             )}
           />
@@ -135,10 +135,10 @@ export function PopularRailSkeleton() {
             key={i}
             className={cn(
               CARD_WIDTH_CLASS,
-              'shrink-0 rounded-[20px] border border-line/70 bg-surface p-2 shadow-card',
+              'shrink-0 rounded-tile border border-line/70 bg-surface p-2 shadow-card',
             )}
           >
-            <Skeleton className="h-40 w-full rounded-[14px]" />
+            <Skeleton className="h-40 w-full rounded-control" />
             <Skeleton className="mt-3 h-4 w-3/4" />
             <div className="mt-2 flex items-center justify-between">
               <Skeleton className="h-5 w-12" />
