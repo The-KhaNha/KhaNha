@@ -1,5 +1,5 @@
 import type { RequestHandler } from 'express';
-import { ipKeyGenerator, rateLimit } from 'express-rate-limit';
+import { ipKeyGenerator, rateLimit, type AugmentedRequest } from 'express-rate-limit';
 import { env } from '../utils/env';
 import { rateLimited } from '../utils/errors';
 
@@ -34,8 +34,14 @@ export function createRateLimiter({ windowMs, limit, keyBy }: RateLimitOptions):
       const address = ipKeyGenerator(req.ip ?? '');
       return keyBy === 'user' && req.user ? `user:${req.user.id}` : `ip:${address}`;
     },
-    handler: (_req, res, next, options) => {
-      res.set('Retry-After', String(Math.ceil(options.windowMs / 1000)));
+    handler: (req, res, next, options) => {
+      // The time left in this key's window, as the RateLimit header says, not the whole window: a client that honours
+      // Retry-After would otherwise wait longer than it has to.
+      const resetTime = (req as AugmentedRequest).rateLimit?.resetTime;
+      const seconds = resetTime
+        ? Math.max(1, Math.ceil((resetTime.getTime() - Date.now()) / 1000))
+        : Math.ceil(options.windowMs / 1000);
+      res.set('Retry-After', String(seconds));
       next(rateLimited());
     },
   });

@@ -72,6 +72,11 @@ export function createApp(): Express {
       customProps: (req) => ({ clientVersion: readClientVersion(req) ?? 'none' }),
     }),
   );
+  // Preflights are counted here, before cors() answers them itself and ends the request: a limiter mounted only after
+  // it never saw one, so a scripted flood of OPTIONS went uncounted. Every other request is counted below.
+  app.use('/api', (req, res, next) =>
+    req.method === 'OPTIONS' ? ipLimiter(req, res, next) : next(),
+  );
   app.use(cors({ origin: env.CLIENT_ORIGIN }));
   // After the access log (a refused request still gets its line) and before the body is parsed (a flood is refused
   // before it costs anything). The probes in routes/index.ts count too: they are only cheaper, not exempt.

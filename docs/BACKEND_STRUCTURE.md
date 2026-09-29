@@ -69,16 +69,16 @@ flowchart TD
   Svc -. "throw" .-> EH
 ```
 
-| Step              | File                                | What it does                                                                                                                                                     |
-| ----------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `securityHeaders` | `src/middleware/securityHeaders.ts` | browser-hardening headers on every response, HSTS only when `req.secure` ([API.md](API.md#headers-and-limits))                                                   |
-| `pino-http`       | `src/app.ts`                        | keeps a caller's `x-request-id` if it matches `^[\w.-]{1,64}$`, else a UUID; echoes it; access line at `debug` for successful GET/HEAD/OPTIONS, `info` otherwise |
-| `cors`            | `src/app.ts`                        | one allowed origin, `env.CLIENT_ORIGIN`                                                                                                                          |
-| `ipLimiter`       | `src/middleware/rateLimit.ts`       | `RATE_LIMIT_IP_MAX` requests per address per window on `/api`, before the body is parsed; 429 `RATE_LIMITED`                                                     |
-| `express.json()`  | `src/app.ts`                        | parses JSON bodies; over 100 kB is 413, malformed is 400 (mapped in the error handler)                                                                           |
-| `apiRouter`       | `src/routes/index.ts`               | `/health`, `/ready`, then mounts `/auth`, `/store`, `/menu`, `/orders`, `/admin`                                                                                 |
-| `notFoundHandler` | `src/middleware/errorHandler.ts`    | 404 `NOT_FOUND` "No route matches <METHOD> <path>."                                                                                                              |
-| `errorHandler`    | `src/middleware/errorHandler.ts`    | maps any error to status + code + safe message; logs it once (5xx `error` with the stack, 401/403/429 `warn`, other 4xx `info`)                                  |
+| Step              | File                                | What it does                                                                                                                                                                          |
+| ----------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `securityHeaders` | `src/middleware/securityHeaders.ts` | browser-hardening headers on every response, HSTS only when `req.secure` ([API.md](API.md#headers-and-limits))                                                                        |
+| `pino-http`       | `src/app.ts`                        | keeps a caller's `x-request-id` if it matches `^[\w.-]{1,64}$`, else a UUID; echoes it; access line at `debug` for successful GET/HEAD/OPTIONS, `info` otherwise                      |
+| `cors`            | `src/app.ts`                        | one allowed origin, `env.CLIENT_ORIGIN`                                                                                                                                               |
+| `ipLimiter`       | `src/middleware/rateLimit.ts`       | `RATE_LIMIT_IP_MAX` requests per address per window on `/api`, before the body is parsed; preflights are counted just before `cors()` (which answers them itself); 429 `RATE_LIMITED` |
+| `express.json()`  | `src/app.ts`                        | parses JSON bodies; over 100 kB is 413, malformed is 400 (mapped in the error handler)                                                                                                |
+| `apiRouter`       | `src/routes/index.ts`               | `/health`, `/ready`, then mounts `/auth`, `/store`, `/menu`, `/orders`, `/admin`                                                                                                      |
+| `notFoundHandler` | `src/middleware/errorHandler.ts`    | 404 `NOT_FOUND` "No route matches <METHOD> <path>."                                                                                                                                   |
+| `errorHandler`    | `src/middleware/errorHandler.ts`    | maps any error to status + code + safe message; logs it once (5xx `error` with the stack, 401/403/429 `warn`, other 4xx `info`)                                                       |
 
 Express 5 forwards a rejected promise from an async handler to the error handler, so controllers and middleware have
 no `try`/`catch` and throw `AppError`s directly. The error mapping is drawn in

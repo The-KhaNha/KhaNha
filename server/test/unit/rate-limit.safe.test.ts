@@ -68,6 +68,16 @@ describe('createRateLimiter', () => {
     expect((await http.post('/write').set('X-Forwarded-For', '203.0.113.1')).status).toBe(429);
   });
 
+  it('Retry-After is the time left in the window, not the whole window', async () => {
+    const http = app({ windowMs: 2_000, limit: 1, keyBy: 'user' });
+    expect((await http.post('/write').set('X-Test-User', 'a')).status).toBe(200);
+    expect((await http.post('/write').set('X-Test-User', 'a')).headers['retry-after']).toBe('2');
+    await new Promise((resolve) => setTimeout(resolve, 1_100));
+    const later = await http.post('/write').set('X-Test-User', 'a');
+    expect(later.status).toBe(429);
+    expect(later.headers['retry-after']).toBe('1');
+  });
+
   it('a limit of 0 turns the limiter off', async () => {
     const http = app({ windowMs: 60_000, limit: 0, keyBy: 'user' });
     for (let i = 0; i < 5; i += 1) expect((await http.post('/write')).status).toBe(200);
