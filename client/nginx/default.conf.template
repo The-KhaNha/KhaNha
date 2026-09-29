@@ -48,6 +48,13 @@ server {
         try_files $uri =404;
     }
 
+    # nginx's MIME table predates web manifests (it answers application/octet-stream).
+    location = /manifest.webmanifest {
+        include /etc/nginx/conf.d/snippets/security.conf;
+        add_header Cache-Control "no-cache" always;
+        types { application/manifest+json webmanifest; }
+    }
+
     location = /index.html {
         include /etc/nginx/conf.d/snippets/security.conf;
         add_header Cache-Control "no-cache" always;

@@ -9,6 +9,8 @@ the API is in [ARCHITECTURE.md](ARCHITECTURE.md).
 ```
 client/
 ├── index.html              font preconnect + preload (Plus Jakarta Sans, display=swap), first-paint background,
+│                           description and link-preview tags, manifest and Apple icon, a still boot frame in
+│                           #root (the page's shape until the app's first render), a <noscript> message,
 │                           /runtime-env.js as a classic script before the app
 ├── vite.config.ts          dev server :VITE_DEV_PORT (5173, strictPort), proxies /api → VITE_API_PROXY_TARGET
 │                           (http://localhost:8000); refuses to start
@@ -27,6 +29,9 @@ client/
 ├── nginx/                  default.conf.template, security.conf.template (headers, CSP), runtime-env.sh
 ├── public/runtime-env.js   window.__RUNTIME_ENV__ = {} for dev; the image serves a generated one instead
 ├── public/images/          food and cafe photos, served at /images/*
+├── public/manifest.webmanifest, icon.svg, icon-192/512.png, icon-maskable-512.png, apple-touch-icon.png
+│                           installable app icons; rendered from icon.svg by scripts/make-icons.mjs
+├── public/robots.txt       menu and home crawlable; carts, orders, accounts, staff and admin disallowed
 └── src/
     ├── main.tsx            applies the preloaded webfont, createRoot + StrictMode + index.css
     ├── App.tsx             routes, route guards, per-route shell config

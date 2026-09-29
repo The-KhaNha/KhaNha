@@ -5,6 +5,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#FBF5EC" />
     <title>Food Pickup</title>
+    <meta
+      name="description"
+      content="Order ahead from your campus café and pick it up without the queue."
+    />
+    <!-- Link previews (WhatsApp, Slack, iMessage). og:image needs an absolute URL: add it once the production domain
+         is fixed (docs/DEPLOYMENT.md). -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Food Pickup" />
+    <meta property="og:title" content="Food Pickup" />
+    <meta
+      property="og:description"
+      content="Order ahead from your campus café and pick it up without the queue."
+    />
+    <meta name="twitter:card" content="summary" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23D13711'/%3E%3Cpath d='M20 26h24l-2 22H22z' fill='none' stroke='white' stroke-width='4' stroke-linejoin='round'/%3E%3Cpath d='M26 26v-4a6 6 0 0 1 12 0v4' fill='none' stroke='white' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E"
@@ -13,6 +29,37 @@
     <style>
       html {
         background: #fbf5ec;
+      }
+      /* The boot frame below: the page's shape while the app downloads, still (no animation), replaced on the
+         first render. */
+      .boot {
+        box-sizing: border-box;
+        max-width: 28rem;
+        margin: 0 auto;
+        padding: 0 16px;
+      }
+      .boot-bar {
+        height: 56px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .boot-mark {
+        width: 32px;
+        height: 32px;
+        border-radius: 12px;
+        background: #d13711;
+      }
+      .boot-name {
+        width: 110px;
+        height: 16px;
+        border-radius: 8px;
+        background: #f6ede1;
+      }
+      .boot-block {
+        margin-top: 16px;
+        border-radius: 28px;
+        background: #f6ede1;
       }
       body {
         margin: 0;
@@ -38,6 +85,11 @@
       href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
     />
     <noscript>
+      <style>
+        .boot {
+          display: none;
+        }
+      </style>
       <link
         rel="stylesheet"
         href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
@@ -45,7 +97,28 @@
     </noscript>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="boot" role="status" aria-label="Loading Food Pickup">
+        <div class="boot-bar"><span class="boot-mark"></span><span class="boot-name"></span></div>
+        <div class="boot-block" style="height: 184px"></div>
+        <div class="boot-block" style="height: 112px"></div>
+        <div class="boot-block" style="height: 112px"></div>
+      </div>
+    </div>
+    <noscript>
+      <p
+        style="
+          max-width: 28rem;
+          margin: 48px auto;
+          padding: 0 16px;
+          font-size: 16px;
+          line-height: 1.5;
+        "
+      >
+        Food Pickup needs JavaScript to take your order. Turn it on in your browser settings and
+        reload the page.
+      </p>
+    </noscript>
     <!-- Classic script, before the module: sets window.__RUNTIME_ENV__ (lib/runtimeEnv.ts). -->
     <script src="/runtime-env.js"></script>
     <script type="module" src="/src/main.tsx"></script>

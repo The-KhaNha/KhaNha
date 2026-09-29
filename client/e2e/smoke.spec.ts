@@ -197,3 +197,32 @@ test('following a link titles the new page and moves keyboard focus to it', asyn
   // Not <body>: a keyboard or screen-reader user starts the new page at its top.
   expect(await page.evaluate(() => document.activeElement?.tagName)).not.toBe('BODY');
 });
+
+test('the page is described, installable and crawl-safe', async ({ page, request }) => {
+  await page.goto('/');
+  await expect(page.locator('meta[name="description"]')).toHaveAttribute('content', /campus café/);
+  await expect(page.locator('meta[property="og:title"]')).toHaveAttribute('content', 'Food Pickup');
+
+  const manifestHref = await page.locator('link[rel="manifest"]').getAttribute('href');
+  const manifest = (await (await request.get(manifestHref ?? '')).json()) as {
+    name: string;
+    display: string;
+    icons: { src: string; sizes: string; type: string; purpose?: string }[];
+  };
+  expect(manifest).toMatchObject({ name: 'Food Pickup', display: 'standalone' });
+  expect(manifest.icons.some((i) => i.purpose === 'maskable')).toBe(true);
+  // Every icon it lists is served, as the type and (for PNGs) at the size it claims.
+  for (const icon of manifest.icons) {
+    const res = await request.get(icon.src);
+    expect(res.status(), icon.src).toBe(200);
+    expect(res.headers()['content-type'], icon.src).toContain(icon.type.split('+')[0]);
+    if (icon.type === 'image/png') {
+      const png = await res.body();
+      const [w, h] = [png.readUInt32BE(16), png.readUInt32BE(20)];
+      expect(`${w}x${h}`, icon.src).toBe(icon.sizes);
+    }
+  }
+  const apple = await page.locator('link[rel="apple-touch-icon"]').getAttribute('href');
+  expect((await request.get(apple ?? '')).status()).toBe(200);
+  expect(await (await request.get('/robots.txt')).text()).toContain('Disallow: /checkout');
+});

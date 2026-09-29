@@ -351,7 +351,8 @@ img-src 'self' data:; connect-src 'self' ${SUPABASE_URL}; frame-ancestors 'none'
 included in each location because an `add_header` inside a location drops every inherited one. Moving the CSP to
 enforcing is a user decision, once staging shows no reports. The image build pre-compresses the built JS, CSS, HTML, SVG and JSON at gzip level 9 (`gzip_static on` serves the
 `.gz` twins); everything else, such as the API's JSON, is compressed on the fly at level 6.
-Request bodies are capped at 100 kB (`client_max_body_size`, the API's own limit) with the API's JSON 413 envelope,
+`/manifest.webmanifest` is served as `application/manifest+json` (nginx's MIME table would say octet-stream;
+the `images` CI job checks it). Request bodies are capped at 100 kB (`client_max_body_size`, the API's own limit) with the API's JSON 413 envelope,
 and a client silent mid-body for 15 s is dropped (`client_body_timeout`); nginx buffers bodies before proxying, so a
 slow upload never holds an API connection. `/api/` is proxied with HTTP/1.1, `Host`, `X-Forwarded-For`,
 `X-Forwarded-Proto` and a 30 s read timeout. The API

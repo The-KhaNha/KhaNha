@@ -241,6 +241,9 @@ jobs:
             curl -fsS -o /dev/null -w "$url %{http_code}\n" "$url"
           done
           curl -fsS localhost:8000/api/health | grep -q '"commit":"${{ github.sha }}"'
+          # The web manifest goes out as a manifest (nginx's own MIME table says octet-stream).
+          curl -fsSI localhost:8080/manifest.webmanifest | grep -qi '^content-type: application/manifest+json' \
+            || { echo "manifest served with the wrong content type"; exit 1; }
           # nginx refuses a body over the API's 100 kB limit itself, in the API's JSON envelope.
           head -c 200000 /dev/zero | tr '\0' 'x' > "$RUNNER_TEMP/big.json"
           code=$(curl -s -o "$RUNNER_TEMP/413.json" -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
