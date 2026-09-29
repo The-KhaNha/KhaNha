@@ -541,6 +541,16 @@ own intent, get their own release run and are back-merged the same way. Migratio
 `dev`. Agents that compare against "the base" use the PR's base branch: `origin/dev` for features, `origin/main` for
 hotfixes.
 
+**PR size (STRICTLY ENFORCED).** Keep every PR reviewable: at most **25 changed files or 500 changed lines** against
+its base (`git diff --shortstat origin/dev...HEAD`; `package-lock.json` and `server/src/types/database.ts` do not
+count, tests and docs do), and one theme per PR. Plan a task that is bigger than that as steps, each its own PR.
+
+- When a branch reaches either limit, or its theme is done: finish and verify the change in hand (the §13 gate,
+  `/post-change` for a major change), commit, push, open the PR into the base, and tell the user it is ready.
+- Then **stop**: start no other work, and do not poll CI or the PR. The user says when it is merged (or what to fix);
+  only then branch fresh off the updated base for the next step.
+- `.claude/hooks/major-change-gate.js` reminds once per branch when it passes the limit (`--status` prints the size).
+
 **Versions.** `client/package.json` and `server/package.json` keep independent semver lines (0.x until the pilot
 launch). A change that touches `client/src`, `server/src`, `server/scripts`, `server/supabase/migrations` or a
 `package.json` records its bump before it is finished:
