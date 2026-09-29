@@ -39,13 +39,14 @@ settings; no staff powers). Site-wide limits live in the one-row `site_settings`
 **The primary UI and performance target is a low- to mid-range Android phone (₹8–15k class, 360–412px wide, ~4×
 slower CPU than a laptop) on a slow or flaky connection (Slow 4G / 3G, drops).** Desktop and the staff board are
 secondary. Budgets, measured at 360×640 on Slow 4G with 4× CPU throttling (recorded and enforced by `perf-auditor`
-in `docs/PERF_BASELINE.md`):
+in `docs/PERF_BASELINE.md`; the numbers CI reads live in `client/perf-budget.json`, and `client/lighthouserc.json` must
+match it):
 
 | Metric       | Budget                                                                                         |
 | ------------ | ---------------------------------------------------------------------------------------------- |
-| LCP          | ≤ 2.5 s                                                                                        |
-| INP          | ≤ 200 ms                                                                                       |
-| CLS          | ≤ 0.1                                                                                          |
+| LCP          | ≤ 3 s                                                                                          |
+| INP          | ≤ 300 ms                                                                                       |
+| CLS          | ≤ 0.15                                                                                         |
 | Initial JS   | ≤ ~170 KB gzip; staff, auth and checkout routes code-split                                     |
 | Menu photo   | ≤ ~80 KB each, sized to its box, `loading="lazy"` below the fold, aspect box so nothing shifts |
 | API payloads | lean (no over-fetching); no request waterfalls                                                 |

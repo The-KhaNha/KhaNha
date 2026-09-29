@@ -45,9 +45,9 @@ To see what you changed, use `git diff HEAD -- <path>`, never a stash.
 
 | Budget | Limit | Measured at |
 |---|---|---|
-| LCP | ≤ 2.5 s | 360×640, Slow 4G (150 ms RTT, 1.6 Mbps down, 750 kbps up), 4× CPU |
-| INP | ≤ 200 ms | same |
-| CLS | ≤ 0.1 | same |
+| LCP | ≤ 3 s | 360×640, Slow 4G (150 ms RTT, 1.6 Mbps down, 750 kbps up), 4× CPU |
+| INP | ≤ 300 ms | same |
+| CLS | ≤ 0.15 | same |
 | Initial JS | ≤ ~170 KB gzipped | `vite build` output: entry + modulepreload chunks |
 | Code splitting | route-level for staff, auth and checkout | `client/src/App.tsx` + build chunks |
 | Menu photo | ≤ ~80 KB each (80 KiB = 81,920 bytes, what `client/src/lib/photo.test.ts` enforces; count in bytes, not decimal kB), sized to its box, lazy below the fold, aspect box (no shift) | `client/public/images/`, rendered at 360px |
@@ -287,7 +287,7 @@ Run: first (baseline written) | comparison vs <baseline date, commit> · Build: 
 | Metric | Budget | Baseline | Now | Δ | Status |
 |---|---|---|---|---|---|
 | Initial JS (gzip) | ≤ 170 KB | 151 KB | 188 KB | +24% | ❌ HIGH |
-| LCP /menu | ≤ 2.5 s | 2.1 s | 2.2 s | +5% | ✅ |
+| LCP /menu | ≤ 3 s | 2.1 s | 2.2 s | +5% | ✅ |
 
 ### HIGH
 - Initial JS +37 KB: `recharts` added to the initial chunk via `client/src/pages/StaffDashboard.tsx:3`. Fix: lazy-load

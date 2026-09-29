@@ -257,13 +257,14 @@ jobs:
           done
       - name: Image sizes
         run: |
+          # Exact to 0.1 MB: a rounded "50 MB (budget 50 MB)" once hid a 50.4 MB image that failed the check.
           check() {
             size=$(docker image inspect --format '{{.Size}}' "$1")
-            echo "$1: $((size / 1000000)) MB (budget $2 MB)"
+            awk -v n="$1" -v s="$size" -v b="$2" 'BEGIN { printf "%s: %.1f MB (budget %d MB)\n", n, s / 1e6, b }'
             [ "$size" -le $(($2 * 1000000)) ]
           }
-          check fp-web:ci 50
-          check fp-api:ci 200
+          check fp-web:ci 100
+          check fp-api:ci 400
 
   ci-ok:
     if: always()

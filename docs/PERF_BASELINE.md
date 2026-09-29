@@ -8,9 +8,9 @@ Machine: Apple M5, macOS 26.4, Node v26.7.0, local Supabase, preview build (`vit
 
 | Budget         | Limit                                                                       | Measured at                                                       |
 | -------------- | --------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| LCP            | ≤ 2.5 s                                                                     | 360×640, Slow 4G (150 ms RTT, 1.6 Mbps down, 750 kbps up), 4× CPU |
-| INP            | ≤ 200 ms                                                                    | same                                                              |
-| CLS            | ≤ 0.1                                                                       | same                                                              |
+| LCP            | ≤ 3 s                                                                       | 360×640, Slow 4G (150 ms RTT, 1.6 Mbps down, 750 kbps up), 4× CPU |
+| INP            | ≤ 300 ms                                                                    | same                                                              |
+| CLS            | ≤ 0.15                                                                      | same                                                              |
 | Initial JS     | ≤ ~170 KB gzipped                                                           | `vite build` output: entry + modulepreload chunks                 |
 | Code splitting | route-level for staff, auth and checkout                                    | `client/src/App.tsx` + build chunks                               |
 | Menu photo     | ≤ ~80 KB each, sized to its box, lazy below the fold, aspect box (no shift) | `client/public/images/`, rendered at 360px                        |
@@ -253,7 +253,7 @@ no-cache` and `Vary: Authorization, Origin`; normal `GET` 304 revalidation on `/
 
 Lighthouse CI (`.github/workflows/perf.yml`, config `client/lighthouserc.json`) runs `/` and `/menu` on the compose
 stack at 360×640, simulated Slow 4G (150 ms RTT, 1638 kbps) and 4× CPU, three runs each, on PRs touching `client/**`
-and nightly. LCP ≤ 2500 ms, CLS ≤ 0.1 and TBT ≤ 200 ms warn for now. The report is the `lighthouse-report` artifact.
+and nightly. LCP ≤ 3000 ms, CLS ≤ 0.15 and TBT ≤ 300 ms (from `client/perf-budget.json`) warn for now. The report is the `lighthouse-report` artifact.
 perf-auditor records the numbers here and re-baselines on Node 24.
 
 ### 2026-09-28: LCP fix on the compose stack

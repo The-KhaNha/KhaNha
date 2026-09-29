@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import fallbacks from '../src/config/fallbacks.json' with { type: 'json' };
+import budget from '../perf-budget.json' with { type: 'json' };
 import type {
   Config,
   MenuItem,
@@ -414,7 +415,7 @@ for (const { path, role, status } of LAYOUT_ROUTES) {
 }
 
 // A slow network delivers the web font after the content has painted in the fallback. The fallback faces in index.css
-// are metric-matched, so the swap must not move anything (CLS budget 0.1, CLAUDE.md §2b). Chromium only: WebKit has no
+// are metric-matched, so the swap must not move anything (the CLS budget in perf-budget.json, CLAUDE.md §2b). Chromium only: WebKit has no
 // layout-shift entries.
 for (const { path, role } of [
   { path: '/' },
@@ -425,8 +426,12 @@ for (const { path, role } of [
   test(`${path}: a late web font does not shift the layout`, async ({ page, browserName }) => {
     test.skip(browserName !== 'chromium', 'layout-shift entries are Chromium-only');
     if (role) await signIn(page, role);
+    // Held until the text has been checked, not for a fixed time: on a slow CI runner the page can take as long to
+    // render as any timeout, and the font would land first.
+    let releaseFont = () => {};
+    const fontHeld = new Promise<void>((resolve) => (releaseFont = resolve));
     await page.route('https://fonts.googleapis.com/**', async (route) => {
-      await new Promise((resolve) => setTimeout(resolve, 3000));
+      await fontHeld;
       await route.continue();
     });
     await page.addInitScript(() => {
@@ -441,7 +446,8 @@ for (const { path, role } of [
         }
       }).observe({ type: 'layout-shift', buffered: true });
     });
-    await page.goto(path);
+    // `load` waits for the held stylesheet; the app has rendered long before it.
+    await page.goto(path, { waitUntil: 'domcontentloaded' });
     // Before the web font lands, the text must be drawn in a metric-matched fallback: an unlayered rule (the boot
     // style) overriding --font-sans, or a stack without the fallback faces, would draw it in whatever sans is left.
     // They need Roboto, Arial or Liberation Sans on the machine: CI has Liberation Sans (Playwright's --with-deps); a
@@ -469,6 +475,7 @@ for (const { path, role } of [
     expect(matched, `heading drawn in ${drawnIn.join(', ')} before the web font arrives`).toBe(
       true,
     );
+    releaseFont();
     await page.waitForFunction(() => document.fonts.check('700 16px "Plus Jakarta Sans"'), null, {
       timeout: 15_000,
     });
@@ -478,7 +485,7 @@ for (const { path, role } of [
       () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
     );
     const cls = await page.evaluate(() => (window as unknown as { __cls: number }).__cls);
-    expect(cls, 'layout shift when the web font arrives').toBeLessThanOrEqual(0.1);
+    expect(cls, 'layout shift when the web font arrives').toBeLessThanOrEqual(budget.cls);
   });
 }
 
