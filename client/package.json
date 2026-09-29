@@ -12,13 +12,17 @@
     "build": "tsc -p tsconfig.json --noEmit && vite build",
     "build:staging": "tsc -p tsconfig.json --noEmit && vite build --mode staging",
     "build:container": "tsc -p tsconfig.json --noEmit && vite build --mode container",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.e2e.json --noEmit",
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "e2e": "playwright test",
+    "e2e:webkit": "playwright test --project=webkit",
+    "e2e:chromium": "playwright test --project=chromium",
+    "e2e:install": "playwright install webkit"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",
@@ -30,9 +34,11 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/vite": "^4.1.0",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
+    "@types/node": "^26.6.3",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.3.4",

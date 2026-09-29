@@ -4,3 +4,7 @@ dist
 # Lighthouse CI reports (perf.yml)
 lhci/
 .lighthouseci/
+
+# Playwright (npm run e2e:webkit)
+test-results/
+playwright-report/
