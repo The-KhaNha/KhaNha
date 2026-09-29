@@ -1,6 +1,7 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { MENU_ITEMS_MAX } from '../../src/services/menu.service';
 import { invalidate } from '../../src/utils/cache';
+import { logger } from '../../src/utils/logger';
 import { supabaseAdmin } from '../../src/utils/supabase';
 import { api } from '../setup/api';
 import { MENU } from '../../scripts/seed-data';
@@ -50,6 +51,39 @@ describe('GET /api/menu with a menu larger than the cap', () => {
     // The seeded menu (low sort orders) is never pushed out by the overflow.
     expect(res.body.categories[0].name).not.toBe(CATEGORY);
     expect(Date.now() - started).toBeLessThan(5_000);
+  });
+});
+
+describe('GET /api/menu when the cap bites', () => {
+  it('logs a warning naming how many items were cut', async () => {
+    const warn = vi.spyOn(logger, 'warn');
+    invalidate('menu');
+    await api().get('/api/menu');
+    expect(warn).toHaveBeenCalledWith(
+      expect.objectContaining({ total: MENU.length + EXTRA_ITEMS, shown: MENU_ITEMS_MAX }),
+      'Menu truncated',
+    );
+    warn.mockRestore();
+  });
+
+  it('cuts in the same order every time when many items share a sort order', async () => {
+    await supabaseAdmin
+      .from('menu_items')
+      .update({ sort_order: 0 })
+      .eq('category', CATEGORY)
+      .throwOnError();
+    const ids = async () => {
+      invalidate('menu');
+      const res = await api().get('/api/menu');
+      return (res.body.categories as { items: { id: string }[] }[]).flatMap((c) =>
+        c.items.map((i) => i.id),
+      );
+    };
+    const first = await ids();
+    expect(await ids()).toEqual(first);
+    // Ties are broken by id, so the rows that share sort order 0 come back id-ascending.
+    const tied = first.slice(0, 50);
+    expect(tied).toEqual([...tied].sort());
   });
 });
 

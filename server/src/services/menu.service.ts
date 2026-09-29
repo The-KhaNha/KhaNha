@@ -1,6 +1,7 @@
 import { MAX_QUANTITY_PER_ITEM } from '../schemas/order.schema';
 import type { MenuCategoryDto, MenuItemDto, MenuResponse } from '../types/api';
 import { cached, PUBLIC_READ_TTL_MS } from '../utils/cache';
+import { logger } from '../utils/logger';
 import { supabaseAdmin } from '../utils/supabase';
 import { toMenuItemDto, toStoreDto } from '../utils/serializers';
 import { getStore } from './store.service';
@@ -28,13 +29,20 @@ export function getMenu(): Promise<MenuResponse> {
 
 async function loadMenu(): Promise<MenuResponse> {
   const store = await getStore();
-  const { data: rows } = await supabaseAdmin
+  // id breaks sort_order ties (an import leaves every row at the default 0), so the cut is the same on every load.
+  const { data: rows, count } = await supabaseAdmin
     .from('menu_items')
-    .select()
+    .select('*', { count: 'exact' })
     .eq('store_id', store.id)
     .order('sort_order')
+    .order('id')
     .limit(MENU_ITEMS_MAX)
     .throwOnError();
+  // The cap is a safety valve, not a feature: say so when it bites, or the missing items are a silent mystery. At
+  // most once per cache load (PUBLIC_READ_TTL_MS), never per request.
+  if (count !== null && count > MENU_ITEMS_MAX) {
+    logger.warn({ storeId: store.id, total: count, shown: MENU_ITEMS_MAX }, 'Menu truncated');
+  }
   const items = rows.map(toMenuItemDto);
 
   return {
