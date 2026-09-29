@@ -471,6 +471,35 @@ for (const { path, role } of [
   });
 }
 
+// The largest paint must not sit inside an entrance fade (docs/FRONTEND_STRUCTURE.md "The largest paint"): Chrome
+// skips a paint at opacity 0 and does not count the fade, so the hero is only recorded at its next repaint (the web
+// font swap, or never when fonts fail) and LCP reads seconds late. With the fonts blocked there is no later repaint.
+for (const status of ['PLACED', 'READY', 'COLLECTED'] as const) {
+  test(`the order page's largest paint is its hero, counted when it first shows (${status})`, async ({
+    page,
+    browserName,
+  }) => {
+    test.skip(browserName !== 'chromium', 'largest-contentful-paint entries are Chromium-only');
+    await signIn(page, 'CUSTOMER', status);
+    await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+    await page.goto('/orders/o1');
+    await expect(page.locator('main section').first()).toBeVisible();
+    await page.waitForTimeout(1500);
+    const lcp = await page.evaluate(
+      () =>
+        new Promise<{ inHero: boolean; tag: string }>((resolve) => {
+          new PerformanceObserver((list) => {
+            const entries = list.getEntries() as unknown as { element: Element | null }[];
+            const last = entries.at(-1)?.element ?? null;
+            const hero = document.querySelector('main section');
+            resolve({ inHero: !!last && !!hero?.contains(last), tag: last?.tagName ?? 'none' });
+          }).observe({ type: 'largest-contentful-paint', buffered: true });
+        }),
+    );
+    expect(lcp.inHero, `largest paint was a ${lcp.tag} outside the hero`).toBe(true);
+  });
+}
+
 // supabase-js (the auth chunk) loads on demand (CLAUDE.md §2b): never for an anonymous visitor, and for a signed-in
 // one as soon as the app starts, not after the first render, so the page's data does not wait for it in series with
 // the page's own chunk. The dev server serves each module on request, so the request order shows when each started.

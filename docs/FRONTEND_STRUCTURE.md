@@ -34,7 +34,8 @@ client/
 ├── public/robots.txt       menu and home crawlable; carts, orders, accounts, staff and admin disallowed
 └── src/
     ├── main.tsx            applies the preloaded webfont, prefetches the landing data, starts supabase-js when signed in, createRoot
-    ├── App.tsx             routes, route guards, per-route shell config
+    ├── App.tsx             routes, route guards, the shell (top bar, main, cart bar, bottom nav)
+    ├── appShell.ts         SHELL_BY_ROUTE + getShellConfig: which chrome and title each route gets
     ├── index.css           Tailwind import, design tokens (@theme), keyframes, utilities, reduced-motion rules
     ├── vite-env.d.ts       typed import.meta.env
     ├── config/fallbacks.json  the server config's defaults and field bounds (the one client copy, parity-tested)
@@ -82,11 +83,12 @@ From `client/src/App.tsx`. Guards are described in [PERMISSIONS.md](PERMISSIONS.
 Lazy pages are `lazy()` imports in `App.tsx`, wrapped in `PageBoundary`: the screens a customer does not need to
 browse the menu and fill a cart. See [Caching](#caching).
 
-How the shell works (`App.tsx`):
+How the shell works (`App.tsx`, with the route table in `appShell.ts`):
 
-- `SHELL_BY_ROUTE` maps a path pattern to a `ShellConfig`: `topBar` (`{ title?, backTo?, tone? }` or `null`),
+- `SHELL_BY_ROUTE` (`appShell.ts`) maps a path pattern to a `ShellConfig`: `topBar` (`{ title?, backTo?, tone? }` or `null`),
   `bottomNav`, `cartButton`, `cartBar`, `layout` (`'column'` or `'full'`) and `width` (`'default'` or `'wide'`).
-  `getShellConfig` returns the first pattern that `matchPath` matches exactly, else `NOT_FOUND_SHELL`.
+  `getShellConfig` returns the first pattern that `matchPath` matches exactly, else `NOT_FOUND_SHELL`. The customer
+  tabs (`bottomNav`) never show on the operator screens, `/staff` and `/admin` (`App.test.tsx`).
 - `layout: 'full'` renders the page alone; it owns its whole layout.
 - `layout: 'column'` renders `TopBar` (with `CartButton` on the right when `cartButton`), a centred `<main>`, the
   `CartBar` (only when `cartBar` and the cart is not empty) and `BottomNav`. The widths are
@@ -95,7 +97,8 @@ How the shell works (`App.tsx`):
 - `ScrollToTop` scrolls to the top on every path change.
 - `App` calls `useAuthStore.getState().hydrate()` once on mount.
 
-A new route needs an entry in both the `<Routes>` list and `SHELL_BY_ROUTE`, or it gets the Not found shell.
+A new route needs an entry in both the `<Routes>` list (`App.tsx`) and `SHELL_BY_ROUTE` (`appShell.ts`), or it gets the
+Not found shell.
 
 ## Pages
 
@@ -232,8 +235,12 @@ is missing its `-400` thumbnail or is over the ~80 KB budget (CLAUDE.md §2b; `o
 
 ### The largest paint
 
-On `/` and `/menu` the LCP element is the store cover. It gets `LCP_IMAGE_PROPS` (`fetchpriority="high"`), is
-never inside an entrance fade (a fading ancestor delays the LCP until the fade ends, so `HomePage`, `MenuPage` and
+On `/` and `/menu` the LCP element is the store cover; on `/orders/:id` it is the order hero, which plays its
+entrance only for a status a poll brings, never for the one the page opened on (`OrderHero`'s `entrance`; e2e "the
+order page's largest paint is its hero"). The largest paint is never inside an entrance fade: Chrome skips a paint at
+opacity 0 and does not count the fade, so the element is recorded only at its next repaint (the web font swap,
+seconds later, or never). The cover gets `LCP_IMAGE_PROPS` (`fetchpriority="high"`), is
+never inside an entrance fade (so `HomePage`, `MenuPage` and
 `StoreCard` fade only what is below it), and `MenuPage` holds its food photos in a `FoodPhotoGate` until the cover is
 painted, so it does not share a slow link with ten photos. `main.tsx` starts `/api/menu` (on `/menu`) or `/api/store`
 (on `/`) before the first render (`prefetchMenu`, `prefetchStore`: the next fetch takes that response, once).

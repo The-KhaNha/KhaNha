@@ -9,6 +9,8 @@ import { APP_TITLE } from '../../config/app';
 
 interface OrderHeroProps {
   order: Order;
+  /** Scale in: for a status a poll brought, never for the one the page opened on (it is the page's largest paint). */
+  entrance?: boolean;
   onReorder: () => void;
   reordering: boolean;
 }
@@ -17,12 +19,13 @@ interface OrderHeroProps {
  * The top of the tracking page: changes character with the order's status.
  * Re-key it on `order.status` so each state plays its entrance once.
  */
-export function OrderHero({ order, onReorder, reordering }: OrderHeroProps) {
+export function OrderHero({ order, entrance = false, onReorder, reordering }: OrderHeroProps) {
   const meta = statusMeta(order.status);
+  const enter = entrance ? 'animate-scale-in' : undefined;
 
   if (order.status === 'READY') {
     return (
-      <div className="animate-scale-in">
+      <div className={enter}>
         <section className="@container relative overflow-hidden rounded-card bg-success-500 p-6 text-white shadow-ready animate-glow-pulse">
           <div
             aria-hidden
@@ -53,7 +56,7 @@ export function OrderHero({ order, onReorder, reordering }: OrderHeroProps) {
 
   if (order.status === 'COLLECTED') {
     return (
-      <Card as="section" padding="lg" className="animate-scale-in">
+      <Card as="section" padding="lg" className={enter}>
         {/* Wraps at large text: the column drops under the icon instead of being squeezed beside it. */}
         <div className="flex flex-wrap items-start gap-4">
           <span className="grid h-14 w-14 shrink-0 place-items-center rounded-full bg-success-50 text-success-700 animate-party-in">
@@ -86,7 +89,7 @@ export function OrderHero({ order, onReorder, reordering }: OrderHeroProps) {
 
   if (order.status === 'CANCELLED') {
     return (
-      <Card as="section" padding="lg" tone="cancel" className="animate-scale-in">
+      <Card as="section" padding="lg" tone="cancel" className={enter}>
         {/* On a phone the badge always takes its own line: beside the heading it only just fits, so the web font arriving (a few px narrower than the fallback) would pull it up and shift the page. */}
         <div className="flex flex-col items-start gap-2 sm:flex-row sm:justify-between sm:gap-3">
           <div>
@@ -114,7 +117,7 @@ export function OrderHero({ order, onReorder, reordering }: OrderHeroProps) {
 
   const Icon = meta.icon;
   return (
-    <Card as="section" padding="lg" className="animate-scale-in">
+    <Card as="section" padding="lg" className={enter}>
       <div className="flex flex-col items-start gap-2 sm:flex-row sm:justify-between sm:gap-3">
         <div>
           <h2 className="text-title font-extrabold leading-[1.15]">

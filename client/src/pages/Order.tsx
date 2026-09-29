@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { MessageSquareText } from 'lucide-react';
 import type { OrderStatus } from '../types/api';
@@ -22,6 +22,10 @@ export function OrderPage() {
   const status = order?.status;
   const orderNumber = order?.orderNumber;
   const previousStatus = useRef<OrderStatus | null>(null);
+  // The status the page first showed. The hero is the page's largest paint, so it must not start inside an entrance
+  // fade (Chrome would count it seconds late, at its next repaint); only a status a poll brings later plays one.
+  const [firstStatus, setFirstStatus] = useState<OrderStatus | null>(null);
+  if (status && firstStatus === null) setFirstStatus(status);
 
   // The READY moment: buzz the phone once when a poll flips into READY, and flag the tab title.
   useEffect(() => {
@@ -63,6 +67,7 @@ export function OrderPage() {
       {/* Keyed on status so each state plays its entrance once when a poll changes it. */}
       <OrderHero
         key={order.status}
+        entrance={firstStatus !== null && order.status !== firstStatus}
         order={order}
         onReorder={() => void reorder(order)}
         reordering={reorderingId === order.id}
