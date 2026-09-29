@@ -195,6 +195,59 @@ no-cache` and `Vary: Authorization, Origin`; normal `GET` 304 revalidation on `/
   on orders/profile). `server npm run build` (now via `tsconfig.build.json`) emits `dist/src/**` and `dist/scripts/**`
   only — no `dist/test/**`, no `*.test.js` anywhere in `dist` (confirmed by `find dist -iname "*test*"` returning
   nothing); `dist/` is gitignored and was removed after the check. No regressions found; nothing newly over budget.
+- **2026-09-29 (feat/P0 final, `c68f0e0`)** · comparison run on Intel i9-14900HX (WSL2 Linux, Node v24.21.0, local Supabase, preview build, Playwright
+  Chromium; the baseline machine was an Apple M5, so absolute times are only roughly comparable). Changes measured: rate limiter, security headers, early
+  413, idempotency key on `POST /orders`, staff list split, menu cap, Button/Card/IconButton/EdgeFades atoms, dark scheme, `color-mix()` keyframes,
+  `text-order-number` (cqi), boot frame, manifest/icons, checkout/register drafts. Method: cold cache, 360×640, DPR 1, Slow 4G, 4× CPU, median of 3.
+  - **Bundle:** initial JS 91,054 B gzip (88.9 KB; `check:bundle` at level 9: 88.8 KB; was 87.4 KB on 2026-09-28, 144.5 KB in round 4) — budget 170 KB,
+    within. CSS 11,066 B. `Login`, `Register`, `Checkout`, `OrderSuccess`, `StaffDashboard`, `Admin` and `supabaseClient` (58.8 KB gzip) are all separate
+    lazy chunks, none in `index.html`.
+  - **Web Vitals (median, runs):** `/` LCP 1408 ms (1428/1392/1408), CLS 0.054, INP n/a; `/menu` LCP 1484 ms (1484/1440/1604), CLS 0.0022, INP 72 ms,
+    long tasks 50–86 ms; `/cart` LCP 1752 ms (1752/1740/6664, one outlier), CLS 0.0015, INP 32 ms; `/orders/:id` LCP **5532 ms** (5488/7496/5532),
+    CLS **0.239** (0.2387/0.2387/0.239), INP 0; `/staff` (secondary) LCP 1684 ms, CLS 0.058.
+  - **Over budget (new):** `/orders/:id` CLS 0.239 > 0.1 and LCP 5.5 s > 2.5 s. Attribution: the Google Fonts stylesheet is non-blocking
+    (`client/index.html`, system font first). When it lands after the order content has rendered, `document.fonts` fills (5.5 s in the diagnosed run),
+    text re-wraps, `scrollHeight` drops 838 → 783 px and the whole card stack shifts up 44 px in one frame, which also re-emits the text as a new LCP
+    candidate. Reproduced in 5 of 7 diagnosed loads; a run where the stylesheet landed at ~2.2 s showed no shift, so the result depends on
+    when the font CSS arrives (real network from this host). `/` (0.054) and `/staff` (0.058) show smaller shifts of the same kind (0.053 was already
+    in the 2026-09-28 Lighthouse note).
+  - **Bytes/requests:** `/` 7 req 129 KB (`/api/store` 268 B); `/menu` 15 req 271 KB (`/api/menu` 4,416 B); `/cart` 9 req 167 KB; `/orders/:id`
+    10 req 168 KB (`/api/config` 202 B, order 595 B, `auth/me` 179 B); `/staff` 12 req 174 KB (`/api/orders` 1,983 B). On the two logged-in routes
+    the order fetch starts (~1470 ms) only after the lazy `supabaseClient` chunk lands (~1450 ms): entry JS → chunk → API.
+  - **Photos:** all 12 full JPEGs ≤ 81,101 B (`veg-sandwich` 81.1 KB, `cafe-cover` 80.9 KB, `cheese-toast` 79.9 KB); 12 `-400.jpg` thumbnails 11–24 KB.
+    On `/menu` every `currentSrc` is a `-400.jpg`, natural width ≤ 1.1× box, below-fold cards `loading="lazy"`, every parent box has a height.
+  - **Polling:** `/orders/:id` 15 req/min, 4.5 KB/min; `/orders` 8 req/min, 2.4 KB/min; `/staff` 15 req/min, 4.5 KB/min (300 B per 304); hidden tab 0
+    requests in 20 s on all three; 1 request on resume; terminal (`COLLECTED`) order 0 requests in 15 s.
+  - **API (p50/p95, 20 reqs):** health 1/1 ms, config 1/1, store 1/1, menu 1/1 (4,416 B), auth/me 5/7, orders (customer) 5/6 (1,983 B), order 6/8
+    (595 B), orders (staff) 5/6 (1,983 B), `?status=PLACED` 5/6 (598 B). Menu cold 12.9 ms, warm 0.6 ms.
+  - **Caching:** `store`, `menu`, `config`, `orders` (customer + staff), `orders/:id` all `Cache-Control: no-cache`, `Vary: Authorization, Origin`,
+    weak ETag, `304` 0 B. `cached()` on menu/store/site_settings; `invalidate('menu')` on place (`finally`) and cancel; `createOrder` reads the
+    uncached `getStore()`. `persist: true` only on `useMenu`, `useStore`, `useConfig`. Repeat visit to `/menu`: first card at 405 ms, `/api/menu`
+    answers at 513 ms (304, 300 B), no skeleton (cold: skeleton, card at 1195 ms after the API at 1122 ms). Aborted Checkout chunk lands on the
+    `PageBoundary` retry state. New security headers present (nosniff, `X-Frame-Options: DENY`, `Referrer-Policy`, CSP, `RateLimit` 600/60 s).
+- **2026-09-29 (feat/P0, after fixes, `92da501`)** · re-check of the `/orders/:id` HIGH above after `73c239b` (boot-style
+  `font-family` defers to `var(--font-sans)`, metric-matched `Jakarta Fallback Roboto/Arial` faces, hero status badge on
+  its own line below `sm`), `1702860` (supabase-js chunk starts before first render when a session may exist) and
+  `92da501` (`createOrder` reads in one `Promise.all`). Same machine and method as the entry above (cold cache, 360×640,
+  DPR 1, Slow 4G, 4× CPU, median of 3), preview build of `--mode development`. This host has no Roboto/Arial, so Chromium
+  was run twice: with `FONTCONFIG_FILE` adding Arimo (Arial-metric, what CI gets as Liberation Sans) and without it
+  (DejaVu Sans fallback, which no real device uses).
+  - **Bundle:** initial JS 91,059 B gzip (was 91,054 B), `supabaseClient` still a separate lazy chunk (58.96 KB gzip).
+  - **CLS, with Arimo (medians, runs):** `/` 0 (0/0/0; was 0.054), `/orders/:id` 0.0054 (0.0054/0.0054/0; was 0.239),
+    `/staff` 0.0279 (was 0.058), `/menu` 0.0001. **Without it:** `/` 0.054, `/orders/:id` 0 (0.006/0/0), `/staff` 0.032,
+    `/menu` 0.0022; the `/` 0.054 is the DejaVu fallback's own wrap, gone with a metric-matched face.
+  - **LCP, with Arimo:** `/` 1480 ms (1504/1396/1480), `/menu` 1580 ms, `/orders/:id` 2600 ms (2600/5536/1992), `/staff`
+    1628 ms. **Without:** `/` 1392 ms, `/menu` 1548 ms, `/orders/:id` 1984 ms (5528/1984/1952), `/staff` 1628 ms.
+  - **Residual `/orders/:id` LCP outlier (about 1 load in 3, 5.5-6.5 s):** the CLS cause is fixed, but in the slow
+    loads the LCP candidate `<p>` (order status copy) is first painted only when the web font lands (font stylesheet
+    177-5490 ms in one run; the diagnostic loads show the paragraph at 1996-2068 ms normally, 6512 ms once). Medians are
+    2.6 s with Arimo (4% over) and 2.0 s without: within noise of the 2.5 s line; the outlier tracks the font CSS/file
+    arrival from this host's real network, not app code. Not root-caused; a trace-level look is advised.
+  - **Request timeline, signed-in `/orders/:id`:** `supabaseClient` chunk requested at 915 ms, lands 1372 ms; `/api/config`
+    997-1164 ms; order and `auth/me` fetches start 1389 ms (was ~1470 ms; chunk 1450 before). The order fetch still
+    starts only after the chunk lands (entry, then chunk, then API), about 80 ms earlier than before. `/staff`: chunk
+    918-1409 ms, `/api/orders` starts 1440 ms.
+  - **Other:** INP `/menu` 72 ms, long tasks 50-89 ms, none over 200 ms. Polling and API latency not re-measured (untouched).
 
 ## CI numbers
 
