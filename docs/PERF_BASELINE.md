@@ -248,6 +248,21 @@ no-cache` and `Vary: Authorization, Origin`; normal `GET` 304 revalidation on `/
     starts only after the chunk lands (entry, then chunk, then API), about 80 ms earlier than before. `/staff`: chunk
     918-1409 ms, `/api/orders` starts 1440 ms.
   - **Other:** INP `/menu` 72 ms, long tasks 50-89 ms, none over 200 ms. Polling and API latency not re-measured (untouched).
+- **2026-09-29 (feat/P0 fix batch, `b9f7828`)** · re-check of `git diff a9532bd..HEAD` against the loosened budgets (LCP ≤ 3 s,
+  INP ≤ 300 ms, CLS ≤ 0.15, initial JS ≤ ~170 KB gzip). Same machine and method as the two entries above (preview build of
+  `--mode development`, cold cache, 360×640, DPR 1, Slow 4G, 4× CPU, median of 3, Chromium with the Arimo Arial-metric fontconfig).
+  - **Bundle:** initial JS 91,256 B gzip (89.1 KB; was 91,059 B, +0.2%), `supabaseClient` still a separate lazy chunk (58.96 KB gzip).
+  - **LCP (median, runs):** `/` 1476 ms (1464/1476/1492), `/menu` 1628 ms (1628/1612/1628), `/orders/:id` 1736 ms (1740/1736/1612;
+    was 2600 ms with a 5.5 s outlier, no outlier in these 3 runs), `/staff` 1812 ms (1796/1812/1816; secondary). The `/orders/:id` LCP
+    element is the footer `<p class="text-caption text-muted">` ("Placed ... Picking up as ..."), not the hero: it is the largest text
+    block on screen, and it now paints at first render rather than after a font swap.
+  - **CLS (median):** `/` 0, `/menu` 0.0001, `/orders/:id` 0 (0/0/0.0054; was 0.0054), `/staff` 0.0003 (was 0.0279, first-poll jump gone).
+  - **INP (worst tap, lab proxy):** `/menu` 64/64/80 ms in the vitals runs (Add then Escape). Add tap, 4× CPU, 3 taps per run x 3 runs:
+    real 14-item menu 64/96/96 ms worst per run; mocked 500-item menu 96/96/96 ms (earlier measurement 48-104 ms). Handler processing is
+    only 9-24 ms; the remainder is frame presentation, so 500 items costs nothing measurable over 14. Long tasks 50-88 ms, none over 200 ms.
+  - **Idle paint cost, `/orders/:id`, 2 s trace at 4× CPU (3 runs):** 0 `Paint` events, `Layerize` 0.01-0.71 ms in total, `PrePaint`
+    0.8-2.6 ms and `UpdateLayoutTree` 0.7-1.9 ms over 5 frames, i.e. the pulse runs on the compositor and no longer repaints each frame.
+  - Polling, API latency and caching not re-measured (untouched by this batch).
 
 ## CI numbers
 
