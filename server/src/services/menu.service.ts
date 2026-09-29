@@ -12,6 +12,13 @@ import { getStore } from './store.service';
 const MENU_RULES = { maxQuantityPerItem: MAX_QUANTITY_PER_ITEM, lowStockThreshold: 5 } as const;
 
 /**
+ * Most items one menu response carries (docs/CONFIGURATION.md, platform constant). A campus café lists tens; the cap
+ * keeps a runaway import from turning the menu into a multi-megabyte payload on a metered connection. Pagination
+ * arrives with the multi-branch catalog (P3.1).
+ */
+export const MENU_ITEMS_MAX = 500;
+
+/**
  * Full menu including unavailable items (the client greys them out). Cached for PUBLIC_READ_TTL_MS; order.service
  * drops the cache whenever stock changes through this API (an order placed or cancelled).
  */
@@ -26,6 +33,7 @@ async function loadMenu(): Promise<MenuResponse> {
     .select()
     .eq('store_id', store.id)
     .order('sort_order')
+    .limit(MENU_ITEMS_MAX)
     .throwOnError();
   const items = rows.map(toMenuItemDto);
 

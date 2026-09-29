@@ -29,10 +29,14 @@ async function seedStore(): Promise<Tables<'stores'>> {
 }
 
 async function seedMenu(storeId: string): Promise<Tables<'menu_items'>[]> {
+  // By name, not the whole table: PostgREST caps a response at 1000 rows, so a large menu would hide seeded items and
+  // insert duplicates (server/test/api/menu-cap.test.ts).
+  const names = MENU.map((item) => item.name);
   const { data: current } = await db
     .from('menu_items')
     .select('id, name')
     .eq('store_id', storeId)
+    .in('name', names)
     .throwOnError();
   const idByName = new Map(current.map((item) => [item.name, item.id]));
 
@@ -58,10 +62,15 @@ async function seedMenu(storeId: string): Promise<Tables<'menu_items'>[]> {
     items.push(saved);
   }
 
-  // Items dropped from the list above disappear from the menu (safe: orders were wiped first).
-  const keep = new Set(MENU.map((item) => item.name));
-  const stale = current.filter((item) => !keep.has(item.name)).map((item) => item.id);
-  if (stale.length > 0) await db.from('menu_items').delete().in('id', stale).throwOnError();
+  // Everything else in the store goes: items dropped from the list and duplicates of seeded names (safe: orders were
+  // wiped first). Filtered by the ids just saved, a short list whatever the menu's size; listing the stale ids instead
+  // overflows the request URL on a large menu.
+  await db
+    .from('menu_items')
+    .delete()
+    .eq('store_id', storeId)
+    .not('id', 'in', `(${items.map((item) => item.id).join(',')})`)
+    .throwOnError();
   return items;
 }
 
