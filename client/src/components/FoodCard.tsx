@@ -21,8 +21,7 @@ interface FoodCardProps {
  * Menu list card: 112px photo, ink price, filled Add that swaps to a stepper once the item is in the cart.
  * Items about to run out carry a gold "Only N left" chip until the cart holds all that is left;
  * from then on the stepper's note ("Only N available") says it instead.
- */
-/**
+ *
  * Memoised: the menu page re-renders when its sheet opens, and a menu can hold 500 cards whose props (the item, a
  * stable onOpen) have not changed.
  */

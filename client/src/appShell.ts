@@ -3,7 +3,7 @@ import type { TopBarTone } from './components/TopBar';
 import { APP_TITLE } from './config/app';
 
 /** Which chrome (top bar, bottom nav, cart) each route gets, and its title. Read by App's shell. */
-export interface ShellConfig {
+interface ShellConfig {
   /** The page's name: the tab title and what a screen reader hears on arrival. Required, so no route ships untitled. */
   title: string;
   /** null hides the TopBar entirely. No title = wordmark. */
