@@ -26,6 +26,16 @@ const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   CANCELLED: [],
 };
 
+/** Statuses with somewhere left to go: the kitchen's live work (derived, so a new status is never forgotten). */
+const ACTIVE_STATUSES = ORDER_STATUSES.filter((s) => ALLOWED_TRANSITIONS[s].length > 0);
+const TERMINAL_STATUSES = ORDER_STATUSES.filter((s) => ALLOWED_TRANSITIONS[s].length === 0);
+
+/**
+ * A safety bound on active orders per staff request, far above any café's queue. Oldest first, so if it is ever hit
+ * the newest wait, never the ones that have waited longest.
+ */
+export const ACTIVE_ORDERS_HARD_MAX = 500;
+
 type MenuItem = Tables<'menu_items'>;
 
 /** One priced line, in the shape the place_order database function takes. */
@@ -165,13 +175,49 @@ export async function listOrders(
   status?: OrderStatus,
 ): Promise<OrderWithDetails[]> {
   const settings = await getSettings();
-  let query = selectOrders().order('created_at', { ascending: false });
-  if (user.role === 'STAFF') query = query.limit(settings.staff_order_list_limit);
-  else query = query.eq('user_id', user.id).limit(settings.customer_order_history_limit);
-  if (status) query = query.eq('status', status);
+  if (user.role === 'STAFF') return listStaffOrders(settings.staff_order_list_limit, status);
 
+  let query = selectOrders()
+    .order('created_at', { ascending: false })
+    .eq('user_id', user.id)
+    .limit(settings.customer_order_history_limit);
+  if (status) query = query.eq('status', status);
   const { data: orders } = await query.throwOnError();
   return orders;
+}
+
+/**
+ * The kitchen board: every active order, and the newest `finishedLimit` finished ones (collected, cancelled) as
+ * history. One limit over every status used to cut the orders that had waited longest as soon as enough newer orders
+ * existed, collected ones included, with nothing on the board to say so. Newest first, as before; the board sorts.
+ */
+async function listStaffOrders(
+  finishedLimit: number,
+  status?: OrderStatus,
+): Promise<OrderWithDetails[]> {
+  const active = async (statuses: OrderStatus[]) =>
+    (
+      await selectOrders()
+        .in('status', statuses)
+        .order('created_at', { ascending: true })
+        .limit(ACTIVE_ORDERS_HARD_MAX)
+        .throwOnError()
+    ).data;
+  const finished = async (statuses: OrderStatus[]) =>
+    (
+      await selectOrders()
+        .in('status', statuses)
+        .order('created_at', { ascending: false })
+        .limit(finishedLimit)
+        .throwOnError()
+    ).data;
+
+  if (status)
+    return ACTIVE_STATUSES.includes(status)
+      ? (await active([status])).reverse()
+      : finished([status]);
+  const [open, done] = await Promise.all([active(ACTIVE_STATUSES), finished(TERMINAL_STATUSES)]);
+  return [...open, ...done].sort((a, b) => b.created_at.localeCompare(a.created_at));
 }
 
 /** Someone else's order looks exactly like a missing one (404), so ids cannot be probed. */

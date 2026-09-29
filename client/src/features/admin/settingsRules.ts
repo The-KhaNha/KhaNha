@@ -35,7 +35,7 @@ export const SETTING_FIELDS: Record<SettingKey, SettingField> = {
   staffOrderListLimit: {
     kind: 'integer',
     label: 'Staff board size',
-    hint: 'Newest orders shown on the kitchen board',
+    hint: 'Finished orders kept on the kitchen board (active orders always show)',
     min: 1,
     max: 500,
   },

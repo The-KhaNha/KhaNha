@@ -202,10 +202,18 @@ describe('admin settings: the limits apply to the next request', () => {
     ]);
   });
 
-  it('a new staff list limit shows up at once', async () => {
+  it('a new staff list limit shows up at once (it caps finished orders; active ones always show)', async () => {
+    await supabaseAdmin
+      .from('orders')
+      .update({ status: 'COLLECTED' })
+      .in('id', insertedOrderIds)
+      .throwOnError();
     await api().patch('/api/admin/settings').set(bearer(admin)).send({ staffOrderListLimit: 2 });
     const res = await api().get('/api/orders').set(bearer(staff));
-    expect(res.body.orders).toHaveLength(2);
+    const finished = (res.body.orders as { status: string }[]).filter(
+      (o) => o.status === 'COLLECTED' || o.status === 'CANCELLED',
+    );
+    expect(finished).toHaveLength(2);
   });
 
   it('records who changed it and when', async () => {

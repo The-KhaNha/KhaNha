@@ -765,6 +765,53 @@ describe('envelope and DTO keys', () => {
 // 8. Idempotency (place_order + the service's fast path)
 // ---------------------------------------------------------------------------
 
+describe('the staff board keeps every active order', () => {
+  const FINISHED_LIMIT = 2;
+  const setLimit = async (limit: number) => {
+    await supabaseAdmin
+      .from('site_settings')
+      .update({ staff_order_list_limit: limit })
+      .eq('id', true)
+      .throwOnError();
+    invalidate('site_settings');
+  };
+  afterAll(() => setLimit(100));
+
+  it('shows the order that has waited longest however many newer orders exist, and caps only finished ones', async () => {
+    await supabaseAdmin.rpc('reset_demo_orders').throwOnError();
+    await setLimit(FINISHED_LIMIT);
+    const oldest = (await placeOrder(customer1)).body.order.id as string;
+    const newer: string[] = [];
+    for (let i = 0; i < FINISHED_LIMIT + 3; i += 1)
+      newer.push((await placeOrder(customer1)).body.order.id);
+    // All the newer ones are collected: before the fix they filled the limit and pushed the waiting one out.
+    await supabaseAdmin
+      .from('orders')
+      .update({ status: 'COLLECTED' })
+      .in('id', newer)
+      .throwOnError();
+
+    const res = await api().get('/api/orders').set(auth(staff.token));
+    expect(res.status).toBe(200);
+    const ids = (res.body.orders as { id: string; status: OrderStatus }[]).map((o) => o.id);
+    expect(ids).toContain(oldest);
+    const finished = (res.body.orders as { status: OrderStatus }[]).filter(
+      (o) => o.status === 'COLLECTED',
+    );
+    expect(finished).toHaveLength(FINISHED_LIMIT);
+  });
+
+  it('shows every active order even when there are more than the limit', async () => {
+    await supabaseAdmin.rpc('reset_demo_orders').throwOnError();
+    await setLimit(FINISHED_LIMIT);
+    for (let i = 0; i < FINISHED_LIMIT + 2; i += 1) await placeOrder(customer1);
+    const res = await api().get('/api/orders').set(auth(staff.token));
+    expect(res.body.orders).toHaveLength(FINISHED_LIMIT + 2);
+    const placed = await api().get('/api/orders?status=PLACED').set(auth(staff.token));
+    expect(placed.body.orders).toHaveLength(FINISHED_LIMIT + 2);
+  });
+});
+
 describe('field details on a validation error', () => {
   it('names the request field at fault, so the form can show the message on it', async () => {
     const phone = await placeOrder(customer1, { customerPhone: '12' });
