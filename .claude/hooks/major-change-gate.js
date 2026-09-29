@@ -5,6 +5,7 @@
 //   2. Reminds once per set of files when package source changed but no .changes/*.md intent was added
 //      (CLAUDE.md "Versioning and branches").
 //   3. Refreshes the graphify graph when source files are newer than graphify-out/graph.json.
+//   4. Reminds once per branch when the branch has outgrown a reviewable PR (CLAUDE.md "PR size").
 //
 //   node .claude/hooks/major-change-gate.js            the Stop hook
 //   node .claude/hooks/major-change-gate.js --mark     /post-change finished: record the current state as verified
@@ -20,6 +21,13 @@ const STATE = path.join(ROOT, '.claude/.state');
 const MARK = path.join(STATE, 'post-change.json');
 const PENDING = path.join(STATE, 'pending.json');
 const INTENT_REMINDED = path.join(STATE, 'intent-reminded.json');
+const PR_REMINDED = path.join(STATE, 'pr-size-reminded.json');
+
+// Keep in sync with CLAUDE.md "PR size": a PR stays reviewable at up to 25 files and 500 changed lines against its
+// base. The lockfiles and the generated database types are not counted; tests and docs are.
+const PR_MAX_FILES = 25;
+const PR_MAX_LINES = 500;
+const PR_UNCOUNTED = /(^|\/)package-lock\.json$|^server\/src\/types\/database\.ts$/;
 
 // Keep in sync with CLAUDE.md "What counts as a major change".
 const MAJOR_PATHS = [
@@ -54,6 +62,13 @@ const INTENT_FILE = /^\.changes\/(?!README\.md$)[^/]+\.md$/;
 /** files: changed paths → true when package source changed and no change intent is among them. */
 function needsIntent(files) {
   return files.some((f) => INTENT_SOURCE.test(f)) && !files.some((f) => INTENT_FILE.test(f));
+}
+
+/** rows: [{ file, lines }] of a branch against its base → { files, lines, over } */
+function prSize(rows) {
+  const counted = rows.filter(({ file }) => !PR_UNCOUNTED.test(file));
+  const lines = counted.reduce((sum, { lines: n }) => sum + n, 0);
+  return { files: counted.length, lines, over: counted.length > PR_MAX_FILES || lines > PR_MAX_LINES };
 }
 
 function git(...args) {
@@ -114,6 +129,24 @@ function unverifiedChanges() {
   return { changes: changes.filter((c) => verified[c.file] !== hashes[c.file]), hashes };
 }
 
+/** The branch's changes, committed or not, against the base its PR merges into (origin/main for hotfix/*, else
+ *  origin/dev; CLAUDE.md "Versioning and branches"). null on dev or main, on release/* (release.yml's PR bundles
+ *  work already reviewed in its own PRs), or when the base is not fetched. */
+function branchChanges() {
+  const branch = git('rev-parse', '--abbrev-ref', 'HEAD').trim();
+  if (['dev', 'main', 'HEAD'].includes(branch) || branch.startsWith('release/')) return null;
+  const base = branch.startsWith('hotfix/') ? 'origin/main' : 'origin/dev';
+  let mergeBase;
+  try {
+    mergeBase = git('merge-base', base, 'HEAD').trim();
+  } catch {
+    return null;
+  }
+  // workingChanges also counts untracked files, which a plain `git diff` misses.
+  const rows = workingChanges(mergeBase);
+  return { branch, base, rows };
+}
+
 function refreshGraph() {
   const graph = path.join(ROOT, 'graphify-out/graph.json');
   if (!fs.existsSync(graph)) return false;
@@ -160,6 +193,15 @@ function selfTest() {
   assert.equal(needsIntent(['client/package.json']), true);
   assert.equal(needsIntent(['server/src/app.ts', '.changes/20260928-090000-abcd.md']), false);
   assert.equal(needsIntent(['server/src/app.ts', '.changes/README.md']), true);
+  const files = (n, lines = 1) => Array.from({ length: n }, (_, i) => c(`client/src/lib/f${i}.ts`, lines));
+  assert.equal(prSize([]).over, false);
+  assert.equal(prSize(files(25)).over, false, '25 files is within the limit');
+  assert.equal(prSize(files(26)).over, true, '26 files is over');
+  assert.equal(prSize([c('server/src/app.ts', 500)]).over, false, '500 lines is within the limit');
+  assert.equal(prSize([c('server/src/app.ts', 501)]).over, true, '501 lines is over');
+  const uncounted = [c('package-lock.json', 9000), c('client/package-lock.json', 900), c('server/src/types/database.ts', 800)];
+  assert.deepEqual(prSize(uncounted), { files: 0, lines: 0, over: false }, 'lockfiles and generated types do not count');
+  assert.equal(prSize([...uncounted, c('docs/API.md', 501)]).over, true, 'docs count');
   testMarkSurvivesCommit();
   console.log('major-change-gate: ok');
 }
@@ -212,6 +254,16 @@ function testMarkSurvivesCommit() {
     run('--mark');
     const after = JSON.parse(run('--status'));
     assert.equal(after.major, false, 'marking again with no further changes clears the pending state');
+
+    // Unstaged new files count toward the PR size (a plain `git diff` would report zero).
+    g('update-ref', 'refs/remotes/origin/dev', 'HEAD~1');
+    g('checkout', '-q', '-b', 'feat/x');
+    for (let i = 0; i < 26; i++) fs.writeFileSync(path.join(tmp, `docs${i}.md`), 'x\n');
+    const sized = JSON.parse(run('--status')).pr;
+    assert.equal(sized.over, true, 'untracked files count toward the PR size');
+    // A release branch bundles PRs already reviewed one by one: it gets no size (CLAUDE.md "PR size").
+    g('checkout', '-q', '-b', 'release/2026-09-30');
+    assert.equal(JSON.parse(run('--status')).pr, null, 'release/* branches are exempt from the PR size');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
@@ -232,7 +284,9 @@ function main() {
   const { changes } = unverifiedChanges();
   const verdict = classify(changes);
   if (mode === '--status') {
-    console.log(JSON.stringify({ ...verdict, files: changes.map((c) => c.file) }, null, 2));
+    const pr = branchChanges();
+    const prInfo = pr && { branch: pr.branch, base: pr.base, ...prSize(pr.rows) };
+    console.log(JSON.stringify({ ...verdict, files: changes.map((c) => c.file), pr: prInfo }, null, 2));
     return;
   }
 
@@ -262,6 +316,19 @@ function main() {
       writeJson(INTENT_REMINDED, { at: new Date().toISOString(), files: changed });
       messages.push(
         '[version] Source changed, no .changes/*.md: run `npm run change -- --client <level> --server <level> "summary"`.',
+      );
+    }
+  }
+  const pr = branchChanges();
+  if (pr) {
+    const size = prSize(pr.rows);
+    // Once per branch: past the limit the rule is to stop, not to be told again every turn.
+    if (size.over && readJson(PR_REMINDED)?.branch !== pr.branch) {
+      writeJson(PR_REMINDED, { at: new Date().toISOString(), branch: pr.branch });
+      messages.push(
+        `[pr-size] ${pr.branch} is at ${size.files} files / ${size.lines} lines against ${pr.base} ` +
+          `(limit ${PR_MAX_FILES} / ${PR_MAX_LINES}, CLAUDE.md "PR size"): finish the change in hand, raise the PR, ` +
+          'tell the user, and stop until they say it is merged.',
       );
     }
   }
