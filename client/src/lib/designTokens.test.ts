@@ -75,6 +75,22 @@ const RECIPES: { name: string; re: RegExp; allowed: Record<string, string> }[] =
   },
 ];
 
+/** A row that scrolls sideways must show it can: a cut-off "Rea" with no fade reads as broken (EdgeFades). */
+const SIDEWAYS_WITHOUT_FADE_ALLOWED: Record<string, string> = {
+  '/src/components/PopularRail.tsx':
+    'the next card peeks in at the edge, which says "more" by itself',
+};
+
+describe('sideways-scrolling rows', () => {
+  it('show EdgeFades', () => {
+    const missing = Object.entries(sources)
+      .filter(([file, text]) => /\boverflow-x-auto\b/.test(text) && !text.includes('<EdgeFades'))
+      .map(([file]) => file)
+      .filter((file) => !(file in SIDEWAYS_WITHOUT_FADE_ALLOWED));
+    expect(missing).toEqual([]);
+  });
+});
+
 describe('atom recipes', () => {
   it.each(RECIPES)('$name only in its atom', ({ re, allowed }) => {
     const users = Object.entries(sources)

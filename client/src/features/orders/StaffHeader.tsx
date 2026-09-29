@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
-import { LogOut } from 'lucide-react';
-import { Button } from '../../components/Button';
+import { LogOut, UserRound } from 'lucide-react';
+import { Button, ButtonLink } from '../../components/Button';
 import { Wordmark } from '../../components/Wordmark';
 import { formatAgo, formatTime } from '../../lib/format';
 
@@ -52,6 +52,15 @@ export function StaffHeader({
                   : 'Connecting…'}
             </p>
           </div>
+          {/* The board is full-screen with no bottom nav: this is staff's way to their profile and settings. */}
+          <ButtonLink
+            to="/profile"
+            variant="secondary"
+            aria-label="Profile"
+            iconLeft={<UserRound className="h-4 w-4" aria-hidden />}
+          >
+            <span className="hidden sm:inline">Profile</span>
+          </ButtonLink>
           <Button
             variant="secondary"
             onClick={onLogout}
