@@ -1,9 +1,9 @@
 import { useState, type FormEvent } from 'react';
-import { Link, Navigate } from 'react-router-dom';
+import { Link, Navigate, useLocation } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { AuthCard } from '../features/auth/AuthCard';
-import { selectUser, useAuthStore } from '../features/auth/authStore';
+import { REGISTER_DRAFT_KEY, selectUser, useAuthStore } from '../features/auth/authStore';
 import { homeFor } from '../features/auth/roles';
 import { useAuthRedirect } from '../features/auth/useAuthRedirect';
 import {
@@ -15,21 +15,25 @@ import {
   validatePhone,
 } from '../features/auth/validation';
 import { ApiError } from '../services/api';
+import { useSessionDraft } from '../lib/sessionDraft';
 
 type Field = 'name' | 'email' | 'phone' | 'password';
 type FieldErrors = Partial<Record<Field, string>>;
+
+const EMPTY_DRAFT = { name: '', email: '', phone: '' };
 
 export function RegisterPage() {
   const user = useAuthStore(selectUser);
   const register = useAuthStore((s) => s.register);
   const redirectAfterAuth = useAuthRedirect();
+  // Keeps ?next on the way between sign-in and sign-up, so a guest from checkout lands back there.
+  const location = useLocation();
 
-  const [values, setValues] = useState<Record<Field, string>>({
-    name: '',
-    email: '',
-    phone: '',
-    password: '',
-  });
+  // Name, email and phone survive a refresh or Back (sessionStorage, cleared on sign-in and sign-out by authStore);
+  // the password never leaves memory.
+  const [draft, updateDraft] = useSessionDraft(REGISTER_DRAFT_KEY, EMPTY_DRAFT);
+  const [password, setPassword] = useState('');
+  const values: Record<Field, string> = { ...draft, password };
   const [errors, setErrors] = useState<FieldErrors>({});
   const [serverError, setServerError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -44,7 +48,8 @@ export function RegisterPage() {
   };
 
   function update(field: Field, value: string) {
-    setValues((prev) => ({ ...prev, [field]: value }));
+    if (field === 'password') setPassword(value);
+    else updateDraft({ [field]: value });
   }
 
   function validateField(field: Field) {
@@ -84,13 +89,13 @@ export function RegisterPage() {
       title="Create your account"
       subtitle="Order ahead and skip the queue in seconds."
       error={serverError}
-      backTo="/login"
+      backTo={`/login${location.search}`}
       footer={
         <>
           Already have an account?{' '}
           <Link
-            to="/login"
-            className="font-semibold text-brand-600 underline-offset-2 hover:text-brand-700 hover:underline"
+            to={{ pathname: '/login', search: location.search }}
+            className="inline-flex min-h-11 items-center font-semibold text-brand-600 underline-offset-2 hover:text-brand-700 hover:underline"
           >
             Sign in
           </Link>

@@ -7,6 +7,11 @@ import { ApiError } from '../../services/api';
 import { fetchMe, register as registerRequest, signIn, signOut } from '../../services/auth';
 import type { RegisterInput } from '../../services/auth';
 import { clearActivity, isIdleExpired, markActive, readLastActive } from './sessionActivity';
+import { clearSessionDraft } from '../../lib/sessionDraft';
+import { useCheckoutDraftStore } from '../checkout/checkoutDraftStore';
+
+/** The sign-up form's draft (pages/Register.tsx): typed before any account exists. */
+export const REGISTER_DRAFT_KEY = 'fp_register';
 
 interface AuthState {
   user: User | null;
@@ -149,3 +154,14 @@ document.addEventListener('visibilitychange', () => {
 });
 
 export const selectUser = (state: AuthState) => state.user;
+
+/**
+ * What one person typed on this device never reaches the next: every user-typed draft is dropped when a session ends
+ * (log out, a 401, the idle expiry, a sign-out in another tab) and when one starts. Lives here because this module is
+ * always loaded; lib/storageKeys.test.ts fails for a new storage key nobody classified.
+ */
+useAuthStore.subscribe((state, previous) => {
+  if (Boolean(previous.user) === Boolean(state.user)) return;
+  useCheckoutDraftStore.getState().reset();
+  clearSessionDraft(REGISTER_DRAFT_KEY);
+});

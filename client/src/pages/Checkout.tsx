@@ -23,6 +23,7 @@ import {
   problemLabel,
 } from '../features/cart/cartRules';
 import { selectLines, selectTotal, useCartStore, type CartLine } from '../features/cart/cartStore';
+import { useCheckoutDraftStore } from '../features/checkout/checkoutDraftStore';
 import { useMenu } from '../features/menu/useMenu';
 import { ApiError } from '../services/api';
 import { createOrder } from '../services/orders';
@@ -49,9 +50,15 @@ export function CheckoutPage() {
   // Refreshes each line's stock limit from the live menu on arrival (prices are never touched).
   useMenu();
 
-  const [name, setName] = useState(user?.name ?? '');
-  const [phone, setPhone] = useState(user?.phone ?? '');
-  const [note, setNote] = useState('');
+  // The form lives in the session draft, so a refresh or Back mid-checkout keeps what was typed; the profile only
+  // fills a field that was never touched.
+  const draft = useCheckoutDraftStore();
+  const name = draft.name ?? user?.name ?? '';
+  const phone = draft.phone ?? user?.phone ?? '';
+  const note = draft.note ?? '';
+  const setName = (value: string) => draft.setField('name', value);
+  const setPhone = (value: string) => draft.setField('phone', value);
+  const setNote = (value: string) => draft.setField('note', value);
   const [errors, setErrors] = useState<{ name?: string; phone?: string; note?: string }>({});
   const [submitting, setSubmitting] = useState(false);
   const [paid, setPaid] = useState(false);
@@ -99,11 +106,13 @@ export function CheckoutPage() {
     try {
       const trimmedPhone = phone.trim();
       const trimmedNote = note.trim();
+      // The same key on every retry of this attempt: a lost response can never turn into a second order.
       const order = await createOrder({
         items: lines.map((line) => ({ menuItemId: line.menuItemId, quantity: line.quantity })),
         customerName: name.trim(),
         ...(trimmedPhone ? { customerPhone: trimmedPhone } : {}),
         ...(trimmedNote ? { note: trimmedNote } : {}),
+        idempotencyKey: draft.ensureKey(),
       });
       // Commit the green "Paid" state and the receipt first, then empty the cart right away: the
       // summary keeps showing what was paid for, and leaving early can't strand paid items in the cart.
@@ -113,12 +122,16 @@ export function CheckoutPage() {
         setReceipt({ lines, total });
       });
       clear();
+      draft.reset();
       holdTimer.current = window.setTimeout(() => {
         navigate(`/orders/${order.id}/success`, { replace: true, state: { order } });
       }, PAID_HOLD_MS);
     } catch (err) {
       const apiError =
         err instanceof ApiError ? err : new ApiError(0, 'UNKNOWN', 'Something went wrong.');
+      // The key already placed an order for a different cart (a Pay whose answer was lost, then the cart changed):
+      // that order stands, and the next Pay is a new attempt with a new key for what is in the cart now.
+      if (apiError.code === 'IDEMPOTENCY_KEY_REUSED') draft.dropKey();
       // The server names the line it refused and how many are left: record that so the summary highlights it.
       if (isItemErrorCode(apiError.code) && apiError.details?.menuItemId) {
         setAvailability(apiError.details.menuItemId, apiError.details.available ?? 0);
@@ -165,7 +178,7 @@ export function CheckoutPage() {
 
       <Card padding="lg">
         <h2 className="eyebrow text-muted">Your order</h2>
-        <ul className="mt-3 space-y-2.5 text-[15px] font-medium">
+        <ul className="mt-3 space-y-2.5 text-body font-medium">
           {shownLines.map((line) => {
             const problem = paid ? null : lineProblem(line);
             return (
@@ -183,7 +196,7 @@ export function CheckoutPage() {
                     {line.name}
                   </span>
                   {problem && (
-                    <span className="mt-0.5 inline-flex items-center gap-1 text-[12px] font-bold text-brand-700">
+                    <span className="mt-0.5 inline-flex items-center gap-1 text-xs font-bold text-brand-700">
                       <CircleAlert className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden />
                       {problemLabel(problem)}
                     </span>
@@ -234,7 +247,24 @@ export function CheckoutPage() {
         />
       </Card>
 
-      {error && !itemError && (
+      {error && !itemError && error.code === 'IDEMPOTENCY_KEY_REUSED' && (
+        <div className="mt-4">
+          <ErrorState
+            compact
+            title="Your earlier order went through."
+            message={error.message}
+            actions={
+              error.details?.orderId && (
+                <ButtonLink variant="secondary" to={`/orders/${error.details.orderId}`}>
+                  View order #{error.details.orderNumber}
+                </ButtonLink>
+              )
+            }
+          />
+        </div>
+      )}
+
+      {error && !itemError && error.code !== 'IDEMPOTENCY_KEY_REUSED' && (
         <div className="mt-4">
           <ErrorState
             compact
@@ -248,15 +278,15 @@ export function CheckoutPage() {
       )}
 
       <Card padding="lg" className="mt-4">
-        <div className="flex items-end justify-between gap-4">
+        <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
           <div>
             <p className="eyebrow text-muted">Total to pay</p>
             <Price
               value={shownTotal}
-              className="mt-1.5 block text-[40px] font-extrabold leading-none"
+              className="mt-1.5 block text-display font-extrabold leading-none"
             />
           </div>
-          <p className="max-w-[9rem] text-right text-[13px] leading-snug text-muted">
+          <p className="max-w-[9rem] text-right text-caption leading-snug text-muted">
             No taxes or fees. Exactly what you saw.
           </p>
         </div>
@@ -281,7 +311,7 @@ export function CheckoutPage() {
         {blocked ? (
           <p
             role="status"
-            className="mt-3 flex items-start justify-center gap-1.5 text-center text-[13px] font-semibold text-brand-700"
+            className="mt-3 flex items-start justify-center gap-1.5 text-center text-caption font-semibold text-brand-700"
           >
             <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={2.5} aria-hidden />
             <span>
@@ -289,7 +319,7 @@ export function CheckoutPage() {
             </span>
           </p>
         ) : (
-          <p className="mt-3 text-center text-[12px] text-muted">
+          <p className="mt-3 text-center text-xs text-muted">
             Payment is simulated in this preview build.
           </p>
         )}

@@ -14,6 +14,7 @@ import { StaffBoard } from '../features/orders/StaffBoard';
 import { StaffFilters } from '../features/orders/StaffFilters';
 import { StaffHeader } from '../features/orders/StaffHeader';
 import { useOrders } from '../features/orders/useOrders';
+import { visibleActionErrors, type StaffActionError } from '../features/orders/staffBoardRules';
 import { ApiError } from '../services/api';
 import { updateOrderStatus } from '../services/orders';
 import { useNow } from '../lib/useNow';
@@ -42,7 +43,7 @@ export function StaffDashboardPage() {
 
   const [filterKey, setFilterKey] = useState<StaffFilterKey>('ALL');
   const [pendingIds, setPendingIds] = useState<ReadonlySet<string>>(new Set());
-  const [actionErrors, setActionErrors] = useState<Record<string, string>>({});
+  const [actionErrors, setActionErrors] = useState<Record<string, StaffActionError>>({});
   const [leavingIds, setLeavingIds] = useState<ReadonlySet<string>>(new Set());
   const leaveTimers = useRef<number[]>([]);
 
@@ -118,7 +119,11 @@ export function StaffDashboardPage() {
       mutate((list) => list.map((o) => (o.id === updated.id ? updated : o)));
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Something went wrong.';
-      setActionErrors((prev) => ({ ...prev, [order.id]: message }));
+      const unreachable = err instanceof ApiError && err.isUnreachable;
+      setActionErrors((prev) => ({
+        ...prev,
+        [order.id]: { message, unreachable, at: Date.now() },
+      }));
       if (err instanceof ApiError && err.code === 'INVALID_STATUS_TRANSITION') retry();
     } finally {
       setPendingIds((prev) => {
@@ -154,7 +159,7 @@ export function StaffDashboardPage() {
           error={error}
           filter={filter}
           pendingIds={pendingIds}
-          actionErrors={actionErrors}
+          actionErrors={visibleActionErrors(actionErrors, updatedAt)}
           freshIds={freshIds}
           leavingIds={leavingIds}
           onRetry={retry}

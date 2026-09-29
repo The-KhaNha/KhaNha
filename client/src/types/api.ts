@@ -87,6 +87,9 @@ export interface ApiErrorDetails {
   name?: string;
   /** How many can still be ordered; 0 = sold out, unavailable or gone from the menu. */
   available?: number;
+  /** IDEMPOTENCY_KEY_REUSED: the order the earlier attempt already placed. */
+  orderId?: string;
+  orderNumber?: number;
 }
 
 export interface ApiErrorEnvelope {
@@ -113,6 +116,8 @@ export interface CreateOrderInput {
   customerName: string;
   customerPhone?: string;
   note?: string;
+  /** One UUID per checkout attempt, resent on retry: the server returns the order it already placed for it. */
+  idempotencyKey?: string;
 }
 
 /** GET /api/config (server ConfigDto). Until it loads, config/fallbacks.json stands in (features/config/useConfig). */

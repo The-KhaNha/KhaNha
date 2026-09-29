@@ -15,6 +15,9 @@ client/
 │                           or build without VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY for the mode
 │                           (except mode "container")
 ├── vitest.config.ts        unit tests (jsdom), separate from vite.config.ts
+├── playwright.config.ts    the WebKit smoke (npm run e2e:webkit; e2e:chromium where WebKit cannot launch): 360px, every /api call mocked
+├── tsconfig.e2e.json       typechecks e2e/ and the Playwright config with Node types (part of npm run typecheck)
+├── e2e/smoke.spec.ts       home, menu, add to cart, cart; 44px targets and 200% text on the signed-out routes; no backend
 ├── eslint.config.js
 ├── .env.example            documents the client env vars (see DEPLOYMENT.md)
 ├── .env.development        Vite mode "development" (npm run dev)
@@ -36,11 +39,12 @@ client/
     │   ├── admin/          settingsRules, useSiteSettings (the /admin dashboard's rules and data hook)
     │   ├── auth/           authStore, RequireAuth, RequireRole, roles (homeFor), sessionActivity, useAuthRedirect, validation, AuthCard
     │   ├── cart/           cartStore, cartRules, useReorder, CartBar
+    │   ├── checkout/       checkoutDraftStore (the form as typed + the idempotency key, sessionStorage)
     │   ├── config/         useConfig (GET /api/config, persisted), fallbacks (config/fallbacks.json)
     │   ├── menu/           useMenu, useStore, CategoryChips, ItemDetailSheet
     │   ├── version/        versionStore (the 426 "outdated" flag), OutdatedBanner
     │   └── orders/         orderStatus, useOrder, useOrders, OrderHero, StaffHeader, StaffFilters, StaffBoard, StaffOrderCard
-    ├── lib/                framework-free helpers and generic hooks (supabase, logger, useResource, format, ...)
+    ├── lib/                framework-free helpers and generic hooks (supabase, logger, useResource, format, uuid, sessionDraft, ...)
     ├── pages/              one component per route
     ├── services/           the only modules that call the API
     ├── types/api.ts        the API contract types (mirror of server/src/types/api.ts)
@@ -111,13 +115,15 @@ Polling intervals and the `useResource` engine are drawn in
 
 ## Stores
 
-The auth and cart stores are zustand with the `persist` middleware (localStorage); the version store is in memory.
+The auth and cart stores are zustand with the `persist` middleware (localStorage); the checkout draft persists to
+sessionStorage; the version store is in memory.
 
-| Store             | File                                          | localStorage key      | Persisted       | Holds                                                                                                                                                                                      |
-| ----------------- | --------------------------------------------- | --------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `useAuthStore`    | `client/src/features/auth/authStore.ts`       | `fp_auth`             | `user`, `token` | the profile and a mirror of the Supabase access token; `login`, `register`, `logout`, `hydrate`, `clearSession`                                                                            |
-| `useCartStore`    | `client/src/features/cart/cartStore.ts`       | `fp_cart` (version 1) | `lines`         | cart lines; `add`, `increment`, `decrement`, `remove`, `clear`, `fix`, `setAvailability`, `syncAvailability`                                                                               |
-| `useVersionStore` | `client/src/features/version/versionStore.ts` | –                     | nothing         | `outdated` (set by `services/api.ts` on a 426 `CLIENT_OUTDATED`), `markOutdated`; `OutdatedBanner` in `App.tsx` shows "New version available" with Refresh on every screen while it is set |
+| Store                   | File                                                 | localStorage key                          | Persisted                                 | Holds                                                                                                                                                                                                                                                                                                                                                              |
+| ----------------------- | ---------------------------------------------------- | ----------------------------------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `useAuthStore`          | `client/src/features/auth/authStore.ts`              | `fp_auth`                                 | `user`, `token`                           | the profile and a mirror of the Supabase access token; `login`, `register`, `logout`, `hydrate`, `clearSession`                                                                                                                                                                                                                                                    |
+| `useCartStore`          | `client/src/features/cart/cartStore.ts`              | `fp_cart` (version 1)                     | `lines`                                   | cart lines; `add`, `increment`, `decrement`, `remove`, `clear`, `fix`, `setAvailability`, `syncAvailability`                                                                                                                                                                                                                                                       |
+| `useCheckoutDraftStore` | `client/src/features/checkout/checkoutDraftStore.ts` | `fp_checkout` (sessionStorage, version 1) | `name`, `phone`, `note`, `idempotencyKey` | the checkout form as typed (a refresh or Back keeps it; `null` = never touched, so the profile fills it) and one idempotency key per attempt (`ensureKey`); `reset` after the order is placed; `dropKey` after a 409 `IDEMPOTENCY_KEY_REUSED`; reset on every sign-in and sign-out by `authStore.ts` (always loaded), so typed data never reaches the next account |
+| `useVersionStore`       | `client/src/features/version/versionStore.ts`        | –                                         | nothing                                   | `outdated` (set by `services/api.ts` on a 426 `CLIENT_OUTDATED`), `markOutdated`; `OutdatedBanner` in `App.tsx` shows "New version available" with Refresh on every screen while it is set                                                                                                                                                                         |
 
 - supabase-js keeps the real session in localStorage under its own key (`sb-<project-ref>-auth-token`) and refreshes
   it. `authStore` subscribes to `supabase.auth.onAuthStateChange` to keep `token` in step, and `services/api.ts` reads
@@ -125,6 +131,10 @@ The auth and cart stores are zustand with the `persist` middleware (localStorage
 - `authStore` also uses a third, plain (non-zustand) localStorage key, `fp_last_active`
   (`features/auth/sessionActivity.ts`): the 7-day idle sign-out timestamp, updated on login and use, cleared on
   logout. Not a store; see [PERMISSIONS.md#session-lifetime](PERMISSIONS.md#session-lifetime).
+- `pages/Register.tsx` keeps name, email and phone (never the password) in sessionStorage as `fp_register`
+  (`lib/sessionDraft.ts`), cleared by `authStore` when a session starts or ends.
+- Every storage key is classified in `lib/storageKeys.test.ts` (public, device, session or user-typed); a new `fp_`
+  key fails the suite until it is, and the user-typed ones are proven cleared on sign-out without their page loaded.
 - The cart's `migrate` fills `maxQuantity: null` for carts saved before stock limits existed.
 - Count and total are derived selectors (`selectCount`, `selectTotal`), never stored.
 
@@ -156,13 +166,14 @@ Only these modules call `request()` from `services/api.ts`. Components and hooks
 
 ## Feature folders
 
-| Folder            | Rules and hooks                                                                         | UI                                                                         |
-| ----------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| `features/admin`  | `settingsRules.ts`, `useSiteSettings.ts`                                                | (`pages/Admin.tsx` owns the form UI directly)                              |
-| `features/auth`   | `authStore.ts`, `roles.ts`, `sessionActivity.ts`, `useAuthRedirect.ts`, `validation.ts` | `AuthCard`, `RequireAuth`, `RequireRole`                                   |
-| `features/cart`   | `cartStore.ts`, `cartRules.ts`, `useReorder.ts`                                         | `CartBar`                                                                  |
-| `features/menu`   | `useMenu.ts`, `useStore.ts`                                                             | `CategoryChips`, `ItemDetailSheet`                                         |
-| `features/orders` | `orderStatus.ts`, `useOrder.ts`, `useOrders.ts`                                         | `OrderHero`, `StaffHeader`, `StaffFilters`, `StaffBoard`, `StaffOrderCard` |
+| Folder              | Rules and hooks                                                                         | UI                                                                         |
+| ------------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `features/admin`    | `settingsRules.ts`, `useSiteSettings.ts`                                                | (`pages/Admin.tsx` owns the form UI directly)                              |
+| `features/auth`     | `authStore.ts`, `roles.ts`, `sessionActivity.ts`, `useAuthRedirect.ts`, `validation.ts` | `AuthCard`, `RequireAuth`, `RequireRole`                                   |
+| `features/cart`     | `cartStore.ts`, `cartRules.ts`, `useReorder.ts`                                         | `CartBar`                                                                  |
+| `features/checkout` | `checkoutDraftStore.ts`                                                                 | (`pages/Checkout.tsx` owns the form)                                       |
+| `features/menu`     | `useMenu.ts`, `useStore.ts`                                                             | `CategoryChips`, `ItemDetailSheet`                                         |
+| `features/orders`   | `orderStatus.ts`, `useOrder.ts`, `useOrders.ts`                                         | `OrderHero`, `StaffHeader`, `StaffFilters`, `StaffBoard`, `StaffOrderCard` |
 
 Details of each export: [COMPONENTS.md](COMPONENTS.md#feature-rules-and-hooks).
 
@@ -235,4 +246,5 @@ downloads (`Suspense`), and if the download itself fails (offline, or a stale de
 ## Tests
 
 Client unit tests live next to the code as `src/**/<name>.test.ts(x)`, for example `lib/format.test.ts`,
-`lib/photo.test.ts` and `lib/useResource.test.ts`. See [TESTING.md](TESTING.md).
+`lib/photo.test.ts` and `lib/useResource.test.ts`. The WebKit smoke is `e2e/smoke.spec.ts` (`npm run e2e:webkit`,
+after `npm run e2e:install` once). See [TESTING.md](TESTING.md).
