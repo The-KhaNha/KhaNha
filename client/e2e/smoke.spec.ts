@@ -511,6 +511,34 @@ for (const status of ['PLACED', 'READY', 'COLLECTED'] as const) {
   });
 }
 
+// A lazy page's loading fallback must not move the page: a top margin on it collapsed through <body> on the
+// full-screen routes, so everything jumped 16px down and back while the chunk loaded.
+for (const { path, role } of [
+  { path: '/login' },
+  { path: '/register' },
+  { path: '/staff', role: 'STAFF' as const },
+]) {
+  test(`${path}: loading the page never moves the document`, async ({ page, browserName }) => {
+    test.skip(browserName !== 'chromium', 'layout-shift entries are Chromium-only');
+    if (role) await signIn(page, role);
+    await page.addInitScript(() => {
+      const w = window as unknown as { __bodyShifts: number };
+      w.__bodyShifts = 0;
+      new PerformanceObserver((list) => {
+        for (const entry of list.getEntries() as unknown as { sources: { node?: Node }[] }[]) {
+          if (entry.sources.some((s) => s.node === document.body)) w.__bodyShifts += 1;
+        }
+      }).observe({ type: 'layout-shift', buffered: true });
+    });
+    await page.goto(path);
+    await page.waitForLoadState('networkidle');
+    expect(
+      await page.evaluate(() => (window as unknown as { __bodyShifts: number }).__bodyShifts),
+      'shifts of <body> while the page loaded',
+    ).toBe(0);
+  });
+}
+
 // supabase-js (the auth chunk) loads on demand (CLAUDE.md §2b): never for an anonymous visitor, and for a signed-in
 // one as soon as the app starts, not after the first render, so the page's data does not wait for it in series with
 // the page's own chunk. The dev server serves each module on request, so the request order shows when each started.
