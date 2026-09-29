@@ -81,3 +81,41 @@ describe('CheckoutPage when the key already placed a different order', () => {
     expect(second).not.toBe(first);
   });
 });
+
+describe('CheckoutPage when the server rejects one field', () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    createOrder.mockReset();
+    useCheckoutDraftStore.getState().reset();
+    useCheckoutDraftStore.getState().setField('name', 'Ravi');
+    useCheckoutDraftStore.getState().setField('phone', '98765 43210');
+    useCartStore.setState({
+      lines: [
+        {
+          menuItemId: 'i1',
+          name: 'Espresso',
+          unitPrice: 90,
+          imageUrl: null,
+          quantity: 1,
+          maxQuantity: null,
+        },
+      ],
+    });
+  });
+
+  it('shows the message on that field and focuses it, not a banner above Pay', async () => {
+    createOrder.mockRejectedValueOnce(
+      new ApiError(400, 'VALIDATION_ERROR', 'Enter a valid phone number.', {
+        field: 'customerPhone',
+      }),
+    );
+    renderCheckout();
+    fireEvent.click(screen.getByRole('button', { name: /Pay/ }));
+
+    const phone = await screen.findByRole('textbox', { name: /Phone/ });
+    await waitFor(() => expect(phone).toHaveFocus());
+    expect(phone).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByText('Enter a valid phone number.')).toBeInTheDocument();
+    expect(screen.queryByText("Your order didn't go through.")).not.toBeInTheDocument();
+  });
+});

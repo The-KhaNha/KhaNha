@@ -163,6 +163,8 @@ describe('POST /api/auth/register', () => {
       const second = await register(payload({ email }));
       expect(second.status).toBe(409);
       expect(second.body.error.code).toBe('EMAIL_TAKEN');
+      // The form shows it on the email field, not in a banner.
+      expect(second.body.error.details).toEqual({ field: 'email' });
     });
 
     it('409 with the same email in a different letter case', async () => {
@@ -178,7 +180,9 @@ describe('POST /api/auth/register', () => {
   it('every error body matches the envelope shape, with no stack trace or SQL text', async () => {
     const res = await register(payload({ name: '' }));
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { code: expect.any(String), message: expect.any(String) } });
+    expect(res.body).toEqual({
+      error: { code: 'VALIDATION_ERROR', message: expect.any(String), details: { field: 'name' } },
+    });
     expect(JSON.stringify(res.body)).not.toMatch(
       /\bat .*\.(ts|js)|stack|PGRST|SQLSTATE|select |insert |update /i,
     );

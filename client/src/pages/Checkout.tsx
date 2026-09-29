@@ -29,6 +29,10 @@ import { ApiError } from '../services/api';
 import { createOrder } from '../services/orders';
 import { cn } from '../lib/cn';
 import { formatPrice } from '../lib/format';
+import { scrollBehavior } from '../lib/useReducedMotion';
+
+/** The API's field names for the pickup inputs, which carry the same names, mapped to this form's error keys. */
+const FORM_FIELD = { customerName: 'name', customerPhone: 'phone', note: 'note' } as const;
 
 /** How long the green "Paid" state shows before the success screen takes over. */
 const PAID_HOLD_MS = 500;
@@ -67,6 +71,15 @@ export function CheckoutPage() {
   const holdTimer = useRef<number | undefined>(undefined);
 
   useEffect(() => () => window.clearTimeout(holdTimer.current), []);
+
+  // A failed Pay puts its reason where the customer is looking: the error is scrolled into view and focused (a line
+  // error sits at the top of the form, far above the button that was pressed).
+  const errorRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!error) return;
+    errorRef.current?.scrollIntoView?.({ block: 'center', behavior: scrollBehavior() });
+    errorRef.current?.focus({ preventScroll: true });
+  }, [error]);
 
   const shownLines = receipt?.lines ?? lines;
   const shownTotal = receipt?.total ?? total;
@@ -132,6 +145,15 @@ export function CheckoutPage() {
       // The key already placed an order for a different cart (a Pay whose answer was lost, then the cart changed):
       // that order stands, and the next Pay is a new attempt with a new key for what is in the cart now.
       if (apiError.code === 'IDEMPOTENCY_KEY_REUSED') draft.dropKey();
+      // A rejected field (a phone the server will not take) is shown on that field, not in a banner above Pay.
+      const apiField = apiError.details?.field;
+      if (apiError.code === 'VALIDATION_ERROR' && apiField && apiField in FORM_FIELD) {
+        const key = FORM_FIELD[apiField as keyof typeof FORM_FIELD];
+        setErrors((prev) => ({ ...prev, [key]: apiError.message }));
+        setSubmitting(false);
+        document.querySelector<HTMLElement>(`[name="${apiField}"]`)?.focus();
+        return;
+      }
       // The server names the line it refused and how many are left: record that so the summary highlights it.
       if (isItemErrorCode(apiError.code) && apiError.details?.menuItemId) {
         setAvailability(apiError.details.menuItemId, apiError.details.available ?? 0);
@@ -156,24 +178,26 @@ export function CheckoutPage() {
   return (
     <form onSubmit={handleSubmit} noValidate className="pt-4 animate-fade-up">
       {(blocked || itemError) && (
-        <ErrorState
-          compact
-          className="mb-4"
-          title={itemError ? itemErrorMessage(itemError, lines) : describeProblems(flagged)}
-          message={blocked ? "We've highlighted it below." : 'Go back to your cart to change it.'}
-          actions={
-            <>
-              {blocked && (
-                <Button size="lg" onClick={fixCart}>
-                  Fix cart
+        <div ref={itemError ? errorRef : undefined} tabIndex={-1} className="focus:outline-none">
+          <ErrorState
+            compact
+            className="mb-4"
+            title={itemError ? itemErrorMessage(itemError, lines) : describeProblems(flagged)}
+            message={blocked ? "We've highlighted it below." : 'Go back to your cart to change it.'}
+            actions={
+              <>
+                {blocked && (
+                  <Button size="lg" onClick={fixCart}>
+                    Fix cart
+                  </Button>
+                )}
+                <Button variant="secondary" onClick={() => navigate('/cart')}>
+                  Back to cart
                 </Button>
-              )}
-              <Button variant="secondary" onClick={() => navigate('/cart')}>
-                Back to cart
-              </Button>
-            </>
-          }
-        />
+              </>
+            }
+          />
+        </div>
       )}
 
       <Card padding="lg">
@@ -248,7 +272,7 @@ export function CheckoutPage() {
       </Card>
 
       {error && !itemError && error.code === 'IDEMPOTENCY_KEY_REUSED' && (
-        <div className="mt-4">
+        <div ref={errorRef} tabIndex={-1} className="mt-4 focus:outline-none">
           <ErrorState
             compact
             title="Your earlier order went through."
@@ -264,15 +288,14 @@ export function CheckoutPage() {
         </div>
       )}
 
+      {/* No Retry of its own: Pay, right below, is the retry. */}
       {error && !itemError && error.code !== 'IDEMPOTENCY_KEY_REUSED' && (
-        <div className="mt-4">
+        <div ref={errorRef} tabIndex={-1} className="mt-4 focus:outline-none">
           <ErrorState
             compact
-            title="Something went wrong while placing your order."
+            title="Your order didn't go through."
             message={error.message}
             unreachable={error.isUnreachable}
-            onRetry={() => void placeOrder()}
-            retrying={submitting}
           />
         </div>
       )}

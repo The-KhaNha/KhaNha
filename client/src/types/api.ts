@@ -87,6 +87,8 @@ export interface ApiErrorDetails {
   name?: string;
   /** How many can still be ordered; 0 = sold out, unavailable or gone from the menu. */
   available?: number;
+  /** VALIDATION_ERROR, EMAIL_TAKEN: the request field at fault, for a form to show the message on it. */
+  field?: string;
   /** IDEMPOTENCY_KEY_REUSED: the order the earlier attempt already placed. */
   orderId?: string;
   orderNumber?: number;

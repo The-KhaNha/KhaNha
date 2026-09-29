@@ -41,11 +41,12 @@ function describeAuthError(error: AuthError): Error {
         409,
         'EMAIL_TAKEN',
         'An account with this email already exists. Try signing in.',
+        { field: 'email' },
       );
     case 'email_address_invalid':
-      return validationError('Please enter a valid email address.');
+      return validationError('Please enter a valid email address.', 'email');
     case 'weak_password':
-      return validationError(error.message);
+      return validationError(error.message, 'password');
     default:
       return error;
   }

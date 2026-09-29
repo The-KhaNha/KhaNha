@@ -27,6 +27,11 @@ export interface ItemErrorDetails {
   available: number;
 }
 
+/** Which request field an error is about, so a form can show the message on that field instead of a banner. */
+export interface FieldErrorDetails {
+  field: string;
+}
+
 /** Which order an idempotency key already placed, so the client can send the customer to it. */
 export interface ReplayedOrderDetails {
   orderId: string;
@@ -55,15 +60,16 @@ export class AppError extends Error {
     public readonly status: number,
     public readonly code: ErrorCode,
     message: string,
-    public readonly details?: ItemErrorDetails | ReplayedOrderDetails,
+    public readonly details?: ItemErrorDetails | ReplayedOrderDetails | FieldErrorDetails,
   ) {
     super(message);
     this.name = 'AppError';
   }
 }
 
-export const validationError = (message: string): AppError =>
-  new AppError(400, 'VALIDATION_ERROR', message);
+/** `field` names the top-level request field at fault (`customerPhone`, `email`), when there is one. */
+export const validationError = (message: string, field?: string): AppError =>
+  new AppError(400, 'VALIDATION_ERROR', message, field ? { field } : undefined);
 
 export const unauthorized = (message = 'Please sign in to continue.'): AppError =>
   new AppError(401, 'UNAUTHORIZED', message);

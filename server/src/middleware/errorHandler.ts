@@ -6,6 +6,7 @@ import {
   IntegrationError,
   type ErrorCode,
   type ItemErrorDetails,
+  type FieldErrorDetails,
   type ReplayedOrderDetails,
 } from '../utils/errors';
 import { asDatabaseUnavailable } from '../utils/supabase';
@@ -16,7 +17,7 @@ interface ErrorDescription {
   code: ErrorCode;
   message: string;
   /** Which cart line an item error is about, or which order a reused idempotency key placed. */
-  details?: ItemErrorDetails | ReplayedOrderDetails;
+  details?: ItemErrorDetails | ReplayedOrderDetails | FieldErrorDetails;
 }
 
 const UPSTREAM_UNAVAILABLE: ErrorDescription = {
@@ -52,7 +53,8 @@ export const errorHandler: ErrorRequestHandler = (thrown: unknown, req, res, _ne
     req.log.error({ err, route, status, code, userId: req.user?.id }, 'Request failed');
   } else if (status === 426) req.log.debug({ status, code }, message);
   else req.log[[401, 403, 429].includes(status) ? 'warn' : 'info']({ status, code }, message);
-  // The envelope is { error: { code, message } }, plus `details` for a cart-line error or a reused idempotency key.
+  // The envelope is { error: { code, message } }, plus `details` for a cart-line error, a reused idempotency key or
+  // the request field a validation error is about.
   res.status(status).json({ error: { code, message, ...(details && { details }) } });
 };
 

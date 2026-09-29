@@ -21,6 +21,8 @@ type Field = 'name' | 'email' | 'phone' | 'password';
 type FieldErrors = Partial<Record<Field, string>>;
 
 const EMPTY_DRAFT = { name: '', email: '', phone: '' };
+const FIELDS: readonly Field[] = ['name', 'email', 'phone', 'password'];
+const isField = (value: string): value is Field => (FIELDS as readonly string[]).includes(value);
 
 export function RegisterPage() {
   const user = useAuthStore(selectUser);
@@ -79,7 +81,14 @@ export function RegisterPage() {
       });
       redirectAfterAuth(created);
     } catch (err) {
-      setServerError(err instanceof ApiError ? err.message : 'Something went wrong.');
+      // About one field (EMAIL_TAKEN, a bad phone): say it on that field, where the eye already is.
+      const field = err instanceof ApiError ? err.details?.field : undefined;
+      if (err instanceof ApiError && field && isField(field)) {
+        setErrors((prev) => ({ ...prev, [field]: err.message }));
+        document.querySelector<HTMLInputElement>(`input[name="${field}"]`)?.focus();
+      } else {
+        setServerError(err instanceof ApiError ? err.message : 'Something went wrong.');
+      }
       setSubmitting(false);
     }
   }

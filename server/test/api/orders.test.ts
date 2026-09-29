@@ -713,10 +713,18 @@ describe('envelope and DTO keys', () => {
     }
   });
 
-  it('every error body matches { error: { code, message } }, with details only on item errors', async () => {
+  it('every error body matches { error: { code, message, details? } }, details in a documented shape only', async () => {
+    // A validation error names its field and nothing else.
     const validationRes = await placeOrder(customer1, { items: [] });
     expect(validationRes.body).toEqual({
-      error: { code: expect.any(String), message: expect.any(String) },
+      error: { code: 'VALIDATION_ERROR', message: expect.any(String), details: { field: 'items' } },
+    });
+    // A service-level rule with no single field carries no details.
+    const tooMany = await placeOrder(customer1, {
+      items: Array.from({ length: 31 }, () => ({ menuItemId: randomUUID(), quantity: 1 })),
+    });
+    expect(tooMany.body).toEqual({
+      error: { code: 'VALIDATION_ERROR', message: expect.any(String) },
     });
 
     const item = menuItem('Cheese Toast');
@@ -756,6 +764,22 @@ describe('envelope and DTO keys', () => {
 // ---------------------------------------------------------------------------
 // 8. Idempotency (place_order + the service's fast path)
 // ---------------------------------------------------------------------------
+
+describe('field details on a validation error', () => {
+  it('names the request field at fault, so the form can show the message on it', async () => {
+    const phone = await placeOrder(customer1, { customerPhone: '12' });
+    expect(phone.status).toBe(400);
+    expect(phone.body.error).toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: { field: 'customerPhone' },
+    });
+    const note = await placeOrder(customer1, { note: 'x'.repeat(201) });
+    expect(note.body.error.details).toEqual({ field: 'note' });
+    // A nested issue is named by its top-level field.
+    const qty = await placeOrder(customer1, { items: [{ menuItemId: 'x', quantity: 0 }] });
+    expect(qty.body.error.details).toEqual({ field: 'items' });
+  });
+});
 
 describe('idempotencyKey', () => {
   /** A seeded item that tracks stock, so a double reservation would show; stock is topped up before each case. */

@@ -427,10 +427,12 @@ Every error response has this shape (`server/src/middleware/errorHandler.ts`):
 ```
 
 - `message` is always safe to show to the user. No stack trace or SQL text is sent.
-- `details` is present only on the three cart-line errors (`INSUFFICIENT_STOCK`, `ITEM_UNAVAILABLE`,
-  `ITEM_NOT_FOUND`): `{ menuItemId: string, name?: string, available: number }` (`ItemErrorDetails`), where `available`
-  is 0 for a sold-out, unavailable or missing item, and on `IDEMPOTENCY_KEY_REUSED`: `{ orderId, orderNumber }`
-  (`ReplayedOrderDetails`).
+- `details` takes one of three shapes. On the three cart-line errors (`INSUFFICIENT_STOCK`, `ITEM_UNAVAILABLE`,
+  `ITEM_NOT_FOUND`): `{ menuItemId: string, name?: string, available: number }` (`ItemErrorDetails`), where
+  `available` is 0 for a sold-out, unavailable or missing item. On `IDEMPOTENCY_KEY_REUSED`: `{ orderId, orderNumber }`
+  (`ReplayedOrderDetails`). On a `VALIDATION_ERROR` about one request field, and on `EMAIL_TAKEN`: `{ field }`, the
+  top-level field at fault (`customerPhone`, `email`, `items` for `items[2].quantity`) (`FieldErrorDetails`), so a
+  form shows the message on that field; a rule with no single field (the lines limit) carries no `details`.
 
 ### Error codes
 
