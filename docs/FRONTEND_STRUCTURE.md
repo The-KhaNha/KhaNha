@@ -256,7 +256,8 @@ first request does not wait for it after the page's own lazy chunk (e2e "supabas
 
 The screens a customer does not need to browse the menu and fill a cart are code-split in `App.tsx`: `CheckoutPage`,
 `OrderSuccessPage`, `LoginPage`, `RegisterPage` and `StaffDashboardPage` are `lazy()` imports (see the [route
-table](#routes)). `components/PageBoundary.tsx` wraps the whole `<Routes>` list: a `Skeleton` while a chunk
+table](#routes)). `components/PageBoundary.tsx` wraps the whole `<Routes>` list: a `Skeleton` (padded, not
+margined, so the page does not move) while a chunk
 downloads (`Suspense`), and if the download itself fails (offline, or a stale deploy whose old chunk was removed) an
 `ErrorState` with a reload button instead of a blank screen (`getDerivedStateFromError`).
 

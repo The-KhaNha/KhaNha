@@ -99,7 +99,8 @@ limit, muted "Max 10 per order" for the cap (`limitCaption`). Props: `maxQuantit
 
 **`TopBar`** (`TopBar.tsx`). Sticky header. Props: `title?: string` (omit for the wordmark), `backTo?: string` (omit
 to hide the back arrow), `tone?: TopBarTone = 'default'` (`'brand'` paints it paprika for Home), `right?: ReactNode`,
-`widthClass?: string = 'max-w-md md:max-w-lg'` (must match the page column; `App` passes it). Exports
+`widthClass?: string = 'max-w-md md:max-w-lg'` (must match the page column; `App` passes it). The bar is `min-h-14`
+and the title `line-clamp-2`: at large text a long title takes a second line instead of ending in "…". Exports
 `type TopBarTone = 'default' | 'brand'`. Rendered by `App.tsx` from the route's shell config, not by pages.
 
 **`BottomNav`** (`BottomNav.tsx`). Fixed bottom nav with Home (`/`), Orders (`/orders`), Profile (`/profile`). No
@@ -123,8 +124,9 @@ side that hides more (`useOverflowEdges`). Used by `CategoryChips` and `StaffFil
 and the mark stays whole, so a header never runs past the screen.
 
 **`PageBoundary`** (`PageBoundary.tsx`). Wraps `App.tsx`'s whole `<Routes>` list around the lazy-loaded pages
-(see [FRONTEND_STRUCTURE.md#lazy-routes](FRONTEND_STRUCTURE.md#lazy-routes)): a `Suspense` fallback (`Skeleton`)
-while a chunk downloads, and — via `getDerivedStateFromError` — an `ErrorState unreachable` with a reload button if
+(see [FRONTEND_STRUCTURE.md#lazy-routes](FRONTEND_STRUCTURE.md#lazy-routes)): a `Suspense` fallback (a `Skeleton` in a
+`pt-4` wrapper: padding, not a margin, which would collapse through `<body>` and move a full-screen route 16px while
+the chunk loads) while a chunk downloads, and — via `getDerivedStateFromError` — an `ErrorState unreachable` with a reload button if
 the chunk itself fails to load (offline, or a stale deploy whose old chunk was removed). Props: `children: ReactNode`.
 
 ### Forms
@@ -135,7 +137,8 @@ the chunk itself fails to load (offline, or a stale deploy whose old chunk was r
 field. The `id` defaults to `useId()`; an `error` sets `aria-invalid` and renders with `role="alert"`, and
 `aria-describedby` lists the hint, then the error. `hintPlacement="inline"` (default) keeps a short tag ("Optional",
 "3/200") right-aligned on the label's line; `"below"` puts a sentence-long hint on its own line under the label (the
-admin settings form), so neither wraps at 360px. Inputs are `h-12`.
+admin settings form), so neither wraps at 360px. Inputs are `h-12`. An idle field's edge is `border-hint` (3:1
+against the card, WCAG 1.4.11), an errored one `border-brand-600`; never `border-line`, which is decorative.
 
 ### Food, prices and store
 
@@ -314,18 +317,18 @@ empty.
 **`orderStatus.ts`**: the single source of truth for statuses on the client. The server's `ALLOWED_TRANSITIONS`
 decides what is allowed; this file decides what is shown.
 
-| Export                                                    | What                                                                                                                                                                               |
-| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ORDER_STEPS`                                             | `['PLACED', 'PREPARING', 'READY', 'COLLECTED']` (the happy path)                                                                                                                   |
-| `TERMINAL_STATUSES`                                       | `['COLLECTED', 'CANCELLED']`                                                                                                                                                       |
-| `STATUS_META: Record<OrderStatus, StatusMeta>`            | per status: `label`, `customerTitle`, `customerCopy`, `icon`, `badgeClass`, `fillClass`, `onFillClass`, `railClass`, `pulseColor` (a `var(--color-*)`), `next`, `actionLabel`, `canCancel`                |
-| `statusMeta(status: string)`, `FALLBACK_STATUS_META`      | **every read goes through `statusMeta`**: a status this build does not know (a newer server) gets the neutral "Updating…" meta with no staff action instead of an undefined lookup |
-| `isTerminal(status)`, `isActive(status)`                  |                                                                                                                                                                                    |
-| `stepIndex(status)`                                       | position in `ORDER_STEPS`, `-1` for `CANCELLED`                                                                                                                                    |
-| `StaffFilterKey`, `StaffFilter`, `STAFF_FILTERS`          | All, New (`PLACED`), Preparing, Ready, Done (`COLLECTED` + `CANCELLED`, key `'COLLECTED'`, label `'Done'`)                                                                         |
-| `matchesFilter(status, filter)`                           |                                                                                                                                                                                    |
-| `amountLabel(order)`                                      | `"Total paid"` when paid and not cancelled, else `"Total"`                                                                                                                         |
-| `timelineLabel(order)` → `{ label: string, iso: string }` | the one time that matters: "Estimated ready", "Ready since", "Collected", or "Placed" for cancelled                                                                                |
+| Export                                                    | What                                                                                                                                                                                       |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ORDER_STEPS`                                             | `['PLACED', 'PREPARING', 'READY', 'COLLECTED']` (the happy path)                                                                                                                           |
+| `TERMINAL_STATUSES`                                       | `['COLLECTED', 'CANCELLED']`                                                                                                                                                               |
+| `STATUS_META: Record<OrderStatus, StatusMeta>`            | per status: `label`, `customerTitle`, `customerCopy`, `icon`, `badgeClass`, `fillClass`, `onFillClass`, `railClass`, `pulseColor` (a `var(--color-*)`), `next`, `actionLabel`, `canCancel` |
+| `statusMeta(status: string)`, `FALLBACK_STATUS_META`      | **every read goes through `statusMeta`**: a status this build does not know (a newer server) gets the neutral "Updating…" meta with no staff action instead of an undefined lookup         |
+| `isTerminal(status)`, `isActive(status)`                  |                                                                                                                                                                                            |
+| `stepIndex(status)`                                       | position in `ORDER_STEPS`, `-1` for `CANCELLED`                                                                                                                                            |
+| `StaffFilterKey`, `StaffFilter`, `STAFF_FILTERS`          | All, New (`PLACED`), Preparing, Ready, Done (`COLLECTED` + `CANCELLED`, key `'COLLECTED'`, label `'Done'`)                                                                                 |
+| `matchesFilter(status, filter)`                           |                                                                                                                                                                                            |
+| `amountLabel(order)`                                      | `"Total paid"` when paid and not cancelled, else `"Total"`                                                                                                                                 |
+| `timelineLabel(order)` → `{ label: string, iso: string }` | the one time that matters: "Estimated ready", "Ready since", "Collected", or "Placed" for cancelled                                                                                        |
 
 Colours: PLACED paprika, PREPARING saffron gold, READY basil green, COLLECTED warm neutral, CANCELLED cool slate.
 Staff actions: PLACED "Start Preparing", PREPARING "Mark Ready", READY "Mark Collected"; cancel allowed from PLACED
@@ -347,13 +350,13 @@ updatedAt }`. Polls every `useConfig().polling.ordersMs` (default 8 s) for the c
 
 UI (presentational; the pages own the data):
 
-| Component                                   | Props                                                                                                                                                                                                                                                                         | Use                                                                                                     |
-| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `OrderHero`                                 | `order: Order`, `entrance?: boolean` (scale in; only for a status a poll brought), `onReorder: () => void`, `reordering: boolean`                                                                                                                                                                                                                | top of the tracking page; re-key it on `order.status` so each state plays its entrance once             |
-| `StaffHeader`                               | `storeName?: string`, `updatedAt: number \| null`, `offline: boolean`, `onLogout: () => void`, `children?: ReactNode` (the filter row)                                                                                                                           | sticky dashboard header with clock and freshness, and Profile and Log out (the board has no bottom nav); runs its own `useNow(1000)` clock, so a tick re-renders the header, never the board (`StaffDashboard.test.tsx`) |
-| `StaffFilters`                              | `value: StaffFilterKey`, `counts: Record<StaffFilterKey, number>`, `onChange: (key) => void`                                                                                                                                                                                  | filter toggle buttons                                                                                   |
-| `StaffBoard`                                | `orders: Order[] \| null`, `visible: Order[]`, `isLoading`, `error: ApiError \| null`, `filter: StaffFilter`, `pendingIds`, `actionErrors: Record<string, string>`, `freshIds`, `leavingIds` (`ReadonlySet<string>`), `onRetry`, `onShowAll`, `onChangeStatus(order, status)` | the ticket grid with its loading, error and empty states                                                |
-| `StaffOrderCard` / `StaffOrderCardSkeleton` | `order: Order`, `pending: boolean`, `error?: string`, `onChangeStatus(order, status)`, `fresh?: boolean` (arrival flash), `leaving?: boolean` (fade-out)                                                                                                                      | one kitchen ticket                                                                                      |
+| Component                                   | Props                                                                                                                                                                                                                                                                         | Use                                                                                                                                                                                                                      |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `OrderHero`                                 | `order: Order`, `entrance?: boolean` (scale in; only for a status a poll brought), `onReorder: () => void`, `reordering: boolean`                                                                                                                                             | top of the tracking page; re-key it on `order.status` so each state plays its entrance once                                                                                                                              |
+| `StaffHeader`                               | `storeName?: string`, `updatedAt: number \| null`, `offline: boolean`, `onLogout: () => void`, `children?: ReactNode` (the filter row)                                                                                                                                        | sticky dashboard header with clock and freshness, and Profile and Log out (the board has no bottom nav); runs its own `useNow(1000)` clock, so a tick re-renders the header, never the board (`StaffDashboard.test.tsx`) |
+| `StaffFilters`                              | `value: StaffFilterKey`, `counts: Record<StaffFilterKey, number>`, `onChange: (key) => void`                                                                                                                                                                                  | filter toggle buttons                                                                                                                                                                                                    |
+| `StaffBoard`                                | `orders: Order[] \| null`, `visible: Order[]`, `isLoading`, `error: ApiError \| null`, `filter: StaffFilter`, `pendingIds`, `actionErrors: Record<string, string>`, `freshIds`, `leavingIds` (`ReadonlySet<string>`), `onRetry`, `onShowAll`, `onChangeStatus(order, status)` | the ticket grid with its loading, error and empty states                                                                                                                                                                 |
+| `StaffOrderCard` / `StaffOrderCardSkeleton` | `order: Order`, `pending: boolean`, `error?: string`, `onChangeStatus(order, status)`, `fresh?: boolean` (arrival flash), `leaving?: boolean` (fade-out)                                                                                                                      | one kitchen ticket                                                                                                                                                                                                       |
 
 ### features/orders: staff board rules
 

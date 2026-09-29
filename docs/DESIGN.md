@@ -21,15 +21,15 @@ step.
 
 ## Colour
 
-| Group     | Tokens                                                                                                                  |
-| --------- | ----------------------------------------------------------------------------------------------------------------------- |
-| Neutrals  | `bg`, `surface`, `surface-2`, `ink`, `muted`, `line`, `hint` (input placeholders: lighter than `muted`, still readable) |
-| Brand     | `brand-50`, `brand-100`, `brand-500` (paprika), `brand-600`, `brand-700`                                                |
-| Gold      | `gold-50`, `gold-500` (saffron), `gold-700`                                                                             |
-| Success   | `success-50`, `success-500` (basil), `success-700`                                                                      |
-| Cancel    | `cancel-50`, `cancel-500` (slate), `cancel-700`                                                                         |
-| Collected | `collected-500`, `collected-700` (the `COLLECTED` status: quiet, never alarming)                                        |
-| Focus     | `focus` (= `brand-600`): the keyboard focus ring, solid, at least 3:1 against `bg` and `surface`                        |
+| Group     | Tokens                                                                                                                                                            |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Neutrals  | `bg`, `surface`, `surface-2`, `ink`, `muted`, `line`, `hint` (input placeholders and the idle field edge: lighter than `muted`, still readable, 3:1 on `surface`) |
+| Brand     | `brand-50`, `brand-100`, `brand-500` (paprika), `brand-600`, `brand-700`                                                                                          |
+| Gold      | `gold-50`, `gold-500` (saffron), `gold-700`                                                                                                                       |
+| Success   | `success-50`, `success-500` (basil), `success-700`                                                                                                                |
+| Cancel    | `cancel-50`, `cancel-500` (slate), `cancel-700`                                                                                                                   |
+| Collected | `collected-500`, `collected-700` (the `COLLECTED` status: quiet, never alarming)                                                                                  |
+| Focus     | `focus` (= `brand-600`): the keyboard focus ring, solid, at least 3:1 against `bg` and `surface`                                                                  |
 
 ## Dark mode
 
@@ -48,7 +48,8 @@ exist so a fill never doubles as text:
 `client/src/lib/palette.test.ts` reads both palettes from `index.css` and fails if any text pairing drops below
 4.5:1 or the focus ring or a meaningful icon below 3:1; add a new pairing there when a component introduces one.
 `client/index.html` paints the first frame, the boot frame and `theme-color` in the matching scheme. The hairline
-`line` border stays decorative (about 1.3:1) in both.
+`line` border stays decorative (about 1.3:1) in both. A form field's idle edge is not decorative: it shows where to
+type, so it is `border-hint` (3:1 against the card, WCAG 1.4.11; `lib/palette.test.ts`, `components/Input.test.tsx`).
 
 ## Type
 
