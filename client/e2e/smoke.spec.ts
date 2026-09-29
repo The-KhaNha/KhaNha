@@ -471,6 +471,35 @@ for (const { path, role } of [
   });
 }
 
+// supabase-js (the auth chunk) loads on demand (CLAUDE.md §2b): never for an anonymous visitor, and for a signed-in
+// one as soon as the app starts, not after the first render, so the page's data does not wait for it in series with
+// the page's own chunk. The dev server serves each module on request, so the request order shows when each started.
+test('supabase-js loads early for a signed-in visit and never for an anonymous one', async ({
+  browser,
+}) => {
+  const requested = async (path: string, role?: Role) => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await mockApi(page);
+    if (role) await signIn(page, role);
+    const urls: string[] = [];
+    page.on('request', (r) => urls.push(new URL(r.url()).pathname));
+    await page.goto(path);
+    await page.waitForLoadState('networkidle');
+    await context.close();
+    return urls;
+  };
+
+  const anonymous = await requested('/');
+  expect(anonymous.filter((u) => u.includes('supabaseClient'))).toEqual([]);
+
+  const staff = await requested('/staff', 'STAFF');
+  const auth = staff.findIndex((u) => u.includes('supabaseClient'));
+  const page = staff.findIndex((u) => u.includes('StaffDashboard'));
+  expect(auth, 'supabase-js requested').toBeGreaterThan(-1);
+  expect(auth, 'supabase-js requested before the page chunk').toBeLessThan(page);
+});
+
 test('following a link titles the new page and moves keyboard focus to it', async ({ page }) => {
   await page.goto('/');
   await expect(page).toHaveTitle('Food Pickup');

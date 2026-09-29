@@ -33,7 +33,7 @@ client/
 │                           installable app icons; rendered from icon.svg by scripts/make-icons.mjs
 ├── public/robots.txt       menu and home crawlable; carts, orders, accounts, staff and admin disallowed
 └── src/
-    ├── main.tsx            applies the preloaded webfont, createRoot + StrictMode + index.css
+    ├── main.tsx            applies the preloaded webfont, prefetches the landing data, starts supabase-js when signed in, createRoot
     ├── App.tsx             routes, route guards, per-route shell config
     ├── index.css           Tailwind import, design tokens (@theme), keyframes, utilities, reduced-motion rules
     ├── vite-env.d.ts       typed import.meta.env
@@ -238,7 +238,8 @@ never inside an entrance fade (a fading ancestor delays the LCP until the fade e
 painted, so it does not share a slow link with ten photos. `main.tsx` starts `/api/menu` (on `/menu`) or `/api/store`
 (on `/`) before the first render (`prefetchMenu`, `prefetchStore`: the next fetch takes that response, once).
 supabase-js loads only when a session may exist or on the sign-in screens (`getSupabase`), keeping the entry chunk
-at about 88 KB gzip.
+at about 88 KB gzip. When a session may exist, `main.tsx` starts it before the first render, so a signed-in page's
+first request does not wait for it after the page's own lazy chunk (e2e "supabase-js loads early …").
 
 ### Lazy routes
 
