@@ -22,6 +22,11 @@ describe('validateName', () => {
     expect(error === undefined).toBe(ok as boolean);
   });
 
+  it('says what is wrong: missing, or too short', () => {
+    expect(validateName('')).toBe('Please enter your name.');
+    expect(validateName('R')).toBe(`Your name needs at least 2 characters.`);
+  });
+
   it('trims before counting', () => {
     expect(validateName(`  ${'a'.repeat(NAME_MAX_LENGTH)}  `)).toBeUndefined();
     expect(validateName('   ')).toBeDefined();
@@ -45,6 +50,11 @@ describe('validateEmail', () => {
 });
 
 describe('validatePassword', () => {
+  it('refuses a password of only spaces, and keeps spaces inside one', () => {
+    expect(validatePassword('        ')).toBe('Password cannot be only spaces.');
+    expect(validatePassword('open sesame')).toBeUndefined();
+  });
+
   it.each([
     [`${PASSWORD_MIN_LENGTH - 1} chars`, PASSWORD_MIN_LENGTH - 1, false],
     [`${PASSWORD_MIN_LENGTH} chars (min)`, PASSWORD_MIN_LENGTH, true],

@@ -10,7 +10,7 @@ export function PopularBadge({ className }: PopularBadgeProps) {
   return (
     <span
       className={cn(
-        'absolute left-1.5 top-1.5 inline-flex items-center gap-0.5 rounded-full bg-gold-500 px-1.5 py-0.5 text-[10px] font-extrabold leading-4 text-ink shadow-sm',
+        'absolute left-1.5 top-1.5 inline-flex items-center gap-0.5 rounded-full bg-gold-500 px-1.5 py-0.5 text-2xs font-extrabold leading-4 text-on-gold shadow-sm',
         className,
       )}
     >

@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 import { CircleAlert, RefreshCw, WifiOff } from 'lucide-react';
 import { Button } from './Button';
+import { cardClasses } from './Card';
+import { useVersionStore } from '../features/version/versionStore';
 import { cn } from '../lib/cn';
 
 interface ErrorStateProps {
@@ -30,15 +32,15 @@ export function ErrorState({
   actions,
   className,
 }: ErrorStateProps) {
+  // This build is too old (426): retrying would only fail again, so the one useful action is loading the new build.
+  const outdated = useVersionStore((s) => s.outdated);
   const Icon = unreachable ? WifiOff : CircleAlert;
   return (
     <div
       role="alert"
       className={cn(
         'flex flex-col items-center text-center animate-fade-up',
-        compact
-          ? 'rounded-[28px] border border-line/70 bg-surface px-5 py-8 shadow-card'
-          : 'px-6 py-14',
+        compact ? cardClasses('px-5 py-8') : 'px-6 py-14',
         className,
       )}
     >
@@ -50,20 +52,20 @@ export function ErrorState({
       >
         <Icon className={compact ? 'h-6 w-6' : 'h-9 w-9'} strokeWidth={1.75} aria-hidden />
       </div>
-      <h2 className={cn('mt-5 font-extrabold', compact ? 'text-lg' : 'text-[20px]')}>{title}</h2>
-      <p className="mt-2 max-w-xs text-[15px] leading-relaxed text-muted">{message}</p>
+      <h2 className={cn('mt-5 font-extrabold', compact ? 'text-lg' : 'text-xl')}>{title}</h2>
+      <p className="mt-2 max-w-xs text-body leading-relaxed text-muted">{message}</p>
       {actions && (
         <div className="mt-6 flex w-full max-w-xs flex-col items-stretch gap-2">{actions}</div>
       )}
-      {!actions && onRetry && (
+      {!actions && (outdated || onRetry) && (
         <Button
           variant="secondary"
           className="mt-6 min-w-40"
-          onClick={onRetry}
-          loading={retrying}
+          onClick={outdated ? () => window.location.reload() : onRetry}
+          loading={!outdated && retrying}
           iconLeft={<RefreshCw className="h-4 w-4" aria-hidden />}
         >
-          {retryLabel}
+          {outdated ? 'Refresh' : retryLabel}
         </Button>
       )}
     </div>

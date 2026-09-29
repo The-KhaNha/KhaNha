@@ -38,8 +38,16 @@ export class PageBoundary extends Component<PageBoundaryProps, { failed: boolean
         />
       );
     }
+    // Padding, not a margin: on a full-screen route nothing sits above the fallback, and its margin would collapse
+    // through <body>, moving the whole page 16px down and back while the chunk loads.
     return (
-      <Suspense fallback={<Skeleton className="mt-4 h-48 w-full rounded-[20px]" />}>
+      <Suspense
+        fallback={
+          <div className="pt-4">
+            <Skeleton className="h-48 w-full rounded-tile" />
+          </div>
+        }
+      >
         {this.props.children}
       </Suspense>
     );

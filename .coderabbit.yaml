@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# CodeRabbit reviews PRs into the default branch (main) by default. Feature PRs go into dev (CLAUDE.md §21), so review
+# those too. Its comments are applied by the coderabbit-fixer agent (CLAUDE.md §17).
+reviews:
+  auto_review:
+    enabled: true
+    base_branches:
+      - dev

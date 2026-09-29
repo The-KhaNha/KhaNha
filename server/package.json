@@ -4,6 +4,9 @@
   "version": "0.1.0",
   "description": "Food Pickup V0 API server (Express + Supabase)",
   "main": "dist/src/server.js",
+  "engines": {
+    "node": "^24.15.0"
+  },
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.build.json",
@@ -11,10 +14,11 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "seed": "tsx scripts/seed.ts",
     "db:start": "supabase start",
+    "db:start:ci": "supabase start -x studio,storage-api,imgproxy,mailpit,realtime,edge-runtime,logflare,vector,supavisor,postgres-meta",
     "db:stop": "supabase stop",
     "db:reset": "supabase db reset",
     "db:new": "supabase migration new",
-    "db:types": "supabase gen types typescript --local > src/types/database.ts",
+    "db:types": "supabase gen types typescript --local > src/types/database.ts && prettier --write src/types/database.ts",
     "db:push:staging": "./scripts/db-push.sh staging",
     "db:push:production": "./scripts/db-push.sh production",
     "lint": "eslint .",
@@ -29,6 +33,7 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^5.1.0",
+    "express-rate-limit": "^8.7.0",
     "pino": "^10.3.1",
     "pino-http": "^11.0.0",
     "zod": "^3.25.0"
@@ -37,7 +42,7 @@
     "@eslint/js": "^10.0.1",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
-    "@types/node": "^22.10.0",
+    "@types/node": "^24.0.0",
     "@types/supertest": "^7.2.1",
     "eslint": "^10.11.0",
     "eslint-config-prettier": "^10.1.8",

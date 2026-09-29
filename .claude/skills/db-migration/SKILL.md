@@ -5,14 +5,17 @@ description: Recipe for any database change in food-pickup (Supabase Postgres) �
 
 # Database migration
 
+`$BASE` is the PR's base branch: `origin/dev` for features, `origin/main` for `hotfix/*` branches
+(`BASE=origin/dev`; `BASE=origin/main` when `git branch --show-current` starts with `hotfix/`).
+
 Migrations are the one thing in this repo that cannot be quietly fixed later: once pushed to staging or production
 they are history. So check first, write carefully, and verify locally.
 
 1. **Check** — run `/before-write` (schema-guard) with the intent. Prefer a column or enum value on an existing table
    over a new table.
 2. **Create** — `cd server && npm run db:new <snake_case_name>`. This writes
-   `server/supabase/migrations/<timestamp>_<name>.sql`. Never edit a migration that already exists on `origin/main`
-   (`git ls-tree -r --name-only origin/main -- server/supabase/migrations/`); write a new one instead.
+   `server/supabase/migrations/<timestamp>_<name>.sql`. Never edit a migration that already exists on `$BASE`
+   (`git ls-tree -r --name-only $BASE -- server/supabase/migrations/`); write a new one instead.
 3. **Write the SQL**, following the init migration's patterns:
    - `alter table … enable row level security;` on every new table, no policies: the browser's publishable key must
      reach nothing. Revoke from `anon` and `authenticated` (the default privileges already do this for new objects;

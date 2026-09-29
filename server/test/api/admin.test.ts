@@ -71,6 +71,11 @@ describe('admin settings: read and validate', () => {
       settings: {
         customerOrderHistoryLimit: 20,
         staffOrderListLimit: 100,
+        maxLinesPerOrder: 30,
+        orderPollMs: 4000,
+        ordersPollMs: 8000,
+        staffBoardPollMs: 4000,
+        minClientVersion: '0.0.0',
         updatedAt: expect.any(String),
       },
     });
@@ -83,6 +88,15 @@ describe('admin settings: read and validate', () => {
     [{ staffOrderListLimit: 501 }, 'at most 500'],
     [{ staffOrderListLimit: 2.5 }, 'whole number'],
     [{ customerOrderHistoryLimit: '20' }, 'must be a number'],
+    [{ maxLinesPerOrder: 0 }, 'Items per order must be at least 1'],
+    [{ maxLinesPerOrder: 101 }, 'Items per order must be at most 100'],
+    [{ orderPollMs: 1999 }, 'Order page refresh must be at least 2000'],
+    [{ ordersPollMs: 60_001 }, 'Order list refresh must be at most 60000'],
+    [{ staffBoardPollMs: 2500.5 }, 'Staff board refresh must be a whole number'],
+    [{ staffBoardPollMs: '4000' }, 'Staff board refresh must be a number'],
+    [{ minClientVersion: '1.2' }, 'must look like 1.2.3'],
+    [{ minClientVersion: '1.2.3-beta' }, 'must look like 1.2.3'],
+    [{ minClientVersion: 123 }, 'must be text'],
   ])('400 VALIDATION_ERROR for %j', async (body, message) => {
     const res = await api().patch('/api/admin/settings').set(bearer(admin)).send(body);
     expect(res.status).toBe(400);
@@ -100,6 +114,54 @@ describe('admin settings: read and validate', () => {
       customerOrderHistoryLimit: 200,
       staffOrderListLimit: 1,
     });
+  });
+});
+
+describe('admin settings: configuration fields', () => {
+  it('accepts every new field at its bounds and returns them', async () => {
+    const low = {
+      maxLinesPerOrder: 1,
+      orderPollMs: 2000,
+      ordersPollMs: 2000,
+      staffBoardPollMs: 2000,
+    };
+    const high = {
+      maxLinesPerOrder: 100,
+      orderPollMs: 60_000,
+      ordersPollMs: 60_000,
+      staffBoardPollMs: 60_000,
+    };
+    for (const body of [low, high]) {
+      const res = await api().patch('/api/admin/settings').set(bearer(admin)).send(body);
+      expect(res.status).toBe(200);
+      expect(res.body.settings).toMatchObject(body);
+    }
+  });
+
+  it('changes only the fields sent', async () => {
+    const before = (await api().get('/api/admin/settings').set(bearer(admin))).body.settings;
+    const res = await api()
+      .patch('/api/admin/settings')
+      .set(bearer(admin))
+      .send({ ordersPollMs: 12_000 });
+    expect(res.status).toBe(200);
+    expect(res.body.settings).toEqual({
+      ...before,
+      ordersPollMs: 12_000,
+      updatedAt: expect.any(String),
+    });
+  });
+});
+
+describe('admin settings: minimum client version', () => {
+  it('accepts a plain semver version and returns it', async () => {
+    const res = await api()
+      .patch('/api/admin/settings')
+      .set(bearer(admin))
+      .set('X-Client-Version', '9.9.9')
+      .send({ minClientVersion: '0.0.0' });
+    expect(res.status).toBe(200);
+    expect(res.body.settings.minClientVersion).toBe('0.0.0');
   });
 });
 
@@ -140,10 +202,18 @@ describe('admin settings: the limits apply to the next request', () => {
     ]);
   });
 
-  it('a new staff list limit shows up at once', async () => {
+  it('a new staff list limit shows up at once (it caps finished orders; active ones always show)', async () => {
+    await supabaseAdmin
+      .from('orders')
+      .update({ status: 'COLLECTED' })
+      .in('id', insertedOrderIds)
+      .throwOnError();
     await api().patch('/api/admin/settings').set(bearer(admin)).send({ staffOrderListLimit: 2 });
     const res = await api().get('/api/orders').set(bearer(staff));
-    expect(res.body.orders).toHaveLength(2);
+    const finished = (res.body.orders as { status: string }[]).filter(
+      (o) => o.status === 'COLLECTED' || o.status === 'CANCELLED',
+    );
+    expect(finished).toHaveLength(2);
   });
 
   it('records who changed it and when', async () => {

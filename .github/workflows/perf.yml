@@ -1,0 +1,52 @@
+name: perf
+
+# Lighthouse on the compose stack at the CLAUDE.md §2b budgets (360×640, Slow 4G, 4× CPU). Informational, and the
+# assertions warn for now (docs/PERF_BASELINE.md "CI numbers"). About 12 minutes a run, so it runs once per merge into
+# dev that touches the client, and on demand before a release, not on every PR push (GitHub Free minutes, ADR-011).
+on:
+  push:
+    branches: [dev]
+    paths: ['client/**', '.github/workflows/perf.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: perf-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lighthouse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - name: Local Supabase, seeded
+        working-directory: server
+        run: |
+          npm ci
+          npm run db:start:ci
+          cp .env.example .env
+          npm run seed
+      - name: Compose stack
+        run: |
+          SUPABASE_PUBLISHABLE_KEY=$(grep VITE_SUPABASE_PUBLISHABLE_KEY client/.env.development | cut -d= -f2)
+          export SUPABASE_PUBLISHABLE_KEY
+          GIT_COMMIT=${{ github.sha }} docker compose up -d --build --wait web api
+      - name: Lighthouse
+        working-directory: client
+        run: npx --yes @lhci/cli@0.15.x autorun
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lighthouse-report
+          path: client/lhci
+          if-no-files-found: warn
+      - if: always()
+        run: docker compose down

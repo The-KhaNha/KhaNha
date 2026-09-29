@@ -37,20 +37,22 @@ work exactly like a customer's. Its only privilege is the admin dashboard (`/adm
 
 ## Route matrix
 
-| Route                          | anonymous  | CUSTOMER            | STAFF                                  | ADMIN               | Enforced by                                |
-| ------------------------------ | ---------- | ------------------- | -------------------------------------- | ------------------- | ------------------------------------------ |
-| `GET /api/health`              | yes        | yes                 | yes                                    | yes                 | –                                          |
-| `GET /api/store`               | yes        | yes                 | yes                                    | yes                 | –                                          |
-| `GET /api/menu`                | yes        | yes                 | yes                                    | yes                 | –                                          |
-| `POST /api/auth/register`      | yes        | yes                 | yes                                    | yes                 | –                                          |
-| `GET /api/auth/me`             | 401        | own profile         | own profile                            | own profile         | `requireAuth`                              |
-| `POST /api/orders`             | 401        | yes                 | yes                                    | yes                 | `requireAuth`                              |
-| `GET /api/orders`              | 401        | own orders          | newest `staff_order_list_limit` of all | own orders          | `requireAuth` + `order.service.listOrders` |
-| `GET /api/orders/:id`          | 401        | own order, else 404 | any order                              | own order, else 404 | `requireAuth` + `order.service.getOrder`   |
-| `PATCH /api/orders/:id/status` | 401        | 403                 | yes                                    | 403                 | `requireAuth` + `requireStaff`             |
-| `GET /api/admin/settings`      | 401        | 403                 | 403                                    | yes                 | `requireAuth` + `requireAdmin`             |
-| `PATCH /api/admin/settings`    | 401        | 403                 | 403                                    | yes                 | `requireAuth` + `requireAdmin`             |
-| `/admin` (client route)        | → `/login` | → `/`               | → `/`                                  | renders `AdminPage` | `RequireRole role="ADMIN"` (client only)   |
+| Route                          | anonymous  | CUSTOMER            | STAFF                                  | ADMIN               | Enforced by                                                              |
+| ------------------------------ | ---------- | ------------------- | -------------------------------------- | ------------------- | ------------------------------------------------------------------------ |
+| `GET /api/health`              | yes        | yes                 | yes                                    | yes                 | –                                                                        |
+| `GET /api/ready`               | yes        | yes                 | yes                                    | yes                 | –                                                                        |
+| `GET /api/config`              | yes        | yes                 | yes                                    | yes                 | – (public: the same config for everyone; before the client version gate) |
+| `GET /api/store`               | yes        | yes                 | yes                                    | yes                 | –                                                                        |
+| `GET /api/menu`                | yes        | yes                 | yes                                    | yes                 | –                                                                        |
+| `POST /api/auth/register`      | yes        | yes                 | yes                                    | yes                 | –                                                                        |
+| `GET /api/auth/me`             | 401        | own profile         | own profile                            | own profile         | `requireAuth`                                                            |
+| `POST /api/orders`             | 401        | yes                 | yes                                    | yes                 | `requireAuth`                                                            |
+| `GET /api/orders`              | 401        | own orders          | newest `staff_order_list_limit` of all | own orders          | `requireAuth` + `order.service.listOrders`                               |
+| `GET /api/orders/:id`          | 401        | own order, else 404 | any order                              | own order, else 404 | `requireAuth` + `order.service.getOrder`                                 |
+| `PATCH /api/orders/:id/status` | 401        | 403                 | yes                                    | 403                 | `requireAuth` + `requireStaff`                                           |
+| `GET /api/admin/settings`      | 401        | 403                 | 403                                    | yes                 | `requireAuth` + `requireAdmin`                                           |
+| `PATCH /api/admin/settings`    | 401        | 403                 | 403                                    | yes                 | `requireAuth` + `requireAdmin`                                           |
+| `/admin` (client route)        | → `/login` | → `/`               | → `/`                                  | renders `AdminPage` | `RequireRole role="ADMIN"` (client only)                                 |
 
 Nothing stops a `STAFF` or `ADMIN` account from placing an order: `POST /api/orders` only requires a signed-in user.
 `staffOrderListLimit` and `customerOrderHistoryLimit` are the two editable `site_settings` (defaults 100 and 20); see
@@ -121,10 +123,10 @@ A sign-in lasts **7 days without use**; using the app (which refreshes the 1 h a
 > `localStorage` (`fp_last_active`) and signs the device out locally (`clearSession()`, `signOut('local')`) once 7
 > days pass with no activity; `server/supabase/config.toml`'s `[auth.sessions]` sets `inactivity_timeout = "168h"` so
 > Supabase also expires the refresh token server-side (`jwt_expiry`, the 1 h access token lifetime, is unchanged).
-> **Consequences:** a device idle for a week is signed out even if it never calls the API; a hosted (non-local)
-> project needs the same value set by hand, because `inactivity_timeout` is a paid-plan setting only available in the
-> Supabase dashboard (Authentication → Sessions), not in `config.toml` (see
-> [DEPLOYMENT.md](DEPLOYMENT.md#hosted-session-timeout)); a missing `fp_last_active` record (a session that predates
+> **Consequences:** a device idle for a week is signed out even if it never calls the API; on hosted projects the
+> server-side half is missing, because `inactivity_timeout` is a Pro-plan setting and the project runs on Supabase
+> Free ([ADR-011](adr/011-free-tiers.md), [DEPLOYMENT.md](DEPLOYMENT.md#hosted-session-timeout)): there the client
+> cap is the only enforcement until a server-side idle check lands; a missing `fp_last_active` record (a session that predates
 > this feature) counts as active, so the week starts fresh instead of expiring at once.
 
 - `markActive()` runs on login and whenever `hydrate()` or a tab-visible check finds the session still within its
@@ -170,7 +172,7 @@ flowchart LR
 - Default privileges are changed so tables and functions created by later migrations also start closed. A migration
   that needs something public must grant it explicitly (and should not: the browser talks to Supabase only for
   sign-in).
-- The browser uses Supabase only to sign in, refresh the token and sign out (`client/src/lib/supabase.ts`).
+- The browser uses Supabase only to sign in, refresh the token and sign out (`client/src/lib/supabase.ts`, which loads supabase-js on first use).
 
 ## Sign-ups
 

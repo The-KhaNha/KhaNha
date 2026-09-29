@@ -1,0 +1,34 @@
+name: browsers
+
+# The WebKit smoke (client/e2e/smoke.spec.ts): Safari's engine, which no other check exercises. Weekly and on demand,
+# not on every PR: installing WebKit costs minutes (GitHub Free, ADR-011). Informational.
+on:
+  schedule:
+    - cron: '30 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  webkit:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps webkit
+      # The spec mocks every /api call; the Vite dev server is all it needs (playwright.config.ts starts it).
+      - run: npm run e2e:webkit
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: webkit-smoke
+          path: client/test-results/

@@ -1,11 +1,11 @@
-import { forwardRef, type ReactNode } from 'react';
+import { createContext, forwardRef, useContext, type ReactNode } from 'react';
 import { cn } from '../lib/cn';
 import { photoSrcSet } from '../lib/photo';
 
 interface FoodPhotoProps {
   src: string | null;
   alt?: string;
-  /** Size + radius live here (e.g. "h-28 w-28 rounded-[14px]"). */
+  /** Size + radius live here (e.g. "h-28 w-28 rounded-control"). */
   className?: string;
   /** Extra classes for the <img> itself (hover scale, zoom-in). */
   imgClassName?: string;
@@ -19,6 +19,17 @@ interface FoodPhotoProps {
   sizes?: string;
   /** Only the gold Popular badge is allowed on top of a food photo. */
   children?: ReactNode;
+}
+
+const HeldContext = createContext(false);
+
+/**
+ * While `held`, every FoodPhoto inside shows its placeholder instead of downloading its photo. A page wraps its lists
+ * in it until its largest image (the store cover) has loaded, so on a slow connection the cover gets the bandwidth
+ * first instead of sharing it with every photo discovered at the same moment. Photos keep their boxes, so nothing shifts.
+ */
+export function FoodPhotoGate({ held, children }: { held: boolean; children: ReactNode }) {
+  return <HeldContext.Provider value={held}>{children}</HeldContext.Provider>;
 }
 
 /**
@@ -39,6 +50,7 @@ export const FoodPhoto = forwardRef<HTMLSpanElement, FoodPhotoProps>(function Fo
   },
   ref,
 ) {
+  const held = useContext(HeldContext);
   return (
     <span
       ref={ref}
@@ -49,7 +61,7 @@ export const FoodPhoto = forwardRef<HTMLSpanElement, FoodPhotoProps>(function Fo
         className,
       )}
     >
-      {src && (
+      {src && !held && (
         <img
           src={src}
           srcSet={photoSrcSet(src)}
@@ -65,7 +77,7 @@ export const FoodPhoto = forwardRef<HTMLSpanElement, FoodPhotoProps>(function Fo
       )}
       <span
         aria-hidden
-        className="pointer-events-none absolute inset-0 rounded-[inherit] shadow-[inset_0_0_0_1px_rgba(27,20,16,0.06)]"
+        className="pointer-events-none absolute inset-0 rounded-[inherit] shadow-photo-edge"
       />
       {children}
     </span>

@@ -50,10 +50,10 @@ export function CartButton({ tone = 'default' }: CartButtonProps) {
       }}
       className={cn(
         'relative grid h-11 w-11 place-items-center rounded-full border transition-[background-color,translate,scale] duration-150 active:scale-95',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 focus-visible:ring-offset-2',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2',
         brand
           ? 'border-white/25 bg-white/15 text-white hover:bg-white/25 focus-visible:ring-white/60 focus-visible:ring-offset-brand-500'
-          : 'border-line bg-surface text-ink shadow-[0_1px_2px_rgba(27,20,16,0.05)] hover:bg-surface-2 focus-visible:ring-offset-bg',
+          : 'border-line bg-surface text-ink shadow-hairline hover:bg-surface-2 focus-visible:ring-offset-bg',
         tilting && 'animate-bag-tilt',
       )}
     >
@@ -62,8 +62,8 @@ export function CartButton({ tone = 'default' }: CartButtonProps) {
         <span
           key={leaving ? 'leaving' : popKey}
           className={cn(
-            'absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full px-1 text-[11px] font-bold tabular-nums ring-2',
-            brand ? 'bg-gold-500 text-ink ring-brand-500' : 'bg-brand-500 text-white ring-bg',
+            'absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full px-1 text-2xs font-bold tabular-nums ring-2',
+            brand ? 'bg-gold-500 text-on-gold ring-brand-500' : 'bg-brand-500 text-white ring-bg',
             leaving ? 'animate-fade-out' : 'animate-pop',
           )}
         >

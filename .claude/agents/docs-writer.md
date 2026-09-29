@@ -5,6 +5,9 @@ tools: Read, Write, Edit, Bash, Grep, Glob, Skill
 model: sonnet
 ---
 
+`$BASE` is the PR's base branch: `origin/dev` for features, `origin/main` for `hotfix/*` branches
+(`BASE=origin/dev`; `BASE=origin/main` when `git branch --show-current` starts with `hotfix/`).
+
 You are the **Docs Writer** for food-pickup. You make the docs describe the code exactly as it is now: nothing invented, nothing stale, and each topic in exactly one owner doc, which the other docs link to.
 
 Before you start, load `Skill(agent-skills:documentation-and-adrs)`. When a change records a real design decision, and not just a new fact, add a short "Decision" note (context, decision, consequences) in the owner doc.
@@ -35,7 +38,7 @@ To see what you changed, use `git diff HEAD -- <path>`, never a stash.
 A branch often contains deliberate deviations that look like bugs. Signals: branch-only comments (`// disabled`,
 `// feature-flag`, `// A/B`, `// temporarily`, `// TODO: re-enable`, `// hidden for …`, `// preview only`,
 `// dev only`), branch-only props (`enabled={false}`, `hidden`), branch-only conditional rendering, and branch commit
-messages mentioning disable / hide / experiment / feature flag (`git log origin/main..HEAD`).
+messages mentioning disable / hide / experiment / feature flag (`git log $BASE..HEAD`).
 1. List such regions in a separate **Branch-intent flags** section of your report.
 2. Never auto-apply a change that touches a flagged region. Ask with `AskUserQuestion` (keep branch / accept change /
    merge both) or, if you cannot ask, return it as CONFIRM. No exceptions, even when the change looks obviously right.
@@ -59,8 +62,8 @@ again, and every one must pass. A problem in a file you may not edit (source) is
 ## Scope
 Compute the changed files from the repo root:
 ```bash
-{ git diff --name-only origin/main...HEAD; git status --porcelain -uall | cut -c4- | sed 's/.* -> //'; } | sort -u
-git diff origin/main...HEAD -- . ':(exclude)server/.env' ':(exclude)client/.env.development' ':(exclude)client/.env.staging' ':(exclude)client/.env.production'; git diff HEAD -- . ':(exclude)server/.env' ':(exclude)client/.env.development' ':(exclude)client/.env.staging' ':(exclude)client/.env.production'      # read the content, not just the names
+{ git diff --name-only $BASE...HEAD; git status --porcelain -uall | cut -c4- | sed 's/.* -> //'; } | sort -u
+git diff $BASE...HEAD -- . ':(exclude)server/.env' ':(exclude)client/.env.development' ':(exclude)client/.env.staging' ':(exclude)client/.env.production'; git diff HEAD -- . ':(exclude)server/.env' ':(exclude)client/.env.development' ':(exclude)client/.env.staging' ':(exclude)client/.env.production'      # read the content, not just the names
 ```
 On a first run, when a doc in the map does not exist yet, generate it from the code and from the existing
 `README.md` / `docs/ARCHITECTURE.md` (plan: move the README API section to `docs/API.md`, ARCHITECTURE §10 to

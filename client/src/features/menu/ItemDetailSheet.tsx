@@ -8,6 +8,7 @@ import { PopularBadge } from '../../components/PopularBadge';
 import { Price } from '../../components/Price';
 import { QuantityStepper, StepperNote } from '../../components/QuantityStepper';
 import { StockPill } from '../../components/StockPill';
+import { IconButton } from '../../components/IconButton';
 import { cn } from '../../lib/cn';
 import { useFocusTrap } from '../../lib/useFocusTrap';
 import { useReducedMotion } from '../../lib/useReducedMotion';
@@ -108,7 +109,7 @@ export function ItemDetailSheet({ item, onClose }: ItemDetailSheetProps) {
         onClick={requestClose}
         tabIndex={-1}
         className={cn(
-          'absolute inset-0 bg-ink/45 backdrop-blur-[2px]',
+          'absolute inset-0 bg-overlay/45 backdrop-blur-[2px]',
           closing ? 'animate-fade-out' : 'animate-fade-in',
         )}
       />
@@ -120,7 +121,7 @@ export function ItemDetailSheet({ item, onClose }: ItemDetailSheetProps) {
         tabIndex={-1}
         onAnimationEnd={handleAnimationEnd}
         className={cn(
-          'relative flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-[28px] bg-surface shadow-float outline-none md:max-w-[480px] md:rounded-[28px]',
+          'relative flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-card bg-surface shadow-float outline-none md:max-w-[480px] md:rounded-card',
           closing
             ? 'animate-sheet-down md:animate-fade-out'
             : 'animate-sheet-up md:animate-scale-in',
@@ -137,7 +138,7 @@ export function ItemDetailSheet({ item, onClose }: ItemDetailSheetProps) {
             imgClassName={cn('origin-center', !reducedMotion && 'animate-photo-zoom')}
           >
             {item.isPopular && !unavailable && (
-              <PopularBadge className="left-4 top-4 px-2 py-1 text-[11px]" />
+              <PopularBadge className="left-4 top-4 px-2 py-1 text-2xs" />
             )}
           </FoodPhoto>
           {/* Cream fade so the photo melts into the text (no dark scrim on food). */}
@@ -149,26 +150,25 @@ export function ItemDetailSheet({ item, onClose }: ItemDetailSheetProps) {
             aria-hidden
             className="absolute left-1/2 top-2 h-1 w-9 -translate-x-1/2 rounded-full bg-white/85 md:hidden"
           />
-          <button
-            type="button"
+          <IconButton
+            label="Close"
+            tone="floating"
             onClick={requestClose}
-            aria-label="Close"
             data-autofocus
-            className="absolute right-3 top-3 grid h-11 w-11 place-items-center rounded-full bg-surface/95 text-ink shadow-sm transition-transform duration-[120ms] active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
-          >
-            <X className="h-5 w-5" aria-hidden />
-          </button>
+            className="absolute right-3 top-3"
+            icon={<X className="h-5 w-5" aria-hidden />}
+          />
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 pt-1 animate-fade-up [animation-delay:40ms]">
           <p className="eyebrow text-muted">{item.category}</p>
-          <h2 id={titleId} className="mt-1 wrap-anywhere text-[28px] font-extrabold leading-tight">
+          <h2 id={titleId} className="mt-1 wrap-anywhere text-title font-extrabold leading-tight">
             {item.name}
           </h2>
-          <p className="mt-2 text-[15px] leading-relaxed text-muted">{item.description}</p>
+          <p className="mt-2 text-body leading-relaxed text-muted">{item.description}</p>
           <div className="mt-5 flex items-center justify-between gap-4">
             <div className="flex flex-col items-start">
-              <Price value={item.price} className="text-[28px] font-extrabold leading-none" />
+              <Price value={item.price} className="text-title font-extrabold leading-none" />
               {!showNote && <StockPill item={item} className="mt-2.5" />}
             </div>
             {unavailable ? (

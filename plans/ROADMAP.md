@@ -5,7 +5,7 @@ platform dashboards, background jobs and production hosting on AWS. This file is
 product roadmap (`Roadmap.pdf`, 33 items). It covers the target design (HLD), the detailed design of each feature
 (LLD) and the build order as small, verifiable steps.
 
-> **Status: proposal.** Nothing described as _target_ exists yet. [`docs/`](docs/) describes the app as it is today,
+> **Status: proposal.** Nothing described as _target_ exists yet. [`docs/`](../docs/) describes the app as it is today,
 > and when the two disagree the code wins (CLAUDE.md). When a phase ships, its owning docs (CLAUDE.md §6) become the
 > source of truth for it, and this file keeps only the checklist and the links.
 >
@@ -47,8 +47,9 @@ deliver it.
 
 - **Order.** Phases run in dependency order (see [Phases and milestones](#phases-and-milestones)). Two phases are
   parallel tracks:
-  - **P4** (payment aggregator research) starts right after P0, because commercial terms and KYC onboarding take
-    weeks. It must finish before P5.
+  - **P4** (payment aggregator research) starts **now**, in parallel with P0: its sales, CA and lawyer questions,
+    the KYC policy pages and the SMS DLT registration have no code dependency and are the longest lead items in the
+    plan. Only the sandbox spike (P4.6) waits for the P5.1 port shape. P4 must finish before P5.
   - **P8** (infrastructure) must reach a staging environment before P5's webhook work starts.
 
   Within a phase the steps are in build order, and each one is sized to be roughly one pull request.
@@ -64,6 +65,10 @@ deliver it.
   5. Run `/post-change` for major changes; every product step here is one.
   6. Record a version intent ([P0.3](#p03-semantic-versioning-with-change-intents)) and update the owning docs in
      the same change (CLAUDE.md §6).
+- **Branches.** Feature branches → PR into `dev` (CI required; `dev` deploys staging) → a release PR into `main`
+  (production, merged by the user) → a back-merge PR into `dev`. Hotfixes branch off `main`. Details in
+  [P0.2](#p02-continuous-integration), [P0.3](#p03-semantic-versioning-with-change-intents) and
+  [P8.5](#p85-continuous-deployment).
 - **Production is never touched by an agent** (CLAUDE.md §2). The user runs every step tagged **(user)**:
   production migrations, production seeds, live payment keys and DNS.
 - **Backward compatibility** with the deployed client holds on every step (CLAUDE.md §2): add fields, and never rename
@@ -162,7 +167,7 @@ flowchart LR
   P0["P0 Foundations"] --> P1["P1 Platform core"]
   P1 --> P2["P2 Multi-store"]
   P2 --> P3["P3 Catalog and media"]
-  P0 --> P4["P4 Aggregator research"]
+  P4["P4 Aggregator research<br/>starts now, parallel to P0"]
   P4 -->|"provider chosen, KYC done"| P5
   P3 --> P5["P5 Payments"]
   P5 --> P6["P6 Order experience"]
@@ -177,18 +182,18 @@ flowchart LR
   P9 --> P10["P10 Scale after the pilot"]
 ```
 
-| Milestone            | Exit criteria                                                                                                                                                   | Phases        | Size |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- | ---- |
-| M0 Gated repo        | CI is required on every PR; versions bump from change intents; the FE and BE images build and run locally in compose; no new business constant lands in code    | P0            | M    |
-| M1 Platform core     | Events leave every state change through the outbox; audit, idempotency, snapshots, rate limits and feature flags are live                                       | P1            | L    |
-| M2 Many stores       | Two brands, one with two branches, run on staging with store-scoped staff, hours, pause and per-store carts; legacy clients still work                          | P2            | L    |
-| M3 Real menus        | Managers edit catalog, modifiers, photos (S3), stock and deals from the dashboard                                                                               | P3 (+ P8.3)   | L    |
-| M4 Aggregator chosen | Aggregator chosen on measured fees, integration and escrow fit; ADR-003 accepted; merchant KYC submitted; sandbox spike merged behind the gateway port          | P4            | M    |
-| M5 Real money        | Test mode end to end on staging with the chosen aggregator: holds, acceptance, refunds, escrow, policies, reconciliation; live payments behind a per-store flag | P5 (+ P8.4–5) | XL   |
-| M6 Pickup flow       | ETA engine, tokens + QR verification, notifications and staff dashboard v2 are live                                                                             | P6            | L    |
-| M7 Insights          | Store and platform analytics, COGS, ratings, "Your usuals" and recommendations are live                                                                         | P7            | L    |
-| M8 Pilot live        | Production on AWS, load-tested to 1000 concurrent, failure drills done, runbooks and alerts in place; versions go to 1.0.0                                      | P8, P9        | L    |
-| M9 Scale             | The Kubernetes decision gate has been evaluated and acted on; recommender v2 if the data supports it                                                            | P10           | L–XL |
+| Milestone            | Exit criteria                                                                                                                                                                                           | Phases        | Size |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- | ---- |
+| M0 Gated repo        | CI is required on every PR into `dev` and `main`; versions bump from change intents through a release PR; the FE and BE images build and run locally in compose; no new business constant lands in code | P0            | L    |
+| M1 Platform core     | Events leave every state change through the outbox; audit, idempotency, snapshots, rate limits and feature flags are live                                                                               | P1            | L    |
+| M2 Many stores       | Two brands, one with two branches, run on staging with store-scoped staff, hours, pause and per-store carts; legacy clients still work                                                                  | P2            | L    |
+| M3 Real menus        | Managers edit catalog, modifiers, photos (S3), stock and deals from the dashboard                                                                                                                       | P3 (+ P8.3)   | L    |
+| M4 Aggregator chosen | Aggregator chosen on measured fees, integration and escrow fit; ADR-003 accepted; merchant KYC submitted; sandbox spike merged behind the gateway port                                                  | P4            | M    |
+| M5 Real money        | Test mode end to end on staging with the chosen aggregator: holds, acceptance, refunds, escrow, policies, reconciliation; live payments behind a per-store flag                                         | P5 (+ P8.4–5) | XL   |
+| M6 Pickup flow       | ETA engine, tokens + QR verification, notifications and staff dashboard v2 are live                                                                                                                     | P6            | L    |
+| M7 Insights          | Store and platform analytics, COGS, ratings, "Your usuals" and recommendations are live                                                                                                                 | P7            | L    |
+| M8 Pilot live        | Production on AWS, load-tested to 1000 concurrent, failure drills done, runbooks and alerts in place; versions go to 1.0.0                                                                              | P8, P9        | L    |
+| M9 Scale             | The Kubernetes decision gate has been evaluated and acted on; recommender v2 if the data supports it                                                                                                    | P10           | L–XL |
 
 ## Design principles
 
@@ -661,52 +666,79 @@ Each of these is written up in P0.8 as an ADR in `docs/adr/` (context, options, 
 | 005 | One codebase, three processes (`api`, `worker`, `reconciler`): a modular monolith                                                                                                                                                                                                                                                                                                                                                                                    | Separate repos or services per domain: network hops, and duplicated auth and scoping code                                                                                                                         |
 | 006 | Media in S3 behind CloudFront on the app's own origin. Uploads by presigned POST, variants by the worker (replaces the Supabase Storage plan in CLAUDE.md §9)                                                                                                                                                                                                                                                                                                        | Supabase Storage: the roadmap asks for S3, and the CDN and hosting are on AWS anyway                                                                                                                              |
 | 007 | Pilot on EC2 with docker compose behind ALB + CloudFront, images in ECR, deploys via SSM. Kubernetes (EKS) only after a measured gate                                                                                                                                                                                                                                                                                                                                | Kubernetes first: the operational cost arrives before any load justifies it                                                                                                                                       |
-| 008 | Semantic versioning per package from committed change-intent files, applied by a bump script at release                                                                                                                                                                                                                                                                                                                                                              | Bumping in every PR: version-line merge conflicts between parallel branches                                                                                                                                       |
+| 008 | Semantic versioning per package from committed change-intent files, applied by a bump script inside a release PR into `main` (`dev` receives the bump by back-merge)                                                                                                                                                                                                                                                                                                 | Bumping in every PR: version-line merge conflicts between parallel branches                                                                                                                                       |
 | 009 | Rate limiting: in-process token buckets (switchable to Redis) plus DB-enforced business limits, with WAF rules at the edge                                                                                                                                                                                                                                                                                                                                           | IP-only limits: campus Wi-Fi puts thousands of students behind a handful of NAT IPs                                                                                                                               |
 | 010 | Live updates: keep polling with ETags, and add Web Push for the moments that matter. SSE only if load tests show polling cost                                                                                                                                                                                                                                                                                                                                        | WebSockets now: a new stateful component for a need polling already meets                                                                                                                                         |
 
 ## P0 — Foundations and guardrails
 
 **Goal:** every later change is gated, versioned, configurable and containerised. **Items:** R3 (start), R6, R8, R9
-(lint, build, perf), R16. **Depends on:** nothing. **Size:** M.
+(lint, build, perf), R16. **Depends on:** nothing. **Size:** L. **Build order:** P0.1 → P0.8 (docs only, in parallel
+with the rest; ADR-002 and ADR-007 are accepted before P0.6 commits to pgmq and compose) → P0.2 → P0.3 → P0.7 → P0.6
+→ P0.5 → P0.4 (the largest and least blocking step comes last). The PR-level plan is
+[P0_FOUNDATIONS.md](P0_FOUNDATIONS.md).
 
 ### P0.1 Toolchain pinning
 
-- [ ] Add `.node-version` containing the active LTS major (`24` today; move to `26` once it enters LTS in October
-      2026). fnm and nvm both read it, and CI reads it through `actions/setup-node`'s `node-version-file`.
-- [ ] Add `"engines": { "node": ">=24" }` to `client/package.json` and `server/package.json`.
-- [ ] Add a root `package.json` (`"private": true`, no dependencies) for repository-level scripts only: `change`,
-      `release` and `release:dry` from P0.3, and `check:bundle` from P0.2. It is not a workspace root; each package
-      keeps its own lockfile.
-- [ ] README prerequisites: "Node from `.node-version` (`fnm use` or `nvm use`)".
+Node stays on **24**; there is no upgrade plan. Not every developer uses fnm, so the pin must hold for nvm, fnm, Volta
+and a plain install from nodejs.org.
 
-**Done when** a fresh clone picks the pinned version via `fnm use` and CI builds with the same major.
+- [ ] Add `.nvmrc` and `.node-version`, both containing `24` (nvm reads the first, fnm and nodenv read both; CI reads
+      one through `actions/setup-node`'s `node-version-file`). Volta reads neither, so the real enforcement is the next
+      bullet.
+- [ ] Add `"engines": { "node": "24.x" }` to `client/package.json` and `server/package.json`, and `engine-strict=true`
+      in `client/.npmrc` and `server/.npmrc`, so `npm ci` and `npm install` refuse another major (`EBADENGINE`). Bump
+      `@types/node` to `^24`.
+- [ ] Add a root `package.json` (`"private": true`) for repository-level scripts: `change`, `release`, `release:dry`
+      and `change:check` from P0.3, `check:bundle`, `check:migrations` and `check:durations` from P0.2 and P0.4, and
+      `format` / `format:check` for `scripts/**`, `.github/**` and `plans/**`, with `prettier` as its only
+      devDependency. It is not a workspace root; each package keeps its own lockfile.
+- [ ] Line endings are **LF everywhere**: `.gitattributes` gains `* text=auto eol=lf`, an explicit `eol=lf` for
+      `*.sh`, `*.template` and `Dockerfile*`, and `binary` for images and fonts; run `git add --renormalize .` once
+      (a shell script with CRLF fails silently inside an Alpine container).
+- [ ] README prerequisites: "Node 24 with any installer (nvm, fnm, Volta or nodejs.org); `npm ci` refuses other
+      majors". Fix the current line that says "Node 20+ … built and tested with Node 26".
+
+**Done when** a fresh clone on Node 24 installs and passes the gate, a Node 22 shell fails `npm ci` with
+`EBADENGINE`, CI builds with the same major, and `git ls-files --eol` shows no CRLF in the working tree.
 
 ### P0.2 Continuous integration
 
-GitHub Actions, one workflow per concern. Every job is required on pull requests to `main`; turning on branch
-protection is a **(user)** step.
+GitHub Actions, one workflow per concern. Development happens on feature branches that merge into `dev` through pull
+requests; `dev` reaches `main` through a release PR ([P0.3](#p03-semantic-versioning-with-change-intents)). CI runs
+on pull requests into `dev` and into `main`, and on pushes to both. One aggregate job, `ci-ok`, is the only required
+check, so a PR-only or path-filtered job never leaves a required check pending. **(user)** steps: rulesets on `dev`
+and `main` requiring `ci-ok` (and `main` accepting PRs only from `release/*` and `hotfix/*`), making `dev` the GitHub
+default branch so new PRs target it, and the `no-release` and `dependencies` labels.
 
-| Workflow       | Trigger                                                           | Jobs                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| -------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ci.yml`       | every PR, and pushes to `main`                                    | `client`: `npm ci`, typecheck, lint, `format:check`, test, `build:staging`, bundle budget. `server-static`: `npm ci`, typecheck, lint, `format:check`, build. `server-tests`: Supabase CLI, `supabase start` (without the services the tests do not use, such as Studio, Storage and Realtime), `cp .env.example .env`, seed, `npm test`. `migrations`: append-only and ordering checks, and generated-types drift. `version-intent` (P0.3) |
-| `perf.yml`     | PRs touching `client/**`, and nightly                             | Lighthouse CI on the preview build against the CI stack: `/` and a store menu at 360×640, Slow 4G, 4× CPU, three runs, median                                                                                                                                                                                                                                                                                                               |
-| `security.yml` | PRs, and weekly                                                   | `npm audit --omit=dev --audit-level=high` per package, gitleaks secret scan, CodeQL (GitHub default setup)                                                                                                                                                                                                                                                                                                                                  |
-| `docker.yml`   | PRs touching a Dockerfile, `client/**` or `server/**` (from P0.6) | build both images without pushing, `hadolint`, and a Trivy scan (warn at first, then fail on HIGH/CRITICAL)                                                                                                                                                                                                                                                                                                                                 |
+| Workflow       | Trigger                                               | Jobs                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| -------------- | ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ci.yml`       | PRs into `dev` and `main`; pushes to `dev` and `main` | `client`: `npm ci`, typecheck, lint, `format:check`, test, `build:staging`, bundle budget. `server-static`: `npm ci --ignore-scripts`, typecheck, lint, `format:check`, build. `server-tests`: the `supabase` devDependency starts the local stack without the services the tests do not use, `cp .env.example .env`, seed, `npm test`, generated-types drift. `migrations` (PRs only): append-only and ordering against the PR's base branch. `version-intent` (PRs only, P0.3). `repo`: root `format:check` and `node --test scripts`. `images` (from P0.6): build both images without pushing, `hadolint`, smoke. `ci-ok`: the aggregate, and the one required check |
+| `perf.yml`     | PRs touching `client/**`, and nightly; not required   | Lighthouse CI against the compose stack from P0.6 (so it lands after P0.6): `/` and the menu at 360×640, Slow 4G, 4× CPU, three runs, median                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `security.yml` | PRs, and weekly; not required                         | `npm audit --omit=dev --audit-level=high` per package; gitleaks secret scan (the binary from its release, because the action needs a licence for organisation repos); CodeQL default setup **(user)** only if the repository is public or has GitHub Code Security                                                                                                                                                                                                                                                                                                                                                                                                      |
 
 **LLD details**
 
-- **Concurrency.** `concurrency: { group: ci-${{ github.ref }}, cancel-in-progress: true }`, so a new push cancels
-  the old run.
-- **Caching.** `actions/setup-node` caches npm, keyed on each lockfile.
-- **Supabase in CI.** `supabase/setup-cli` runs the same `server/supabase/config.toml` as local, so the test-target
-  guard sees `APP_ENV=local` and a `127.0.0.1` URL and runs every suite. `run-lock.ts` needs nothing extra, because
-  one job runs one test process.
-- **Generated-types drift.** Run `supabase gen types typescript --local > src/types/database.ts`, then
-  `git diff --exit-code`. It fails when a migration landed without `npm run db:types`.
-- **Append-only migrations.** `git diff --name-status origin/main...HEAD -- server/supabase/migrations/` may contain
-  only `A` (added) rows, and every added file's timestamp must sort after the newest one on `main`. This enforces
-  CLAUDE.md §2 mechanically. It also catches the silent out-of-order case that `merge-conflict-resolver` looks for.
+- **Concurrency.** `group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}` with
+  `cancel-in-progress: ${{ github.event_name == 'pull_request' }}`: a new push to a PR cancels its old run, and a push
+  to `dev` or `main` is never cancelled. The deploy workflows (P8.5) never cancel in progress either.
+- **Caching.** `actions/setup-node` with `node-version-file: .node-version` and `cache: npm`, keyed on each lockfile.
+- **Supabase in CI.** The `supabase` CLI is already a devDependency, so `server-tests` runs it from the lockfile
+  (`supabase start -x studio,storage-api,imgproxy,mailpit,realtime,edge-runtime,logflare,vector,supavisor,postgres-meta`;
+  the `-x` names are CLI-version specific, one more reason to pin through the lockfile). It runs the same
+  `server/supabase/config.toml` as local, so the test-target guard sees `APP_ENV=local` and a `127.0.0.1` URL and
+  runs every suite; `cp .env.example .env` works because the example already holds the local CLI's default keys.
+  `run-lock.ts` needs nothing extra, because one job runs one test process. Realistic wall time: images 2–4 min,
+  seed seconds, tests 1–3 min; the whole `ci.yml` run 8–10 min.
+- **Generated-types drift.** In the same job, run `supabase gen types typescript --local > src/types/database.ts`,
+  then `git diff --exit-code`. It fails when a migration landed without `npm run db:types`, and it is stable because
+  the CLI version equals the one that generated the committed file.
+- **Append-only migrations.** On pull requests only (`github.base_ref` is empty on pushes), with `fetch-depth: 0`:
+  `git diff --name-status --no-renames origin/<base>...HEAD -- server/supabase/migrations/` may contain only `A`
+  (added) rows, every added file's timestamp must sort after the newest one on the base branch, and files already
+  present on `origin/main` are ignored (a hotfix back-merge brings them into `dev`). This enforces CLAUDE.md §2
+  mechanically, and catches the silent out-of-order case that `merge-conflict-resolver` looks for. It is a Node
+  script (`scripts/ci/check-migrations.mjs`) with a scratch-repo self-test, not shell.
 - **Bundle budget.** `scripts/ci/check-bundle.mjs` reads `client/dist/.vite/manifest.json` (turn on
   `build.manifest` in `vite.config.ts`). It takes the entry chunk plus its static imports (the modulepreload set),
   gzips each at level 9, sums them, and compares the total with `client/perf-budget.json` (`{ "initialJsGzipKb": 170 }`).
@@ -715,15 +747,17 @@ protection is a **(user)** step.
 - **Lighthouse CI.** `client/lighthouserc.json` sets `formFactor: mobile`, a 360×640 screen,
   `throttling: { rttMs: 150, throughputKbps: 1638, cpuSlowdownMultiplier: 4 }` and `numberOfRuns: 3`. Assertions:
   LCP ≤ 2500 ms and CLS ≤ 0.1 are errors, and total blocking time ≤ 200 ms is a warning (it stands in for INP, which a
-  lab run cannot measure). Every assertion starts as a warning for the first two weeks while CI noise is calibrated.
-  `docs/PERF_BASELINE.md` (owned by `perf-auditor`) records the CI numbers next to the manual ones.
+  lab run cannot measure). Every assertion starts as a warning for the first two weeks while CI noise is calibrated,
+  and the workflow is not a required check. `docs/PERF_BASELINE.md` (owned by `perf-auditor`) records the CI numbers
+  next to the manual ones, re-baselined on Node 24.
 - **Dependencies.** `.github/dependabot.yml` covers npm in `client/` and `server/`, GitHub Actions and Docker,
-  weekly and grouped by minor/patch.
+  weekly and grouped by minor/patch, with `target-branch: dev` and the labels `dependencies` and `no-release` (a bot
+  cannot write a change intent; the next human intent carries the bump).
 - **Load tests** join CI in [P9.1](#p91-load-testing-from-100-to-1000-concurrent) (a k6 smoke run on PRs, full runs
   on a schedule).
 
 **Done when** a PR that breaks lint, types, a test, the build, the bundle budget, migration order or the generated
-types cannot merge, and the whole `ci.yml` run takes under 15 minutes.
+types cannot merge into `dev` or `main`, and the whole `ci.yml` run takes under 15 minutes.
 
 ### P0.3 Semantic versioning with change intents
 
@@ -747,7 +781,7 @@ a temp file and a script applies the bump.
   Store list and per-store menus behind the multi_store_ui flag.
   ```
 
-- **Level rules.** They go into CLAUDE.md in a new "Versioning" section:
+- **Level rules.** They go into CLAUDE.md in a new "Versioning and branches" section:
 
   | Package | major                                                                                                                                                   | minor                                                                    | patch                                    |
   | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ | ---------------------------------------- |
@@ -756,6 +790,10 @@ a temp file and a script applies the bump.
 
   Docs-only changes need no intent.
 
+- **Branches.** Feature branches → PR into `dev` (CI required; `dev` deploys staging, P8.5) → a release PR into
+  `main` (production) → a back-merge PR into `dev`. Hotfixes branch off `main` as `hotfix/*`, carry their own intent
+  and their own release run, and are back-merged the same way. Only the user merges into `main`. Migrations are
+  immutable once merged into `dev`.
 - **How Claude records it.** When a change touches `client/src`, `server/src`, `server/scripts`,
   `server/supabase/migrations` or a `package.json`, Claude runs
   `npm run change -- --client minor --server patch "summary"` before finishing. Three places enforce this:
@@ -763,33 +801,47 @@ a temp file and a script applies the bump.
   - an added step at the end of `/post-change` (record the intent if one is missing);
   - `.claude/hooks/major-change-gate.js`, which reminds once per set of files when source changed but no new
     `.changes/*.md` exists.
-- **Scripts** (Node, no dependencies), in `scripts/version/`:
-  - `change.mjs` writes `.changes/<yyyymmdd>-<random-words>.md` and validates the levels.
-  - `release.mjs` reads every intent, takes the highest level per package (major > minor > patch), and runs
-    `npm version <level> --no-git-tag-version` in each package, which updates `package.json` and
-    `package-lock.json`. It prepends `## <version> — <date>` with the summaries to `client/CHANGELOG.md` and
-    `server/CHANGELOG.md`, deletes the consumed files, and writes `release.json` with the tags to create
+- **Scripts** (Node, no dependencies), in `scripts/version/`, tested with `node --test` in the `repo` CI job:
+  - `change.mjs` writes `.changes/<yyyymmdd>-<hhmmss>-<random>.md` and validates the levels.
+  - `release.mjs` reads every intent, takes the highest level per package (major > minor > patch), and writes the
+    new `version` into each `package.json` and `package-lock.json` directly (no `npm version`, so no lifecycle
+    scripts and no git checks). It prepends `## <version> — <date>` with the summaries to `client/CHANGELOG.md` and
+    `server/CHANGELOG.md`, deletes the consumed files, and writes a gitignored `release.json` with the tags to create
     (`client-v0.4.0`, `server-v0.5.3`). `--dry-run` only prints the plan. Before 1.0.0 it refuses a `major` without
     `--allow-major`, because a major is a red flag under the backward-compatibility rule.
-  - `check.mjs` is the CI job: it fails when package source changed without a new intent file, unless the PR has the
-    `no-release` label.
-- **When the bump happens.** At release time, never in each PR: the CD workflow on `main`
-  ([P8.5](#p85-continuous-deployment)) runs it, or the user runs `npm run release`. Claude never commits or tags
-  (CLAUDE.md §12).
-- **At runtime.** The versions are visible (P0.7): `GET /api/health` returns the server version, and the client sends
-  `X-Client-Version` and shows its version in Profile.
+  - `check.mjs` is the `version-intent` CI job, on pull requests only. Into `dev`, or from `hotfix/*` into `main`: it
+    fails when package source changed without a new intent file, unless the PR has the `no-release` label (Dependabot
+    PRs carry it). From `release/*` into `main`: it checks that `.changes/` is empty and that both versions are above
+    the latest `client-v*` / `server-v*` tags.
+- **When the bump happens.** Inside a **release PR**, never in a feature PR and never as a bot commit on `main` (a
+  protected `main` would need a bypass token for that). `release.yml`'s `prepare` job (`workflow_dispatch`, `dry_run`
+  on by default) branches `release/<date>` off `dev`, runs `npm run release`, commits the bump, the changelogs and the
+  deleted intents, and opens the PR into `main`. The user merging that PR is the production approval. On the merge,
+  the `tag-and-backmerge` job (`push` to `main`) creates the missing `client-vX` / `server-vY` tags and opens the
+  back-merge PR `main` → `dev` (labelled `no-release`; conflict-free by construction, because `dev` never edits the
+  `version` lines and the consumed intents are clean deletes). P8.5 hangs the production deploy off the tags. Both PRs
+  are opened with a GitHub App token **(user)**, because PRs opened with `GITHUB_TOKEN` do not trigger CI; without
+  the App, the workflow pushes the branch and prints the compare URL for the user to open.
+- **Staging builds** from `dev` are tagged `dev-<sha7>` (plus a moving `dev`); `package.json` keeps the last released
+  version, and `/api/health.commit` plus the version shown in Profile disambiguate. The 426 gate (P0.7) compares the
+  numeric triple only, so staging is never "outdated" against a fresh `min_client_version`.
+- **At runtime.** The versions are visible (P0.7): `GET /api/health` returns the server version and commit, and the
+  client sends `X-Client-Version` and shows its version in Profile.
 
 **Steps**
 
-- [ ] Add `.changes/README.md` (the format and the level rules), the three scripts, and the root `package.json`
-      scripts.
-- [ ] Add the CLAUDE.md "Versioning" section, the `/post-change` step and the reminder in `major-change-gate.js`,
-      with its `--self-test` extended for the new check.
-- [ ] Add the `version-intent` CI job.
+- [ ] Add `.changes/README.md` (the format and the level rules), the three scripts with their `node --test` files,
+      the root `package.json` scripts (`change`, `release`, `release:dry`, `change:check`), and the seeded
+      `client/CHANGELOG.md` and `server/CHANGELOG.md`.
+- [ ] Add the CLAUDE.md "Versioning and branches" section, the `/post-change` step and the reminder in
+      `major-change-gate.js`, with its `--self-test` extended for the new check. Point every `origin/main` in
+      `.claude/**` at "the PR's base branch" (`origin/dev` for features, `origin/main` for hotfixes).
+- [ ] Add the `version-intent` CI job and `.github/workflows/release.yml` (`prepare` and `tag-and-backmerge`).
 - [ ] Record the first intent for P0 itself.
 
-**Done when** two branches that both record intents merge without conflict, and `npm run release:dry` shows one
-combined bump per package.
+**Done when** two branches that both record intents merge without conflict, `npm run release:dry` shows one combined
+bump per package, `release.yml` with `dry_run` prints the same plan, and a PR into `dev` that touches `server/src`
+without an intent fails `version-intent`.
 
 ### P0.4 Configuration registry and no hardcoding
 
@@ -797,35 +849,32 @@ combined bump per package.
 
 - **Business rules and operational limits** (quantities, windows, timeouts, thresholds, fees, intervals) live in
   site or store settings, with a default and bounds.
-- **Deployment values** (ports, URLs, keys, TTLs, trust-proxy hops) are environment variables, read through
-  `utils/env.ts` on the server and runtime env on the client (P0.6).
-- **Presentation constants** (animation milliseconds, layout pixels, design tokens, regexes, storage key names) stay
-  as named constants next to their use. They are not "hardcoding" under this policy.
-- **Seed and demo data** live in fixture files, not code.
+- **Deployment values** (ports, URLs, keys, TTLs, trust-proxy hops, and the session idle limit, which must equal
+  Supabase's `inactivity_timeout`) are environment variables, read through `utils/env.ts` on the server and runtime
+  env on the client (P0.6).
+- **Platform and presentation constants** (validation bounds that mirror Supabase Auth or E.164, animation
+  milliseconds, layout pixels, design tokens, regexes, storage key names) stay as named constants next to their use.
+  They are not "hardcoding" under this policy; a parity test keeps the client's copy equal to the server's.
+- **Seed and demo data** live in a fixture module, not in the seeding logic.
 - **The client never mirrors a server rule.** It reads the rule from the API. The one allowed copy is
-  `client/src/config/fallbacks.json`, used only for the very first paint, and a test keeps it equal to the server's
-  defaults.
+  `client/src/config/fallbacks.json`, used for the very first paint and for the platform constants above, and a test
+  keeps it equal to the server's defaults.
 
 **Design**
 
-- **`GET /api/config`** (public; `cached('config')`; the client uses `useResource({ key: 'config', persist: true })`
-  through a new `useConfig()`) returns:
+- **`GET /api/config`** (public; registered before the client-version gate; derived from the already-cached
+  `getSettings()`, so it needs no second cache key and no second invalidation; the client uses
+  `useResource({ key: 'config', persist: true })` through a new `useConfig()`) returns:
 
   ```ts
   interface ConfigDto {
     serverVersion: string;
     minClientVersion: string;
-    features: Record<string, boolean>; // flags marked client_visible (P1.7)
-    payment: { provider: string; publicKey: string | null } | null; // the P4 choice, or 'fake'; P5
-    limits: {
-      maxLinesPerOrder: number;
-      nameMaxLength: number;
-      noteMaxLength: number;
-      phoneDigits: { min: number; max: number };
-      password: { min: number; max: number };
-    };
+    features: Record<string, boolean>; // flags marked client_visible (P1.7); empty until then
+    payment: { provider: string; publicKey: string | null } | null; // the P4 choice, or 'fake'; null until P5
+    limits: { maxLinesPerOrder: number };
     polling: { orderMs: number; ordersMs: number; staffBoardMs: number };
-    session: { idleDays: number };
+    session: { idleDays: number }; // env SESSION_IDLE_DAYS, which must equal Supabase's inactivity_timeout
   }
   ```
 
@@ -834,72 +883,76 @@ combined bump per package.
 
 - **Store rules travel with the menu.** `MenuResponse.rules = { maxQuantityPerItem, lowStockThreshold }` is an
   additive field. That covers the cart without an extra request, and these rules become per-store in P2.3.
-- **Polling is server-driven.** Order and list responses carry `pollAfterMs` (additive), and the client's
-  `pollInterval` uses it, falling back to config. The server can then back off under load without shipping a client.
+- **Polling intervals come from `/api/config.polling`**, with the fallback file for the first paint. Server-driven
+  `pollAfterMs` on order responses (so the server can back off under load) is deferred until
+  [P9.1](#p91-load-testing-from-100-to-1000-concurrent) measures a need (principle 12).
 - **Two bounds for each configurable limit.** zod keeps a fixed sanity bound (for example, at most 100 lines, to cap
   payloads). The configurable business bound (`max_lines_per_order`) is enforced in the service with the same
   `VALIDATION_ERROR` message style. The schema stays static and the business rule stays editable.
 - **Settings storage.** New typed `site_settings` columns with check constraints, matching the existing pattern
-  (schema-guard: prefer a column to a new table). `store_settings` arrives in P2.3.
+  (schema-guard: prefer a column to a new table). `store_settings` arrives in P2.3. `min_client_version` is P0.7's
+  column.
 
-**Steps**
+**Steps** (four PRs; the plan is in [P0_FOUNDATIONS.md](P0_FOUNDATIONS.md))
 
-- [ ] Migration: add `max_lines_per_order` (30, 1–100), `order_poll_ms` (4000), `orders_poll_ms` (8000),
-      `staff_board_poll_ms` (4000), all bounded to 2000–60000, plus `session_idle_days` (7, 1–90) and
-      `min_client_version` (`'0.0.0'`). Then `db:types`, the serializer, and `SiteSettingsDto` plus the admin form
-      fields.
-- [ ] Add `GET /api/config` (route, controller, service, cache key, invalidated by `updateSettings`). Add the
-      `useConfig()` hook and `client/src/config/fallbacks.json`, plus a server test comparing the served defaults
-      with that file.
-- [ ] Move every [A1](#a1-hardcoded-values-inventory) row to its destination. Each one is a small PR with its tests.
-- [ ] Move the seed data to `server/scripts/seed-data/*.json`, validated with zod at load. Seeding behaviour does not
-      change.
-- [ ] Read ports from env: `vite.config.ts` proxies to `VITE_API_PROXY_TARGET` (default `http://localhost:8000`), and
-      `start.sh` reads `PORT` from `server/.env`. The defaults live in the `.env.example` files only.
-- [ ] Lint guard: ESLint `no-magic-numbers` scoped to `server/src/services/**`, `server/src/domain/**` and
-      `client/src/features/**/*Rules.ts` (ignore `0`, `1`, `-1` and `100`, plus default values). Add a CI check that
-      fails on duration-looking literals (`\b\d+_000\b`) in those paths.
+- [ ] Migration: add `max_lines_per_order` (30, 1–100), `order_poll_ms` (4000), `orders_poll_ms` (8000) and
+      `staff_board_poll_ms` (4000), the last three bounded to 2000–60000. Then `db:types`, the serializer, and
+      `SiteSettingsDto` plus the admin form fields (the form renders from the `settingsRules.ts` registry).
+- [ ] Add `GET /api/config` (route, controller, service) and env `SESSION_IDLE_DAYS`. Add the `useConfig()` hook and
+      `client/src/config/fallbacks.json`, plus a server test comparing the served defaults with that file and a unit
+      test comparing the client's validation constants with the server's `schemas/limits.ts`. The three client poll
+      constants go.
+- [ ] Add `MenuResponse.rules`; enforce `max_lines_per_order` in `createOrder` with zod's sanity bound at 100.
+- [ ] Move the seed data into a typed `server/scripts/seed-data.ts` fixture; seeding behaviour does not change. Read
+      `PUBLIC_READ_TTL_MS` and `TRUST_PROXY_HOPS` from env. Read ports from env: `vite.config.ts` proxies to
+      `VITE_API_PROXY_TARGET` (default `http://localhost:8000`) and listens on `VITE_DEV_PORT`, and `start.sh` reads
+      `PORT` and `SUPABASE_URL` from `server/.env`. The defaults live in the `.env.example` files only. Name
+      `APP_TITLE` once in `client/src/config/app.ts`.
+- [ ] CI guard: `scripts/ci/check-durations.mjs` fails on duration-looking literals (`\b\d+_000\b`) in
+      `server/src/services/**`, `server/src/domain/**` and `client/src/features/**/*Rules.ts`. No ESLint
+      `no-magic-numbers` rule: the grep catches the class of mistake that matters, and the rule is noisy.
 - [ ] Write `docs/CONFIGURATION.md` (the registry: key, tier, type, default, bounds, reader, editor) and add its row
       to CLAUDE.md §6.
 
-**Done when** every A1 row is resolved, the parity test and lint guard run in CI, and changing a setting in `/admin`
-changes the behaviour with no deploy.
+**Done when** every A1 row marked P0.4 is resolved, the parity tests and the duration guard run in CI, and changing a
+setting in `/admin` changes the behaviour with no deploy.
 
 ### P0.5 Error logging clean-up
 
-R6. The logging base is already good (`docs/LOGGING.md`). This step makes errors classifiable and traceable across
-processes, and brings client-side crashes into view.
+R6. The logging base is already good (`docs/LOGGING.md`). This step makes upstream failures classifiable and traceable
+across processes. Client-side crash reporting moves to [P1.6](#p16-rate-limiting-and-abuse-protection-v1), because
+an unauthenticated write endpoint needs the rate limiter that lands there.
 
 - [ ] **Error classes** in `server/src/utils/errors.ts`:
   - `AppError`: expected, 4xx (existing).
-  - `IntegrationError`: `provider`, `operation`, `retryable`, `cause`. It maps to 503 `UPSTREAM_UNAVAILABLE`, or
-    502 `PAYMENT_UNAVAILABLE` for the gateway.
-  - `InvariantError`: a programmer error. It answers 500 and logs at `error` with `invariant: true`.
+  - `IntegrationError`: `provider`, `operation`, `retryable`, `cause`. It maps to 503 `UPSTREAM_UNAVAILABLE` with
+    `Retry-After`, or 502 `PAYMENT_UNAVAILABLE` for the gateway (P5). Its first throwers are the Supabase transport
+    failures (`utils/supabase.ts`, where PostgREST is unreachable) and Supabase Auth 5xx responses in
+    `middleware/auth.ts`, so a database outage answers 503 quickly instead of 500 (P9.2 drill 2).
+  - `InvariantError` (a programmer error: 500, logged at `error` with `invariant: true`) arrives with its first
+    thrower, the worker in P1.2.
 
-  The `errorHandler` maps all three, and still logs each failure once.
+  The `errorHandler` maps them, and still logs each failure once.
 
-- [ ] **Log shape.** `err` carries the cause chain (pino's `errWithCause` serializer). Every line carries `route`,
-      `code`, `status`, and `userId` and `storeId` (ids only). The worker (P1.2) logs `jobId`, `eventId`,
-      `eventType`, `queue` and `attempt` the same way. Nothing personal goes into message strings (existing rule).
-- [ ] **Redaction.** Add the gateway's signature and checksum fields (`signature`, `checksum`, `x-verify` and the
-      like, named once P4 picks the provider), `key_secret`, `webhookSecret`, `vpa`, `pickupCode`,
-      `customerPhone`, `customer_phone` and outgoing `authorization` headers to `REDACT_PATHS`, with cases in
-      `logging.safe.test.ts`.
-- [ ] **Client error reporting** (no new dependency). `client/src/lib/errorReporter.ts` listens to `error`,
-      `unhandledrejection`, `PageBoundary` and a new root `AppErrorBoundary`. It sends a batch to
-      `POST /api/client-errors`: at most 5 per page load and 4 KB each, sampled by a site setting, with query strings
-      and anything token-like stripped, and with `X-Client-Version` and the route. The server validates the report,
-      caps it (rate-limited properly once P1.6 lands), and logs `warn` `Client error`.
-- [ ] Update `docs/LOGGING.md` with the error classes, the client reporting path and the job log fields.
+- [ ] **Log shape.** `err` carries the cause chain (pino's `errWithCause` serializer). Every error line carries
+      `route`, `code`, `status` and `userId` (ids only; `storeId` from P2). The worker (P1.2) logs `jobId`,
+      `eventId`, `eventType`, `queue` and `attempt` the same way. Nothing personal goes into message strings
+      (existing rule).
+- [ ] **Redaction.** Add the provider-agnostic keys now: `signature`, `checksum`, `secret`, `apiKey`, `api_key`,
+      `key_secret`, `webhookSecret`, `webhook_secret`, `vpa`, `pickupCode`, `pickup_code`, `customerPhone`,
+      `customer_phone` and outgoing `authorization` headers, to `REDACT_PATHS`, with cases in `logging.safe.test.ts`.
+      Provider-specific header names (`x-verify` and the like) are added with the adapter once P4 picks the provider.
+- [ ] Drop `INVALID_CREDENTIALS` from the server's `ErrorCode`: it is only ever synthesised on the client
+      (`docs/API.md` records this).
+- [ ] Update `docs/LOGGING.md` with the error classes and the job log fields.
 
 **Done when**
 
 - an upstream failure logs once, with its cause chain, and answers the 503 envelope;
-- a thrown render error on a phone appears in the server log with the client version, the route and a stack;
 - a test proves that none of the new secret or PII keys reaches output.
 
-Sentry is an option, but it adds a runtime host (CLAUDE.md §9) and about 25 KB gzip; see
-[Decisions needed](#decisions-needed).
+Sentry remains an option for the client-side reporting in P1.6, but it adds a runtime host (CLAUDE.md §9) and about
+25 KB gzip; see [Decisions needed](#decisions-needed).
 
 ### P0.6 Docker images and local compose
 
@@ -926,7 +979,8 @@ RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 COPY --from=build /app/dist ./dist
 USER node
 EXPOSE 8000
-HEALTHCHECK CMD wget -qO- http://127.0.0.1:8000/api/health || exit 1
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+  CMD wget -qO- http://127.0.0.1:${PORT:-8000}/api/health || exit 1
 CMD ["node", "dist/src/server.js"]
 ```
 
@@ -936,28 +990,41 @@ CMD ["node", "dist/src/server.js"]
 
 **`client/Dockerfile`** (build once, promote the same image to staging and production)
 
-- **Stage 1:** `node:24-alpine`, `npm ci`, `vite build`. The Supabase values are not baked in (see runtime env
-  below).
+- **Stage 1:** `node:24-alpine`, `npm ci`, `vite build --mode container`. That mode skips `vite.config.ts`'s
+  required-env check (a committed `client/.env.container` holds placeholders), so the Supabase values are not baked
+  in (see runtime env below).
 - **Stage 2:** `nginxinc/nginx-unprivileged:alpine`, serving `dist/` with `client/nginx/default.conf.template`:
   - `try_files $uri /index.html` (SPA fallback);
   - `location /api/ { proxy_pass ${API_UPSTREAM}; }` (same-origin API, so the browser needs no CORS);
   - the cache headers already planned in DEPLOYMENT.md: `/assets/*` gets `public, max-age=31536000, immutable`,
     `index.html` gets `no-cache`, and `/images/*` gets a week;
   - gzip on;
-  - security headers: CSP with `default-src 'self'` plus the hosts CLAUDE.md §9 allows, `X-Content-Type-Options`,
-    `Referrer-Policy`, and a `Permissions-Policy` with `camera=(self)` for the staff QR scanner.
-- **Runtime env.** On container start, `client/nginx/runtime-env.sh` writes `/runtime-env.js`
-  (`window.__RUNTIME_ENV__ = { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, LOG_LEVEL }`). `index.html` loads it as a
-  classic `<script src>` before the module bundle: it is same-origin, about 200 bytes and never blocks the bundle
-  download. `lib/supabase.ts` and `lib/logger.ts` read `window.__RUNTIME_ENV__` first and then `import.meta.env`.
-  Development keeps `client/.env.<mode>` through an empty `client/public/runtime-env.js`. `vite.config.ts` keeps its
-  "missing variables" check for `vite` and `build` modes that are not container builds.
+  - security headers, included in **every** `location` (an `add_header` inside a location discards inherited
+    ones): `X-Content-Type-Options`, `Referrer-Policy`, a `Permissions-Policy` with `camera=(self)` for the staff QR
+    scanner, and a CSP with `default-src 'self'` plus the hosts CLAUDE.md §9 allows. The CSP ships as
+    `Report-Only` first: the inline font `onload=` in `index.html` moves into `main.tsx` in this step, and enforcing
+    is a later **(user)** decision once staging shows no reports;
+  - a `HEALTHCHECK` on `/healthz`, and `runtime-env.sh` copied with `--chmod=755` (the exec bit is lost on some
+    checkouts). `API_UPSTREAM` has no trailing slash, or nginx strips `/api`.
+- **Runtime env.** On container start, `client/nginx/runtime-env.sh` (running as nginx's uid 101, which cannot
+  write the html directory) writes `/tmp/runtime-env/runtime-env.js`
+  (`window.__RUNTIME_ENV__ = { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, LOG_LEVEL, REQUEST_TIMEOUT_MS }`), and nginx
+  serves it at `/runtime-env.js` through an `alias` with `no-cache`. It fails fast when a value is empty or contains
+  a quote. `index.html` loads it as a classic `<script src>` before the module bundle: it is same-origin, about 200
+  bytes and never blocks the bundle download. A new `lib/runtimeEnv.ts` reads `window.__RUNTIME_ENV__` first and
+  then `import.meta.env`; `lib/supabase.ts`, `lib/logger.ts` and `services/api.ts` (`REQUEST_TIMEOUT_MS`) read
+  through it. Development keeps `client/.env.<mode>` through an empty `client/public/runtime-env.js`.
+  `vite.config.ts` keeps its "missing variables" check for every mode except `container`.
 
 **`compose.yaml`** (repository root, production-like local runs)
 
-- **Services:** `web` (port 8080), `api`, and later `worker`, `reconciler` and `minio` (P3.3).
+- **Services:** `web` (port 8080), `api`, and later `worker`, `reconciler` and `minio` (P3.3). `api` sets
+  `TRUST_PROXY_HOPS=1` because nginx is in front of it; `web` depends on `api` being healthy, because nginx resolves
+  the upstream at start.
 - **Supabase** stays `supabase start` on the host, and the containers reach it at `host.docker.internal:54321`
-  (`extra_hosts: ["host.docker.internal:host-gateway"]` on Linux).
+  (`extra_hosts: ["host.docker.internal:host-gateway"]` on Linux). If `@supabase/server` checks the JWT issuer, the
+  API must reach Supabase at the browser's URL instead (`network_mode: host` on Linux): test this in the first hour
+  and record the result in DEPLOYMENT.md.
 - **Day-to-day development** keeps `./start.sh`, for Vite HMR and `tsx watch`. Compose is for end-to-end, load and
   failure tests.
 
@@ -965,7 +1032,8 @@ CMD ["node", "dist/src/server.js"]
 
 - [ ] Add both Dockerfiles, their `.dockerignore`s, the nginx template and entry script, and runtime env in
       `lib/supabase.ts` and `lib/logger.ts` (with a unit test for the precedence).
-- [ ] Add `compose.yaml` and the `docker.yml` CI job.
+- [ ] Add `compose.yaml` and the `images` job in `ci.yml` (build both images without pushing, `hadolint`, a smoke
+      run of each, size assertions). No Trivy step: the registry scan in P8.2 covers the images that ship.
 - [ ] Update `docs/DEPLOYMENT.md`: replace "Future: Docker + nginx" with a "Containers" section, and add a README
       line.
 
@@ -979,30 +1047,46 @@ CMD ["node", "dist/src/server.js"]
 ### P0.7 Health, readiness and client version
 
 - [ ] **Health and version.** `GET /api/health` returns `{ ok: true, version, commit }` (additive). The version is
-      read from `package.json` at build time, and the commit comes from the `GIT_COMMIT` build argument.
+      read from `package.json` at start, and the commit comes from the `GIT_COMMIT` build argument.
 - [ ] **Readiness.** `GET /api/ready` checks one cheap database round trip with a 1 s timeout. It answers 200
-      `{ ready: true }`, or 503 when the database cannot be reached. The load balancer checks this endpoint; liveness
-      stays `/health`, so a database blip never restarts containers.
-- [ ] **Keep-alive.** `server.keepAliveTimeout` is 65 s and `headersTimeout` 66 s (both env, with defaults). They
-      must exceed the ALB's 60 s idle timeout, or the load balancer reuses closed sockets and returns sporadic 502s.
-- [ ] **Client version.** Vite `define` injects `__APP_VERSION__` and `__APP_COMMIT__`. `services/api.ts` sends
-      `X-Client-Version` on every request, and Profile shows the version.
-- [ ] **Client-version gate.** Middleware reads `X-Client-Version`; a missing header counts as the legacy `0.1.0`. It
-      compares that with `site_settings.min_client_version` and answers 426 `CLIENT_OUTDATED`: "A new version of Food
-      Pickup is available. Refresh the page to continue." The deployed client already shows server messages as they
-      are, so even a V0 tab says the right thing. It exempts `/health`, `/ready`, `/config` and webhooks. From here
-      on, any release the old client cannot survive ships with a `min_client_version` bump.
-- [ ] **Defensive rendering.** `STATUS_META[status] ?? FALLBACK_STATUS_META`, and the same for every enum-keyed map,
-      so an unknown future value renders as a neutral "Updating…" instead of crashing.
+      `{ ready: true }`, or 503 `{ ready: false }` when the database cannot be reached, without going through the
+      error handler. The load balancer checks this endpoint; liveness stays `/health`, so a database blip never
+      restarts containers.
+- [ ] **Keep-alive.** `server.keepAliveTimeout` is 65 s and `headersTimeout` one second more (both env, with
+      defaults). They must exceed the ALB's 60 s idle timeout, or the load balancer reuses closed sockets and returns
+      sporadic 502s.
+- [ ] **Client version.** Vite `define` injects `__APP_VERSION__` and `__APP_COMMIT__` (also defined in the Vitest
+      config). `services/api.ts` sends `X-Client-Version` on every request (same origin through the Vite proxy and
+      nginx, so no preflight), and Profile shows the version.
+- [ ] **Client-version gate.** Migration: `site_settings.min_client_version` (`'0.0.0'`, semver check). Middleware
+      reads `X-Client-Version` (validated against `^\d+\.\d+\.\d+(-[\w.]+)?$`; a missing or malformed header counts as
+      the legacy `0.1.0`), compares the numeric triple with the cached settings and answers 426 `CLIENT_OUTDATED`:
+      "A new version of Food Pickup is available. Refresh the page to continue." Exemption is by mount order:
+      `/health`, `/ready`, `/config` and later the webhooks are registered before the gate, so there is no path list
+      (and no `OPTIONS` case: `cors()` answers preflights before the router). The server logs a 426 at `debug`,
+      because a stale tab will keep asking. From here on, any release the old client cannot survive ships with a
+      `min_client_version` bump.
+- [ ] **The client handles 426 centrally.** `request()` sets an "outdated" flag next to its 401 handling; `App.tsx`
+      shows a top banner with a Refresh button; `useResource` stops polling once it has seen a 426 (otherwise a stale
+      staff board would keep polling every 4 s with data on screen, because `ErrorState` only renders without data).
+      The deployed V0 client, which lacks this, still shows the envelope's message in `ErrorState`, which is the
+      intended fallback for the very first gated release.
+- [ ] **Defensive rendering.** A `statusMeta(status)` accessor returns `STATUS_META[status] ?? FALLBACK_STATUS_META`
+      (its parameter typed as `string`, because the `Record<OrderStatus, …>` type would make the fallback dead code),
+      and the same for every enum-keyed map, so an unknown future value renders as a neutral "Updating…" instead of
+      crashing.
 - [ ] **Access lines** carry `clientVersion` (pino-http `customProps`).
 
 **Done when**
 
-- raising `min_client_version` makes an older build show the refresh message;
+- raising `min_client_version` makes an older build show the refresh banner and stop polling;
 - `/api/ready` answers 503 while local Supabase is stopped, and `/api/health` still answers 200;
-- Profile shows the version.
+- Profile shows the version and commit.
 
 ### P0.8 Architecture decision records
+
+Docs only, so it runs in parallel with P0.2–P0.3. ADR-002 (pgmq and pg_cron) and ADR-007 (compose on EC2) must be
+accepted before P0.6 commits to compose.
 
 - [ ] Add `docs/adr/0000-template.md` (context, options, decision, consequences, status), and write ADR-001 to ADR-010
       from [Architecture decisions](#architecture-decisions) with status `Proposed`.
@@ -1166,7 +1250,8 @@ interface JobHandler<T> {
 - [ ] Migration: the extensions, `domain_events`, `event_subscriptions`, `job_failures`, `event_handled`, the queues,
       `emit_event` and the queue wrappers, with grants to `service_role` only and RLS on.
 - [ ] Worker skeleton: the loop, registry, backoff, dead-lettering, health, metrics, shutdown, plus
-      `npm run dev:worker` and `start:worker`.
+      `npm run dev:worker` and `start:worker`. `InvariantError` (a programmer error: 500 `INTERNAL`, logged at
+      `error` with `invariant: true`, P0.5) lands here with its first throwers, the impossible states of the loop.
 - [ ] A first real consumer to prove the pipe: `order.placed` → an `info` log line, with a test that places an order
       and sees the message consumed.
 - [ ] Emit `order.placed` and `order.status_changed` from today's `place_order` and `update_order_status` (additive:
@@ -1329,6 +1414,15 @@ generous, and the real limits are per user.
       per request.
 - [ ] **Failure mode.** When the limiter's store is unavailable, reads fail open and auth and money writes fail closed
       (ADR-009).
+
+- [ ] **Client error reporting** (moved here from P0.5, because it needs the limiter; no new dependency).
+      `client/src/lib/errorReporter.ts` listens to `error`, `unhandledrejection`, `PageBoundary` and a new root
+      `AppErrorBoundary`. It sends a batch to `POST /api/client-errors`: at most 5 per page load and 4 KB each,
+      sampled by the site setting `client_error_sample_percent`, with query strings and anything token-like
+      stripped, and with `X-Client-Version` and the route. The server validates the report, applies the
+      `client-errors` bucket above, and logs `warn` `Client error`. Done when a thrown render error on a phone
+      appears in the server log with the client version, the route and a stack. Sentry is the alternative
+      ([Decisions needed](#decisions-needed)).
 
 **Done when** a burst past each bucket gets 429 with correct headers, other users are unaffected, and 1000 simulated
 users behind one IP stay under the IP bucket during the P9.1 load test.
@@ -1585,8 +1679,9 @@ create index store_schedule_exceptions_store_dates_idx on public.store_schedule_
 - The states are `OPEN`, `CLOSING_SOON` (display only), `CLOSED`, `PAUSED` (P2.5) and `UNAVAILABLE` (store not
   `ACTIVE`).
 - New orders are accepted while `OPEN` or `CLOSING_SOON`, and only until `closes_at - last_order_minutes_before_close`.
-- Time zones are computed on the server only, with `date-fns-tz` (server dependency, zero client bytes). The client
-  shows `openState` and `nextChangeAt` exactly as it receives them.
+- Time zones are computed on the server only. Prefer the built-in `Intl.DateTimeFormat` with `timeZone` (Node 24
+  ships full ICU, and India has no DST, so a small offset helper suffices); add `date-fns-tz` only if a test shows a
+  gap. Zero client bytes either way. The client shows `openState` and `nextChangeAt` exactly as it receives them.
 
 ```mermaid
 flowchart TD
@@ -2047,8 +2142,9 @@ The product owner set three constraints:
 - **99% of payments will be UPI, and 99% will be under ₹2,000.**
 - The pilot may run for 6–12 months on a temporary 0% rate before switching.
 
-**Items:** R2, and where the money sits for R4. **Depends on:** P0. It runs in parallel with P1–P3, because sales,
-KYC and legal review take weeks. **Blocks:** P5. **Size:** M.
+**Items:** R2, and where the money sits for R4. **Depends on:** nothing for the non-code work in P4.1–P4.6, which
+starts now, in parallel with P0; only the sandbox spike waits for the P5.1 port shape. It runs alongside P0–P3,
+because sales, KYC and legal review take weeks. **Blocks:** P5. **Size:** M.
 
 **Output:**
 
@@ -3408,8 +3504,8 @@ R22 (similarity, popularity, other users' orders) and R28.7 (recommendation upda
 
 ## P8 — Infrastructure and delivery
 
-**Goal:** reproducible staging and production on AWS, with every change deployed by a pipeline. This is a parallel
-track. P8.1–P8.5 for **staging** must be ready before P5.4 (webhooks need a public HTTPS URL), and the rest before the
+**Goal:** reproducible staging and production on AWS, with every change deployed by a pipeline: `dev` deploys staging
+and `main` deploys production (P8.5). This is a parallel track. P8.1–P8.5 for **staging** must be ready before P5.4 (webhooks need a public HTTPS URL), and the rest before the
 pilot. **Items:** R16, R17, R18, R21, R3 (secrets), R6 (observability), R14 (usage load). **Depends on:** P0.6.
 **Size:** L.
 
@@ -3442,8 +3538,10 @@ pilot. **Items:** R16, R17, R18, R21, R3 (secrets), R6 (observability), R14 (usa
   P0.3 at release). A lifecycle policy keeps the last 30 images, and every push is scanned (Inspector).
 - `docker/build-push-action` with layer caching, SBOM and provenance attestations. Images are built for the instance
   architecture (arm64, if the cheaper Graviton instances are chosen).
-- Every image is built once and then promoted: the same digest goes from staging to production. The web image takes
-  its environment at start (P0.6).
+- Staging images are built from `dev` (`dev-<sha7>`) and production images from `main` after the release PR merged
+  (the semver plus the SHA). The two trees differ by the release commit, so digests are not promoted between
+  environments; `/api/health` reports the commit in both. The web image takes its environment at start (P0.6), so
+  one build per branch serves its environment. The registry scan is the image scan; P0 ships no Trivy step.
 
 ### P8.3 Media bucket and CDN
 
@@ -3489,35 +3587,43 @@ R18.
 
 ### P8.5 Continuous deployment
 
-R21.
+R21. `dev` is staging and `main` is production; a release is a PR from `dev` into `main`
+([P0.3](#p03-semantic-versioning-with-change-intents)).
 
 ```mermaid
 flowchart LR
-  PR["Pull request"] --> CI["ci.yml: lint, types, format, tests,<br/>build, bundle budget, migrations check"]
-  CI --> Merge["merge to main"]
-  Merge --> Build["build images, push to ECR"]
-  Build --> Rel["release: apply version intents,<br/>changelogs, tags"]
-  Rel --> Stg["staging: db push staging,<br/>rolling deploy"]
-  Stg --> Smoke["smoke tests and k6 smoke"]
-  Smoke --> Gate{"production approval<br/>(user)"}
-  Gate --> ProdMig["production migrations<br/>(user, manual until decided)"]
-  ProdMig --> Prod["production: rolling deploy,<br/>health-gated"]
+  PR["Pull request into dev"] --> CI["ci.yml: lint, types, format, tests,<br/>build, bundle budget, migrations check, images"]
+  CI --> Dev["merge to dev"]
+  Dev --> Stg["deploy-staging.yml: build dev-{sha} images,<br/>push to ECR, db push staging (--include-all),<br/>rolling deploy, smoke + k6 smoke"]
+  Stg --> Rel["release PR: release/{date} into main<br/>(bump, changelogs, intents consumed)"]
+  Rel --> Gate{"user merges<br/>= production approval"}
+  Gate --> Tags["tag-and-backmerge: client-vX, server-vY,<br/>back-merge PR into dev"]
+  Tags --> ProdMig["production migrations<br/>(user, manual)"]
+  ProdMig --> Prod["deploy-production.yml: build from main,<br/>rolling deploy, health-gated"]
   Prod --> Verify["smoke tests, alarms quiet"]
 ```
 
-- **`deploy.yml`**, on push to `main`, once `ci.yml` has passed:
-  1. Build and push the images.
-  2. **Release:** `npm run release` from P0.3. It applies the intents and commits
-     `chore(release): client vX, server vY`, then tags both, as the GitHub Actions bot. Branch protection lets the bot do this, and it is the only
-     automated commit.
-  3. Upload the web assets to S3.
-  4. `supabase db push` to **staging**.
-  5. SSM deploy to staging.
-  6. Smoke: a Playwright golden path using the payment test mode, a k6 smoke run, and `/api/ready` on every host.
-  7. **Production** runs in a GitHub Environment with a required reviewer: the user.
-- **Production migrations.** CLAUDE.md §2 keeps `db:push:production` a user-only step. The production job therefore
-  **stops and waits** while the user runs `npm run db:push:production`. Moving it into the pipeline behind the
-  approval is the user's decision, and it would be recorded in an ADR.
+- **`deploy-staging.yml`**, on push to `dev` once `ci.yml` has passed (`workflow_run`), with `concurrency` and no
+  cancel-in-progress:
+  1. Build and push the images tagged `dev-<sha7>` and a moving `dev`.
+  2. Upload the web assets to the release-assets bucket.
+  3. `supabase db push --include-all` to **staging** (a hotfix migration back-merged from `main` may sort before an
+     unapplied staging migration; `--include-all` applies it anyway).
+  4. SSM deploy to staging.
+  5. Smoke: a Playwright golden path using the payment test mode, a k6 smoke run, and `/api/ready` on every host.
+- **`deploy-production.yml`**, on the `client-v*` / `server-v*` tags that `release.yml` creates on `main` (P0.3):
+  1. Build and push the images from `main`, tagged with the semver and the SHA. Production builds from `main`,
+     because the release commit makes its tree differ from `dev`'s; `/api/health` reports version and commit either
+     way.
+  2. Upload the web assets.
+  3. **Production migrations.** CLAUDE.md §2 keeps `db:push:production` a user-only step. The job therefore **stops
+     and waits** (a GitHub Environment with the user as required reviewer) while the user runs
+     `npm run db:push:production`. Moving it into the pipeline behind the approval is the user's decision, and it
+     would be recorded in an ADR.
+  4. Rolling SSM deploy to production, health-gated.
+  5. Smoke, and the alarms stay quiet.
+- **Hotfixes.** `hotfix/*` off `main`, with its own intent and `npm run release` run on the branch; PR into `main`;
+  the same tags, deploy and back-merge follow.
 - **Order of changes.** Every PR that touches the schema states its expand/contract stage. Contract migrations ship
   only in a release after the code stopped using the old shape (a PR template checkbox).
 - **Decoupling.** Feature flags separate deploying from releasing. A deploy ships dark, and a flag turns it on per
@@ -3795,7 +3901,7 @@ flowchart LR
 - **GitOps.** Argo CD watches `infra/k8s/envs/*`. The CD pipeline opens image-tag bump PRs instead of running SSM
   commands.
 - **Steps.**
-  1. Run the chart on the minikube already installed on the dev machine, against local Supabase.
+  1. Run the chart on a local cluster (minikube or kind) against local Supabase.
   2. Stand up a staging EKS next to the EC2 hosts.
   3. Switch the staging CloudFront origin.
   4. Weighted cut-over in production (CloudFront or Route 53), with the EC2 group kept warm.
@@ -3853,37 +3959,40 @@ Rules:
 
 **Docs updated per phase** (CLAUDE.md §6 owners), plus the new docs this roadmap creates:
 
-| Phase | Existing docs updated                                                                                                                                                     | New docs                                                                                  |
-| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| P0    | DEPLOYMENT (containers, env), TESTING (CI), LOGGING (error classes, client reports), README                                                                               | `docs/CONFIGURATION.md`, `docs/adr/`, `.changes/README.md`, CHANGELOGs                    |
-| P1    | ARCHITECTURE (outbox), SCHEMA, API (errors, idempotency, rate limits), LOGGING (job logs)                                                                                 | `docs/JOBS.md`                                                                            |
-| P2    | ARCHITECTURE, API, SCHEMA, PERMISSIONS, FRONTEND_STRUCTURE, BACKEND_STRUCTURE, COMPONENTS, README                                                                         | –                                                                                         |
-| P3    | SCHEMA, API, COMPONENTS, FRONTEND_STRUCTURE, DEPLOYMENT (media)                                                                                                           | –                                                                                         |
-| P4    | keep [PAYMENT_OPTIONS.md](PAYMENT_OPTIONS.md) current (a root planning doc like this one: the research record, rankings, model A/B trade-offs, ladder, switching options) | `docs/adr/003-payment-aggregator.md` (the decision, citing PAYMENT_OPTIONS.md)            |
-| P5    | ARCHITECTURE (lifecycle v2, money flow), API, SCHEMA, PERMISSIONS, JOBS                                                                                                   | `docs/PAYMENTS.md` (gateway, webhooks, ledger postings, refunds, payouts, reconciliation) |
-| P6    | ARCHITECTURE, API, SCHEMA, COMPONENTS, JOBS, DEPLOYMENT                                                                                                                   | –                                                                                         |
-| P7    | SCHEMA, API, COMPONENTS, PERMISSIONS, JOBS                                                                                                                                | `docs/ANALYTICS.md` (metric definitions)                                                  |
-| P8    | DEPLOYMENT (AWS, CD, secrets)                                                                                                                                             | `infra/README.md`                                                                         |
-| P9    | TESTING, PERF_BASELINE                                                                                                                                                    | `docs/RUNBOOKS.md`, `docs/LOAD_BASELINE.md`                                               |
+| Phase | Existing docs updated                                                                                                                                                                                                                     | New docs                                                                                          |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| P0    | DEPLOYMENT (containers, env; replaces "Future: Docker + nginx"), TESTING (CI; replaces "Staging later"), LOGGING (error classes), API (health, ready, config, 426, 503), SCHEMA (`site_settings`), README (Node 24, branches, containers) | `docs/CONFIGURATION.md`, `docs/adr/`, `.changes/README.md`, CHANGELOGs, `plans/P0_FOUNDATIONS.md` |
+| P1    | ARCHITECTURE (outbox), SCHEMA, API (errors, idempotency, rate limits, client errors), LOGGING (job logs, client error reports)                                                                                                            | `docs/JOBS.md`                                                                                    |
+| P2    | ARCHITECTURE, API, SCHEMA, PERMISSIONS, FRONTEND_STRUCTURE, BACKEND_STRUCTURE, COMPONENTS, README                                                                                                                                         | –                                                                                                 |
+| P3    | SCHEMA, API, COMPONENTS, FRONTEND_STRUCTURE, DEPLOYMENT (media)                                                                                                                                                                           | –                                                                                                 |
+| P4    | keep [PAYMENT_OPTIONS.md](PAYMENT_OPTIONS.md) current (a root planning doc like this one: the research record, rankings, model A/B trade-offs, ladder, switching options)                                                                 | `docs/adr/003-payment-aggregator.md` (the decision, citing PAYMENT_OPTIONS.md)                    |
+| P5    | ARCHITECTURE (lifecycle v2, money flow), API, SCHEMA, PERMISSIONS, JOBS                                                                                                                                                                   | `docs/PAYMENTS.md` (gateway, webhooks, ledger postings, refunds, payouts, reconciliation)         |
+| P6    | ARCHITECTURE, API, SCHEMA, COMPONENTS, JOBS, DEPLOYMENT                                                                                                                                                                                   | –                                                                                                 |
+| P7    | SCHEMA, API, COMPONENTS, PERMISSIONS, JOBS                                                                                                                                                                                                | `docs/ANALYTICS.md` (metric definitions)                                                          |
+| P8    | DEPLOYMENT (AWS, CD, secrets)                                                                                                                                                                                                             | `infra/README.md`                                                                                 |
+| P9    | TESTING, PERF_BASELINE                                                                                                                                                                                                                    | `docs/RUNBOOKS.md`, `docs/LOAD_BASELINE.md`                                                       |
 
 **CLAUDE.md rules to change**, in the change that needs them, since "the code is the truth: fix the doc in the same
 change":
 
-| Section | Change                                                                                                                                                                                                      | When       |
-| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| §2      | Roles: CUSTOMER / ADMIN on the profile, OWNER / MANAGER / STAFF as memberships; the new order lifecycle                                                                                                     | P2, P5     |
-| §2c     | New cached public reads (`stores:list`, `store:<id>`, `menu:<storeId>`, `config`, recommendation contexts) and their invalidations; user-specific endpoints never cached (usuals, personal recommendations) | P2, P7     |
-| §4      | Folders `domain/`, `jobs/`, `integrations/`; the `worker` and `reconciler` entry points; `/manage` and the admin console on the client                                                                      | P1, P3     |
-| §6      | Rows for CONFIGURATION, JOBS, PAYMENTS, ANALYTICS, RUNBOOKS, LOAD_BASELINE and ADRs                                                                                                                         | as created |
-| §8      | `Idempotency-Key` on money and creation writes; config and rules read from the API, never mirrored; server-driven `pollAfterMs`                                                                             | P0, P1     |
-| §9      | Runtime hosts: add the chosen aggregator's checkout hosts and the S3 upload endpoint (and a CAPTCHA or error-tracking host, if chosen); S3 replaces the Supabase Storage plan for media                     | P3, P5     |
-| §10     | Every transition is a SQL function that emits its events; payment and refund rules; ledger postings only through `post_journal`                                                                             | P1, P5     |
-| §11     | The no-hardcoding policy (P0.4) and its lint guard                                                                                                                                                          | P0         |
-| §13     | pgTAP and worker tests in the gate                                                                                                                                                                          | P1         |
-| §17     | Major-change paths add `server/src/{domain,jobs,integrations}/`, `server/src/worker.ts` and `server/src/reconciler.ts`; keep `.claude/hooks/major-change-gate.js` in sync                                   | P1         |
-| §18     | `worker` and `reconciler` as long-running processes; compose                                                                                                                                                | P0, P1     |
-| §19     | Job log fields; client error reports                                                                                                                                                                        | P0, P1     |
-| New     | "Versioning" (P0.3)                                                                                                                                                                                         | P0         |
+| Section | Change                                                                                                                                                                                                                                              | When       |
+| ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| §2      | Roles: CUSTOMER / ADMIN on the profile, OWNER / MANAGER / STAFF as memberships; the new order lifecycle                                                                                                                                             | P2, P5     |
+| §2c     | New cached public reads (`stores:list`, `store:<id>`, `menu:<storeId>`, `config`, recommendation contexts) and their invalidations; user-specific endpoints never cached (usuals, personal recommendations)                                         | P2, P7     |
+| §4      | Folders `domain/`, `jobs/`, `integrations/`; the `worker` and `reconciler` entry points; `/manage` and the admin console on the client                                                                                                              | P1, P3     |
+| §6      | Rows for CONFIGURATION, JOBS, PAYMENTS, ANALYTICS, RUNBOOKS, LOAD_BASELINE and ADRs                                                                                                                                                                 | as created |
+| §8      | `Idempotency-Key` on money and creation writes; config and rules read from the API, never mirrored (the one copy is `config/fallbacks.json`, parity-tested); intervals from `/api/config`; server-driven `pollAfterMs` only if P9.1 measures a need | P0, P1     |
+| §9      | Runtime hosts: add the chosen aggregator's checkout hosts and the S3 upload endpoint (and a CAPTCHA or error-tracking host, if chosen); S3 replaces the Supabase Storage plan for media                                                             | P3, P5     |
+| §10     | Every transition is a SQL function that emits its events; payment and refund rules; ledger postings only through `post_journal`                                                                                                                     | P1, P5     |
+| §11     | The no-hardcoding policy (P0.4) and its lint guard                                                                                                                                                                                                  | P0         |
+| §13     | CI runs the gate on every PR into `dev` and `main` (P0); pgTAP and worker tests in the gate (P1)                                                                                                                                                    | P0, P1     |
+| §17     | Major-change paths add `server/src/{domain,jobs,integrations}/`, `server/src/worker.ts` and `server/src/reconciler.ts`; keep `.claude/hooks/major-change-gate.js` in sync                                                                           | P1         |
+| §18     | `worker` and `reconciler` as long-running processes; compose                                                                                                                                                                                        | P0, P1     |
+| §19     | `clientVersion` on access lines, 426 at `debug`, the 503 row (P0); job log fields and client error reports (P1)                                                                                                                                     | P0, P1     |
+| §2      | Migrations are immutable once merged into `dev` (CI-enforced); a change the deployed client cannot survive ships with a `min_client_version` bump                                                                                                   | P0         |
+| §3      | Node 24 pin; root scripts; env-driven ports; compose on 8080                                                                                                                                                                                        | P0         |
+| §12     | CI's release commit inside the release PR is the one automated commit; only the user merges into `main`                                                                                                                                             | P0         |
+| New     | "Versioning and branches" (P0.3): feature → `dev` → release PR → `main`, hotfixes, level rules, `npm run change`                                                                                                                                    | P0         |
 
 README's "What V0 deliberately leaves out" section shrinks as each phase ships.
 
@@ -3891,12 +4000,12 @@ README's "What V0 deliberately leaves out" section shrinks as each phase ships.
 
 | Risk                                                                                                             | Likelihood | Impact | Mitigation                                                                                                                                                                                                                                                                                                                                     |
 | ---------------------------------------------------------------------------------------------------------------- | ---------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Aggregator onboarding, marketplace or split activation, and KYC take weeks                                       | high       | high   | Start P4 right after P0; build against the fake gateway; keep a fallback provider evaluated                                                                                                                                                                                                                                                    |
+| Aggregator onboarding, marketplace or split activation, and KYC take weeks                                       | high       | high   | Start P4 now, in parallel with P0; build against the fake gateway; keep a fallback provider evaluated                                                                                                                                                                                                                                          |
 | No aggregator commits to 0% UPI; promotions end and fees return to about 2%                                      | high       | high   | Pilot on the promotion, with alarms at 80% of its cap and 60 days before it ends. The switch is planned ([P5.12](#p512-switching-providers-after-the-promotion)). Ask for a written post-promotion rate before signing, and fall back down the [P4.5](#p45-recommendation-and-fallback-ladder) ladder, including direct bank UPI under model B |
 | The split product is gated (₹40 lakh turnover) or lacks a safe hold                                              | high       | high   | P4 scores both. Pilot on model B (merchant of record, scheduled payouts) and move to model A when eligible; one payout port serves both ([P5.6](#p56-ledger-and-escrow))                                                                                                                                                                       |
 | Regulatory or tax treatment of holding funds and commissions is misread                                          | medium     | high   | Model A money stays in the aggregator's escrow and never ours; model B needs the platform to really be the seller; CA and counsel review before live payments (P4.6, P9.4)                                                                                                                                                                     |
 | A lapsed provider hold settles to the wrong party (Paytm: to the platform; Cashfree: auto-release to the vendor) | medium     | medium | Release on pickup within minutes; the reconciler watchdog alerts days before any cap (P5.10)                                                                                                                                                                                                                                                   |
-| SMS DLT registration delays                                                                                      | high       | medium | Start in P4; Web Push and in-app first                                                                                                                                                                                                                                                                                                         |
+| SMS DLT registration delays                                                                                      | high       | medium | Start now (P4); Web Push and in-app first                                                                                                                                                                                                                                                                                                      |
 | Supabase plan limits (connections, compute, pgmq/pg_cron availability, PITR)                                     | medium     | high   | Verify in P1.2; load-test on the production tier (P9.1); upgrade path known                                                                                                                                                                                                                                                                    |
 | Cross-tenant data leak through a missed store filter                                                             | medium     | high   | The scoping helper plus a lint rule, and the tenant isolation matrix on every store endpoint                                                                                                                                                                                                                                                   |
 | Money bugs: a double refund, a payout for a refunded order                                                       | medium     | high   | State-machine guards in SQL, idempotency keys, gateway lookups before retries, ledger invariants, a daily reconciliation                                                                                                                                                                                                                       |
@@ -3920,7 +4029,7 @@ The ones marked ★ block a phase.
 | 5   | How a cancellation fee is split between the vendor and the platform                                                | P5.8            | the vendor keeps the fee minus commission                                                                                                                                                   |
 | 6   | Can a customer still collect after the pickup window closes (EXPIRED → COLLECTED)?                                 | P5.9            | yes, until the surplus is used or discarded                                                                                                                                                 |
 | 7   | SMS / WhatsApp provider                                                                                            | P6.3            | an Indian SMS provider with DLT support; WhatsApp later                                                                                                                                     |
-| 8   | Error tracking: self-reported (P0.5) or Sentry (a new runtime host, about 25 KB)                                   | P0.5            | self-reported                                                                                                                                                                               |
+| 8   | Error tracking: self-reported (P1.6) or Sentry (a new runtime host, about 25 KB)                                   | P1.6            | self-reported                                                                                                                                                                               |
 | 9   | CAPTCHA on registration (a new runtime host)                                                                       | P9.3            | Turnstile on register only                                                                                                                                                                  |
 | 10  | Browser-to-S3 presigned uploads (a new CSP host) or proxied uploads                                                | P3.3            | presigned                                                                                                                                                                                   |
 | 11  | Production migrations inside the pipeline (behind approval) or kept manual                                         | P8.5            | manual, per CLAUDE.md §2                                                                                                                                                                    |
@@ -3937,29 +4046,29 @@ The ones marked ★ block a phase.
 Found by sweeping `client/src`, `server/src` and `server/scripts` for named constants and literals (September 2026).
 Each value gets the destination that the P0.4 policy gives it.
 
-| Value today                                                             | Where                                                       | Destination                                                                                                 | Step |
-| ----------------------------------------------------------------------- | ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ---- |
-| `MAX_QUANTITY_PER_ITEM = 10`                                            | `server/src/schemas/order.schema.ts`                        | store setting `max_quantity_per_item`, served in `MenuResponse.rules`                                       | P2.3 |
-| `MAX_LINE_QUANTITY = 10` (mirror)                                       | `client/src/features/cart/cartRules.ts`                     | read from `MenuResponse.rules`, with a fallback file                                                        | P2.3 |
-| `MAX_ITEM_LINES = 30`                                                   | `server/src/schemas/order.schema.ts`                        | site setting `max_lines_per_order`; zod keeps a sanity bound                                                | P0.4 |
-| `LOW_STOCK_MAX = 5`                                                     | `client/src/features/cart/cartRules.ts`                     | store setting `low_stock_threshold`, via `rules`                                                            | P2.3 |
-| `POLL_MS = 4000`                                                        | `client/src/features/orders/useOrder.ts`                    | server-driven `pollAfterMs`; site setting `order_poll_ms`                                                   | P0.4 |
-| `pollMs = 8000` default                                                 | `client/src/features/orders/useOrders.ts`                   | `pollAfterMs`; `orders_poll_ms`                                                                             | P0.4 |
-| `STAFF_POLL_MS = 4000`                                                  | `client/src/pages/StaffDashboard.tsx`                       | `pollAfterMs`; `staff_board_poll_ms`                                                                        | P0.4 |
-| `PUBLIC_READ_TTL_MS = 10_000`                                           | `server/src/utils/cache.ts`                                 | env `PUBLIC_READ_TTL_MS`                                                                                    | P0.4 |
-| `REQUEST_TIMEOUT_MS = 15_000`                                           | `client/src/services/api.ts`                                | runtime env `REQUEST_TIMEOUT_MS` (network tuning per deployment)                                            | P0.6 |
-| `SESSION_IDLE_TTL_MS` (7 days)                                          | `client/src/features/auth/sessionActivity.ts`               | site setting `session_idle_days` via `/api/config`; must match Supabase's `inactivity_timeout` (documented) | P0.4 |
-| Name 60, note 200, password 6–72, phone 10–15                           | `client/src/features/auth/validation.ts` (mirrors zod)      | `/api/config.limits`; zod on the server stays the source                                                    | P0.4 |
-| `prep_time_min/max_minutes` 10/15                                       | `stores` columns and the seed                               | replaced by the ETA engine's store settings                                                                 | P6.1 |
-| `order_number` identity starting at 1001                                | migration                                                   | stays (a support reference); pickup tokens per store and day                                                | P6.2 |
-| `STORE`, `MENU`, demo accounts                                          | `server/scripts/seed.ts`                                    | `server/scripts/seed-data/*.json`                                                                           | P0.4 |
-| Ports 8000 and 5173                                                     | `client/vite.config.ts`, `start.sh`, `package.json` scripts | env (`PORT`, `VITE_API_PROXY_TARGET`), with defaults in `.env.example`                                      | P0.4 |
-| `http://127.0.0.1:54321` probe                                          | `start.sh`                                                  | read from `SUPABASE_URL` in `server/.env`                                                                   | P0.4 |
-| `APP_TITLE = 'Food Pickup'`                                             | `client/src/pages/Order.tsx`                                | one `client/src/config/app.ts` (presentation, named once)                                                   | P0.4 |
-| "Payment is simulated", "No taxes or fees"                              | `client/src/pages/Checkout.tsx`                             | copy updated with real payments; the fee line comes from the quote                                          | P5.3 |
-| `STAGING_REF` / `PRODUCTION_REF`                                        | `server/scripts/db-push.sh`                                 | stays: project refs are not secret, and are named in one place                                              | –    |
-| `PAID_HOLD_MS`, `LEAVE_MS`, `FLIGHT_MS`, `ADDED_HOLD_MS`, layout pixels | several UI files                                            | stay: presentation constants, named, next to their use (policy exception)                                   | –    |
-| `CACHE_PREFIX = 'fp_cache:v1:'`                                         | `client/src/lib/useResource.ts`                             | stays: a versioned storage key by design; bumped in P2.6                                                    | –    |
+| Value today                                                             | Where                                                       | Destination                                                                                                                  | Step |
+| ----------------------------------------------------------------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ---- |
+| `MAX_QUANTITY_PER_ITEM = 10`                                            | `server/src/schemas/order.schema.ts`                        | store setting `max_quantity_per_item`, served in `MenuResponse.rules`                                                        | P2.3 |
+| `MAX_LINE_QUANTITY = 10` (mirror)                                       | `client/src/features/cart/cartRules.ts`                     | read from `MenuResponse.rules`, with a fallback file                                                                         | P2.3 |
+| `MAX_ITEM_LINES = 30`                                                   | `server/src/schemas/order.schema.ts`                        | site setting `max_lines_per_order`; zod keeps a sanity bound                                                                 | P0.4 |
+| `LOW_STOCK_MAX = 5`                                                     | `client/src/features/cart/cartRules.ts`                     | store setting `low_stock_threshold`, via `rules`                                                                             | P2.3 |
+| `POLL_MS = 4000`                                                        | `client/src/features/orders/useOrder.ts`                    | site setting `order_poll_ms`, read through `/api/config.polling` (`pollAfterMs` deferred to P9.1)                            | P0.4 |
+| `pollMs = 8000` default                                                 | `client/src/features/orders/useOrders.ts`                   | `orders_poll_ms`, read through `/api/config.polling`                                                                         | P0.4 |
+| `STAFF_POLL_MS = 4000`                                                  | `client/src/pages/StaffDashboard.tsx`                       | `staff_board_poll_ms`, read through `/api/config.polling`                                                                    | P0.4 |
+| `PUBLIC_READ_TTL_MS = 10_000`                                           | `server/src/utils/cache.ts`                                 | env `PUBLIC_READ_TTL_MS`                                                                                                     | P0.4 |
+| `REQUEST_TIMEOUT_MS = 15_000`                                           | `client/src/services/api.ts`                                | runtime env `REQUEST_TIMEOUT_MS` (network tuning per deployment)                                                             | P0.6 |
+| `SESSION_IDLE_TTL_MS` (7 days)                                          | `client/src/features/auth/sessionActivity.ts`               | env `SESSION_IDLE_DAYS` via `/api/config`; must match Supabase's `inactivity_timeout` (deployment config, documented)        | P0.4 |
+| Name 60, note 200, password 6–72, phone 10–15                           | `client/src/features/auth/validation.ts` (mirrors zod)      | platform constants: `schemas/limits.ts` on the server and `config/fallbacks.json` on the client, kept equal by a parity test | P0.4 |
+| `prep_time_min/max_minutes` 10/15                                       | `stores` columns and the seed                               | replaced by the ETA engine's store settings                                                                                  | P6.1 |
+| `order_number` identity starting at 1001                                | migration                                                   | stays (a support reference); pickup tokens per store and day                                                                 | P6.2 |
+| `STORE`, `MENU`, demo accounts                                          | `server/scripts/seed.ts`                                    | `server/scripts/seed-data.ts` (a typed fixture module)                                                                       | P0.4 |
+| Ports 8000 and 5173                                                     | `client/vite.config.ts`, `start.sh`, `package.json` scripts | env (`PORT`, `VITE_API_PROXY_TARGET`), with defaults in `.env.example`                                                       | P0.4 |
+| `http://127.0.0.1:54321` probe                                          | `start.sh`                                                  | read from `SUPABASE_URL` in `server/.env`                                                                                    | P0.4 |
+| `APP_TITLE = 'Food Pickup'`                                             | `client/src/pages/Order.tsx`                                | one `client/src/config/app.ts` (presentation, named once)                                                                    | P0.4 |
+| "Payment is simulated", "No taxes or fees"                              | `client/src/pages/Checkout.tsx`                             | copy updated with real payments; the fee line comes from the quote                                                           | P5.3 |
+| `STAGING_REF` / `PRODUCTION_REF`                                        | `server/scripts/db-push.sh`                                 | stays: project refs are not secret, and are named in one place                                                               | –    |
+| `PAID_HOLD_MS`, `LEAVE_MS`, `FLIGHT_MS`, `ADDED_HOLD_MS`, layout pixels | several UI files                                            | stay: presentation constants, named, next to their use (policy exception)                                                    | –    |
+| `CACHE_PREFIX = 'fp_cache:v1:'`                                         | `client/src/lib/useResource.ts`                             | stays: a versioned storage key by design; bumped in P2.6                                                                     | –    |
 
 ### A2 Settings registry
 
@@ -3975,9 +4084,9 @@ are proposals, and the bounds become check constraints. The full registry, with 
 | `default_store_id`                                                                      | seeded                | –                     | P2.1        |
 | `max_lines_per_order`                                                                   | 30                    | 1–100                 | P0.4        |
 | `order_poll_ms` / `orders_poll_ms` / `staff_board_poll_ms`                              | 4000 / 8000 / 4000    | 2000–60000            | P0.4        |
-| `session_idle_days`                                                                     | 7                     | 1–90                  | P0.4        |
+| `session_idle_days` → env `SESSION_IDLE_DAYS` (deployment config, not a site setting)   | 7                     | 1–90                  | P0.4        |
 | `min_client_version`                                                                    | `0.0.0`               | semver                | P0.7        |
-| `client_error_sample_percent`                                                           | 100                   | 0–100                 | P0.5        |
+| `client_error_sample_percent`                                                           | 100                   | 0–100                 | P1.6        |
 | `max_active_checkouts_per_user`                                                         | 2                     | 1–5                   | P1.6        |
 | `hold_ttl_seconds`                                                                      | 600                   | 120–1800              | P5.2        |
 | `active_payment_provider` (with a per-store override)                                   | from env              | a configured provider | P5.1, P5.12 |
@@ -3996,7 +4105,7 @@ are proposals, and the bounds become check constraints. The full registry, with 
 | -------------------------------------------------------------------------------------------- | ------------------- | ------------------------- | ---- |
 | `max_quantity_per_item`                                                                      | 10                  | 1–50                      | P2.3 |
 | `low_stock_threshold`                                                                        | 5                   | 0–50                      | P2.3 |
-| `staff_order_list_limit`                                                                     | 100                 | 1–500                     | P2.3 |
+| `staff_order_list_limit` (exists as a site setting; moves per store)                         | 100                 | 1–500                     | P2.3 |
 | `last_order_minutes_before_close`                                                            | 15                  | 0–120                     | P2.3 |
 | `staff_can_edit_stock`                                                                       | true                | –                         | P3.5 |
 | `surplus_shelf_minutes` / `create_surplus_on_no_show` / `max_active_deals`                   | 120 / true / 5      | 15–480 / – / 0–20         | P3.6 |
@@ -4059,7 +4168,7 @@ Everything new or changed, with the step that adds it. Legacy endpoints stay unt
 
 | Area            | Endpoints                                                                                                                                                                                                                                                                                                                            | Step             |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------- |
-| Platform        | `GET /api/config`, `GET /api/me/config`, `GET /api/ready`, `GET /api/health` (+version), `POST /api/client-errors`, `POST /api/client-metrics`                                                                                                                                                                                       | P0               |
+| Platform        | `GET /api/config`, `GET /api/ready`, `GET /api/health` (+version) (P0); `GET /api/me/config` (P1.7); `POST /api/client-errors` (P1.6); `POST /api/client-metrics` (P8.7)                                                                                                                                                             | P0               |
 | Stores          | `GET /api/stores`, `GET /api/stores/:storeRef`, `GET /api/stores/:storeRef/menu`, `GET/PUT /api/stores/:storeId/hours`, `POST/DELETE /api/stores/:storeId/schedule-exceptions`, `POST /api/stores/:storeId/pause`, `POST /api/stores/:storeId/resume`, `PATCH /api/stores/:storeId`, `PATCH /api/stores/:storeId/settings`           | P2               |
 | Team            | `GET /api/stores/:storeId/members`, `POST /api/stores/:storeId/invites`, `DELETE /api/stores/:storeId/members/:membershipId`, `POST /api/me/invites/:token/accept`                                                                                                                                                                   | P2.2             |
 | Catalog         | `GET /api/brands/:brandId/catalog`, `POST/PATCH/DELETE /api/brands/:brandId/catalog-items[/:itemId]`, `PUT /api/brands/:brandId/categories/order`, modifier groups CRUD, `GET/PATCH /api/stores/:storeId/listings[/:menuItemId]`, `POST /api/stores/:storeId/listings/bulk`, `PATCH /api/stores/:storeId/listings/:menuItemId/stock` | P3               |

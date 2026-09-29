@@ -17,7 +17,7 @@ export function StockPill({ item, className }: StockPillProps) {
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 rounded-full bg-gold-50 px-2 py-0.5 text-[11px] font-bold leading-4 text-gold-700 tabular-nums',
+        'inline-flex items-center gap-1 rounded-full bg-gold-50 px-2 py-0.5 text-2xs font-bold leading-4 text-gold-700 tabular-nums',
         className,
       )}
     >

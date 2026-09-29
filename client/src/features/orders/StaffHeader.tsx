@@ -1,13 +1,13 @@
 import type { ReactNode } from 'react';
-import { LogOut } from 'lucide-react';
-import { Button } from '../../components/Button';
+import { LogOut, UserRound } from 'lucide-react';
+import { Button, ButtonLink } from '../../components/Button';
 import { Wordmark } from '../../components/Wordmark';
 import { formatAgo, formatTime } from '../../lib/format';
+import { useNow } from '../../lib/useNow';
 
 interface StaffHeaderProps {
   /** From GET /api/store; undefined while it loads. */
   storeName?: string;
-  now: Date;
   /** Timestamp of the last successful orders fetch. */
   updatedAt: number | null;
   /** True when the last fetch failed and nothing has loaded yet. */
@@ -20,18 +20,20 @@ interface StaffHeaderProps {
 /** Sticky dashboard header: wordmark, shop name, live clock + freshness, log out. */
 export function StaffHeader({
   storeName,
-  now,
   updatedAt,
   offline,
   onLogout,
   children,
 }: StaffHeaderProps) {
+  // The clock lives here, not in the page: a tick re-renders the header, never the board of cards below it.
+  const now = useNow(1000);
   return (
     <header className="sticky top-0 z-40 border-b border-line/60 bg-bg/90 backdrop-blur-md">
-      <div className="mx-auto flex h-16 max-w-6xl items-center gap-4 px-4 sm:px-6">
+      {/* min-h + wrap: at large text the clock and Log out move to a second line instead of off the screen. */}
+      <div className="mx-auto flex min-h-16 max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2 sm:px-6">
         <Wordmark />
         <span className="hidden text-line sm:inline">|</span>
-        <h1 className="hidden min-w-0 truncate text-[15px] font-bold sm:block">
+        <h1 className="hidden min-w-0 truncate text-body font-bold sm:block">
           {storeName ? (
             <>
               {storeName} <span className="text-muted">· Staff</span>
@@ -40,10 +42,13 @@ export function StaffHeader({
             'Staff'
           )}
         </h1>
-        <div className="ml-auto flex items-center gap-3 text-right">
-          <div className="leading-tight">
-            <p className="text-[15px] font-bold tabular-nums">{formatTime(now)}</p>
-            <p className="text-[11px] text-muted">
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-x-3 gap-y-2 text-right">
+          {/* As wide as the longest status ("Updated 59 min ago"): if its width followed the text, the cluster would
+              fit beside the wordmark while "Connecting…" and wrap under it once the first poll landed, moving the
+              board down. */}
+          <div className="min-w-[7.5rem] leading-tight">
+            <p className="text-body font-bold tabular-nums">{formatTime(now)}</p>
+            <p className="whitespace-nowrap text-2xs text-muted">
               {updatedAt
                 ? `Updated ${formatAgo(updatedAt, now.getTime())}`
                 : offline
@@ -51,6 +56,15 @@ export function StaffHeader({
                   : 'Connecting…'}
             </p>
           </div>
+          {/* The board is full-screen with no bottom nav: this is staff's way to their profile and settings. */}
+          <ButtonLink
+            to="/profile"
+            variant="secondary"
+            aria-label="Profile"
+            iconLeft={<UserRound className="h-4 w-4" aria-hidden />}
+          >
+            <span className="hidden sm:inline">Profile</span>
+          </ButtonLink>
           <Button
             variant="secondary"
             onClick={onLogout}

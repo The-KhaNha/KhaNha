@@ -7,159 +7,8 @@
 import { env } from '../src/utils/env';
 import { logger } from '../src/utils/logger';
 import { supabaseAdmin as db } from '../src/utils/supabase';
-import type { Role } from '../src/types/enums';
 import type { Tables } from '../src/types/database';
-
-const STORE = {
-  name: 'Campus Cafe',
-  tagline: 'Coffee • Snacks • Quick Bites',
-  description: 'Quick bites, coffee and snacks.',
-  image_url: '/images/cafe-cover.jpg',
-  is_open: true,
-  prep_time_min_minutes: 10,
-  prep_time_max_minutes: 15,
-};
-
-interface SeedMenuItem {
-  category: string;
-  name: string;
-  price: number;
-  description: string;
-  imageUrl: string;
-  isPopular?: boolean;
-  isAvailable?: boolean;
-  /** Units in stock; omit for items that are not stock-limited. */
-  stockQuantity?: number;
-}
-
-// Array order defines sort_order (and therefore category order on the menu). Images live in client/public/images.
-// Three items are stock-limited to demo the "Only N left" flow; re-seeding resets their stock.
-const MENU: SeedMenuItem[] = [
-  {
-    category: 'Coffee',
-    name: 'Cold Coffee',
-    price: 120,
-    description: 'Creamy chilled coffee, blended smooth',
-    imageUrl: '/images/cold-coffee.jpg',
-    isPopular: true,
-  },
-  {
-    category: 'Coffee',
-    name: 'Espresso',
-    price: 90,
-    description: 'Bold double shot, freshly pulled',
-    imageUrl: '/images/espresso.jpg',
-  },
-  {
-    category: 'Coffee',
-    name: 'Cappuccino',
-    price: 140,
-    description: 'Velvety steamed milk over rich espresso',
-    imageUrl: '/images/cappuccino.jpg',
-    isPopular: true,
-  },
-  {
-    category: 'Snacks',
-    name: 'Veg Sandwich',
-    price: 150,
-    description: 'Grilled with fresh veggies, cheese and mint chutney',
-    imageUrl: '/images/veg-sandwich.jpg',
-    isPopular: true,
-  },
-  {
-    category: 'Snacks',
-    name: 'French Fries',
-    price: 120,
-    description: 'Crispy, golden, lightly salted',
-    imageUrl: '/images/french-fries.jpg',
-    isPopular: true,
-  },
-  {
-    category: 'Snacks',
-    name: 'Cheese Toast',
-    price: 130,
-    description: 'Buttery toast with melted cheese and herbs',
-    imageUrl: '/images/cheese-toast.jpg',
-    stockQuantity: 1,
-  },
-  {
-    category: 'Juices',
-    name: 'Orange Juice',
-    price: 100,
-    description: 'Freshly squeezed, no added sugar',
-    imageUrl: '/images/orange-juice.jpg',
-  },
-  {
-    category: 'Juices',
-    name: 'Watermelon Juice',
-    price: 110,
-    description: 'Cold-pressed and refreshing',
-    imageUrl: '/images/watermelon-juice.jpg',
-  },
-  {
-    category: 'Juices',
-    name: 'Berry Smoothie',
-    price: 150,
-    description: 'Mixed berries blended with yogurt',
-    imageUrl: '/images/berry-smoothie.jpg',
-    isAvailable: false,
-  },
-  {
-    category: 'Desserts',
-    name: 'Chocolate Brownie',
-    price: 110,
-    description: 'Fudgy, dense, with a crackly top',
-    imageUrl: '/images/chocolate-brownie.jpg',
-    stockQuantity: 2,
-  },
-  {
-    category: 'Desserts',
-    name: 'Blueberry Muffin',
-    price: 90,
-    description: 'Soft-baked with bursting blueberries',
-    imageUrl: '/images/blueberry-muffin.jpg',
-    stockQuantity: 5,
-  },
-];
-
-type StagingPasswordKey = 'SEED_STAFF_PASSWORD' | 'SEED_ADMIN_PASSWORD' | 'SEED_CUSTOMER_PASSWORD';
-
-// The published passwords (README.md "Test accounts") work locally only. Shared staging is reachable by anyone who
-// reads the README, so there every account's password comes from the deployment (seedDemo checks all of them first).
-const DEMO_ACCOUNTS: {
-  role: Role;
-  name: string;
-  email: string;
-  localPassword: string;
-  stagingPassword: StagingPasswordKey;
-  phone: string | null;
-}[] = [
-  {
-    role: 'STAFF',
-    name: 'Campus Cafe Staff',
-    email: 'staff@campuscafe.local',
-    localPassword: 'staff123',
-    stagingPassword: 'SEED_STAFF_PASSWORD',
-    phone: null,
-  },
-  {
-    // The site-wide admin dashboard (/admin). Not a restaurant role: it has no staff powers.
-    role: 'ADMIN',
-    name: 'Site Admin',
-    email: 'admin@campuscafe.local',
-    localPassword: 'admin123',
-    stagingPassword: 'SEED_ADMIN_PASSWORD',
-    phone: null,
-  },
-  {
-    role: 'CUSTOMER',
-    name: 'Anishka',
-    email: 'anishka@example.com',
-    localPassword: 'test1234',
-    stagingPassword: 'SEED_CUSTOMER_PASSWORD',
-    phone: '9876543210',
-  },
-];
+import { DEMO_ACCOUNTS, MENU, STORE } from './seed-data';
 
 const ACCOUNTS = DEMO_ACCOUNTS.map(({ localPassword, stagingPassword, ...account }) => ({
   ...account,
@@ -180,10 +29,14 @@ async function seedStore(): Promise<Tables<'stores'>> {
 }
 
 async function seedMenu(storeId: string): Promise<Tables<'menu_items'>[]> {
+  // By name, not the whole table: PostgREST caps a response at 1000 rows, so a large menu would hide seeded items and
+  // insert duplicates (server/test/api/menu-cap.test.ts).
+  const names = MENU.map((item) => item.name);
   const { data: current } = await db
     .from('menu_items')
     .select('id, name')
     .eq('store_id', storeId)
+    .in('name', names)
     .throwOnError();
   const idByName = new Map(current.map((item) => [item.name, item.id]));
 
@@ -209,10 +62,15 @@ async function seedMenu(storeId: string): Promise<Tables<'menu_items'>[]> {
     items.push(saved);
   }
 
-  // Items dropped from the list above disappear from the menu (safe: orders were wiped first).
-  const keep = new Set(MENU.map((item) => item.name));
-  const stale = current.filter((item) => !keep.has(item.name)).map((item) => item.id);
-  if (stale.length > 0) await db.from('menu_items').delete().in('id', stale).throwOnError();
+  // Everything else in the store goes: items dropped from the list and duplicates of seeded names (safe: orders were
+  // wiped first). Filtered by the ids just saved, a short list whatever the menu's size; listing the stale ids instead
+  // overflows the request URL on a large menu.
+  await db
+    .from('menu_items')
+    .delete()
+    .eq('store_id', storeId)
+    .not('id', 'in', `(${items.map((item) => item.id).join(',')})`)
+    .throwOnError();
   return items;
 }
 
@@ -280,7 +138,16 @@ async function seedDemo(): Promise<void> {
   // Back to the defaults, so every demo reset (and every test run) starts from the same limits.
   await db
     .from('site_settings')
-    .update({ customer_order_history_limit: 20, staff_order_list_limit: 100, updated_by: null })
+    .update({
+      customer_order_history_limit: 20,
+      staff_order_list_limit: 100,
+      max_lines_per_order: 30,
+      order_poll_ms: 4000,
+      orders_poll_ms: 8000,
+      staff_board_poll_ms: 4000,
+      min_client_version: '0.0.0',
+      updated_by: null,
+    })
     .eq('id', true)
     .throwOnError();
 

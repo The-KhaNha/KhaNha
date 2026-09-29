@@ -1,9 +1,56 @@
 @import 'tailwindcss';
 
+/* Plus Jakarta Sans arrives after the first paint (non-blocking, display=swap). Until then text is set in a system font
+   stretched to its metrics, so the swap moves nothing (CLS; e2e "a late web font does not shift the layout"). Values
+   come from the fonts' hhea metrics and letter-frequency-weighted widths, per weight: Roboto for Android and ChromeOS,
+   Arial (or the metric-identical Liberation Sans / Arimo on Linux) elsewhere. Recompute them if the web font changes. */
+@font-face {
+  font-family: 'Jakarta Fallback Roboto';
+  src: local('Roboto'), local('Roboto-Regular');
+  font-weight: 100 599;
+  size-adjust: 105.49%;
+  ascent-override: 98.4%;
+  descent-override: 21.05%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: 'Jakarta Fallback Roboto';
+  src: local('Roboto Bold'), local('Roboto-Bold'), local('Roboto');
+  font-weight: 600 900;
+  size-adjust: 107.22%;
+  ascent-override: 96.81%;
+  descent-override: 20.7%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: 'Jakarta Fallback Arial';
+  src:
+    local('Arial'), local('ArialMT'), local('Liberation Sans'), local('LiberationSans'),
+    local('Arimo'), local('Arimo Regular');
+  font-weight: 100 599;
+  size-adjust: 106.05%;
+  ascent-override: 97.88%;
+  descent-override: 20.93%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: 'Jakarta Fallback Arial';
+  src:
+    local('Arial Bold'), local('Arial-BoldMT'), local('Liberation Sans Bold'),
+    local('LiberationSans-Bold'), local('Arimo Bold'), local('Arimo-Bold');
+  font-weight: 600 900;
+  size-adjust: 100.89%;
+  ascent-override: 102.89%;
+  descent-override: 22%;
+  line-gap-override: 0%;
+}
+
 /* "Paprika & Saffron" — one paprika accent, saffron gold for highlights, basil green for success,
    cool slate for cancelled. Warm butter-cream base so white cards and food photos read warmer. */
 @theme {
-  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-sans:
+    'Plus Jakarta Sans', 'Jakarta Fallback Roboto', 'Jakarta Fallback Arial', system-ui,
+    -apple-system, 'Segoe UI', Roboto, sans-serif;
 
   /* Neutrals */
   --color-bg: #fbf5ec;
@@ -40,7 +87,39 @@
   --color-collected-500: #b5a597;
   --color-collected-700: #6b5b51;
 
+  /* Type scale (docs/DESIGN.md). Tailwind's defaults (xs 12, sm 14, base 16, lg 18, xl 20, 2xl 24, 7xl 72) plus the
+     in-between steps this design uses on purpose. rem, so text grows with the reader's font setting. */
+  --text-2xs: 0.6875rem; /* 11px: badges, eyebrow counts */
+  --text-caption: 0.8125rem; /* 13px: secondary lines, hints */
+  --text-body: 0.9375rem; /* 15px: controls, list text */
+  --text-lead: 1.0625rem; /* 17px: prices, card titles */
+  --text-title: 1.75rem; /* 28px: page and store titles */
+  --text-number: 2rem; /* 32px: order numbers, big totals */
+  --text-display: 2.5rem; /* 40px: the hero line, the amount to pay */
+  /* 72px: the pickup number on the success and ready screens. Capped by its @container's width, so at large text it
+     shrinks to fit instead of being cut off; 28cqi fits a four-digit order number with room to spare. */
+  --text-order-number: min(4.5rem, 28cqi);
+  --text-order-number--line-height: 1;
+
+  /* Fills that keep their role in both colour schemes (dark mode flips the text colours, never these):
+     the dark bar and active chip behind white text, a pressed paprika fill, text on a gold fill, the sheet backdrop. */
+  --color-ink-fill: #1b1410;
+  --color-brand-deep: #b72e0e;
+  --color-on-gold: #1b1410;
+  --color-overlay: #1b1410;
+
+  /* Keyboard focus ring: solid, at least 3:1 against bg and surface (WCAG 2.2 focus appearance). */
+  --color-focus: var(--color-brand-600);
+
+  /* Radius scale: controls and photos, compact tiles, page cards */
+  --radius-control: 14px;
+  --radius-tile: 20px;
+  --radius-card: 28px;
+
   /* Shadows — warm brown, never grey */
+  --shadow-hairline: 0 1px 2px rgba(27, 20, 16, 0.05);
+  --shadow-success: 0 10px 24px -10px rgba(21, 128, 61, 0.55);
+  --shadow-photo-edge: inset 0 0 0 1px rgba(27, 20, 16, 0.06);
   --shadow-card: 0 1px 2px rgba(27, 20, 16, 0.04), 0 12px 32px -14px rgba(120, 60, 20, 0.18);
   --shadow-card-hover: 0 2px 4px rgba(27, 20, 16, 0.05), 0 18px 40px -16px rgba(120, 60, 20, 0.28);
   --shadow-float: 0 4px 12px rgba(27, 20, 16, 0.1), 0 24px 48px -16px rgba(27, 20, 16, 0.32);
@@ -64,14 +143,13 @@
   --animate-scale-in: scale-in 220ms var(--ease-out-soft) both;
   --animate-check-pop: check-pop 520ms var(--ease-out-soft) both;
   --animate-draw: draw 420ms 260ms ease-out both;
-  --animate-pulse-soft: pulse-soft 1.8s ease-in-out infinite;
-  --animate-ring: ring 900ms ease-out 2 both;
+  /* backwards, not both: when it ends the ring drops back behind the check circle instead of staying scaled up, where
+     (invisible) it would still widen the page at large text. */
+  --animate-ring: ring 900ms ease-out 2 backwards;
   --animate-shimmer: shimmer 1.4s linear infinite;
   --animate-count-in: count-in 160ms var(--ease-out-soft) both;
   --animate-stepper-in: stepper-in 220ms var(--ease-out-soft) both;
   --animate-bag-tilt: bag-tilt 360ms var(--ease-out-soft);
-  --animate-glow-pulse: glow-pulse 1.8s ease-in-out 3;
-  --animate-ring-flash: ring-flash 1200ms ease-out both;
   --animate-party-in: party-in 400ms var(--ease-spring) both;
   --animate-photo-zoom: photo-zoom 400ms var(--ease-out-soft) both;
   --animate-card-leave: card-leave 200ms var(--ease-in-quick) both;
@@ -175,10 +253,12 @@
   @keyframes pulse-soft {
     0%,
     100% {
-      box-shadow: 0 0 0 0 rgb(var(--pulse-rgb, 209 55 17) / 0.35);
+      transform: scale(0.4);
+      opacity: 1;
     }
     50% {
-      box-shadow: 0 0 0 8px rgb(var(--pulse-rgb, 209 55 17) / 0);
+      transform: scale(1);
+      opacity: 0;
     }
   }
   @keyframes ring {
@@ -236,24 +316,18 @@
   @keyframes glow-pulse {
     0%,
     100% {
-      box-shadow: 0 20px 50px -20px rgba(21, 128, 61, 0.6);
+      opacity: 0;
     }
     50% {
-      box-shadow:
-        0 20px 50px -20px rgba(21, 128, 61, 0.6),
-        0 0 0 10px rgba(21, 128, 61, 0.16);
+      opacity: 1;
     }
   }
   @keyframes ring-flash {
     from {
-      box-shadow:
-        0 0 0 2px rgba(209, 55, 17, 0.6),
-        var(--shadow-card);
+      opacity: 1;
     }
     to {
-      box-shadow:
-        0 0 0 6px rgba(209, 55, 17, 0),
-        var(--shadow-card);
+      opacity: 0;
     }
   }
   @keyframes party-in {
@@ -305,6 +379,38 @@
   }
 }
 
+/* Dark mode follows the device setting: the same roles, re-valued. Every text pairing stays at WCAG AA, checked for
+   both schemes by src/lib/palette.test.ts (docs/DESIGN.md "Dark mode"). Unlayered, so it wins over @theme. */
+:root {
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #16110e;
+    --color-surface: #211a16;
+    --color-surface-2: #2b221d;
+    --color-ink: #f5ede6;
+    --color-muted: #b9a99d;
+    --color-hint: #9c8c80;
+    --color-line: #3b3029;
+    --color-brand-50: #3b1b11;
+    --color-brand-100: #52241a;
+    --color-brand-600: #ff8b66;
+    --color-brand-700: #ffb49b;
+    --color-gold-50: #3a2a0c;
+    --color-gold-700: #f7c35c;
+    --color-success-50: #0f2e1c;
+    --color-success-700: #6ee29b;
+    --color-cancel-50: #252a31;
+    --color-cancel-500: #7b8798;
+    --color-cancel-700: #c3cad4;
+    --color-collected-500: #7d6f64;
+    --color-collected-700: #cdbfb3;
+    --color-ink-fill: #3a302a;
+    --color-overlay: #000000;
+  }
+}
+
 @layer base {
   html {
     -webkit-text-size-adjust: 100%;
@@ -335,6 +441,57 @@
   }
 }
 
+/* The three attention effects paint their ring once, on a pseudo-element, and animate only its transform and opacity
+   (CLAUDE.md §2b): a box-shadow animation repaints every frame for as long as it plays. The ::after starts hidden, so
+   with reduced motion (no animation) nothing shows. */
+
+/* The live dot (the Open pill, the active tracker step, the status badge): a halo in --pulse-color that swells and
+   fades behind it. isolation keeps the halo under the dot's content but above the card behind it. */
+@utility pulse-soft {
+  position: relative;
+  isolation: isolate;
+  &::after {
+    content: '';
+    position: absolute;
+    inset: -8px;
+    z-index: -1;
+    border-radius: 9999px;
+    background: color-mix(in srgb, var(--pulse-color, var(--color-brand-500)) 35%, transparent);
+    opacity: 0;
+    pointer-events: none;
+    animation: pulse-soft 1.8s ease-in-out infinite;
+  }
+}
+
+/* "Your order is ready": a soft ring outside the hero breathes three times. */
+@utility glow-pulse {
+  position: relative;
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: var(--radius-card);
+    box-shadow: 0 0 0 10px color-mix(in srgb, var(--color-success-500) 16%, transparent);
+    opacity: 0;
+    pointer-events: none;
+    animation: glow-pulse 1.8s ease-in-out 3;
+  }
+}
+
+/* A new order on the staff board: a brand ring just inside its edge fades out once (the card clips its overflow). */
+@utility ring-flash {
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--color-brand-500) 60%, transparent);
+    opacity: 0;
+    pointer-events: none;
+    animation: ring-flash 1200ms ease-out;
+  }
+}
+
 @utility no-scrollbar {
   scrollbar-width: none;
   &::-webkit-scrollbar {
@@ -357,7 +514,11 @@
 
 /* Storefront scrim: only where text sits on a store photo (never on food). */
 @utility store-scrim {
-  background: linear-gradient(to top, rgba(27, 20, 16, 0.72), transparent 60%);
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--color-overlay) 72%, transparent),
+    transparent 60%
+  );
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -371,9 +532,10 @@
   }
   [data-flight],
   .animate-bag-tilt,
-  .animate-glow-pulse,
+  .pulse-soft::after,
+  .glow-pulse::after,
   .animate-shimmer,
-  .animate-ring-flash {
+  .ring-flash::after {
     animation: none !important;
   }
 }

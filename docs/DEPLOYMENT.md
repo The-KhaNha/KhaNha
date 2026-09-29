@@ -37,15 +37,23 @@ Read from `server/.env` (copy `server/.env.example`) or the host's environment. 
 `server/src/utils/env.ts`: on any problem the process prints `Invalid environment configuration. Check server/.env
 (see .env.example):` with one line per variable and exits with code 1.
 
-| Variable                                                               | Required        | Default                         | Rule                                                         | Purpose                                                                                                                                                                                                                                                                    |
-| ---------------------------------------------------------------------- | --------------- | ------------------------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `APP_ENV`                                                              | yes             |                                 | `local`, `staging` or `production`                           | which project this process talks to; `start.sh` picks the client mode from it; `npm run seed` refuses the demo reset on `production`; logger output and default level                                                                                                      |
-| `SUPABASE_URL`                                                         | yes             |                                 | a URL                                                        | the project URL, e.g. `http://127.0.0.1:54321` or `https://<ref>.supabase.co`                                                                                                                                                                                              |
-| `SUPABASE_SECRET_KEY`                                                  | yes             |                                 | starts with `sb_secret_` (legacy JWT keys are rejected)      | the project's secret key (Project Settings → API Keys). Bypasses RLS. Never in the client or git                                                                                                                                                                           |
-| `PORT`                                                                 | no              | `8000`                          | positive integer                                             | API port. Keep 8000: `client/vite.config.ts` (proxy target) and `start.sh` hardcode it                                                                                                                                                                                     |
-| `CLIENT_ORIGIN`                                                        | no              | `http://localhost:5173`         | a URL                                                        | the one origin CORS allows                                                                                                                                                                                                                                                 |
-| `LOG_LEVEL`                                                            | no              | `debug` on `local`, else `info` | `fatal`, `error`, `warn`, `info`, `debug`, `trace`, `silent` | minimum log level (see [LOGGING.md](LOGGING.md#tuning-per-environment))                                                                                                                                                                                                    |
-| `SEED_STAFF_PASSWORD`, `SEED_ADMIN_PASSWORD`, `SEED_CUSTOMER_PASSWORD` | seed on staging |                                 | 12+ characters each                                          | read only by `npm run seed` (the API never needs them): the staging passwords of the three demo accounts; local uses the ones published in [README.md](../README.md#test-accounts). On staging the seed refuses to run (before wiping anything) and names the missing ones |
+| Variable                                                                                       | Required        | Default                         | Rule                                                         | Purpose                                                                                                                                                                                                                                                                                    |
+| ---------------------------------------------------------------------------------------------- | --------------- | ------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `APP_ENV`                                                                                      | yes             |                                 | `local`, `staging` or `production`                           | which project this process talks to; `start.sh` picks the client mode from it; `npm run seed` refuses the demo reset on `production`; logger output and default level                                                                                                                      |
+| `SUPABASE_URL`                                                                                 | yes             |                                 | a URL                                                        | the project URL, e.g. `http://127.0.0.1:54321` or `https://<ref>.supabase.co`                                                                                                                                                                                                              |
+| `SUPABASE_SECRET_KEY`                                                                          | yes             |                                 | starts with `sb_secret_` (legacy JWT keys are rejected)      | the project's secret key (Project Settings → API Keys). Bypasses RLS. Never in the client or git                                                                                                                                                                                           |
+| `NODE_ENV`                                                                                     | no              |                                 | any                                                          | `production` in the API image (set by the Dockerfile): turns the pretty log transport off, so logs are JSON lines                                                                                                                                                                          |
+| `SUPABASE_JWKS_URL`                                                                            | no              | derived from `SUPABASE_URL`     | a URL                                                        | where to fetch the token signing keys when `SUPABASE_URL` is plain `http` on a host other than localhost (a container reaching the local stack at `host.docker.internal`); see [Containers](#signed-in-requests-from-a-container-supabase_jwks_url)                                        |
+| `SESSION_IDLE_DAYS`                                                                            | no              | `7`                             | integer 1–90                                                 | days a sign-in survives without use, served as `session.idleDays` by `GET /api/config`; must equal `auth.sessions.inactivity_timeout` in `supabase/config.toml` (hosted Supabase Free has none, ADR-011) ([CONFIGURATION.md](CONFIGURATION.md#deployment-settings))                        |
+| `PORT`                                                                                         | no              | `8000`                          | positive integer                                             | API port. `start.sh` reads it for its probes and passes it to the web app's dev proxy (`VITE_API_PROXY_TARGET`)                                                                                                                                                                            |
+| `PUBLIC_READ_TTL_MS`                                                                           | no              | `10000`                         | integer 0–600000                                             | how long public reads (menu, store, site settings) stay in the per-process cache (`utils/cache.ts`); 0 turns it off. Another instance may serve an admin's change up to this late                                                                                                          |
+| `TRUST_PROXY_HOPS`                                                                             | no              | `0`                             | integer 0–10                                                 | proxies in front of the API whose `X-Forwarded-For` Express trusts for `req.ip` (`app.set('trust proxy', …)`); compose sets 1 for its nginx. 0 means `req.ip` is the socket peer and cannot be spoofed                                                                                     |
+| `CLIENT_ORIGIN`                                                                                | no              | `http://localhost:5173`         | a URL                                                        | the one origin CORS allows                                                                                                                                                                                                                                                                 |
+| `RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_IP_MAX`, `RATE_LIMIT_WRITE_MAX`, `RATE_LIMIT_REGISTER_MAX` | no              | `60000`, `600`, `30`, `10`      | integers; window 1000–3600000, limits ≥ 0 (0 = off)          | the API's rate limits per fixed window: per signed-in account (else per address) on all of `/api`, per signed-in user on writes, per address on `POST /auth/register` ([CONFIGURATION.md](CONFIGURATION.md#deployment-settings), [API.md](API.md#headers-and-limits)). Counted per process |
+| `GIT_COMMIT`                                                                                   | no              | `unknown`                       | non-empty string                                             | the commit the build came from; reported by `GET /api/health`. Set by the image build (`--build-arg GIT_COMMIT`)                                                                                                                                                                           |
+| `KEEP_ALIVE_TIMEOUT_MS`                                                                        | no              | `65000`                         | positive integer                                             | idle keep-alive timeout; must exceed the load balancer's idle timeout (60 s on an ALB), or Node closes a connection the balancer is about to reuse and the request fails with a 502. `headersTimeout` is set 1 s above it                                                                  |
+| `LOG_LEVEL`                                                                                    | no              | `debug` on `local`, else `info` | `fatal`, `error`, `warn`, `info`, `debug`, `trace`, `silent` | minimum log level (see [LOGGING.md](LOGGING.md#tuning-per-environment))                                                                                                                                                                                                                    |
+| `SEED_STAFF_PASSWORD`, `SEED_ADMIN_PASSWORD`, `SEED_CUSTOMER_PASSWORD`                         | seed on staging |                                 | 12+ characters each                                          | read only by `npm run seed` (the API never needs them): the staging passwords of the three demo accounts; local uses the ones published in [README.md](../README.md#test-accounts). On staging the seed refuses to run (before wiping anything) and names the missing ones                 |
 
 `server/.env.example` holds the local stack's default values; the local secret key there is the Supabase CLI's
 fixed local default, printed by `npm run db:start`. Hosted keys go in `server/.env` (staging) or the host's
@@ -67,6 +75,9 @@ committed. Never put a secret key (`sb_secret_…`) in any client file.
 | ------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | `VITE_SUPABASE_URL`             | yes      | the project the browser signs in to; same project as the API's `SUPABASE_URL`                                                         |
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | yes      | that project's publishable key (`sb_publishable_…`); RLS keeps it out of every table                                                  |
+| `VITE_DEV_PORT`                 | no       | the dev server port (default 5173, `strictPort`); `start.sh` reads it                                                                 |
+| `VITE_API_PROXY_TARGET`         | no       | where the dev server proxies `/api` (default `http://localhost:8000`; `start.sh` sets it from `server/.env`'s `PORT` when unset)      |
+| `VITE_REQUEST_TIMEOUT_MS`       | no       | the client's request timeout in ms (default 15000)                                                                                    |
 | `VITE_LOG_LEVEL`                | no       | `debug`, `info`, `warn`, `error` or `silent`; unset: `debug` in dev, `warn` in builds; `debug`/`info` are no-ops in production builds |
 
 Types: `client/src/vite-env.d.ts`. Template: `client/.env.example`.
@@ -79,11 +90,12 @@ Types: `client/src/vite-env.d.ts`. Template: `client/.env.example`.
 
 `client/vite.config.ts` throws `Missing VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY for mode "<mode>". Create
 client/.env.<mode> (see client/.env.example).` when either required variable is missing, for the dev server and for
-builds alike. `client/src/lib/supabase.ts` throws at runtime for the same reason.
+builds alike. `client/src/lib/supabaseClient.ts` throws when it first loads for the same reason.
 
 The client calls the API at `/api` on its own origin (`BASE_URL` in `client/src/services/api.ts`). Only the Vite dev
 server proxies `/api` to `http://localhost:8000`. A production host has to serve the API under `/api` on the client's
-origin (and set `CLIENT_ORIGIN` to that origin). The repo contains no hosting configuration for this.
+origin (and set `CLIENT_ORIGIN` to that origin); the web image's nginx does exactly that ([Containers](#containers)).
+In the web image, each of these values can also be set at start ([runtime environment](#web-image-runtime-environment)).
 
 ## Builds
 
@@ -99,9 +111,11 @@ origin (and set `CLIENT_ORIGIN` to that origin). The repo contains no hosting co
 ### Compressing photos before a build
 
 `python3 client/scripts/optimize-images.py` (needs Pillow: `pip3 install pillow`) re-encodes every `<name>.jpg`
-under `client/public/images/` in place (≤900px wide, quality 72, progressive) and writes the `<name>-400.jpg`
+under `client/public/images/` in place (≤900px wide, progressive, quality 72 or lower, down to 50, until it fits the
+~80 KB photo budget) and writes the `<name>-400.jpg`
 thumbnail `FoodPhoto`'s `srcset` needs (`lib/photo.ts`). Run it once after adding or replacing a photo, before
-committing — `client/src/lib/photo.test.ts` fails on a photo missing its thumbnail. It skips a photo that already
+committing — `client/src/lib/photo.test.ts` fails on a photo missing its thumbnail or over the budget; `--refit`
+re-encodes the full-size photos that are over it. It skips a photo that already
 has a thumbnail, so running it again never re-compresses (and degrades) an image twice. See
 [FRONTEND_STRUCTURE.md#photo-thumbnails](FRONTEND_STRUCTURE.md#photo-thumbnails).
 
@@ -273,34 +287,124 @@ sequenceDiagram
 A sign-in lasts 7 days without use (`client/src/features/auth/sessionActivity.ts`, `server/supabase/config.toml`'s
 `[auth.sessions] inactivity_timeout = "168h"` for the local stack — see
 [PERMISSIONS.md#session-lifetime](PERMISSIONS.md#session-lifetime)). `config.toml` only configures the local Docker
-stack; a hosted project (staging or production) needs the same limit set by hand, because
-**`inactivity_timeout` is a paid-plan setting only available in the Supabase dashboard** (Authentication → Sessions →
-"Time-box user sessions" / inactivity), not in a config file. `jwt_expiry` (the 1 h access token lifetime) is a
-project setting too but its default already matches `config.toml`'s `3600`. Until this is set on a hosted project,
-the client's own 7-day check still runs, but Supabase's refresh token itself will not expire on inactivity.
+stack. On a hosted project the same limit is **`inactivity_timeout`, a Pro-plan setting** (Authentication → Sessions),
+not a config file. The project runs on Supabase Free ([ADR-011](adr/011-free-tiers.md)), so hosted staging and
+production do not have it: the client's own 7-day check runs, but Supabase's refresh token does not expire on
+inactivity, and a copied refresh token stays valid until the user signs out. A server-side idle check is the planned
+fix (ADR-011). `jwt_expiry` (the 1 h access token lifetime) is a project setting whose default already matches
+`config.toml`'s `3600`.
 
-## Future: Docker + nginx
+## Containers
 
-**Not in the repo yet — this section is future scope, not a description of anything that exists today.** The repo
-currently contains no hosting configuration (see [Client environment variables](#client-environment-variables)); a
-production host has to serve the API under `/api` on the client's own origin and the built `client/dist/` as static
-files. The plan, when someone builds it:
+Two images, built from `server/Dockerfile` and `client/Dockerfile`. One image of each serves every environment:
+the web image takes its Supabase values at start, not at build.
 
-- nginx in front of both: reverse-proxy `/api/*` to the Express server (`server/dist` under Node, `PORT` from its
-  environment), and serve `client/dist/` for everything else, so the browser never needs CORS for same-origin `/api`
-  calls (`CLIENT_ORIGIN` would still be set for any cross-origin caller).
-- Cache headers nginx would add on top of the API's own `Cache-Control: no-cache` (see [API.md#caching](API.md#caching)):
+```bash
+docker build -t fp-api --build-arg GIT_COMMIT=$(git rev-parse --short HEAD) server
+docker build -t fp-web --build-arg GIT_COMMIT=$(git rev-parse --short HEAD) client
+```
 
-  | Path                     | Header                                               | Why                                                                                  |
-  | ------------------------ | ---------------------------------------------------- | ------------------------------------------------------------------------------------ |
-  | `client/dist/assets/*`   | `Cache-Control: public, max-age=31536000, immutable` | Vite hashes these filenames; a changed file is a new URL, so caching forever is safe |
-  | `client/dist/index.html` | `Cache-Control: no-cache`                            | must always be revalidated, or a deploy never reaches a returning visitor            |
-  | `/images/*`              | `Cache-Control: public, max-age=604800` (a week)     | food and cafe photos change rarely and are not fingerprinted                         |
-  | everything else          | unset — the API's own `no-cache` stands              | stock, menu and orders must always be revalidated                                    |
+| Image    | Base                                                | Runs                                       | Port   | Health check                 | Size budget |
+| -------- | --------------------------------------------------- | ------------------------------------------ | ------ | ---------------------------- | ----------- |
+| `fp-api` | `node:24-alpine` (deps → build → runtime stages)    | `node dist/src/server.js` as `node`, PID 1 | `8000` | `GET /api/health` on `$PORT` | 400 MB      |
+| `fp-web` | `nginxinc/nginx-unprivileged:1.27-alpine` (uid 101) | nginx serving `dist/` and proxying `/api/` | `8080` | `GET /healthz`               | 100 MB      |
 
-- gzip or brotli compression on nginx's static responses (Vite's build output is not pre-compressed).
-- `client/.env.production` (see [Client environment variables](#client-environment-variables)) still has to exist
-  before `npm run build` runs, wherever the build happens (CI or the host).
+- **`fp-api`** installs with `npm ci --ignore-scripts` (no Supabase CLI binary), keeps `dist/scripts` so staging can
+  be seeded with `node dist/scripts/seed.js` (it refuses `APP_ENV=production`), and sets `NODE_ENV=production` and
+  `GIT_COMMIT` from the build arg. Its environment is the [server table above](#server-environment-variables).
+- **`fp-web`** builds with `npm run build:container` (`vite build --mode container`, placeholders from the committed
+  `client/.env.container`; `vite.config.ts` skips its required-env check in that mode). At start the image's
+  entrypoint renders `nginx/default.conf.template` and `nginx/security.conf.template` (substituting only variables
+  that are set, so nginx's `$uri` survives), then `nginx/runtime-env.sh` writes `/runtime-env.js`.
 
-Docker is one route to package this (an nginx image plus a small Node image for the API); nothing here commits to
-that container layout, only to what a production host has to do.
+### Web image runtime environment
+
+| Variable                   | Required | Purpose                                                                                            |
+| -------------------------- | -------- | -------------------------------------------------------------------------------------------------- |
+| `API_UPSTREAM`             | yes      | where `/api/` is proxied, e.g. `http://api:8000`; **no trailing slash** (nginx would strip `/api`) |
+| `SUPABASE_URL`             | yes      | the project the browser signs in to (browser-side URL); also the CSP's `connect-src`               |
+| `SUPABASE_PUBLISHABLE_KEY` | yes      | that project's publishable key                                                                     |
+| `LOG_LEVEL`                | no       | the browser console level (as `VITE_LOG_LEVEL`)                                                    |
+| `REQUEST_TIMEOUT_MS`       | no       | the client's request timeout (default 15000)                                                       |
+
+`runtime-env.sh` refuses to start when a required value is empty or any value contains a quote, backslash or `<`. It
+writes `window.__RUNTIME_ENV__ = {…}` to `/tmp/runtime-env/runtime-env.js` (uid 101 cannot write the html
+directory); nginx serves it at `/runtime-env.js`, shadowing the empty `client/public/runtime-env.js` that
+development uses. `index.html` loads it as a classic script before the app, and `lib/runtimeEnv.ts` reads each value
+as runtime first, then the build's `VITE_` value.
+
+### Web image headers
+
+| Path                                         | `Cache-Control`                       | Why                                                                      |
+| -------------------------------------------- | ------------------------------------- | ------------------------------------------------------------------------ |
+| `/assets/*`                                  | `public, max-age=31536000, immutable` | Vite hashes these names; a changed file is a new URL                     |
+| `/images/*`                                  | `public, max-age=604800` (a week)     | photos change rarely and are not fingerprinted                           |
+| `/index.html`, SPA routes, `/runtime-env.js` | `no-cache`                            | a deploy or a config change must reach a returning visitor at once       |
+| `/api/*`                                     | the API's own `no-cache`              | stock, menu and orders are always revalidated ([API.md](API.md#caching)) |
+
+Every location also sends `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy:
+strict-origin-when-cross-origin`, `Permissions-Policy: camera=(self)`, `Strict-Transport-Security: max-age=86400`
+(one day, so a wrong TLS setup is recoverable; raise it to a year once TLS has fronted staging for a while; browsers
+ignore it over plain http) and, in P0, **`Content-Security-Policy-Report-Only`**: `default-src 'self';
+script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com;
+img-src 'self' data:; connect-src 'self' ${SUPABASE_URL}; frame-ancestors 'none'; base-uri 'self'`. The snippet is
+included in each location because an `add_header` inside a location drops every inherited one. Moving the CSP to
+enforcing is a user decision, once staging shows no reports. The image build pre-compresses the built JS, CSS, HTML, SVG and JSON at gzip level 9 (`gzip_static on` serves the
+`.gz` twins); everything else, such as the API's JSON, is compressed on the fly at level 6.
+`/manifest.webmanifest` is served as `application/manifest+json` (nginx's MIME table would say octet-stream;
+the `images` CI job checks it). Request bodies are capped at 100 kB (`client_max_body_size`, the API's own limit) with the API's JSON 413 envelope,
+and a client silent mid-body for 15 s is dropped (`client_body_timeout`); nginx buffers bodies before proxying, so a
+slow upload never holds an API connection. `/api/` is proxied with HTTP/1.1, `Host`, `X-Forwarded-For`,
+`X-Forwarded-Proto` and a 30 s read timeout. The API
+sends its own hardening headers on every response (`server/src/middleware/securityHeaders.ts`,
+[API.md](API.md#headers-and-limits)), so it is safe when reached directly too; the `images` CI job checks both
+images for `X-Frame-Options` and `nosniff`.
+
+### Signed-in requests from a container (`SUPABASE_JWKS_URL`)
+
+Found while testing the images against the local stack: with the API at
+`SUPABASE_URL=http://host.docker.internal:54321`, every signed-in request failed with a 500 whose log says `A JWT
+was provided but no JWKS is configured`, while public routes worked. `@supabase/server` derives the token signing
+keys' URL (`<SUPABASE_URL>/auth/v1/.well-known/jwks.json`) only from an `https` or `localhost` URL, and
+`host.docker.internal` is neither, so it had no keys to verify against. The API does not check the token's issuer.
+
+The fix is `SUPABASE_JWKS_URL`: when set, `utils/supabase.ts` passes it to `@supabase/server` as an explicit `jwks`,
+which skips the derivation. `compose.yaml` sets it to
+`http://host.docker.internal:54321/auth/v1/.well-known/jwks.json`. Hosted projects need nothing: their URL is
+`https`. (Host networking with `SUPABASE_URL=http://127.0.0.1:54321` also works on Linux, but not on Docker
+Desktop, where "host" is Docker's VM.)
+
+### Local compose
+
+`compose.yaml` at the root runs both images against the Supabase stack on the host (Supabase itself stays on the host):
+
+```bash
+cd server && npm run db:start && npm run seed && cd ..
+export SUPABASE_PUBLISHABLE_KEY=$(grep VITE_SUPABASE_PUBLISHABLE_KEY client/.env.development | cut -d= -f2)
+GIT_COMMIT=$(git rev-parse --short HEAD) docker compose up --build web api     # http://localhost:8080
+docker compose ps                                                             # both (healthy)
+```
+
+| Service | Image     | Port   | Environment (on top of `server/.env` for `api`)                                                                                                                                                    |
+| ------- | --------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `api`   | `server/` | –      | `SUPABASE_URL=http://host.docker.internal:54321`, `SUPABASE_JWKS_URL` ([why](#signed-in-requests-from-a-container-supabase_jwks_url)), `CLIENT_ORIGIN=http://localhost:8080`, `TRUST_PROXY_HOPS=1` |
+| `web`   | `client/` | `8080` | `API_UPSTREAM=http://api:8000`, `SUPABASE_URL=http://127.0.0.1:54321` (the browser's view), `SUPABASE_PUBLISHABLE_KEY` from your shell                                                             |
+
+`web` waits for `api` to be healthy (`depends_on: condition: service_healthy`), because nginx resolves the upstream
+when it starts. The web container refuses to start without `SUPABASE_PUBLISHABLE_KEY`. Seed through the image with
+`docker compose run --rm api node dist/scripts/seed.js`. `worker`, `reconciler` and `minio` are commented placeholders
+for P1 and P3.
+
+### Running the images by hand
+
+```bash
+docker run --rm -p 8000:8000 --env-file server/.env --add-host host.docker.internal:host-gateway \
+  -e SUPABASE_URL=http://host.docker.internal:54321 \
+  -e SUPABASE_JWKS_URL=http://host.docker.internal:54321/auth/v1/.well-known/jwks.json fp-api
+docker run --rm -p 8080:8080 -e API_UPSTREAM=http://host.docker.internal:8000 --add-host host.docker.internal:host-gateway \
+  -e SUPABASE_URL=http://127.0.0.1:54321 -e SUPABASE_PUBLISHABLE_KEY=<local publishable key> fp-web
+curl -i localhost:8080/runtime-env.js   # no-cache, the runtime values; /assets/* immutable; /menu serves index.html
+```
+
+`server/.env` works as a `--env-file` because its values are unquoted (Docker passes quotes through literally). The
+image logs JSON lines even with `APP_ENV=local`: `NODE_ENV=production` turns pino-pretty (a dev dependency) off.

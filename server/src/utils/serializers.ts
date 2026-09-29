@@ -49,6 +49,11 @@ export function toSiteSettingsDto(settings: Tables<'site_settings'>): SiteSettin
   return {
     customerOrderHistoryLimit: settings.customer_order_history_limit,
     staffOrderListLimit: settings.staff_order_list_limit,
+    maxLinesPerOrder: settings.max_lines_per_order,
+    orderPollMs: settings.order_poll_ms,
+    ordersPollMs: settings.orders_poll_ms,
+    staffBoardPollMs: settings.staff_board_poll_ms,
+    minClientVersion: settings.min_client_version,
     updatedAt: settings.updated_at,
   };
 }

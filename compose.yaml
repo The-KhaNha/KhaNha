@@ -1,0 +1,44 @@
+# Local containers: the API and web images against the Supabase stack on the host (`npm run db:start` in server/).
+#   docker compose up --build web api        then http://localhost:8080
+# See docs/DEPLOYMENT.md "Local compose".
+services:
+  api:
+    build:
+      context: server
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-local}
+    env_file: server/.env
+    environment:
+      # The host's Supabase stack, seen from inside the container.
+      SUPABASE_URL: http://host.docker.internal:54321
+      # @supabase/server only derives the JWKS URL from an https or localhost SUPABASE_URL (DEPLOYMENT.md).
+      SUPABASE_JWKS_URL: http://host.docker.internal:54321/auth/v1/.well-known/jwks.json
+      CLIENT_ORIGIN: http://localhost:8080
+      # One proxy (the web container's nginx) in front of the API.
+      TRUST_PROXY_HOPS: 1
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+
+  web:
+    build:
+      context: client
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-local}
+    ports:
+      - '8080:8080'
+    environment:
+      API_UPSTREAM: http://api:8000
+      # The browser's view of Supabase, not the container's.
+      SUPABASE_URL: http://127.0.0.1:54321
+      # The local key is VITE_SUPABASE_PUBLISHABLE_KEY in client/.env.development; the web container refuses to start
+      # without one (nginx/runtime-env.sh).
+      SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_PUBLISHABLE_KEY:-}
+    # nginx resolves the upstream when it starts, so the API must be up first.
+    depends_on:
+      api:
+        condition: service_healthy
+
+  # P1 and P3 add these:
+  # worker:      # outbox and queue consumer (P1.2), same image as api with another command
+  # reconciler:  # scheduled jobs (P1.2)
+  # minio:       # S3-compatible media store for local development (P3.3)

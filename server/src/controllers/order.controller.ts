@@ -12,7 +12,8 @@ import { toOrderDto } from '../utils/serializers';
 type OrderParams = { id: string };
 
 export const createOrder: BodyHandler<CreateOrderInput> = async (req, res) => {
-  const order = toOrderDto(await orderService.createOrder(currentUser(req), req.body));
+  const placed = await orderService.createOrder(currentUser(req), req.body);
+  const order = toOrderDto(placed.order);
   req.log.info(
     {
       orderId: order.id,
@@ -20,7 +21,9 @@ export const createOrder: BodyHandler<CreateOrderInput> = async (req, res) => {
       lines: order.items.length,
       total: order.total,
     },
-    'Order placed',
+    // A replay is the same order answered again (a retried request): the same shape, so the client's one path
+    // handles both, but a distinct message so a burst of them shows up in the logs.
+    placed.replayed ? 'Order placement replayed' : 'Order placed',
   );
   res.status(201).json({ order });
 };

@@ -1,17 +1,35 @@
-import { createClient } from '@supabase/supabase-js';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
-// Set per mode in client/.env.<mode> (see client/.env.example); vite.config.ts refuses to build without them.
-const url = import.meta.env.VITE_SUPABASE_URL;
-const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-
-if (!url || !publishableKey) {
-  throw new Error(
-    'VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY must be set. See client/.env.example.',
-  );
-}
+let client: Promise<SupabaseClient> | null = null;
 
 /**
- * Used only for signing in and out. supabase-js keeps the session in localStorage and refreshes the access token
- * before it expires. All data comes from the API; the publishable key cannot read or write any table (RLS).
+ * The supabase-js client, loaded on first use rather than with the app: it is 40% of the JavaScript, and a visitor who
+ * only browses the menu never needs it. A failed load (offline) is forgotten, so the next call tries again.
  */
-export const supabase = createClient(url, publishableKey);
+export function getSupabase(): Promise<SupabaseClient> {
+  client ??= import('./supabaseClient')
+    .then((module) => module.supabase)
+    .catch((err: unknown) => {
+      client = null;
+      throw err;
+    });
+  return client;
+}
+
+// supabase-js's own storage key for the session: `sb-<project ref>-auth-token` (plus `-code-verifier` for PKCE).
+const SESSION_KEY = /^sb-.+-auth-token$/;
+
+/**
+ * Whether this browser may hold a Supabase session, checked without loading supabase-js: its storage key is there.
+ * When storage cannot be read the answer is yes, so a signed-in user is never treated as signed out.
+ */
+export function mayHaveSession(): boolean {
+  try {
+    for (let i = 0; i < localStorage.length; i += 1) {
+      if (SESSION_KEY.test(localStorage.key(i) ?? '')) return true;
+    }
+    return false;
+  } catch {
+    return true;
+  }
+}

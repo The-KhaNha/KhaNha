@@ -44,6 +44,11 @@ export interface MenuCategory {
 }
 
 export interface MenuResponse {
+  /**
+   * Cart rules from the server. The cart still uses its own copies in features/cart/cartRules.ts until P2.3 makes them
+   * per store; optional because a menu persisted by an older build lacks it.
+   */
+  rules?: { maxQuantityPerItem: number; lowStockThreshold: number };
   store: Store;
   popular: MenuItem[];
   categories: MenuCategory[];
@@ -82,6 +87,11 @@ export interface ApiErrorDetails {
   name?: string;
   /** How many can still be ordered; 0 = sold out, unavailable or gone from the menu. */
   available?: number;
+  /** VALIDATION_ERROR, EMAIL_TAKEN: the request field at fault, for a form to show the message on it. */
+  field?: string;
+  /** IDEMPOTENCY_KEY_REUSED: the order the earlier attempt already placed. */
+  orderId?: string;
+  orderNumber?: number;
 }
 
 export interface ApiErrorEnvelope {
@@ -92,6 +102,14 @@ export interface ApiErrorEnvelope {
 export interface SiteSettings {
   customerOrderHistoryLimit: number;
   staffOrderListLimit: number;
+  /** Most lines one order may have. */
+  maxLinesPerOrder: number;
+  /** Poll intervals in ms: one order's page, the customer's order list, the staff board. */
+  orderPollMs: number;
+  ordersPollMs: number;
+  staffBoardPollMs: number;
+  /** The oldest client version the API serves; older clients get 426 CLIENT_OUTDATED. */
+  minClientVersion: string;
   updatedAt: string;
 }
 
@@ -100,4 +118,18 @@ export interface CreateOrderInput {
   customerName: string;
   customerPhone?: string;
   note?: string;
+  /** One UUID per checkout attempt, resent on retry: the server returns the order it already placed for it. */
+  idempotencyKey?: string;
+}
+
+/** GET /api/config (server ConfigDto). Until it loads, config/fallbacks.json stands in (features/config/useConfig). */
+export interface Config {
+  serverVersion: string;
+  minClientVersion: string;
+  features: Record<string, boolean>;
+  payment: { provider: string; publicKey: string | null } | null;
+  limits: { maxLinesPerOrder: number };
+  /** Poll intervals in ms: one order's page, the customer's order list, the staff board. */
+  polling: { orderMs: number; ordersMs: number; staffBoardMs: number };
+  session: { idleDays: number };
 }

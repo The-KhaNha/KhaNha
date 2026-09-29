@@ -5,7 +5,6 @@ import { useAuthStore } from '../features/auth/authStore';
 import { useStore } from '../features/menu/useStore';
 import {
   STAFF_FILTERS,
-  isTerminal,
   matchesFilter,
   type StaffFilter,
   type StaffFilterKey,
@@ -14,36 +13,30 @@ import { StaffBoard } from '../features/orders/StaffBoard';
 import { StaffFilters } from '../features/orders/StaffFilters';
 import { StaffHeader } from '../features/orders/StaffHeader';
 import { useOrders } from '../features/orders/useOrders';
+import {
+  countByFilter,
+  queueOrder,
+  visibleActionErrors,
+  type StaffActionError,
+} from '../features/orders/staffBoardRules';
 import { ApiError } from '../services/api';
 import { updateOrderStatus } from '../services/orders';
-import { useNow } from '../lib/useNow';
 
-const STAFF_POLL_MS = 4000;
 /** The 200ms --animate-card-leave plus a 20ms margin, so the card is removed just after it finishes fading. */
 const LEAVE_MS = 220;
-
-/** Active orders oldest-first (fair queue); finished orders newest-first after them. */
-function queueOrder(a: Order, b: Order): number {
-  const aDone = isTerminal(a.status) ? 1 : 0;
-  const bDone = isTerminal(b.status) ? 1 : 0;
-  if (aDone !== bDone) return aDone - bDone;
-  const diff = Date.parse(a.createdAt) - Date.parse(b.createdAt);
-  return aDone ? -diff : diff;
-}
 
 /** The kitchen board: owns polling, filtering and status changes; the header, filters and grid are presentational. */
 export function StaffDashboardPage() {
   const { orders, isLoading, error, retry, mutate, updatedAt } = useOrders({
-    pollMs: STAFF_POLL_MS,
+    audience: 'staff',
   });
   const { store } = useStore();
   const logout = useAuthStore((s) => s.logout);
   const navigate = useNavigate();
-  const now = useNow(1000);
 
   const [filterKey, setFilterKey] = useState<StaffFilterKey>('ALL');
   const [pendingIds, setPendingIds] = useState<ReadonlySet<string>>(new Set());
-  const [actionErrors, setActionErrors] = useState<Record<string, string>>({});
+  const [actionErrors, setActionErrors] = useState<Record<string, StaffActionError>>({});
   const [leavingIds, setLeavingIds] = useState<ReadonlySet<string>>(new Set());
   const leaveTimers = useRef<number[]>([]);
 
@@ -68,19 +61,7 @@ export function StaffDashboardPage() {
 
   const filter: StaffFilter = STAFF_FILTERS.find((f) => f.key === filterKey) ?? STAFF_FILTERS[0]!;
 
-  const counts = useMemo(() => {
-    const result: Record<StaffFilterKey, number> = {
-      ALL: 0,
-      NEW: 0,
-      PREPARING: 0,
-      READY: 0,
-      COLLECTED: 0,
-    };
-    for (const order of orders ?? []) {
-      for (const f of STAFF_FILTERS) if (matchesFilter(order.status, f)) result[f.key] += 1;
-    }
-    return result;
-  }, [orders]);
+  const counts = useMemo(() => countByFilter(orders ?? []), [orders]);
 
   const visible = useMemo(
     () =>
@@ -119,7 +100,11 @@ export function StaffDashboardPage() {
       mutate((list) => list.map((o) => (o.id === updated.id ? updated : o)));
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Something went wrong.';
-      setActionErrors((prev) => ({ ...prev, [order.id]: message }));
+      const unreachable = err instanceof ApiError && err.isUnreachable;
+      setActionErrors((prev) => ({
+        ...prev,
+        [order.id]: { message, unreachable, at: Date.now() },
+      }));
       if (err instanceof ApiError && err.code === 'INVALID_STATUS_TRANSITION') retry();
     } finally {
       setPendingIds((prev) => {
@@ -139,7 +124,6 @@ export function StaffDashboardPage() {
     <div className="min-h-dvh">
       <StaffHeader
         storeName={store?.name}
-        now={now}
         updatedAt={updatedAt}
         offline={error !== null}
         onLogout={handleLogout}
@@ -155,7 +139,7 @@ export function StaffDashboardPage() {
           error={error}
           filter={filter}
           pendingIds={pendingIds}
-          actionErrors={actionErrors}
+          actionErrors={visibleActionErrors(actionErrors, updatedAt)}
           freshIds={freshIds}
           leavingIds={leavingIds}
           onRetry={retry}

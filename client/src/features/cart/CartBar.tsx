@@ -25,7 +25,7 @@ export function CartBar({ widthClass = 'max-w-md md:max-w-lg' }: CartBarProps) {
       <div className={cn('mx-auto px-4 pb-3', widthClass)}>
         <Link
           to="/cart"
-          className="pointer-events-auto flex h-14 items-center gap-3 rounded-2xl bg-ink pl-3 pr-4 text-white shadow-float transition-transform duration-[120ms] active:scale-[0.98] animate-bar-up focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+          className="pointer-events-auto flex h-14 items-center gap-3 rounded-2xl bg-ink-fill pl-3 pr-4 text-white shadow-float transition-transform duration-[120ms] active:scale-[0.98] animate-bar-up focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
         >
           <span className="grid h-8 min-w-8 place-items-center overflow-hidden rounded-lg bg-brand-500 px-2 text-sm font-bold tabular-nums">
             <span
@@ -36,17 +36,18 @@ export function CartBar({ widthClass = 'max-w-md md:max-w-lg' }: CartBarProps) {
               {count}
             </span>
           </span>
-          <span className="flex-1 text-[15px] font-bold">
+          {/* The label gives way, never the money: a clipped total would mislead. */}
+          <span className="min-w-0 flex-1 truncate text-body font-bold">
             View cart
             <span className="ml-2 font-medium text-white/60">
               · {count} item{count === 1 ? '' : 's'}
             </span>
           </span>
-          <span className="overflow-hidden">
+          <span className="shrink-0 overflow-hidden">
             <Price
               key={totalKey.key}
               value={total}
-              className="block text-[15px] font-bold animate-count-in"
+              className="block text-body font-bold animate-count-in"
             />
           </span>
           <ArrowRight className="h-4 w-4 text-white/70" aria-hidden />

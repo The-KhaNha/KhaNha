@@ -1,5 +1,6 @@
+import type { CSSProperties } from 'react';
 import type { OrderStatus } from '../types/api';
-import { STATUS_META, isActive } from '../features/orders/orderStatus';
+import { isActive, statusMeta } from '../features/orders/orderStatus';
 import { cn } from '../lib/cn';
 
 interface StatusBadgeProps {
@@ -8,9 +9,12 @@ interface StatusBadgeProps {
   className?: string;
 }
 
-/** Tinted status pill. The dot pings only while the order is still moving. */
+/**
+ * Tinted status pill. The dot pulses only while the order is still moving, with the app's one soft pulse (never a
+ * stock Tailwind loop: the design allows two looping animations, docs/DESIGN.md "Motion").
+ */
 export function StatusBadge({ status, size = 'sm', className }: StatusBadgeProps) {
-  const meta = STATUS_META[status];
+  const meta = statusMeta(status);
   return (
     <span
       className={cn(
@@ -20,12 +24,15 @@ export function StatusBadge({ status, size = 'sm', className }: StatusBadgeProps
         className,
       )}
     >
-      <span className="relative flex h-1.5 w-1.5">
-        {isActive(status) && (
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-current opacity-60" />
+      <span
+        className={cn(
+          'inline-flex h-1.5 w-1.5 rounded-full bg-current',
+          isActive(status) && 'pulse-soft',
         )}
-        <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-current" />
-      </span>
+        style={
+          isActive(status) ? ({ '--pulse-color': meta.pulseColor } as CSSProperties) : undefined
+        }
+      />
       {meta.label}
     </span>
   );

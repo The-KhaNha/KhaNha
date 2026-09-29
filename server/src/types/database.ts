@@ -133,6 +133,7 @@ export type Database = {
           customer_phone: string | null;
           estimated_ready_at: string;
           id: string;
+          idempotency_key: string | null;
           note: string | null;
           order_number: number;
           payment_status: Database['public']['Enums']['payment_status'];
@@ -148,6 +149,7 @@ export type Database = {
           customer_phone?: string | null;
           estimated_ready_at: string;
           id?: string;
+          idempotency_key?: string | null;
           note?: string | null;
           order_number?: never;
           payment_status?: Database['public']['Enums']['payment_status'];
@@ -163,6 +165,7 @@ export type Database = {
           customer_phone?: string | null;
           estimated_ready_at?: string;
           id?: string;
+          idempotency_key?: string | null;
           note?: string | null;
           order_number?: never;
           payment_status?: Database['public']['Enums']['payment_status'];
@@ -220,6 +223,11 @@ export type Database = {
         Row: {
           customer_order_history_limit: number;
           id: boolean;
+          max_lines_per_order: number;
+          min_client_version: string;
+          order_poll_ms: number;
+          orders_poll_ms: number;
+          staff_board_poll_ms: number;
           staff_order_list_limit: number;
           updated_at: string;
           updated_by: string | null;
@@ -227,6 +235,11 @@ export type Database = {
         Insert: {
           customer_order_history_limit?: number;
           id?: boolean;
+          max_lines_per_order?: number;
+          min_client_version?: string;
+          order_poll_ms?: number;
+          orders_poll_ms?: number;
+          staff_board_poll_ms?: number;
           staff_order_list_limit?: number;
           updated_at?: string;
           updated_by?: string | null;
@@ -234,6 +247,11 @@ export type Database = {
         Update: {
           customer_order_history_limit?: number;
           id?: boolean;
+          max_lines_per_order?: number;
+          min_client_version?: string;
+          order_poll_ms?: number;
+          orders_poll_ms?: number;
+          staff_board_poll_ms?: number;
           staff_order_list_limit?: number;
           updated_at?: string;
           updated_by?: string | null;
@@ -290,6 +308,7 @@ export type Database = {
         Args: {
           p_customer_name: string;
           p_customer_phone?: string;
+          p_idempotency_key?: string;
           p_lines: Json;
           p_note?: string;
           p_payment_status: Database['public']['Enums']['payment_status'];

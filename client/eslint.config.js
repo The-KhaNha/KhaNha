@@ -30,9 +30,11 @@ export default tseslint.config(
       // Style helpers that live beside their component on purpose.
       'react-refresh/only-export-components': [
         'error',
-        { allowExportNames: ['buttonClasses', 'summarizeItems'] },
+        { allowExportNames: ['buttonClasses', 'cardClasses', 'summarizeItems'] },
       ],
     },
   },
   { files: ['src/lib/logger.ts'], rules: { 'no-console': 'off' } },
+  // Playwright runs these in Node.
+  { files: ['e2e/**/*.ts', 'playwright.config.ts'], languageOptions: { globals: globals.node } },
 );

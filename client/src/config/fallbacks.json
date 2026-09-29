@@ -1,0 +1,33 @@
+{
+  "minClientVersion": "0.0.0",
+  "features": {},
+  "payment": null,
+  "limits": {
+    "maxLinesPerOrder": 30
+  },
+  "polling": {
+    "orderMs": 4000,
+    "ordersMs": 8000,
+    "staffBoardMs": 4000
+  },
+  "session": {
+    "idleDays": 7
+  },
+  "validation": {
+    "nameMin": 2,
+    "nameMax": 60,
+    "noteMax": 200,
+    "password": {
+      "min": 6,
+      "max": 72
+    },
+    "phoneDigits": {
+      "min": 10,
+      "max": 15
+    },
+    "pollMs": {
+      "min": 2000,
+      "max": 60000
+    }
+  }
+}

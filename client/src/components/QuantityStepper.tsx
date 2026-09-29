@@ -58,11 +58,11 @@ export function QuantityStepper({
   const shell =
     tone === 'brand'
       ? 'bg-brand-500 text-white shadow-brand'
-      : 'bg-surface text-ink ring-1 ring-line shadow-[0_1px_2px_rgba(27,20,16,0.05)]';
+      : 'bg-surface text-ink ring-1 ring-line shadow-hairline';
   const half = cn(
     'relative grid h-full place-items-center transition-[background-color,translate,scale] duration-[120ms]',
     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset disabled:pointer-events-none disabled:opacity-40',
-    tone === 'brand' ? 'focus-visible:ring-white/70' : 'focus-visible:ring-brand-500/40',
+    tone === 'brand' ? 'focus-visible:ring-white/70' : 'focus-visible:ring-focus',
     size === 'sm' ? 'w-11' : 'w-12',
   );
   const pressable =
@@ -111,7 +111,7 @@ export function QuantityStepper({
         aria-live="polite"
         className={cn(
           'grid min-w-6 place-items-center text-center font-bold tabular-nums',
-          size === 'sm' ? 'text-[15px]' : 'text-base',
+          size === 'sm' ? 'text-body' : 'text-base',
         )}
       >
         <span
@@ -150,7 +150,7 @@ export function StepperNote({ maxQuantity, inCart = 0, className }: StepperNoteP
   return (
     <p
       className={cn(
-        'text-[11px] font-semibold tabular-nums',
+        'text-2xs font-semibold tabular-nums',
         stockLimited ? 'text-gold-700' : 'text-muted',
         className,
       )}

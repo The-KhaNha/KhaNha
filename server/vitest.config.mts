@@ -17,7 +17,14 @@ export default defineConfig({
     globalSetup: ['test/setup/run-lock.ts'],
     setupFiles: ['test/setup/guard.ts'],
     // Quiet by default; LOG_LEVEL=debug npm test shows the app's logs.
-    env: { LOG_LEVEL: process.env.LOG_LEVEL ?? 'silent' },
+    env: {
+      LOG_LEVEL: process.env.LOG_LEVEL ?? 'silent',
+      // The suites fire hundreds of writes a minute as one user from one address; the limiter itself is tested
+      // through its factory in test/unit/rate-limit.safe.test.ts.
+      RATE_LIMIT_IP_MAX: process.env.RATE_LIMIT_IP_MAX ?? '0',
+      RATE_LIMIT_WRITE_MAX: process.env.RATE_LIMIT_WRITE_MAX ?? '0',
+      RATE_LIMIT_REGISTER_MAX: process.env.RATE_LIMIT_REGISTER_MAX ?? '0',
+    },
     // Suites share one database; running files one at a time keeps their data from colliding.
     fileParallelism: false,
     testTimeout: 20_000,

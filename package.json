@@ -1,0 +1,24 @@
+{
+  "name": "food-pickup",
+  "private": true,
+  "description": "Repository-level scripts for food-pickup (not a workspace)",
+  "engines": {
+    "node": "^24.15.0"
+  },
+  "scripts": {
+    "format": "prettier --write \"scripts/**\" \".github/**\" \"plans/**\" --ignore-unknown",
+    "format:check": "prettier --check \"scripts/**\" \".github/**\" \"plans/**\" --ignore-unknown",
+    "test": "node --test \"scripts/**/*.test.mjs\"",
+    "change": "node scripts/version/change.mjs",
+    "release": "node scripts/version/release.mjs",
+    "release:dry": "node scripts/version/release.mjs --dry-run",
+    "change:check": "node scripts/version/check.mjs --base origin/dev",
+    "check:bundle": "node scripts/ci/check-bundle.mjs client",
+    "check:dist-secrets": "node scripts/ci/check-dist-secrets.mjs client",
+    "check:migrations": "node scripts/ci/check-migrations.mjs --base origin/dev",
+    "check:durations": "node scripts/ci/check-durations.mjs"
+  },
+  "devDependencies": {
+    "prettier": "^3.9.9"
+  }
+}

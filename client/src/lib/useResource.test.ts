@@ -166,3 +166,23 @@ describe('useResource persist when storage is blocked', () => {
     expect(reports).toEqual([['Resource cache unavailable', { key: 'blocked' }]]);
   });
 });
+
+describe('useResource after 426 CLIENT_OUTDATED', () => {
+  it('stops polling: every retry would be refused until the page reloads', async () => {
+    const { ApiError } = await import('../services/api');
+    let calls = 0;
+    const fetcher = async () => {
+      calls += 1;
+      if (calls === 1) return { n: 1 };
+      throw Object.assign(new ApiError(426, 'CLIENT_OUTDATED', 'outdated'), { status: 426 });
+    };
+    const { result } = renderHook(() =>
+      useResource(fetcher, { key: 'orders', pollInterval: () => 5 }),
+    );
+    await waitFor(() => expect(result.current.error).not.toBeNull());
+    const after = calls;
+    await sleep(40);
+    expect(calls).toBe(after);
+    expect(result.current.data).toEqual({ n: 1 });
+  });
+});

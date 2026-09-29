@@ -1,0 +1,12 @@
+# Extends gitleaks' default rules. Allowlisted by value, never by path, so a real key pasted anywhere still fails.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Values that are public by design"
+regexes = [
+  # Supabase publishable keys ship to every browser (CLAUDE.md §12).
+  '''sb_publishable_[A-Za-z0-9_-]+''',
+  # The Supabase CLI's fixed local-stack secret key (server/.env.example); it only opens 127.0.0.1:54321.
+  '''sb_secret_N7UND0UgjKTVK-Uodkm0Hg_xSvEMPvz''',
+]

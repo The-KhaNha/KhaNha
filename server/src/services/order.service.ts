@@ -3,7 +3,13 @@ import type { AuthUser } from '../types/auth';
 import type { Tables } from '../types/database';
 import { ORDER_STATUSES, type OrderStatus } from '../types/enums';
 import { invalidate } from '../utils/cache';
-import { AppError, insufficientStock, notFound, validationError } from '../utils/errors';
+import {
+  AppError,
+  idempotencyKeyReused,
+  insufficientStock,
+  notFound,
+  validationError,
+} from '../utils/errors';
 import { isUuid } from '../utils/ids';
 import { selectOrders, type OrderWithDetails } from '../utils/serializers';
 import { raisedByDatabase, supabaseAdmin } from '../utils/supabase';
@@ -20,6 +26,16 @@ const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   CANCELLED: [],
 };
 
+/** Statuses with somewhere left to go: the kitchen's live work (derived, so a new status is never forgotten). */
+const ACTIVE_STATUSES = ORDER_STATUSES.filter((s) => ALLOWED_TRANSITIONS[s].length > 0);
+const TERMINAL_STATUSES = ORDER_STATUSES.filter((s) => ALLOWED_TRANSITIONS[s].length === 0);
+
+/**
+ * A safety bound on active orders per staff request, far above any café's queue. Oldest first, so if it is ever hit
+ * the newest wait, never the ones that have waited longest.
+ */
+const ACTIVE_ORDERS_HARD_MAX = 500;
+
 type MenuItem = Tables<'menu_items'>;
 
 /** One priced line, in the shape the place_order database function takes. */
@@ -30,18 +46,59 @@ type OrderLine = {
   quantity: number;
 };
 
+/** What createOrder placed, and whether it was placed now or already existed under the same idempotency key. */
+interface PlacedOrder {
+  order: OrderWithDetails;
+  replayed: boolean;
+}
+
 /**
  * Places a paid order. Prices are read from the database, never from the request:
  * store must be open -> validate items -> price lines -> total -> simulated payment -> place_order.
+ * A repeated `idempotencyKey` returns the order that key already placed (the fast path below; place_order settles
+ * the race of two simultaneous repeats), so a retry after a lost response never charges or reserves twice.
  *
  * place_order reserves the stock and writes the order in ONE transaction, so a refused order (sold out)
  * leaves no order rows and no stock decrements behind.
  */
-export async function createOrder(
-  user: AuthUser,
-  input: CreateOrderInput,
-): Promise<OrderWithDetails> {
-  const store = await getStore();
+export async function createOrder(user: AuthUser, input: CreateOrderInput): Promise<PlacedOrder> {
+  // Ids that are not UUIDs (e.g. a cart saved before the move to Supabase) cannot exist, so they are not queried.
+  const ids = input.items.map((line) => line.menuItemId).filter(isUuid);
+  // None of these reads depends on another, so they go out together: one round trip to the database instead of one
+  // each (test/api/order-reads.test.ts). The checks below still run in the same order.
+  const [existing, settings, store, customerName, menuItems] = await Promise.all([
+    input.idempotencyKey
+      ? selectOrders()
+          .eq('user_id', user.id)
+          .eq('idempotency_key', input.idempotencyKey)
+          .maybeSingle()
+          .throwOnError()
+          .then(({ data }) => data)
+      : null,
+    // A site setting, read through the cache: an admin's change can take up to the 10 s TTL on other instances, which
+    // is harmless for a cap this generous.
+    getSettings(),
+    getStore(),
+    input.customerName ?? lookupUserName(user.id),
+    supabaseAdmin
+      .from('menu_items')
+      .select()
+      .in('id', ids)
+      .throwOnError()
+      .then(({ data }) => data),
+  ]);
+
+  if (existing) {
+    if (!matchesRequest(existing, input)) {
+      throw idempotencyKeyReused(existing.id, existing.order_number);
+    }
+    return { order: existing, replayed: true };
+  }
+
+  const maxLines = settings.max_lines_per_order;
+  if (input.lineCount > maxLines)
+    throw validationError(`An order can have at most ${maxLines} items.`);
+
   if (!store.is_open) {
     throw new AppError(
       400,
@@ -49,15 +106,6 @@ export async function createOrder(
       `${store.name} is closed right now. Please come back when it opens.`,
     );
   }
-  const customerName = input.customerName ?? (await lookupUserName(user.id));
-
-  // Ids that are not UUIDs (e.g. a cart saved before the move to Supabase) cannot exist, so they are not queried.
-  const ids = input.items.map((line) => line.menuItemId).filter(isUuid);
-  const { data: menuItems } = await supabaseAdmin
-    .from('menu_items')
-    .select()
-    .in('id', ids)
-    .throwOnError();
   const byId = new Map(menuItems.map((item) => [item.id, item]));
 
   const lines = priceLines(input.items, byId);
@@ -76,6 +124,7 @@ export async function createOrder(
         p_note: input.note,
         p_payment_status: paymentStatus,
         p_lines: lines,
+        p_idempotency_key: input.idempotencyKey,
       })
       .throwOnError());
   } catch (err) {
@@ -94,7 +143,33 @@ export async function createOrder(
   }
 
   const { data: order } = await selectOrders().eq('id', orderId).single().throwOnError();
-  return order;
+  // place_order answers a key it already saw (two requests racing past the check above) with the stored order, which
+  // must be the same order this request asked for.
+  if (input.idempotencyKey && !matchesRequest(order, input, customerName)) {
+    throw idempotencyKeyReused(order.id, order.order_number);
+  }
+  return { order, replayed: false };
+}
+
+/**
+ * Whether a stored order is what this request asks for: the same items and quantities (after merging), and the same
+ * pickup details. `customerName` is the resolved name; without it, a request that sent none matches any name.
+ */
+function matchesRequest(
+  order: OrderWithDetails,
+  input: CreateOrderInput,
+  customerName = input.customerName,
+): boolean {
+  const stored = new Map(order.order_items.map((line) => [line.menu_item_id, line.quantity]));
+  const sameItems =
+    input.items.length === stored.size &&
+    input.items.every((line) => stored.get(line.menuItemId) === line.quantity);
+  return (
+    sameItems &&
+    (customerName === undefined || customerName === order.customer_name) &&
+    (input.customerPhone ?? null) === order.customer_phone &&
+    (input.note ?? null) === order.note
+  );
 }
 
 /**
@@ -107,13 +182,49 @@ export async function listOrders(
   status?: OrderStatus,
 ): Promise<OrderWithDetails[]> {
   const settings = await getSettings();
-  let query = selectOrders().order('created_at', { ascending: false });
-  if (user.role === 'STAFF') query = query.limit(settings.staff_order_list_limit);
-  else query = query.eq('user_id', user.id).limit(settings.customer_order_history_limit);
-  if (status) query = query.eq('status', status);
+  if (user.role === 'STAFF') return listStaffOrders(settings.staff_order_list_limit, status);
 
+  let query = selectOrders()
+    .order('created_at', { ascending: false })
+    .eq('user_id', user.id)
+    .limit(settings.customer_order_history_limit);
+  if (status) query = query.eq('status', status);
   const { data: orders } = await query.throwOnError();
   return orders;
+}
+
+/**
+ * The kitchen board: every active order, and the newest `finishedLimit` finished ones (collected, cancelled) as
+ * history. One limit over every status used to cut the orders that had waited longest as soon as enough newer orders
+ * existed, collected ones included, with nothing on the board to say so. Newest first, as before; the board sorts.
+ */
+async function listStaffOrders(
+  finishedLimit: number,
+  status?: OrderStatus,
+): Promise<OrderWithDetails[]> {
+  const active = async (statuses: OrderStatus[]) =>
+    (
+      await selectOrders()
+        .in('status', statuses)
+        .order('created_at', { ascending: true })
+        .limit(ACTIVE_ORDERS_HARD_MAX)
+        .throwOnError()
+    ).data;
+  const finished = async (statuses: OrderStatus[]) =>
+    (
+      await selectOrders()
+        .in('status', statuses)
+        .order('created_at', { ascending: false })
+        .limit(finishedLimit)
+        .throwOnError()
+    ).data;
+
+  if (status)
+    return ACTIVE_STATUSES.includes(status)
+      ? (await active([status])).reverse()
+      : finished([status]);
+  const [open, done] = await Promise.all([active(ACTIVE_STATUSES), finished(TERMINAL_STATUSES)]);
+  return [...open, ...done].sort((a, b) => b.created_at.localeCompare(a.created_at));
 }
 
 /** Someone else's order looks exactly like a missing one (404), so ids cannot be probed. */

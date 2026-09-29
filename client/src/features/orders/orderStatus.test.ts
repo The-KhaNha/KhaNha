@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  FALLBACK_STATUS_META,
   STAFF_FILTERS,
   STATUS_META,
   amountLabel,
   isActive,
   isTerminal,
   matchesFilter,
+  statusMeta,
   stepIndex,
   timelineLabel,
 } from './orderStatus';
@@ -155,5 +157,24 @@ describe('timelineLabel', () => {
       label: 'Estimated ready',
       iso: '2026-09-26T10:15:00.000Z',
     });
+  });
+});
+
+describe('statusMeta', () => {
+  it('returns the rules for a known status', () => {
+    expect(statusMeta('READY')).toBe(STATUS_META.READY);
+  });
+
+  it('falls back to a neutral "Updating…" with no staff action for an unknown status', () => {
+    const meta = statusMeta('REFUNDED');
+    expect(meta).toBe(FALLBACK_STATUS_META);
+    expect(meta.label).toBe('Updating…');
+    expect(meta.next).toBeNull();
+    expect(meta.actionLabel).toBeNull();
+    expect(meta.canCancel).toBe(false);
+  });
+
+  it('does not treat inherited object keys as statuses', () => {
+    expect(statusMeta('toString')).toBe(FALLBACK_STATUS_META);
   });
 });

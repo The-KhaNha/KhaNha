@@ -1,5 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect } from 'react';
+import { EdgeFades } from '../../components/EdgeFades';
 import { cn } from '../../lib/cn';
+import { useOverflowEdges } from '../../lib/useOverflowEdges';
+import { scrollBehavior } from '../../lib/useReducedMotion';
 
 export interface MenuSection {
   id: string;
@@ -31,29 +34,7 @@ export function CategoryChips({
   onSelect,
   scrolled = false,
 }: CategoryChipsProps) {
-  const scroller = useRef<HTMLDivElement>(null);
-  const [overflow, setOverflow] = useState({ left: false, right: false });
-
-  // Fade the edge that still has chips hidden behind it, so it reads as scrollable.
-  const syncOverflow = useCallback(() => {
-    const el = scroller.current;
-    if (!el) return;
-    const max = el.scrollWidth - el.clientWidth;
-    setOverflow({ left: el.scrollLeft > 4, right: max > 4 && el.scrollLeft < max - 4 });
-  }, []);
-
-  useEffect(() => {
-    syncOverflow();
-    const el = scroller.current;
-    if (!el) return;
-    const observer = new ResizeObserver(syncOverflow);
-    observer.observe(el);
-    window.addEventListener('resize', syncOverflow);
-    return () => {
-      observer.disconnect();
-      window.removeEventListener('resize', syncOverflow);
-    };
-  }, [syncOverflow, sections]);
+  const { ref: scroller, edges, onScroll } = useOverflowEdges<HTMLDivElement>();
 
   // Keep the active chip in view as the page scrolls past sections.
   useEffect(() => {
@@ -62,8 +43,8 @@ export function CategoryChips({
     const chip = container.querySelector<HTMLElement>(`[data-chip="${activeId}"]`);
     if (!chip) return;
     const target = chip.offsetLeft - container.clientWidth / 2 + chip.clientWidth / 2;
-    container.scrollTo({ left: Math.max(0, target), behavior: 'smooth' });
-  }, [activeId]);
+    container.scrollTo({ left: Math.max(0, target), behavior: scrollBehavior() });
+  }, [activeId, scroller]);
 
   return (
     <div
@@ -75,7 +56,7 @@ export function CategoryChips({
       <div className="relative">
         <div
           ref={scroller}
-          onScroll={syncOverflow}
+          onScroll={onScroll}
           role="group"
           aria-label="Menu categories"
           className="no-scrollbar flex gap-2 overflow-x-auto px-4 py-3"
@@ -92,9 +73,9 @@ export function CategoryChips({
                 className={cn(
                   'inline-flex h-11 shrink-0 items-center rounded-full px-4 text-sm font-semibold',
                   'transition-[background-color,color,border-color,scale] duration-150 active:scale-95',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-bg',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-bg',
                   active
-                    ? 'bg-ink text-white'
+                    ? 'bg-ink-fill text-white'
                     : 'border border-line bg-surface text-muted hover:border-brand-100 hover:bg-brand-50 hover:text-ink',
                 )}
               >
@@ -104,21 +85,7 @@ export function CategoryChips({
           })}
         </div>
 
-        {/* Edge fades: only shown on the side that has more chips. */}
-        <div
-          aria-hidden
-          className={cn(
-            'pointer-events-none absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-bg to-transparent transition-opacity duration-200',
-            overflow.left ? 'opacity-100' : 'opacity-0',
-          )}
-        />
-        <div
-          aria-hidden
-          className={cn(
-            'pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-bg to-transparent transition-opacity duration-200',
-            overflow.right ? 'opacity-100' : 'opacity-0',
-          )}
-        />
+        <EdgeFades edges={edges} />
       </div>
     </div>
   );

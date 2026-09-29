@@ -11,7 +11,10 @@ type Source = 'body' | 'query';
 export function validate(schema: ZodTypeAny, source: Source = 'body'): RequestHandler {
   return (req, _res, next) => {
     const result = schema.safeParse(stripNullBytes(req[source]));
-    if (!result.success) throw validationError(describeIssue(result.error.issues[0], source));
+    if (!result.success) {
+      const issue = result.error.issues[0];
+      throw validationError(describeIssue(issue, source), topLevelField(issue));
+    }
 
     if (source === 'body') {
       req.body = result.data;
@@ -26,6 +29,12 @@ export function validate(schema: ZodTypeAny, source: Source = 'body'): RequestHa
     }
     next();
   };
+}
+
+/** The request field an issue is about (`items` for `items[2].quantity`), for a form to show it in place. */
+function topLevelField(issue: ZodIssue | undefined): string | undefined {
+  const first = issue?.path[0];
+  return typeof first === 'string' ? first : undefined;
 }
 
 /** Postgres text columns reject the NUL character, so it is dropped from every string before validation. */

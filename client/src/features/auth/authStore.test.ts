@@ -14,12 +14,13 @@ const me: User = {
   createdAt: '2026-09-27T00:00:00Z',
 };
 vi.mock('../../lib/supabase', () => ({
-  supabase: {
+  getSupabase: async () => ({
     auth: {
       getSession: async () => ({ data: { session: null } }),
       onAuthStateChange: () => {},
     },
-  },
+  }),
+  mayHaveSession: () => true,
 }));
 vi.mock('../../services/auth', () => ({
   fetchMe: async () => ({ user: me }),

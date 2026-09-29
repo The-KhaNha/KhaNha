@@ -30,8 +30,8 @@ export function BottomNav() {
             end={end}
             className={({ isActive }) =>
               cn(
-                'relative flex flex-col items-center justify-center gap-1 text-[11px] font-semibold transition-colors',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500/40',
+                'relative flex flex-col items-center justify-center gap-1 text-2xs font-semibold transition-colors',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus',
                 isActive ? 'text-brand-600' : 'text-muted hover:text-ink',
               )
             }

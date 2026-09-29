@@ -1,7 +1,7 @@
 import { useState, type CSSProperties } from 'react';
 import { Check, CircleX } from 'lucide-react';
 import type { OrderStatus } from '../types/api';
-import { ORDER_STEPS, STATUS_META, stepIndex } from '../features/orders/orderStatus';
+import { ORDER_STEPS, STATUS_META, stepIndex, statusMeta } from '../features/orders/orderStatus';
 import { cn } from '../lib/cn';
 
 interface StatusTrackerProps {
@@ -29,7 +29,7 @@ function StepTracker({ status, className }: { status: OrderStatus; className?: s
   return (
     <ol className={cn('flex items-start', className)} aria-label="Order progress">
       {ORDER_STEPS.map((step, index) => {
-        const meta = STATUS_META[step];
+        const meta = statusMeta(step);
         const done = finished || index < current;
         const active = !finished && index === current;
         const last = index === ORDER_STEPS.length - 1;
@@ -41,16 +41,13 @@ function StepTracker({ status, className }: { status: OrderStatus; className?: s
               <span
                 key={active && transitioned ? `${step}-active` : step}
                 aria-current={active ? 'step' : undefined}
-                style={{ '--pulse-rgb': meta.pulseRgb } as CSSProperties}
+                style={{ '--pulse-color': meta.pulseColor } as CSSProperties}
                 className={cn(
                   'grid h-10 w-10 place-items-center rounded-full transition-colors duration-300',
                   done && 'bg-success-500 text-white',
                   active && cn(meta.fillClass, meta.onFillClass),
-                  // One animation utility only: two `animate-*` classes on the same element would fight.
-                  active &&
-                    (transitioned
-                      ? 'animate-[pop_320ms_var(--ease-spring),pulse-soft_1.8s_ease-in-out_infinite]'
-                      : 'animate-pulse-soft'),
+                  // The pop animates the step itself; the pulse runs on its ::after, so the two never fight.
+                  active && cn('pulse-soft', transitioned && 'animate-pop'),
                   !done && !active && 'border-2 border-line bg-surface text-muted',
                 )}
               >
@@ -62,7 +59,7 @@ function StepTracker({ status, className }: { status: OrderStatus; className?: s
               </span>
               <span
                 className={cn(
-                  'mt-2 text-center text-[11px] font-semibold leading-tight transition-colors duration-300',
+                  'mt-2 text-center text-2xs font-semibold leading-tight transition-colors duration-300',
                   active ? 'text-ink' : done ? 'text-success-700' : 'text-muted',
                 )}
               >
@@ -96,9 +93,9 @@ function CancelledTracker({ className }: { className?: string }) {
       <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-surface text-cancel-700">
         <CircleX className="h-5 w-5" aria-hidden />
       </span>
-      <div>
-        <p className="text-[15px] font-bold">{meta.customerTitle}</p>
-        <p className="text-[13px] text-muted">This order won't move forward.</p>
+      <div className="min-w-0 wrap-break-word">
+        <p className="text-body font-bold">{meta.customerTitle}</p>
+        <p className="text-caption text-muted">This order won't move forward.</p>
       </div>
     </div>
   );

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { ChevronLeft } from 'lucide-react';
 import { cn } from '../lib/cn';
 import { Wordmark } from './Wordmark';
+import { APP_TITLE } from '../config/app';
 
 export type TopBarTone = 'default' | 'brand';
 
@@ -35,14 +36,15 @@ export function TopBar({
           : 'border-b border-line/60 bg-bg/90 text-ink backdrop-blur-md',
       )}
     >
-      <div className={cn('mx-auto flex h-14 items-center gap-1 px-4', widthClass)}>
+      {/* min-h, not h: at large text the title takes a second line instead of ending in "…". */}
+      <div className={cn('mx-auto flex min-h-14 items-center gap-1 px-4 py-1', widthClass)}>
         {backTo && (
           <Link
             to={backTo}
             aria-label="Back"
             className={cn(
               '-ml-2 grid h-11 w-11 place-items-center rounded-full transition-[background-color,translate,scale] duration-150 active:scale-95',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus',
               brand ? 'hover:bg-white/15' : 'hover:bg-surface-2',
             )}
           >
@@ -51,12 +53,14 @@ export function TopBar({
         )}
         <div className="min-w-0 flex-1">
           {title ? (
-            <h1 className="truncate text-[17px] font-bold">{title}</h1>
+            <h1 className="line-clamp-2 text-lead leading-tight font-bold wrap-break-word">
+              {title}
+            </h1>
           ) : (
             <Link
               to="/"
-              className="inline-flex min-h-11 items-center rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
-              aria-label="Food Pickup home"
+              className="inline-flex min-h-11 max-w-full items-center rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+              aria-label={`${APP_TITLE} home`}
             >
               <Wordmark tone={brand ? 'inverse' : 'default'} />
             </Link>

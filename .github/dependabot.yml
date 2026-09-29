@@ -1,0 +1,35 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /client
+    schedule: { interval: weekly }
+    target-branch: dev
+    labels: [dependencies, no-release]
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: npm
+    directory: /server
+    schedule: { interval: weekly }
+    target-branch: dev
+    labels: [dependencies, no-release]
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+    target-branch: dev
+    labels: [dependencies, no-release]
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+  # Finds nothing until the Dockerfiles land (P0 PR 09).
+  - package-ecosystem: docker
+    directories: [/client, /server]
+    schedule: { interval: weekly }
+    target-branch: dev
+    labels: [dependencies, no-release]
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]

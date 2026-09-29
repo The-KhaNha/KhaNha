@@ -1,6 +1,6 @@
-import { isAuthRetryableFetchError, type AuthError, type Session } from '@supabase/supabase-js';
+import type { AuthError, Session } from '@supabase/supabase-js';
 import type { User } from '../types/api';
-import { supabase } from '../lib/supabase';
+import { getSupabase } from '../lib/supabase';
 import { ApiError, request } from './api';
 
 export interface RegisterInput {
@@ -12,6 +12,7 @@ export interface RegisterInput {
 
 /** Signs in with Supabase Auth. Errors are ApiErrors with a message that is safe to show, like every API error. */
 export async function signIn(email: string, password: string): Promise<Session> {
+  const supabase = await getSupabase();
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) throw describeAuthError(error);
   return data.session;
@@ -19,7 +20,7 @@ export async function signIn(email: string, password: string): Promise<Session> 
 
 /** Ends the session on this device only (other devices stay signed in). */
 export async function signOut(): Promise<void> {
-  await supabase.auth.signOut({ scope: 'local' });
+  await (await getSupabase()).auth.signOut({ scope: 'local' });
 }
 
 /** The API creates the account (already confirmed); the caller signs in afterwards. */
@@ -32,7 +33,8 @@ export function fetchMe(): Promise<{ user: User }> {
 }
 
 function describeAuthError(error: AuthError): ApiError {
-  if (isAuthRetryableFetchError(error)) {
+  // The name check isAuthRetryableFetchError() does, without importing supabase-js's runtime into the entry chunk.
+  if (error.name === 'AuthRetryableFetchError') {
     return new ApiError(
       0,
       'UNREACHABLE',

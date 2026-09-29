@@ -14,6 +14,14 @@ const validOrder = {
 };
 
 describe('registerSchema', () => {
+  it('refuses a password of only spaces, and keeps spaces inside one', () => {
+    const base = { name: 'Ravi Kumar', email: 'ravi@example.com' };
+    const spaces = registerSchema.safeParse({ ...base, password: '        ' });
+    expect(spaces.success).toBe(false);
+    expect(spaces.error?.issues[0]?.message).toBe('Password cannot be only spaces.');
+    expect(registerSchema.safeParse({ ...base, password: 'open sesame' }).success).toBe(true);
+  });
+
   const base = { name: 'Ann', email: 'ann@example.test', password: 'pw123456' };
 
   it.each([
@@ -78,8 +86,9 @@ describe('phoneField (shared by register and orders)', () => {
 describe('createOrderSchema', () => {
   it.each([
     ['0 lines', 0, false],
-    ['30 lines (max)', 30, true],
-    ['31 lines', 31, false],
+    ['30 lines', 30, true],
+    ['100 lines (the hard cap; the site setting is checked by createOrder)', 100, true],
+    ['101 lines', 101, false],
   ])('items of %s -> ok=%s', (_label, count, ok) => {
     const items = Array.from({ length: count as number }, (_, i) => ({
       menuItemId: `item-${i}`,
@@ -110,8 +119,10 @@ describe('createOrderSchema', () => {
     });
     expect(result.success).toBe(true);
     if (result.success) {
-      // 21 > MAX_QUANTITY_PER_ITEM (20): the merged line is what order.service later refuses.
+      // 21 > MAX_QUANTITY_PER_ITEM (10): the merged line is what order.service later refuses.
       expect(result.data.items).toEqual([{ menuItemId: 'item-1', quantity: 21 }]);
+      // The lines limit counts what was sent, before the merge.
+      expect(result.data.lineCount).toBe(2);
     }
   });
 

@@ -13,7 +13,7 @@ interface CartItemProps {
 /** A 44px tap target around a 32px visible pill (PILL), so the row stays compact. */
 const HIT_AREA = 'group grid h-11 min-w-11 place-items-center focus-visible:outline-none';
 const PILL =
-  'grid h-8 place-items-center rounded-lg text-[13px] transition-colors group-focus-visible:ring-2 group-focus-visible:ring-brand-500/40';
+  'grid h-8 place-items-center rounded-lg text-caption transition-colors group-focus-visible:ring-2 group-focus-visible:ring-focus';
 
 /**
  * One cart line. The stepper is the quiet outlined variant so "Proceed to Checkout" stays the only paprika fill.
@@ -33,14 +33,15 @@ export function CartItem({ line }: CartItemProps) {
     <li
       data-flagged={problem ? true : undefined}
       className={cn(
-        'flex items-center gap-3.5 py-3.5 animate-fade-in',
-        problem && '-mx-2 my-1 rounded-[20px] px-2 ring-2 ring-brand-500',
+        // Wraps at large text: the stepper moves under the name instead of squeezing it to nothing.
+        'flex flex-wrap items-center gap-3.5 py-3.5 animate-fade-in',
+        problem && '-mx-2 my-1 rounded-tile px-2 ring-2 ring-brand-500',
       )}
     >
       <FoodPhoto
         src={line.imageUrl}
         muted={soldOut}
-        className="h-[72px] w-[72px] shrink-0 rounded-[14px]"
+        className="h-[72px] w-[72px] shrink-0 rounded-control"
       >
         {!line.imageUrl && (
           <UtensilsCrossed
@@ -49,19 +50,17 @@ export function CartItem({ line }: CartItemProps) {
           />
         )}
       </FoodPhoto>
-      <div className="min-w-0 flex-1">
-        <p className="line-clamp-2 wrap-anywhere text-[16px] font-bold leading-[1.3]">
-          {line.name}
-        </p>
-        <p className="mt-0.5 text-[13px] text-muted">
+      <div className="min-w-0 flex-[1_1_4.5rem]">
+        <p className="line-clamp-2 wrap-anywhere text-base font-bold leading-[1.3]">{line.name}</p>
+        <p className="mt-0.5 text-caption text-muted">
           <Price value={line.unitPrice} /> each
         </p>
         <Price
           value={line.unitPrice * line.quantity}
-          className="mt-1 block text-[20px] font-extrabold leading-none"
+          className="mt-1 block text-xl font-extrabold leading-none"
         />
       </div>
-      <div className="flex shrink-0 flex-col items-end">
+      <div className="ml-auto flex shrink-0 flex-col items-end">
         <QuantityStepper
           tone="neutral"
           removable
@@ -74,7 +73,7 @@ export function CartItem({ line }: CartItemProps) {
         {problem ? (
           <p
             role="status"
-            className="mt-1.5 inline-flex items-center gap-1 text-[12px] font-bold text-brand-700"
+            className="mt-1.5 inline-flex items-center gap-1 text-xs font-bold text-brand-700"
           >
             <CircleAlert className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden />
             {problemLabel(problem)}

@@ -2,6 +2,7 @@ import {
   ChefHat,
   CircleCheck,
   CircleX,
+  LoaderCircle,
   PackageCheck,
   ReceiptText,
   type LucideIcon,
@@ -29,8 +30,8 @@ export interface StatusMeta {
   onFillClass: string;
   /** 4px left rail on staff cards. */
   railClass: string;
-  /** "r g b" for the pulse-soft ring around the active tracker step. */
-  pulseRgb: string;
+  /** The pulse-soft ring colour around the active tracker step: a `var(--color-*)`, so it follows the dark scheme. */
+  pulseColor: string;
   /** The next status on the happy path, if any. */
   next: OrderStatus | null;
   /** Label for the staff's single primary action. */
@@ -53,7 +54,7 @@ export const STATUS_META: Record<OrderStatus, StatusMeta> = {
     fillClass: 'bg-brand-500',
     onFillClass: 'text-white',
     railClass: 'bg-brand-500',
-    pulseRgb: '209 55 17',
+    pulseColor: 'var(--color-brand-500)',
     next: 'PREPARING',
     actionLabel: 'Start Preparing',
     canCancel: true,
@@ -67,7 +68,7 @@ export const STATUS_META: Record<OrderStatus, StatusMeta> = {
     fillClass: 'bg-gold-500',
     onFillClass: 'text-ink',
     railClass: 'bg-gold-500',
-    pulseRgb: '245 166 35',
+    pulseColor: 'var(--color-gold-500)',
     next: 'READY',
     actionLabel: 'Mark Ready',
     canCancel: true,
@@ -81,7 +82,7 @@ export const STATUS_META: Record<OrderStatus, StatusMeta> = {
     fillClass: 'bg-success-500',
     onFillClass: 'text-white',
     railClass: 'bg-success-500',
-    pulseRgb: '21 128 61',
+    pulseColor: 'var(--color-success-500)',
     next: 'COLLECTED',
     actionLabel: 'Mark Collected',
     canCancel: false,
@@ -95,7 +96,7 @@ export const STATUS_META: Record<OrderStatus, StatusMeta> = {
     fillClass: 'bg-collected-500',
     onFillClass: 'text-white',
     railClass: 'bg-collected-500',
-    pulseRgb: '181 165 151',
+    pulseColor: 'var(--color-collected-500)',
     next: null,
     actionLabel: null,
     canCancel: false,
@@ -109,12 +110,38 @@ export const STATUS_META: Record<OrderStatus, StatusMeta> = {
     fillClass: 'bg-cancel-500',
     onFillClass: 'text-white',
     railClass: 'bg-cancel-500',
-    pulseRgb: '100 116 139',
+    pulseColor: 'var(--color-cancel-500)',
     next: null,
     actionLabel: null,
     canCancel: false,
   },
 };
+
+/**
+ * Shown for a status this build does not know yet (a newer server added one). Neutral, with no staff action, so an
+ * old tab degrades to "Updating…" instead of crashing on an undefined lookup.
+ */
+export const FALLBACK_STATUS_META: StatusMeta = {
+  label: 'Updating…',
+  customerTitle: 'Updating…',
+  customerCopy: 'Refresh the page to see the latest status of your order.',
+  icon: LoaderCircle,
+  badgeClass: 'bg-surface-2 text-muted',
+  fillClass: 'bg-line',
+  onFillClass: 'text-ink',
+  railClass: 'bg-line',
+  pulseColor: 'var(--color-collected-500)',
+  next: null,
+  actionLabel: null,
+  canCancel: false,
+};
+
+/** The display rules for a status; every read goes through here so an unknown status gets the fallback. */
+export function statusMeta(status: string): StatusMeta {
+  return Object.hasOwn(STATUS_META, status)
+    ? STATUS_META[status as OrderStatus]
+    : FALLBACK_STATUS_META;
+}
 
 export function isTerminal(status: OrderStatus): boolean {
   return TERMINAL_STATUSES.includes(status);

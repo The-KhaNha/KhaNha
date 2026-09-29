@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { logger } from './logger';
 import { ApiError } from '../services/api';
 
@@ -82,9 +82,12 @@ export function useResource<T>(
   const [nonce, setNonce] = useState(0);
 
   const fetcherRef = useRef(fetcher);
-  fetcherRef.current = fetcher;
   const pollRef = useRef(pollInterval);
-  pollRef.current = pollInterval;
+  // Layout effects run before the fetch effect below, so a fetch or poll always uses the latest callbacks.
+  useLayoutEffect(() => {
+    fetcherRef.current = fetcher;
+    pollRef.current = pollInterval;
+  });
   const dataRef = useRef<T | null>(state.data);
   const lastKey = useRef(key);
   // Bumped by mutate(): a fetch that started before the latest local change must not overwrite it.
@@ -101,6 +104,7 @@ export function useResource<T>(
     }
 
     let cancelled = false;
+    let outdated = false;
     let timer: number | undefined;
 
     const schedule = () => {
@@ -125,14 +129,21 @@ export function useResource<T>(
       } catch (err) {
         if (cancelled) return;
         if (err instanceof DOMException && err.name === 'AbortError') return;
-        setState((s) => ({ ...s, isLoading: false, error: toApiError(err) }));
+        const apiError = toApiError(err);
+        setState((s) => ({ ...s, isLoading: false, error: apiError }));
+        // 426: this build is too old and every retry would be refused. Stop polling until the page reloads;
+        // otherwise a screen with data (no ErrorState) would keep asking every few seconds.
+        if (apiError.status === 426) {
+          outdated = true;
+          return;
+        }
       }
       schedule();
     };
 
     const onVisibility = () => {
       window.clearTimeout(timer);
-      if (!document.hidden && dataRef.current !== null && pollRef.current) void run();
+      if (!document.hidden && !outdated && dataRef.current !== null && pollRef.current) void run();
     };
 
     document.addEventListener('visibilitychange', onVisibility);

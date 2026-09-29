@@ -42,6 +42,8 @@ export interface MenuCategoryDto {
 }
 
 export interface MenuResponse {
+  /** Cart rules: most of one item per order, and the stock at or below which the menu says "only N left". */
+  rules: { maxQuantityPerItem: number; lowStockThreshold: number };
   store: StoreDto;
   popular: MenuItemDto[];
   categories: MenuCategoryDto[];
@@ -51,6 +53,14 @@ export interface MenuResponse {
 export interface SiteSettingsDto {
   customerOrderHistoryLimit: number;
   staffOrderListLimit: number;
+  /** Most lines one order may have (enforced by createOrder). */
+  maxLinesPerOrder: number;
+  /** Client poll intervals in ms: one order's page, the customer's order list, the staff board. */
+  orderPollMs: number;
+  ordersPollMs: number;
+  staffBoardPollMs: number;
+  /** The oldest client version served; older clients get 426 CLIENT_OUTDATED. */
+  minClientVersion: string;
   updatedAt: string;
 }
 
@@ -79,4 +89,18 @@ export interface OrderDto {
   updatedAt: string;
   store: { id: string; name: string };
   items: OrderItemDto[];
+}
+
+/** GET /api/config: what the client needs to run. The client's defaults are client/src/config/fallbacks.json. */
+export interface ConfigDto {
+  serverVersion: string;
+  minClientVersion: string;
+  /** Feature flags by name; empty until P1.7. */
+  features: Record<string, boolean>;
+  /** The payment provider's public details; null until P5. */
+  payment: { provider: string; publicKey: string | null } | null;
+  limits: { maxLinesPerOrder: number };
+  /** Poll intervals in ms: one order's page, the customer's order list, the staff board. */
+  polling: { orderMs: number; ordersMs: number; staffBoardMs: number };
+  session: { idleDays: number };
 }

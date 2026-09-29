@@ -96,7 +96,7 @@ export function StaffBoard({
       {error && (
         <p
           role="status"
-          className="mb-4 inline-flex items-center gap-2 rounded-full bg-gold-50 px-4 py-2 text-[13px] font-semibold text-gold-700 animate-fade-in"
+          className="mb-4 inline-flex items-center gap-2 rounded-full bg-gold-50 px-4 py-2 text-caption font-semibold text-gold-700 animate-fade-in"
         >
           <RefreshCw className="h-3.5 w-3.5 animate-spin" aria-hidden /> Connection lost — retrying…
         </p>

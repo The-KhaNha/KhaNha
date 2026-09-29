@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from 'react';
-import { Link, Navigate } from 'react-router-dom';
+import { Navigate } from 'react-router-dom';
 import { Eye, EyeOff } from 'lucide-react';
 import { Button } from '../components/Button';
+import { IconButton } from '../components/IconButton';
 import { Input } from '../components/Input';
 import { AuthCard } from '../features/auth/AuthCard';
 import { selectUser, useAuthStore } from '../features/auth/authStore';
@@ -49,17 +50,7 @@ export function LoginPage() {
       title="Welcome back"
       subtitle="Sign in to track orders and check out faster."
       error={serverError}
-      footer={
-        <>
-          New here?{' '}
-          <Link
-            to="/register"
-            className="font-semibold text-brand-600 underline-offset-2 hover:text-brand-700 hover:underline"
-          >
-            Create an account
-          </Link>
-        </>
-      }
+      footer={{ prompt: 'New here?', to: '/register', label: 'Create an account' }}
     >
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
         <Input
@@ -86,18 +77,18 @@ export function LoginPage() {
             error={errors.password}
             className="[&_input]:pr-12"
           />
-          <button
-            type="button"
+          <IconButton
+            label={showPassword ? 'Hide password' : 'Show password'}
             onClick={() => setShowPassword((v) => !v)}
-            aria-label={showPassword ? 'Hide password' : 'Show password'}
-            className="absolute right-1 top-[26px] grid h-11 w-11 place-items-center rounded-full text-muted transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
-          >
-            {showPassword ? (
-              <EyeOff className="h-5 w-5" aria-hidden />
-            ) : (
-              <Eye className="h-5 w-5" aria-hidden />
-            )}
-          </button>
+            className="absolute right-1 top-[26px]"
+            icon={
+              showPassword ? (
+                <EyeOff className="h-5 w-5" aria-hidden />
+              ) : (
+                <Eye className="h-5 w-5" aria-hidden />
+              )
+            }
+          />
         </div>
         <Button type="submit" size="lg" fullWidth loading={submitting} className="mt-2">
           Sign in

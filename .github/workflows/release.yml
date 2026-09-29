@@ -1,0 +1,117 @@
+name: release
+
+# prepare: bump inside a release PR (dev → main), never as a bot commit on main.
+# tag-and-backmerge: after the user merges the release PR, tag the new versions and open the back-merge into dev.
+# Both PRs use a GitHub App token: PRs opened with GITHUB_TOKEN do not trigger CI. Without the App secrets the
+# workflow pushes the branch and prints the compare URL for the user to open the PR.
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Only print the release plan
+        type: boolean
+        default: true
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    env:
+      HAS_APP: ${{ secrets.RELEASE_APP_ID != '' }}
+    steps:
+      - id: app-token
+        if: ${{ !inputs.dry_run && env.HAS_APP == 'true' }}
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token || github.token }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+      - run: npm run release:dry
+      - name: Commit the release on release/<date>
+        if: ${{ !inputs.dry_run }}
+        run: |
+          branch="release/$(date -u +%Y%m%d-%H%M)"
+          npm run release
+          git config user.name "release-bot"
+          git config user.email "release-bot@users.noreply.github.com"
+          git switch -c "$branch"
+          git add -A client server .changes
+          summary=$(jq -r 'to_entries | map("\(.key) \(.value.version)") | join(", ")' release.json)
+          git commit -m "release: $summary"
+          git push origin "$branch"
+          echo "BRANCH=$branch" >> "$GITHUB_ENV"
+          echo "SUMMARY=$summary" >> "$GITHUB_ENV"
+      - name: Open the release PR into main
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "No release App configured. Open the PR: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/compare/main...$BRANCH"
+            exit 0
+          fi
+          gh pr create --base main --head "$BRANCH" --title "release: $SUMMARY" \
+            --body "Release $SUMMARY. Merging this PR approves the production release; tags follow automatically."
+
+  tag-and-backmerge:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    env:
+      HAS_APP: ${{ secrets.RELEASE_APP_ID != '' }}
+    steps:
+      - id: app-token
+        if: env.HAS_APP == 'true'
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token || github.token }}
+      - name: Tag versions that have no tag yet
+        run: |
+          git fetch --tags --quiet
+          created=0
+          for pkg in client server; do
+            tag="$pkg-v$(jq -r .version "$pkg/package.json")"
+            if ! git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+              git tag "$tag" && git push origin "$tag" && created=1
+              echo "Tagged $tag"
+            fi
+          done
+          echo "CREATED=$created" >> "$GITHUB_ENV"
+      - name: Open the back-merge PR into dev
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          branch="backmerge/${GITHUB_SHA::7}"
+          if [ "$(git rev-list --count origin/dev..HEAD)" = 0 ]; then
+            echo "dev already contains main: nothing to back-merge."
+            exit 0
+          fi
+          git push origin "HEAD:refs/heads/$branch"
+          if [ -z "$GH_TOKEN" ]; then
+            echo "No release App configured. Open the PR: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/compare/dev...$branch"
+            exit 0
+          fi
+          gh pr create --base dev --head "$branch" --label no-release \
+            --title "Back-merge main (${GITHUB_SHA::7}) into dev" \
+            --body "Brings the release commit and any hotfix from main back into dev."

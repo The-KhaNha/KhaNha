@@ -10,7 +10,8 @@
 # What it does, in order:
 #   - fails fast if server/.env is missing, or (local) the Supabase stack is not running
 #   - installs node_modules for server/ and client/ if they are missing
-#   - frees ports 8000 and 5173 (kills whatever is still listening there from an earlier run)
+#   - frees the API and web ports (PORT in server/.env, VITE_DEV_PORT in the client's env file; default 8000 and
+#     5173): kills whatever is still listening there from an earlier run
 #   - optionally reseeds (--seed)
 #   - starts both dev servers, logging to .logs/server.log and .logs/client.log
 #   - waits until the API, the web app and GET /api/menu answer, then prints where to go
@@ -29,12 +30,20 @@ if [ ! -f server/.env ]; then
   exit 1
 fi
 
+# env_value <file> <NAME>: the last NAME= line of an env file, unquoted ("" when absent).
+env_value() {
+  grep -E "^$2=" "$1" 2>/dev/null | tail -1 | cut -d= -f2- | tr -d "\"' "
+}
+
 # 2. Which Supabase project, and is it reachable?
-APP_ENV=$(grep -E '^APP_ENV=' server/.env | tail -1 | cut -d= -f2 | tr -d "\"' ")
+APP_ENV=$(env_value server/.env APP_ENV)
+API_PORT=$(env_value server/.env PORT); API_PORT=${API_PORT:-8000}
+SUPABASE_URL=$(env_value server/.env SUPABASE_URL); SUPABASE_URL=${SUPABASE_URL%/}
 case "$APP_ENV" in
   local)
     CLIENT_DEV_SCRIPT=dev
-    if [ "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:54321/rest/v1/ 2>/dev/null)" = "000" ]; then
+    CLIENT_ENV_FILE=client/.env.development
+    if [ "$(curl -s -o /dev/null -w '%{http_code}' "$SUPABASE_URL/rest/v1/" 2>/dev/null)" = "000" ]; then
       echo "${RED}The local Supabase stack is not running.${OFF}"
       echo "Start it with:  cd server && npm run db:start   (needs Docker; the first run downloads images)"
       exit 1
@@ -42,6 +51,7 @@ case "$APP_ENV" in
     ;;
   staging)
     CLIENT_DEV_SCRIPT=dev:staging
+    CLIENT_ENV_FILE=client/.env.staging
     ;;
   production)
     echo "${RED}server/.env has APP_ENV=production.${OFF} start.sh is for local and staging only."
@@ -52,13 +62,14 @@ case "$APP_ENV" in
     exit 1
     ;;
 esac
+WEB_PORT=$(env_value "$CLIENT_ENV_FILE" VITE_DEV_PORT); WEB_PORT=${WEB_PORT:-5173}
 
 # 3. Dependencies installed?
 [ -d server/node_modules ] || (echo "${DIM}Installing server dependencies...${OFF}" && cd server && npm install --silent)
 [ -d client/node_modules ] || (echo "${DIM}Installing web app dependencies...${OFF}" && cd client && npm install --silent)
 
-# 4. Free the ports from any earlier run. Anything listening on 8000 or 5173 is killed.
-for port in 8000 5173; do
+# 4. Free the ports from any earlier run. Anything listening on the API or web port is killed.
+for port in "$API_PORT" "$WEB_PORT"; do
   pids=$(lsof -ti:"$port" 2>/dev/null)
   [ -n "$pids" ] && echo "${DIM}Freeing port $port...${OFF}" && echo "$pids" | xargs kill 2>/dev/null
 done
@@ -74,7 +85,9 @@ fi
 mkdir -p .logs
 (cd server && npm run dev > ../.logs/server.log 2>&1) &
 SERVER_PID=$!
-(cd client && npm run "$CLIENT_DEV_SCRIPT" > ../.logs/client.log 2>&1) &
+# The dev proxy follows the API's port unless the client's env file names its own target.
+(cd client && VITE_API_PROXY_TARGET="${VITE_API_PROXY_TARGET:-http://localhost:$API_PORT}" \
+  npm run "$CLIENT_DEV_SCRIPT" > ../.logs/client.log 2>&1) &
 CLIENT_PID=$!
 
 # cleanup [exit-code]: stops both servers, then exits (0 on Ctrl+C, non-zero on a failed start).
@@ -82,7 +95,7 @@ cleanup() {
   echo ""
   echo "${DIM}Stopping...${OFF}"
   kill $SERVER_PID $CLIENT_PID 2>/dev/null
-  for port in 8000 5173; do lsof -ti:"$port" 2>/dev/null | xargs kill 2>/dev/null; done
+  for port in "$API_PORT" "$WEB_PORT"; do lsof -ti:"$port" 2>/dev/null | xargs kill 2>/dev/null; done
   exit "${1:-0}"
 }
 trap cleanup INT TERM
@@ -94,8 +107,8 @@ http_status() {
 # 7. Wait for both servers to answer.
 api_ok=""; web_ok=""
 for i in $(seq 1 45); do
-  api_ok=$(http_status http://localhost:8000/api/health)
-  web_ok=$(http_status http://localhost:5173/)
+  api_ok=$(http_status http://localhost:$API_PORT/api/health)
+  web_ok=$(http_status http://localhost:$WEB_PORT/)
   [ "$api_ok" = "200" ] && [ "$web_ok" = "200" ] && break
   sleep 1
 done
@@ -109,7 +122,7 @@ fi
 # 8. The API is up, but is the database there and seeded? /api/menu needs the store and its items.
 menu_ok=""
 for i in 1 2 3; do
-  menu_ok=$(http_status http://localhost:8000/api/menu)
+  menu_ok=$(http_status http://localhost:$API_PORT/api/menu)
   [ "$menu_ok" = "200" ] && break
   sleep 1
 done
@@ -123,9 +136,9 @@ fi
 echo ""
 echo "  ${BOLD}Food Pickup is running${OFF} ${DIM}(Supabase: $APP_ENV)${OFF}"
 echo ""
-echo "  ${GREEN}Customer app${OFF}      http://localhost:5173"
-echo "  ${GREEN}Staff dashboard${OFF}   http://localhost:5173/staff"
-echo "  ${DIM}API${OFF}               http://localhost:8000"
+echo "  ${GREEN}Customer app${OFF}      http://localhost:$WEB_PORT"
+echo "  ${GREEN}Staff dashboard${OFF}   http://localhost:$WEB_PORT/staff"
+echo "  ${DIM}API${OFF}               http://localhost:$API_PORT"
 echo ""
 echo "  ${DIM}Customer login${OFF}    anishka@example.com / test1234"
 echo "  ${DIM}Staff login${OFF}       staff@campuscafe.local / staff123"

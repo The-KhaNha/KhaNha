@@ -12,13 +12,7 @@ export const getSettings: RequestHandler = async (_req, res) => {
 export const updateSettings: BodyHandler<UpdateSettingsInput> = async (req, res) => {
   const admin = currentUser(req);
   const settings = toSiteSettingsDto(await settingsService.updateSettings(admin, req.body));
-  req.log.info(
-    {
-      customerOrderHistoryLimit: req.body.customerOrderHistoryLimit,
-      staffOrderListLimit: req.body.staffOrderListLimit,
-      by: admin.id,
-    },
-    'Site settings changed',
-  );
+  // The validated body holds only the settings that changed: no PII.
+  req.log.info({ ...req.body, by: admin.id }, 'Site settings changed');
   res.json({ settings });
 };
