@@ -95,7 +95,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
         id={id}
         aria-invalid={error ? true : undefined}
         aria-describedby={describedBy(id, hint, error)}
-        className={cn(fieldClass, 'h-12', error ? 'border-brand-600' : 'border-line')}
+        className={cn(fieldClass, 'h-12', error ? 'border-brand-600' : 'border-hint')}
         {...rest}
       />
       <FieldError id={errorId} error={error} />
@@ -124,7 +124,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function 
         className={cn(
           fieldClass,
           'resize-none py-3 leading-relaxed',
-          error ? 'border-brand-600' : 'border-line',
+          error ? 'border-brand-600' : 'border-hint',
         )}
         {...rest}
       />

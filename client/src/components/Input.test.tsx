@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { Input } from './Input';
+import { Input, Textarea } from './Input';
 
 describe('Input hint', () => {
   it('describes the field by its hint, then its error', () => {
@@ -38,5 +38,20 @@ describe('Input hint', () => {
   it('has no aria-describedby without a hint or an error', () => {
     render(<Input label="Name" />);
     expect(screen.getByLabelText('Name').hasAttribute('aria-describedby')).toBe(false);
+  });
+
+  // WCAG 1.4.11: the edge is what shows where to type, so it needs 3:1 against the card. `hint` is held to 3:1 on
+  // surface in both schemes by lib/palette.test.ts; the decorative `line` is about 1.3:1.
+  it('draws an idle field edge in a 3:1 colour, and the error one in brand', () => {
+    render(
+      <>
+        <Input label="Name" />
+        <Textarea label="Note" />
+        <Input label="Phone" error="Enter a phone number." />
+      </>,
+    );
+    expect(screen.getByLabelText('Name')).toHaveClass('border-hint');
+    expect(screen.getByLabelText('Note')).toHaveClass('border-hint');
+    expect(screen.getByLabelText('Phone')).toHaveClass('border-brand-600');
   });
 });
