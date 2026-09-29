@@ -18,7 +18,9 @@ export function OpenPill({ isOpen, className }: OpenPillProps) {
       <span
         className={cn(
           'h-2 w-2 rounded-full',
-          isOpen ? 'bg-success-500 animate-pulse-soft [--pulse-rgb:21_128_61]' : 'bg-cancel-500',
+          isOpen
+            ? 'bg-success-500 animate-pulse-soft [--pulse-color:var(--color-success-500)]'
+            : 'bg-cancel-500',
         )}
       />
       {isOpen ? 'Open' : 'Closed'}

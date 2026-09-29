@@ -41,7 +41,7 @@ function StepTracker({ status, className }: { status: OrderStatus; className?: s
               <span
                 key={active && transitioned ? `${step}-active` : step}
                 aria-current={active ? 'step' : undefined}
-                style={{ '--pulse-rgb': meta.pulseRgb } as CSSProperties}
+                style={{ '--pulse-color': meta.pulseColor } as CSSProperties}
                 className={cn(
                   'grid h-10 w-10 place-items-center rounded-full transition-colors duration-300',
                   done && 'bg-success-500 text-white',

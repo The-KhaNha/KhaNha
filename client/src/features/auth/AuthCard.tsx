@@ -33,7 +33,7 @@ export function AuthCard({
   const location = useLocation();
 
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col px-4 pb-10 pt-4 md:max-w-lg md:justify-center">
+    <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col px-4 pb-10 pt-4 md:max-w-lg md:justify-center">
       <div className="flex items-center justify-between">
         <Link
           to={backTo}
@@ -77,6 +77,6 @@ export function AuthCard({
           {footer.label}
         </Link>
       </p>
-    </div>
+    </main>
   );
 }

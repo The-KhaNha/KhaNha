@@ -16,7 +16,7 @@ export function OrderSuccessPage() {
   const { order, isLoading, error, retry } = useOrder(id, passedOrder);
 
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-center px-6 py-12 text-center md:max-w-lg">
+    <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-center px-6 py-12 text-center md:max-w-lg">
       <div className="relative">
         <span
           aria-hidden
@@ -32,8 +32,8 @@ export function OrderSuccessPage() {
       </h1>
 
       {order ? (
-        <div className="mt-2 flex w-full flex-col items-center">
-          <p className="text-7xl font-extrabold leading-none tabular-nums tracking-tight animate-fade-up [animation-delay:80ms]">
+        <div className="@container mt-2 flex w-full flex-col items-center">
+          <p className="w-full text-order-number font-extrabold tabular-nums tracking-tight wrap-anywhere animate-fade-up [animation-delay:80ms]">
             #{order.orderNumber}
           </p>
           <div className="flex flex-col items-center animate-fade-up [animation-delay:160ms]">
@@ -83,6 +83,6 @@ export function OrderSuccessPage() {
           Back to home
         </Link>
       </div>
-    </div>
+    </main>
   );
 }

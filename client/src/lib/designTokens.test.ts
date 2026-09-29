@@ -1,3 +1,5 @@
+/// <reference types="node" />
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 /**
@@ -17,6 +19,13 @@ const FORBIDDEN: { name: string; re: RegExp; use: string }[] = [
   },
   { name: 'arbitrary shadow', re: /\bshadow-\[[^\]]+\]/g, use: 'a --shadow-* token' },
   { name: 'hex colour', re: /#[0-9a-fA-F]{3,8}\b(?![-\w])/g, use: 'a --color-* token' },
+  // A colour spelled in code does not follow the dark scheme, which redefines the tokens.
+  { name: 'rgb() colour', re: /\brgba?\(\s*\d/g, use: 'var(--color-*) or a --shadow-* token' },
+  {
+    name: 'bare RGB triple',
+    re: /['"`[:]\d{1,3}[ _]\d{1,3}[ _]\d{1,3}(?=['"`\]])/g,
+    use: 'var(--color-*)',
+  },
   // The design allows two loops (pulse-soft, shimmer) plus the loading spinner (animate-spin): no stock Tailwind loops.
   {
     name: 'stock looping animation',
@@ -43,6 +52,19 @@ describe('design tokens', () => {
       [...text.matchAll(re)].map((m) => `${file}: ${m[0]}`),
     );
     expect(hits, `use ${use}`).toEqual([]);
+  });
+
+  it('index.css spells a colour only where it defines a token', () => {
+    const css = readFileSync(`${process.cwd()}/src/index.css`, 'utf8');
+    const stray = css
+      .split('\n')
+      .map((line, i) => ({ line, n: i + 1 }))
+      .filter(({ line }) =>
+        /#[0-9a-fA-F]{3,8}\b|rgba?\(\s*\d/.test(line.replace(/\/\*.*?\*\//g, '')),
+      )
+      .filter(({ line }) => !/^\s*--[\w-]+:/.test(line))
+      .map(({ line, n }) => `${n}: ${line.trim()}`);
+    expect(stray, 'use var(--color-*), a --shadow-* token or color-mix() on one').toEqual([]);
   });
 });
 

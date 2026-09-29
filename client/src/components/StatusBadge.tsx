@@ -29,7 +29,9 @@ export function StatusBadge({ status, size = 'sm', className }: StatusBadgeProps
           'inline-flex h-1.5 w-1.5 rounded-full bg-current',
           isActive(status) && 'animate-pulse-soft',
         )}
-        style={isActive(status) ? ({ '--pulse-rgb': meta.pulseRgb } as CSSProperties) : undefined}
+        style={
+          isActive(status) ? ({ '--pulse-color': meta.pulseColor } as CSSProperties) : undefined
+        }
       />
       {meta.label}
     </span>

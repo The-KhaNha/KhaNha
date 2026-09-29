@@ -2,9 +2,11 @@
 
 The one source for how food-pickup looks: every colour, size, radius, shadow and motion on screen comes from the
 `@theme` tokens in `client/src/index.css`, used as Tailwind classes. The atoms that apply them are catalogued in
-[COMPONENTS.md](COMPONENTS.md). `client/src/lib/designTokens.test.ts` fails on an arbitrary text size, radius, shadow
-or hex colour anywhere in `client/src`, on a literal `behavior: 'smooth'`, and on a card or icon-button recipe re-typed
-outside its atom: add a token, or use the nearest step.
+[COMPONENTS.md](COMPONENTS.md). `client/src/lib/designTokens.test.ts` fails on an arbitrary text size, radius, shadow,
+hex, `rgb()` or bare RGB colour anywhere in `client/src`, on a raw colour in `index.css` outside a token definition
+(keyframes and utilities use `var(--color-*)` or `color-mix()` on one, so they follow the dark scheme), on a literal
+`behavior: 'smooth'`, and on a card or icon-button recipe re-typed outside its atom: add a token, or use the nearest
+step.
 
 ## Principles
 
@@ -53,22 +55,22 @@ exist so a fill never doubles as text:
 Plus Jakarta Sans (`--font-sans`, `display=swap`). Tailwind's default steps plus the in-between sizes this design uses
 on purpose, all rem:
 
-| Class          | Size | Use                                             |
-| -------------- | ---- | ----------------------------------------------- |
-| `text-2xs`     | 11px | badges, counts                                  |
-| `text-xs`      | 12px | eyebrows, fine print                            |
-| `text-caption` | 13px | secondary lines, hints, meta                    |
-| `text-sm`      | 14px | form labels, small body                         |
-| `text-body`    | 15px | controls, list text, most copy                  |
-| `text-base`    | 16px | item names, large controls                      |
-| `text-lead`    | 17px | prices, card titles, the top bar title          |
-| `text-lg`      | 18px | section headings                                |
-| `text-xl`      | 20px | page headings, line totals                      |
-| `text-2xl`     | 24px | card headings                                   |
-| `text-title`   | 28px | page and store titles                           |
-| `text-number`  | 32px | order numbers, big totals                       |
-| `text-display` | 40px | the hero line, the amount to pay                |
-| `text-7xl`     | 72px | the order number on the order and success pages |
+| Class               | Size                                    | Use                                                                                                |
+| ------------------- | --------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `text-2xs`          | 11px                                    | badges, counts                                                                                     |
+| `text-xs`           | 12px                                    | eyebrows, fine print                                                                               |
+| `text-caption`      | 13px                                    | secondary lines, hints, meta                                                                       |
+| `text-sm`           | 14px                                    | form labels, small body                                                                            |
+| `text-body`         | 15px                                    | controls, list text, most copy                                                                     |
+| `text-base`         | 16px                                    | item names, large controls                                                                         |
+| `text-lead`         | 17px                                    | prices, card titles, the top bar title                                                             |
+| `text-lg`           | 18px                                    | section headings                                                                                   |
+| `text-xl`           | 20px                                    | page headings, line totals                                                                         |
+| `text-2xl`          | 24px                                    | card headings                                                                                      |
+| `text-title`        | 28px                                    | page and store titles                                                                              |
+| `text-number`       | 32px                                    | order numbers, big totals                                                                          |
+| `text-display`      | 40px                                    | the hero line, the amount to pay                                                                   |
+| `text-order-number` | 72px, capped at 28% of its `@container` | the pickup number on the ready and success screens: shrinks at large text instead of being cut off |
 
 Weights: 400 body, 500–600 labels and controls, 700 headings, 800 display and prices.
 

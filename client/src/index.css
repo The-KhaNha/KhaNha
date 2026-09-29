@@ -49,6 +49,10 @@
   --text-title: 1.75rem; /* 28px: page and store titles */
   --text-number: 2rem; /* 32px: order numbers, big totals */
   --text-display: 2.5rem; /* 40px: the hero line, the amount to pay */
+  /* 72px: the pickup number on the success and ready screens. Capped by its @container's width, so at large text it
+     shrinks to fit instead of being cut off; 28cqi fits a four-digit order number with room to spare. */
+  --text-order-number: min(4.5rem, 28cqi);
+  --text-order-number--line-height: 1;
 
   /* Fills that keep their role in both colour schemes (dark mode flips the text colours, never these):
      the dark bar and active chip behind white text, a pressed paprika fill, text on a gold fill, the sheet backdrop. */
@@ -93,7 +97,9 @@
   --animate-check-pop: check-pop 520ms var(--ease-out-soft) both;
   --animate-draw: draw 420ms 260ms ease-out both;
   --animate-pulse-soft: pulse-soft 1.8s ease-in-out infinite;
-  --animate-ring: ring 900ms ease-out 2 both;
+  /* backwards, not both: when it ends the ring drops back behind the check circle instead of staying scaled up, where
+     (invisible) it would still widen the page at large text. */
+  --animate-ring: ring 900ms ease-out 2 backwards;
   --animate-shimmer: shimmer 1.4s linear infinite;
   --animate-count-in: count-in 160ms var(--ease-out-soft) both;
   --animate-stepper-in: stepper-in 220ms var(--ease-out-soft) both;
@@ -203,10 +209,11 @@
   @keyframes pulse-soft {
     0%,
     100% {
-      box-shadow: 0 0 0 0 rgb(var(--pulse-rgb, 209 55 17) / 0.35);
+      box-shadow: 0 0 0 0
+        color-mix(in srgb, var(--pulse-color, var(--color-brand-500)) 35%, transparent);
     }
     50% {
-      box-shadow: 0 0 0 8px rgb(var(--pulse-rgb, 209 55 17) / 0);
+      box-shadow: 0 0 0 8px transparent;
     }
   }
   @keyframes ring {
@@ -264,23 +271,23 @@
   @keyframes glow-pulse {
     0%,
     100% {
-      box-shadow: 0 20px 50px -20px rgba(21, 128, 61, 0.6);
+      box-shadow: var(--shadow-ready);
     }
     50% {
       box-shadow:
-        0 20px 50px -20px rgba(21, 128, 61, 0.6),
-        0 0 0 10px rgba(21, 128, 61, 0.16);
+        var(--shadow-ready),
+        0 0 0 10px color-mix(in srgb, var(--color-success-500) 16%, transparent);
     }
   }
   @keyframes ring-flash {
     from {
       box-shadow:
-        0 0 0 2px rgba(209, 55, 17, 0.6),
+        0 0 0 2px color-mix(in srgb, var(--color-brand-500) 60%, transparent),
         var(--shadow-card);
     }
     to {
       box-shadow:
-        0 0 0 6px rgba(209, 55, 17, 0),
+        0 0 0 6px transparent,
         var(--shadow-card);
     }
   }
@@ -417,7 +424,11 @@
 
 /* Storefront scrim: only where text sits on a store photo (never on food). */
 @utility store-scrim {
-  background: linear-gradient(to top, rgba(27, 20, 16, 0.72), transparent 60%);
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--color-overlay) 72%, transparent),
+    transparent 60%
+  );
 }
 
 @media (prefers-reduced-motion: reduce) {

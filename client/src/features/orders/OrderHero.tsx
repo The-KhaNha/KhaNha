@@ -23,7 +23,7 @@ export function OrderHero({ order, onReorder, reordering }: OrderHeroProps) {
   if (order.status === 'READY') {
     return (
       <div className="animate-scale-in">
-        <section className="relative overflow-hidden rounded-card bg-success-500 p-6 text-white shadow-ready animate-glow-pulse">
+        <section className="@container relative overflow-hidden rounded-card bg-success-500 p-6 text-white shadow-ready animate-glow-pulse">
           <div
             aria-hidden
             className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-white/10"
@@ -38,7 +38,7 @@ export function OrderHero({ order, onReorder, reordering }: OrderHeroProps) {
           <h2 className="relative mt-3 text-number font-extrabold leading-tight">
             Your order is ready!
           </h2>
-          <p className="relative mt-4 text-7xl font-extrabold leading-none tabular-nums tracking-tight animate-check-pop">
+          <p className="relative mt-4 text-order-number font-extrabold tabular-nums tracking-tight wrap-anywhere animate-check-pop">
             #{order.orderNumber}
           </p>
           <p className="relative mt-2 text-lead font-bold text-white">{order.store.name}</p>
@@ -54,12 +54,15 @@ export function OrderHero({ order, onReorder, reordering }: OrderHeroProps) {
   if (order.status === 'COLLECTED') {
     return (
       <Card as="section" padding="lg" className="animate-scale-in">
-        <div className="flex items-start gap-4">
+        {/* Wraps at large text: the column drops under the icon instead of being squeezed beside it. */}
+        <div className="flex flex-wrap items-start gap-4">
           <span className="grid h-14 w-14 shrink-0 place-items-center rounded-full bg-success-50 text-success-700 animate-party-in">
             <PartyPopper className="h-7 w-7" aria-hidden />
           </span>
-          <div className="min-w-0">
-            <h2 className="text-2xl font-extrabold leading-tight">Order collected!</h2>
+          <div className="min-w-0 flex-1 basis-48">
+            <h2 className="text-2xl font-extrabold leading-tight wrap-break-word">
+              Order collected!
+            </h2>
             <p className="mt-1 text-body text-muted">{meta.customerCopy}</p>
             <p className="mt-3 text-sm font-semibold text-ink">
               Order <span className="tabular-nums">#{order.orderNumber}</span> · {order.store.name}

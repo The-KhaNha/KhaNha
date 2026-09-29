@@ -37,7 +37,7 @@ export function flyToCart(source: HTMLElement, imageUrl: string | null): void {
     'border-radius:9999px',
     'z-index:60',
     'pointer-events:none',
-    'box-shadow:0 4px 12px rgba(27,20,16,.28), inset 0 0 0 1px rgba(27,20,16,.08)',
+    'box-shadow:var(--shadow-float), var(--shadow-photo-edge)',
     'will-change:transform,opacity',
     imageUrl ? `background:url("${imageUrl}") center/cover` : 'background:var(--color-brand-500)',
   ].join(';');

@@ -1,6 +1,15 @@
 import { expect, test, type Page } from '@playwright/test';
 import fallbacks from '../src/config/fallbacks.json' with { type: 'json' };
-import type { Config, MenuItem, MenuResponse, Order, Role, Store, User } from '../src/types/api';
+import type {
+  Config,
+  MenuItem,
+  MenuResponse,
+  Order,
+  OrderStatus,
+  Role,
+  Store,
+  User,
+} from '../src/types/api';
 
 // Safari's engine on a 360px-class phone, with every API call mocked: this checks the client alone (layout,
 // hydration, the cart) so it needs no backend and runs the same on a laptop and in CI.
@@ -199,6 +208,43 @@ async function labelsWiderThanControl(page: Page): Promise<string[]> {
   });
 }
 
+/**
+ * Text cut off by a box that hides its overflow, with no ellipsis to say so: a word the reader never sees. A row that
+ * scrolls (overflow auto) keeps its text reachable, a truncated label ends in "…", and screen-reader-only text is
+ * clipped on purpose.
+ */
+async function textCutOff(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const out: string[] = [];
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const label = node.textContent?.trim();
+      if (!label || !node.parentElement) continue;
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      const text = range.getBoundingClientRect();
+      if (text.width === 0) continue;
+      for (let p: HTMLElement | null = node.parentElement; p; p = p.parentElement) {
+        const style = getComputedStyle(p);
+        if (style.overflowX === 'visible') continue;
+        const box = p.getBoundingClientRect();
+        const cut = text.left < box.left - 1 || text.right > box.right + 1;
+        const meant =
+          style.overflowX === 'auto' ||
+          style.overflowX === 'scroll' ||
+          style.textOverflow === 'ellipsis' ||
+          box.width <= 1;
+        if (cut && !meant)
+          out.push(
+            `"${label.slice(0, 30)}" ${Math.round(text.width)}px in ${Math.round(box.width)}px`,
+          );
+        break;
+      }
+    }
+    return out.slice(0, 5);
+  });
+}
+
 const CART_LINE = {
   menuItemId: 'i1',
   name: 'Cold Coffee',
@@ -213,7 +259,7 @@ const CART_LINE = {
  * expiry (so it makes no network call; the key's `127` is the host in the tracked client/.env.development) and a
  * fresh activity stamp. /api/auth/me and the order endpoints answer with fixtures.
  */
-async function signIn(page: Page, role: Role): Promise<void> {
+async function signIn(page: Page, role: Role, status: OrderStatus = 'PLACED'): Promise<void> {
   const now = new Date().toISOString();
   const user: User = {
     id: 'u1',
@@ -226,7 +272,7 @@ async function signIn(page: Page, role: Role): Promise<void> {
   const order: Order = {
     id: 'o1',
     orderNumber: 1042,
-    status: 'PLACED',
+    status,
     paymentStatus: 'PAID',
     total: 240,
     customerName: user.name,
@@ -278,7 +324,7 @@ async function signIn(page: Page, role: Role): Promise<void> {
   }, user);
 }
 
-const LAYOUT_ROUTES: { path: string; role?: Role }[] = [
+const LAYOUT_ROUTES: { path: string; role?: Role; status?: OrderStatus }[] = [
   { path: '/' },
   { path: '/menu' },
   { path: '/cart' },
@@ -286,14 +332,21 @@ const LAYOUT_ROUTES: { path: string; role?: Role }[] = [
   { path: '/register' },
   { path: '/orders', role: 'CUSTOMER' },
   { path: '/profile', role: 'CUSTOMER' },
+  { path: '/orders/o1/success', role: 'CUSTOMER' },
+  // The order page's hero changes its whole layout with the status.
+  ...(['PLACED', 'PREPARING', 'READY', 'COLLECTED', 'CANCELLED'] as const).map((status) => ({
+    path: '/orders/o1',
+    role: 'CUSTOMER' as const,
+    status,
+  })),
   { path: '/staff', role: 'STAFF' },
 ];
 
-for (const { path, role } of LAYOUT_ROUTES) {
-  test(`${path}${role ? ` (${role})` : ''}: every control is at least 44px, and nothing leaves the screen at 200% text`, async ({
+for (const { path, role, status } of LAYOUT_ROUTES) {
+  test(`${path}${role ? ` (${role}${status ? `, ${status}` : ''})` : ''}: every control is at least 44px, and nothing leaves the screen at 200% text`, async ({
     page,
   }) => {
-    if (role) await signIn(page, role);
+    if (role) await signIn(page, role, status);
     await page.addInitScript((line) => {
       localStorage.setItem('fp_cart', JSON.stringify({ state: { lines: [line] }, version: 1 }));
     }, CART_LINE);
@@ -305,19 +358,29 @@ for (const { path, role } of LAYOUT_ROUTES) {
     expect(await smallTapTargets(page), 'controls under 44px').toEqual([]);
 
     // What a phone's largest text setting does: Tailwind sizes are rem, so everything scales from the root.
-    await page.evaluate(() => {
+    await page.evaluate(async () => {
       document.documentElement.style.fontSize = '200%';
+      // Measure the settled screen: an entrance or a celebration ring may pass the edge while it plays.
+      await Promise.all(
+        document
+          .getAnimations()
+          .filter((a) => a.effect?.getTiming().iterations !== Infinity)
+          .map((a) => a.finished.catch(() => undefined)),
+      );
     });
     expect(await overflowingPastScreen(page), 'elements past the right edge at 200% text').toEqual(
       [],
     );
     expect(await labelsWiderThanControl(page), 'labels past their button at 200% text').toEqual([]);
+    expect(await textCutOff(page), 'text cut off at 200% text').toEqual([]);
     // Text spilling out of its own box (a word wider than a narrow tile) is not an element past the edge, but it
     // still scrolls the page sideways.
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth),
       'page width at 200% text',
     ).toBeLessThanOrEqual(page.viewportSize()?.width ?? 0);
+    // One main landmark, so a screen reader can jump to the content; the full-screen pages render their own.
+    await expect(page.locator('main')).toHaveCount(1);
   });
 }
 
