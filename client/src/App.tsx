@@ -1,4 +1,4 @@
-import { lazy, useEffect, useRef } from 'react';
+import { lazy, useEffect, useMemo, useRef } from 'react';
 import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { BottomNav } from './components/BottomNav';
 import { CartButton } from './components/CartButton';
@@ -61,71 +61,77 @@ function AppShell() {
     pageRef.current?.focus({ preventScroll: true });
   }, [pathname, config.title]);
 
-  const routes = (
-    <div ref={pageRef} tabIndex={-1} className="focus:outline-none">
-      <p aria-live="polite" className="sr-only">
-        {config.title}
-      </p>
-      <PageBoundary key={pathname}>
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/menu" element={<MenuPage />} />
-          <Route path="/cart" element={<CartPage />} />
-          <Route
-            path="/checkout"
-            element={
-              <RequireAuth>
-                <CheckoutPage />
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/orders"
-            element={
-              <RequireAuth>
-                <OrdersPage />
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/orders/:id"
-            element={
-              <RequireAuth>
-                <OrderPage />
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/orders/:id/success"
-            element={
-              <RequireAuth>
-                <OrderSuccessPage />
-              </RequireAuth>
-            }
-          />
-          <Route path="/profile" element={<ProfilePage />} />
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<RegisterPage />} />
-          <Route
-            path="/staff"
-            element={
-              <RequireRole role="STAFF">
-                <StaffDashboardPage />
-              </RequireRole>
-            }
-          />
-          <Route
-            path="/admin"
-            element={
-              <RequireRole role="ADMIN">
-                <AdminPage />
-              </RequireRole>
-            }
-          />
-          <Route path="*" element={<NotFoundPage />} />
-        </Routes>
-      </PageBoundary>
-    </div>
+  // Built once per page, not on every shell render: the shell re-renders when the cart count changes (the cart bar),
+  // and a fresh element here would re-render the whole page with it, every food card on a 500-item menu per Add tap
+  // (menuRenders.test.tsx). Navigation still reaches <Routes> through the router's context.
+  const routes = useMemo(
+    () => (
+      <div ref={pageRef} tabIndex={-1} className="focus:outline-none">
+        <p aria-live="polite" className="sr-only">
+          {config.title}
+        </p>
+        <PageBoundary key={pathname}>
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/menu" element={<MenuPage />} />
+            <Route path="/cart" element={<CartPage />} />
+            <Route
+              path="/checkout"
+              element={
+                <RequireAuth>
+                  <CheckoutPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/orders"
+              element={
+                <RequireAuth>
+                  <OrdersPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/orders/:id"
+              element={
+                <RequireAuth>
+                  <OrderPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/orders/:id/success"
+              element={
+                <RequireAuth>
+                  <OrderSuccessPage />
+                </RequireAuth>
+              }
+            />
+            <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
+            <Route
+              path="/staff"
+              element={
+                <RequireRole role="STAFF">
+                  <StaffDashboardPage />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/admin"
+              element={
+                <RequireRole role="ADMIN">
+                  <AdminPage />
+                </RequireRole>
+              }
+            />
+            <Route path="*" element={<NotFoundPage />} />
+          </Routes>
+        </PageBoundary>
+      </div>
+    ),
+    [pathname, config.title],
   );
 
   if (config.layout === 'full') return routes;

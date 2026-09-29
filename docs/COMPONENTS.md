@@ -152,7 +152,8 @@ admin settings form), so neither wraps at 360px. Inputs are `h-12`.
 | `sizes`        | `string` = `'112px'` | the photo's real rendered width, so the browser picks the 400px thumbnail or the 900px original (`lib/photo.ts`'s `photoSrcSet`); `PopularRail` passes `'188px'`, `ItemDetailSheet` passes `'(min-width: 768px) 480px, 100vw'` — see [FRONTEND_STRUCTURE.md#photo-thumbnails](FRONTEND_STRUCTURE.md#photo-thumbnails) |
 | `children`     | `ReactNode`          | only `PopularBadge` belongs here                                                                                                                                                                                                                                                                                      |
 
-**`FoodCard`** / **`FoodCardSkeleton`** (`FoodCard.tsx`). Menu list card: 112px photo, name, description,
+**`FoodCard`** / **`FoodCardSkeleton`** (`FoodCard.tsx`). Memoised (`React.memo`; keep its props stable: the item, a
+stable `onOpen`). Menu list card: 112px photo, name, description,
 `StockPill`, price and `AddControl`. Props: `item: MenuItem`, `onOpen: (item: MenuItem) => void` (opens the item
 sheet), `showPopularBadge?: boolean = true`. The title button is the card's single tab stop, at least 44px tall
 (`min-h-11`) even though the name and description it wraps are shorter.

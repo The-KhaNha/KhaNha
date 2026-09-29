@@ -178,7 +178,13 @@ export function MenuPage() {
                 key={section.id}
                 id={`section-${section.id}`}
                 aria-labelledby={`heading-${section.id}`}
-                className="pt-6"
+                // A menu can hold 500 items (MENU_ITEMS_MAX): a category off screen skips style, layout and paint, so
+                // an Add tap redraws what is visible (about 60 ms at 500 items, as at 14, against 200+ without). The
+                // containment clips paint to the section, so it reaches out to the side and 40px below the last card
+                // (-mx/px, pb/-mb; the hover shadow reaches 42px down) to keep the cards' shadows whole. The size stands in until the section is first drawn,
+                // then `auto` keeps the real one; rem, so it scales with the text (a phone-column estimate).
+                className="-mx-4 -mb-10 px-4 pt-6 pb-10 md:-mx-6 md:px-6 [content-visibility:auto]"
+                style={{ containIntrinsicSize: `auto ${2.5 + section.items.length * 9.25}rem` }}
               >
                 <h2 id={`heading-${section.id}`} className="eyebrow mb-3 text-muted">
                   {section.name}

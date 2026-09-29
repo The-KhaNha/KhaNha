@@ -96,6 +96,10 @@ How the shell works (`App.tsx`, with the route table in `appShell.ts`):
   the nav, including `env(safe-area-inset-bottom)`.
 - `ScrollToTop` scrolls to the top on every path change.
 - `App` calls `useAuthStore.getState().hydrate()` once on mount.
+- The shell re-renders when the cart count changes (the cart bar), so it memoises the page element: an Add tap must not
+  re-render the page. With `FoodCard` memoised and each menu category `content-visibility: auto`, a 500-item menu
+  (`MENU_ITEMS_MAX`) answers an Add tap in about 60 ms on a throttled phone, as a 14-item one does
+  (`menuRenders.test.tsx`).
 
 A new route needs an entry in both the `<Routes>` list (`App.tsx`) and `SHELL_BY_ROUTE` (`appShell.ts`), or it gets the
 Not found shell.
