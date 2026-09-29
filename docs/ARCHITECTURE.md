@@ -493,14 +493,20 @@ sequenceDiagram
   API->>API: requireAuth (3.4)
   API->>API: validate(createOrderSchema)<br/>1-30 lines, quantity ≥ 1 whole number,<br/>duplicate items merged, unknown keys such as price dropped
   API->>Svc: createOrder(user, input)
-  Svc->>DB: stores limit 1
-  alt store is closed
+  par one round trip: the reads do not depend on each other
+    Svc->>DB: the order this idempotency key already placed, if any
+  and
+    Svc->>DB: stores limit 1
+  and
+    Svc->>DB: profiles.name for this user (when customerName is not sent)
+  and
+    Svc->>DB: menu_items where id in (ids that are UUIDs)
+  end
+  alt the key already placed an order
+    Svc-->>CO: 201 that order (409 IDEMPOTENCY_KEY_REUSED if the request differs)
+  else store is closed
     Svc-->>CO: 400 STORE_CLOSED
   end
-  opt customerName not sent
-    Svc->>DB: profiles.name for this user
-  end
-  Svc->>DB: menu_items where id in (ids that are UUIDs)
   Svc->>Svc: priceLines(): per line, in cart order
   alt item missing (or a non-UUID id from an old cart)
     Svc-->>CO: 400 ITEM_NOT_FOUND { menuItemId, available 0 }

@@ -62,27 +62,43 @@ interface PlacedOrder {
  * leaves no order rows and no stock decrements behind.
  */
 export async function createOrder(user: AuthUser, input: CreateOrderInput): Promise<PlacedOrder> {
-  if (input.idempotencyKey) {
-    const { data: existing } = await selectOrders()
-      .eq('user_id', user.id)
-      .eq('idempotency_key', input.idempotencyKey)
-      .maybeSingle()
-      .throwOnError();
-    if (existing) {
-      if (!matchesRequest(existing, input)) {
-        throw idempotencyKeyReused(existing.id, existing.order_number);
-      }
-      return { order: existing, replayed: true };
+  // Ids that are not UUIDs (e.g. a cart saved before the move to Supabase) cannot exist, so they are not queried.
+  const ids = input.items.map((line) => line.menuItemId).filter(isUuid);
+  // None of these reads depends on another, so they go out together: one round trip to the database instead of one
+  // each (test/api/order-reads.test.ts). The checks below still run in the same order.
+  const [existing, settings, store, customerName, menuItems] = await Promise.all([
+    input.idempotencyKey
+      ? selectOrders()
+          .eq('user_id', user.id)
+          .eq('idempotency_key', input.idempotencyKey)
+          .maybeSingle()
+          .throwOnError()
+          .then(({ data }) => data)
+      : null,
+    // A site setting, read through the cache: an admin's change can take up to the 10 s TTL on other instances, which
+    // is harmless for a cap this generous.
+    getSettings(),
+    getStore(),
+    input.customerName ?? lookupUserName(user.id),
+    supabaseAdmin
+      .from('menu_items')
+      .select()
+      .in('id', ids)
+      .throwOnError()
+      .then(({ data }) => data),
+  ]);
+
+  if (existing) {
+    if (!matchesRequest(existing, input)) {
+      throw idempotencyKeyReused(existing.id, existing.order_number);
     }
+    return { order: existing, replayed: true };
   }
 
-  // A site setting, read through the cache: an admin's change can take up to the 10 s TTL on other instances, which is
-  // harmless for a cap this generous.
-  const { max_lines_per_order: maxLines } = await getSettings();
+  const maxLines = settings.max_lines_per_order;
   if (input.lineCount > maxLines)
     throw validationError(`An order can have at most ${maxLines} items.`);
 
-  const store = await getStore();
   if (!store.is_open) {
     throw new AppError(
       400,
@@ -90,15 +106,6 @@ export async function createOrder(user: AuthUser, input: CreateOrderInput): Prom
       `${store.name} is closed right now. Please come back when it opens.`,
     );
   }
-  const customerName = input.customerName ?? (await lookupUserName(user.id));
-
-  // Ids that are not UUIDs (e.g. a cart saved before the move to Supabase) cannot exist, so they are not queried.
-  const ids = input.items.map((line) => line.menuItemId).filter(isUuid);
-  const { data: menuItems } = await supabaseAdmin
-    .from('menu_items')
-    .select()
-    .in('id', ids)
-    .throwOnError();
   const byId = new Map(menuItems.map((item) => [item.id, item]));
 
   const lines = priceLines(input.items, byId);
