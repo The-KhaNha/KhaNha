@@ -94,13 +94,19 @@ stacked cards, `p-4`/`p-5` inside them.
 ## Motion
 
 Easings: `ease-out-soft`, `ease-spring`, `ease-in-quick`. Animations: `pop`, `fade-in`, `fade-up`, `fade-out`,
-`bar-up`, `sheet-up`, `sheet-down`, `scale-in`, `check-pop`, `draw`, `pulse-soft`, `ring`, `shimmer`, `count-in`,
-`stepper-in`, `bag-tilt`, `glow-pulse`, `ring-flash`, `party-in`, `photo-zoom`, `card-leave`, `shake`. The two
-loops are `pulse-soft` (the Open dot, the active tracker step, the live status badge) and `shimmer` (skeletons).
+`bar-up`, `sheet-up`, `sheet-down`, `scale-in`, `check-pop`, `draw`, `ring`, `shimmer`, `count-in`, `stepper-in`,
+`bag-tilt`, `party-in`, `photo-zoom`, `card-leave`, `shake`. Every keyframe animates only `transform` and `opacity`
+(`lib/designTokens.test.ts`; `draw`, the check mark's one-shot stroke, is the one exception), so the compositor runs it
+without repainting. Effects that show a ring (a shadow) paint it once on an `::after` and animate that: the utilities
+`pulse-soft` (a halo in `--pulse-color` swelling behind a round dot), `glow-pulse` (a ring outside the ready hero,
+three breaths) and `ring-flash` (a ring inside a new staff card's edge, fading once). The two loops are `pulse-soft`
+(the Open dot, the active tracker step, the live status badge) and `shimmer` (skeletons). The largest paint is never
+inside an entrance fade (FRONTEND_STRUCTURE.md "The largest paint").
 `index.css` shortens every animation and transition to 0.01 ms under `prefers-reduced-motion: reduce`; JS-driven
 motion checks `prefersReducedMotion()` / `useReducedMotion()`, and a scroll goes through `scrollBehavior()`.
 
-Utilities: `no-scrollbar`, `pb-safe` (safe-area bottom padding), `eyebrow` (12px/700 uppercase), `store-scrim`.
+Utilities: `no-scrollbar`, `pb-safe` (safe-area bottom padding), `eyebrow` (12px/700 uppercase), `store-scrim`,
+`pulse-soft`, `glow-pulse`, `ring-flash`.
 
 ## Design rules stated in the code
 

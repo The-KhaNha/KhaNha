@@ -27,7 +27,7 @@ export function StatusBadge({ status, size = 'sm', className }: StatusBadgeProps
       <span
         className={cn(
           'inline-flex h-1.5 w-1.5 rounded-full bg-current',
-          isActive(status) && 'animate-pulse-soft',
+          isActive(status) && 'pulse-soft',
         )}
         style={
           isActive(status) ? ({ '--pulse-color': meta.pulseColor } as CSSProperties) : undefined

@@ -143,7 +143,6 @@
   --animate-scale-in: scale-in 220ms var(--ease-out-soft) both;
   --animate-check-pop: check-pop 520ms var(--ease-out-soft) both;
   --animate-draw: draw 420ms 260ms ease-out both;
-  --animate-pulse-soft: pulse-soft 1.8s ease-in-out infinite;
   /* backwards, not both: when it ends the ring drops back behind the check circle instead of staying scaled up, where
      (invisible) it would still widen the page at large text. */
   --animate-ring: ring 900ms ease-out 2 backwards;
@@ -151,8 +150,6 @@
   --animate-count-in: count-in 160ms var(--ease-out-soft) both;
   --animate-stepper-in: stepper-in 220ms var(--ease-out-soft) both;
   --animate-bag-tilt: bag-tilt 360ms var(--ease-out-soft);
-  --animate-glow-pulse: glow-pulse 1.8s ease-in-out 3;
-  --animate-ring-flash: ring-flash 1200ms ease-out both;
   --animate-party-in: party-in 400ms var(--ease-spring) both;
   --animate-photo-zoom: photo-zoom 400ms var(--ease-out-soft) both;
   --animate-card-leave: card-leave 200ms var(--ease-in-quick) both;
@@ -256,11 +253,12 @@
   @keyframes pulse-soft {
     0%,
     100% {
-      box-shadow: 0 0 0 0
-        color-mix(in srgb, var(--pulse-color, var(--color-brand-500)) 35%, transparent);
+      transform: scale(0.4);
+      opacity: 1;
     }
     50% {
-      box-shadow: 0 0 0 8px transparent;
+      transform: scale(1);
+      opacity: 0;
     }
   }
   @keyframes ring {
@@ -318,24 +316,18 @@
   @keyframes glow-pulse {
     0%,
     100% {
-      box-shadow: var(--shadow-ready);
+      opacity: 0;
     }
     50% {
-      box-shadow:
-        var(--shadow-ready),
-        0 0 0 10px color-mix(in srgb, var(--color-success-500) 16%, transparent);
+      opacity: 1;
     }
   }
   @keyframes ring-flash {
     from {
-      box-shadow:
-        0 0 0 2px color-mix(in srgb, var(--color-brand-500) 60%, transparent),
-        var(--shadow-card);
+      opacity: 1;
     }
     to {
-      box-shadow:
-        0 0 0 6px transparent,
-        var(--shadow-card);
+      opacity: 0;
     }
   }
   @keyframes party-in {
@@ -449,6 +441,57 @@
   }
 }
 
+/* The three attention effects paint their ring once, on a pseudo-element, and animate only its transform and opacity
+   (CLAUDE.md §2b): a box-shadow animation repaints every frame for as long as it plays. The ::after starts hidden, so
+   with reduced motion (no animation) nothing shows. */
+
+/* The live dot (the Open pill, the active tracker step, the status badge): a halo in --pulse-color that swells and
+   fades behind it. isolation keeps the halo under the dot's content but above the card behind it. */
+@utility pulse-soft {
+  position: relative;
+  isolation: isolate;
+  &::after {
+    content: '';
+    position: absolute;
+    inset: -8px;
+    z-index: -1;
+    border-radius: 9999px;
+    background: color-mix(in srgb, var(--pulse-color, var(--color-brand-500)) 35%, transparent);
+    opacity: 0;
+    pointer-events: none;
+    animation: pulse-soft 1.8s ease-in-out infinite;
+  }
+}
+
+/* "Your order is ready": a soft ring outside the hero breathes three times. */
+@utility glow-pulse {
+  position: relative;
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: var(--radius-card);
+    box-shadow: 0 0 0 10px color-mix(in srgb, var(--color-success-500) 16%, transparent);
+    opacity: 0;
+    pointer-events: none;
+    animation: glow-pulse 1.8s ease-in-out 3;
+  }
+}
+
+/* A new order on the staff board: a brand ring just inside its edge fades out once (the card clips its overflow). */
+@utility ring-flash {
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--color-brand-500) 60%, transparent);
+    opacity: 0;
+    pointer-events: none;
+    animation: ring-flash 1200ms ease-out;
+  }
+}
+
 @utility no-scrollbar {
   scrollbar-width: none;
   &::-webkit-scrollbar {
@@ -489,9 +532,10 @@
   }
   [data-flight],
   .animate-bag-tilt,
-  .animate-glow-pulse,
+  .pulse-soft::after,
+  .glow-pulse::after,
   .animate-shimmer,
-  .animate-ring-flash {
+  .ring-flash::after {
     animation: none !important;
   }
 }

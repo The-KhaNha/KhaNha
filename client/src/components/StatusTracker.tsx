@@ -46,11 +46,8 @@ function StepTracker({ status, className }: { status: OrderStatus; className?: s
                   'grid h-10 w-10 place-items-center rounded-full transition-colors duration-300',
                   done && 'bg-success-500 text-white',
                   active && cn(meta.fillClass, meta.onFillClass),
-                  // One animation utility only: two `animate-*` classes on the same element would fight.
-                  active &&
-                    (transitioned
-                      ? 'animate-[pop_320ms_var(--ease-spring),pulse-soft_1.8s_ease-in-out_infinite]'
-                      : 'animate-pulse-soft'),
+                  // The pop animates the step itself; the pulse runs on its ::after, so the two never fight.
+                  active && cn('pulse-soft', transitioned && 'animate-pop'),
                   !done && !active && 'border-2 border-line bg-surface text-muted',
                 )}
               >

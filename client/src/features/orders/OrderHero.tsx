@@ -25,8 +25,8 @@ export function OrderHero({ order, entrance = false, onReorder, reordering }: Or
 
   if (order.status === 'READY') {
     return (
-      <div className={enter}>
-        <section className="@container relative overflow-hidden rounded-card bg-success-500 p-6 text-white shadow-ready animate-glow-pulse">
+      <div className={cn('glow-pulse', enter)}>
+        <section className="@container relative overflow-hidden rounded-card bg-success-500 p-6 text-white shadow-ready">
           <div
             aria-hidden
             className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-white/10"

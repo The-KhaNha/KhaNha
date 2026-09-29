@@ -30,7 +30,7 @@ const FORBIDDEN: { name: string; re: RegExp; use: string }[] = [
   {
     name: 'stock looping animation',
     re: /\banimate-(ping|bounce|pulse)(?![-\w])/g,
-    use: 'animate-pulse-soft',
+    use: 'the pulse-soft utility',
   },
   // A JS scroll ignores the reduced-motion CSS rule: go through scrollBehavior() (lib/useReducedMotion.ts).
   {
@@ -52,6 +52,32 @@ describe('design tokens', () => {
       [...text.matchAll(re)].map((m) => `${file}: ${m[0]}`),
     );
     expect(hits, `use ${use}`).toEqual([]);
+  });
+
+  // CLAUDE.md §2b: animate only transform and opacity, which the compositor runs without repainting. A box-shadow
+  // pulse repaints every frame for as long as it plays (the order page's live dot ran for the whole visit).
+  it('every keyframe animates only transform and opacity', () => {
+    const css = readFileSync(`${process.cwd()}/src/index.css`, 'utf8');
+    const allowed: Record<string, string> = {
+      draw: 'the success check mark draws its stroke once',
+    };
+    const offenders = [...css.matchAll(/@keyframes ([\w-]+) \{/g)].flatMap((m) => {
+      const name = m[1] ?? '';
+      let depth = 1;
+      let i = (m.index ?? 0) + m[0].length;
+      const start = i;
+      while (depth > 0 && i < css.length) {
+        if (css[i] === '{') depth += 1;
+        else if (css[i] === '}') depth -= 1;
+        i += 1;
+      }
+      const props = [...css.slice(start, i).matchAll(/([a-z-]+)\s*:/g)].map((p) => p[1]);
+      const bad = props.filter((prop) => prop !== 'transform' && prop !== 'opacity');
+      return bad.length && !allowed[name] ? [`${name}: ${[...new Set(bad)].join(', ')}`] : [];
+    });
+    expect(offenders, 'move it to a pseudo-element and animate its transform or opacity').toEqual(
+      [],
+    );
   });
 
   it('index.css spells a colour only where it defines a token', () => {

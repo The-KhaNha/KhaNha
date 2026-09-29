@@ -53,7 +53,7 @@ export function StaffOrderCard({
         'relative flex min-w-0 flex-col overflow-hidden rounded-card border bg-surface p-5 pl-6 shadow-card transition-opacity duration-200',
         finished ? 'border-line/50 opacity-60' : 'border-line/70',
         order.status === 'READY' && 'ring-2 ring-success-500/40',
-        leaving ? 'animate-card-leave' : entering && 'animate-ring-flash',
+        leaving ? 'animate-card-leave' : entering && 'ring-flash',
       )}
     >
       <span

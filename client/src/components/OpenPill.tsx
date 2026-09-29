@@ -19,7 +19,7 @@ export function OpenPill({ isOpen, className }: OpenPillProps) {
         className={cn(
           'h-2 w-2 rounded-full',
           isOpen
-            ? 'bg-success-500 animate-pulse-soft [--pulse-color:var(--color-success-500)]'
+            ? 'bg-success-500 pulse-soft [--pulse-color:var(--color-success-500)]'
             : 'bg-cancel-500',
         )}
       />
