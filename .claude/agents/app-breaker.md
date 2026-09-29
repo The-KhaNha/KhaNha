@@ -130,8 +130,8 @@ Every API call sends `X-Client-Version` (the gate answers 426 without a parsable
 
 - **E1 200% text.** At 360×640 run `document.documentElement.style.fontSize = '200%'` on `/`, `/menu`, `/cart`,
   `/checkout`, `/orders`, `/login`, `/staff`: no horizontal scroll, every button still visible and ≥ 44px
-  (`getBoundingClientRect()` over `button, a[href]`), the bottom nav still usable. Then browser zoom: resize to
-  180×320 (what 200% zoom leaves of a 360px phone) and check the same.
+  (`getBoundingClientRect()` over `button, a[href]`), the bottom nav still usable. Then reflow: at 100% text resize
+  to 320×640 (WCAG 1.4.10) and check the same. Narrower than 320 is beyond WCAG and not a BREAK.
 - **E2 WebKit.** `cd client && npm run e2e:webkit` (the Playwright WebKit smoke in `client/e2e/`). If WebKit is not
   installed, run `npx playwright install webkit` once (no `--with-deps`: that needs sudo; if it then fails to
   launch, UNTESTED with the launcher error). Report any failing step with its screenshot from

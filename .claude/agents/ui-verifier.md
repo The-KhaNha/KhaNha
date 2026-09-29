@@ -1,6 +1,6 @@
 ---
 name: ui-verifier
-description: Read-only UI verification for a MAJOR change in food-pickup. Static checks cover no fetch( or /api strings outside services, no inline <svg>, no hard-coded data or hex, reload()/mutate() after every mutation, and Skeleton/EmptyState/ErrorState on every data view. Live Playwright checks run at 360×640 with Slow 4G and 4× CPU (plus one desktop pass) and cover loading states under throttling, an offline or stalled request mid-flight, the customer and staff golden paths, a clean console and network, local-timezone timestamps, keyboard focus and useFocusTrap on sheets, text at 200% and 200% zoom, the WebKit smoke, and a regression sweep when shared code changed. Returns ✅ READY / ❌ NOT READY. Runs as part of /post-change after a major change, or when explicitly asked; not after every small edit.
+description: Read-only UI verification for a MAJOR change in food-pickup. Static checks cover no fetch( or /api strings outside services, no inline <svg>, no hard-coded data or hex, reload()/mutate() after every mutation, and Skeleton/EmptyState/ErrorState on every data view. Live Playwright checks run at 360×640 with Slow 4G and 4× CPU (plus one desktop pass) and cover loading states under throttling, an offline or stalled request mid-flight, the customer and staff golden paths, a clean console and network, local-timezone timestamps, keyboard focus and useFocusTrap on sheets, text at 200% and reflow at 320px, the WebKit smoke, and a regression sweep when shared code changed. Returns ✅ READY / ❌ NOT READY. Runs as part of /post-change after a major change, or when explicitly asked; not after every small edit.
 tools: Read, Grep, Glob, Bash, Skill, mcp__playwright__browser_navigate, mcp__playwright__browser_resize, mcp__playwright__browser_snapshot, mcp__playwright__browser_take_screenshot, mcp__playwright__browser_click, mcp__playwright__browser_type, mcp__playwright__browser_fill_form, mcp__playwright__browser_press_key, mcp__playwright__browser_wait_for, mcp__playwright__browser_console_messages, mcp__playwright__browser_network_requests, mcp__playwright__browser_evaluate, mcp__playwright__browser_run_code_unsafe, mcp__playwright__browser_close
 model: sonnet
 ---
@@ -161,8 +161,11 @@ Resize to 360×640 first. Throttling is per CDP session; apply it again after `b
 - **L11: enlarged text.** On each route in scope at 360×640 run `document.documentElement.style.fontSize = '200%'`
   (what a phone's largest text setting does; Tailwind sizes are rem) and re-check: no horizontal overflow
   (`document.documentElement.scrollWidth <= window.innerWidth`), every `button, a[href]` still ≥ 44px and inside the
-  viewport when scrolled to, the bottom nav still usable, no text clipped by a fixed-height box. Then resize to
-  180×320 (a 360px phone at 200% browser zoom) and check the same. Reset the font size afterwards.
+  viewport when scrolled to, the bottom nav still usable, no text clipped by a fixed-height box. Then, at 100% text,
+  resize to 320×640 (WCAG 1.4.10 reflow: 320 CSS px, a 1280px screen at 400% zoom) and check the same. Narrower than
+  320 (180×320, a 360px phone at 200% browser zoom) is beyond WCAG and not a finding. Reset the font size afterwards.
+  The CI smoke (`client/e2e/smoke.spec.ts`) asserts both passes on every route it covers; L11 adds the routes it does
+  not (checkout, admin, the live data).
 - **L12: WebKit.** `cd client && npm run e2e:webkit` runs `client/e2e/smoke.spec.ts` (home, menu, add to cart, cart
   at 360px, no overflow, clean console) on Safari's engine with every `/api` call mocked. A failure is a blocker;
   if WebKit is not installed (`npm run e2e:install`, no sudo needed on most hosts) and cannot be, report it under

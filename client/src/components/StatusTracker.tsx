@@ -96,7 +96,7 @@ function CancelledTracker({ className }: { className?: string }) {
       <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-surface text-cancel-700">
         <CircleX className="h-5 w-5" aria-hidden />
       </span>
-      <div>
+      <div className="min-w-0 wrap-break-word">
         <p className="text-body font-bold">{meta.customerTitle}</p>
         <p className="text-caption text-muted">This order won't move forward.</p>
       </div>

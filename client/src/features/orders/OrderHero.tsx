@@ -133,7 +133,7 @@ export function OrderHero({ order, onReorder, reordering }: OrderHeroProps) {
         >
           <Icon className="h-5 w-5" aria-hidden />
         </span>
-        <div>
+        <div className="min-w-0 wrap-break-word">
           <p className="text-body font-bold">{meta.customerTitle}</p>
           <p className="text-caption text-muted">{meta.customerCopy}</p>
         </div>

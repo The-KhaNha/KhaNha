@@ -342,8 +342,38 @@ const LAYOUT_ROUTES: { path: string; role?: Role; status?: OrderStatus }[] = [
   { path: '/staff', role: 'STAFF' },
 ];
 
+/**
+ * Waits for the web font and one-shot animations: the fallback font sets text wider, and an entrance or a celebration
+ * ring may pass the edge while it plays.
+ */
+async function settle(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+    await Promise.all(
+      document
+        .getAnimations()
+        .filter((a) => a.effect?.getTiming().iterations !== Infinity)
+        .map((a) => a.finished.catch(() => undefined)),
+    );
+  });
+}
+
+/** Everything fits the current screen: nothing past the edge, no sideways scroll, no label or word cut off. */
+async function fitsScreen(page: Page, when: string): Promise<void> {
+  await settle(page);
+  expect(await overflowingPastScreen(page), `elements past the right edge ${when}`).toEqual([]);
+  expect(await labelsWiderThanControl(page), `labels past their button ${when}`).toEqual([]);
+  expect(await textCutOff(page), `text cut off ${when}`).toEqual([]);
+  // Text spilling out of its own box (a word wider than a narrow tile) is not an element past the edge, but it
+  // still scrolls the page sideways.
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+    `page width ${when}`,
+  ).toBeLessThanOrEqual(page.viewportSize()?.width ?? 0);
+}
+
 for (const { path, role, status } of LAYOUT_ROUTES) {
-  test(`${path}${role ? ` (${role}${status ? `, ${status}` : ''})` : ''}: every control is at least 44px, and nothing leaves the screen at 200% text`, async ({
+  test(`${path}${role ? ` (${role}${status ? `, ${status}` : ''})` : ''}: every control is at least 44px, and it reflows at 320px and at 200% text`, async ({
     page,
   }) => {
     if (role) await signIn(page, role, status);
@@ -356,31 +386,19 @@ for (const { path, role, status } of LAYOUT_ROUTES) {
     await page.waitForLoadState('networkidle');
 
     expect(await smallTapTargets(page), 'controls under 44px').toEqual([]);
-
-    // What a phone's largest text setting does: Tailwind sizes are rem, so everything scales from the root.
-    await page.evaluate(async () => {
-      document.documentElement.style.fontSize = '200%';
-      // Measure the settled screen: an entrance or a celebration ring may pass the edge while it plays.
-      await Promise.all(
-        document
-          .getAnimations()
-          .filter((a) => a.effect?.getTiming().iterations !== Infinity)
-          .map((a) => a.finished.catch(() => undefined)),
-      );
-    });
-    expect(await overflowingPastScreen(page), 'elements past the right edge at 200% text').toEqual(
-      [],
-    );
-    expect(await labelsWiderThanControl(page), 'labels past their button at 200% text').toEqual([]);
-    expect(await textCutOff(page), 'text cut off at 200% text').toEqual([]);
-    // Text spilling out of its own box (a word wider than a narrow tile) is not an element past the edge, but it
-    // still scrolls the page sideways.
-    expect(
-      await page.evaluate(() => document.documentElement.scrollWidth),
-      'page width at 200% text',
-    ).toBeLessThanOrEqual(page.viewportSize()?.width ?? 0);
     // One main landmark, so a screen reader can jump to the content; the full-screen pages render their own.
     await expect(page.locator('main')).toHaveCount(1);
+
+    // WCAG 1.4.10 reflow: 320 CSS px wide (a 1280px screen at 400% zoom, or the narrowest phones).
+    await page.setViewportSize({ width: 320, height: 640 });
+    await fitsScreen(page, 'at 320px');
+
+    // What a phone's largest text setting does: Tailwind sizes are rem, so everything scales from the root.
+    await page.setViewportSize({ width: 360, height: 640 });
+    await page.evaluate(() => {
+      document.documentElement.style.fontSize = '200%';
+    });
+    await fitsScreen(page, 'at 200% text');
   });
 }
 
