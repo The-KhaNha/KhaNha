@@ -3,6 +3,7 @@ import type { MenuItem } from '../types/api';
 import { availableQuantity, lineLimit } from '../features/cart/cartRules';
 import { selectQuantityOf, useCartStore } from '../features/cart/cartStore';
 import { cn } from '../lib/cn';
+import { cardClasses } from './Card';
 import { AddControl } from './AddControl';
 import { FoodPhoto } from './FoodPhoto';
 import { PopularBadge } from './PopularBadge';
@@ -29,11 +30,11 @@ export function FoodCard({ item, onOpen, showPopularBadge = true }: FoodCardProp
 
   return (
     <article
-      className={cn(
+      className={cardClasses(
         // flex-wrap + the text column's basis: at large text the column drops under the photo instead of pushing
         // the price and Add off the screen.
-        'group flex flex-wrap gap-3.5 rounded-tile border border-line/70 bg-surface p-3 shadow-card',
-        'transition-[translate,scale,box-shadow] duration-[180ms] ease-out hover:-translate-y-0.5 hover:shadow-card-hover',
+        'group flex flex-wrap gap-3.5 p-3 transition-[translate,scale,box-shadow] duration-[180ms] ease-out hover:-translate-y-0.5 hover:shadow-card-hover',
+        'tile',
       )}
     >
       {/* The title button is the card's single tab stop; the photo is a pointer-only duplicate of it. */}
@@ -94,7 +95,7 @@ export function FoodCard({ item, onOpen, showPopularBadge = true }: FoodCardProp
 
 export function FoodCardSkeleton() {
   return (
-    <div className="flex gap-3.5 rounded-tile border border-line/70 bg-surface p-3 shadow-card">
+    <div className={cardClasses('flex gap-3.5 p-3', 'tile')}>
       <Skeleton className="h-28 w-28 shrink-0 rounded-control" />
       <div className="flex flex-1 flex-col">
         <Skeleton className="h-4 w-2/3" />

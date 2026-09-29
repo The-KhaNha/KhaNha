@@ -109,10 +109,11 @@ props. Rendered by `App.tsx`.
 `CardProps extends HTMLAttributes<HTMLDivElement>`: `padding?: 'none' | 'sm' | 'md' | 'lg' | 'xl' = 'md'` (`xl` is
 `p-6 md:p-8`, the sign-in card),
 `as?: 'div' | 'section' | 'article' = 'div'`, `tone?: 'default' | 'cancel' = 'default'` (slate tint for a cancelled
-order). **`cardClasses(extra?)`** returns the default card's classes for a component that picks its own root element
-(`ErrorState`'s compact box). Every page card goes through these; the card shadow elsewhere fails
-`lib/designTokens.test.ts` unless the file is listed there as its own component (the board card, the store cover, the
-tiles).
+order). **`cardClasses(extra?, shape: 'card' | 'tile' = 'card')`** returns the default card's classes for a component
+that picks its own root element (`ErrorState`'s compact box; `'tile'` = `rounded-tile` for `FoodCard`, the
+`PopularRail` cards and the how-it-works steps). Every page card goes through these; the resting card shadow elsewhere
+fails `lib/designTokens.test.ts` unless the file is listed there as its own component (the board card, the store
+cover).
 
 **`EdgeFades({ edges })`** (`EdgeFades.tsx`). The page-coloured fades over a sideways-scrolling row, shown only on a
 side that hides more (`useOverflowEdges`). Used by `CategoryChips` and `StaffFilters`.
@@ -386,7 +387,7 @@ UI (presentational; the pages own the data):
 | `useAuthRedirect()`                                                                                                                       | returns `redirectAfterAuth(user)`: non-customers to `homeFor(user.role)`, others to a same-site `?next` or `/`                                                                                                                                                                                                |
 | `sessionActivity.ts`: `SESSION_IDLE_TTL_MS`, `readLastActive()`, `markActive(now?)`, `clearActivity()`, `isIdleExpired(lastActive, now?)` | the 7-day idle sign-out: `localStorage` key `fp_last_active`; a missing record counts as active (the week starts now). `authStore.ts` calls these from `login`, `logout`, `clearSession`, `hydrate` and a `visibilitychange` listener. See [PERMISSIONS.md#session-lifetime](PERMISSIONS.md#session-lifetime) |
 | `validateName`, `validateEmail`, `validatePassword`, `validatePhone`, `validateNote`                                                      | `validation.ts`: return an error message or `undefined`. The limits mirror the server's zod schemas: `NAME_MAX_LENGTH = 60`, `PASSWORD_MIN_LENGTH = 6`, `PASSWORD_MAX_LENGTH = 72`, `PHONE_MIN_DIGITS = 10`, `PHONE_MAX_DIGITS = 15`, `NOTE_MAX_LENGTH = 200`                                                 |
-| `AuthCard({ title, subtitle, error?, children, footer, backTo? })`                                                                        | shared frame for the Login and Register pages                                                                                                                                                                                                                                                                 |
+| `AuthCard({ title, subtitle, error?, children, footer: { prompt, to, label }, backTo? })`                                                 | shared frame for the Login and Register pages; renders the link to the other auth page and keeps its `?next` (`authLinks.test.tsx`)                                                                                                                                                                           |
 
 ### features/admin
 

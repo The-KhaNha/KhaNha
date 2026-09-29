@@ -54,14 +54,12 @@ describe('design tokens', () => {
 const RECIPES: { name: string; re: RegExp; allowed: Record<string, string> }[] = [
   {
     name: 'card shadow (use Card)',
-    re: /\bshadow-card\b/,
+    // The resting shadow only: hover:shadow-card-hover is the tiles' lift, not the card recipe.
+    re: /\bshadow-card(?!-)/,
     allowed: {
       '/src/components/Card.tsx': 'the atom',
       '/src/features/orders/StaffOrderCard.tsx': 'the board card: status rail and state borders',
       '/src/pages/Menu.tsx': 'the store cover photo',
-      '/src/components/FoodCard.tsx': 'a tile (rounded-tile): interactive, hover lift',
-      '/src/components/PopularRail.tsx': 'tiles (rounded-tile): interactive, hover lift',
-      '/src/pages/Home.tsx': 'the how-it-works tiles (rounded-tile)',
     },
   },
   {

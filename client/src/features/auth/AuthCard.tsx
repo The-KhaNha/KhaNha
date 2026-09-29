@@ -10,7 +10,8 @@ interface AuthCardProps {
   subtitle: string;
   error?: string | null;
   children: ReactNode;
-  footer: ReactNode;
+  /** The link to the other auth page; it keeps the query string so ?next survives the switch. */
+  footer: { prompt: string; to: '/login' | '/register'; label: string };
   backTo?: string;
 }
 
@@ -67,7 +68,15 @@ export function AuthCard({
         <div className="mt-6">{children}</div>
       </Card>
 
-      <p className="mt-6 text-center text-body text-muted">{footer}</p>
+      <p className="mt-6 text-center text-body text-muted">
+        {footer.prompt}{' '}
+        <Link
+          to={{ pathname: footer.to, search: location.search }}
+          className="inline-flex min-h-11 items-center font-semibold text-brand-600 underline-offset-2 hover:text-brand-700 hover:underline"
+        >
+          {footer.label}
+        </Link>
+      </p>
     </div>
   );
 }

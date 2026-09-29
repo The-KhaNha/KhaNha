@@ -1,5 +1,6 @@
 import { ChefHat, PackageCheck, ShoppingBag, type LucideIcon } from 'lucide-react';
 import { ErrorState } from '../components/ErrorState';
+import { cardClasses } from '../components/Card';
 import { StoreCard, StoreCardSkeleton } from '../components/StoreCard';
 import { useStore } from '../features/menu/useStore';
 
@@ -70,10 +71,7 @@ export function HomePage() {
         </h2>
         <ol className="mt-3 grid grid-cols-3 gap-2">
           {steps.map(({ icon: Icon, title, copy }, index) => (
-            <li
-              key={title}
-              className="rounded-tile border border-line/70 bg-surface p-3.5 shadow-card"
-            >
+            <li key={title} className={cardClasses('p-3.5', 'tile')}>
               <div className="flex items-center justify-between">
                 <span className="grid h-9 w-9 place-items-center rounded-xl bg-brand-50 text-brand-600">
                   <Icon className="h-[18px] w-[18px]" aria-hidden />

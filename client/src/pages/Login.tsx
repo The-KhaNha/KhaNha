@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { Link, Navigate, useLocation } from 'react-router-dom';
+import { Navigate } from 'react-router-dom';
 import { Eye, EyeOff } from 'lucide-react';
 import { Button } from '../components/Button';
 import { IconButton } from '../components/IconButton';
@@ -15,8 +15,6 @@ export function LoginPage() {
   const user = useAuthStore(selectUser);
   const login = useAuthStore((s) => s.login);
   const redirectAfterAuth = useAuthRedirect();
-  // Keeps ?next on the way between sign-in and sign-up, so a guest from checkout lands back there.
-  const location = useLocation();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -52,17 +50,7 @@ export function LoginPage() {
       title="Welcome back"
       subtitle="Sign in to track orders and check out faster."
       error={serverError}
-      footer={
-        <>
-          New here?{' '}
-          <Link
-            to={{ pathname: '/register', search: location.search }}
-            className="inline-flex min-h-11 items-center font-semibold text-brand-600 underline-offset-2 hover:text-brand-700 hover:underline"
-          >
-            Create an account
-          </Link>
-        </>
-      }
+      footer={{ prompt: 'New here?', to: '/register', label: 'Create an account' }}
     >
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
         <Input

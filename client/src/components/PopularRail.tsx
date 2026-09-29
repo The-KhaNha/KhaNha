@@ -4,6 +4,7 @@ import type { MenuItem } from '../types/api';
 import { availableQuantity, lineLimit } from '../features/cart/cartRules';
 import { selectQuantityOf, useCartStore } from '../features/cart/cartStore';
 import { cn } from '../lib/cn';
+import { cardClasses } from './Card';
 import { AddControl } from './AddControl';
 import { FoodPhoto } from './FoodPhoto';
 import { Price } from './Price';
@@ -80,9 +81,9 @@ function RailCard({ item, onOpen }: { item: MenuItem; onOpen: (item: MenuItem) =
   return (
     <li className={cn(CARD_WIDTH_CLASS, 'flex shrink-0 snap-start')}>
       <article
-        className={cn(
-          'group flex w-full flex-col rounded-tile border border-line/70 bg-surface p-2 shadow-card',
-          'transition-[translate,scale,box-shadow] duration-[180ms] ease-out hover:-translate-y-0.5 hover:shadow-card-hover',
+        className={cardClasses(
+          'group flex w-full flex-col p-2 transition-[translate,scale,box-shadow] duration-[180ms] ease-out hover:-translate-y-0.5 hover:shadow-card-hover',
+          'tile',
         )}
       >
         <button
@@ -131,13 +132,7 @@ export function PopularRailSkeleton() {
       <Skeleton className="h-3 w-20" />
       <div className="no-scrollbar -mx-4 mt-3 flex gap-3 overflow-hidden px-4 pt-1">
         {Array.from({ length: 3 }, (_, i) => (
-          <div
-            key={i}
-            className={cn(
-              CARD_WIDTH_CLASS,
-              'shrink-0 rounded-tile border border-line/70 bg-surface p-2 shadow-card',
-            )}
-          >
+          <div key={i} className={cardClasses(cn(CARD_WIDTH_CLASS, 'shrink-0 p-2'), 'tile')}>
             <Skeleton className="h-40 w-full rounded-control" />
             <Skeleton className="mt-3 h-4 w-3/4" />
             <div className="mt-2 flex items-center justify-between">

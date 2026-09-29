@@ -14,11 +14,13 @@ const tones = {
   cancel: 'border-cancel-500/15 bg-cancel-50',
 } as const;
 
-const base = 'rounded-card border shadow-card';
+const base = 'border shadow-card';
+/** 'tile' = the smaller radius for cards in a list or rail (FoodCard, PopularRail, the how-it-works steps). */
+const shapes = { card: 'rounded-card', tile: 'rounded-tile' } as const;
 
-/** The default card's classes, for a component that picks its root element itself (ErrorState's compact box). */
-export function cardClasses(extra?: string) {
-  return cn(base, tones.default, extra);
+/** The default card's classes, for a component that picks its root element itself (ErrorState, the food tiles). */
+export function cardClasses(extra?: string, shape: keyof typeof shapes = 'card') {
+  return cn(base, shapes[shape], tones.default, extra);
 }
 
 /** White card on cream: the 1px line border keeps it crisp, the warm shadow lifts it. */
@@ -29,5 +31,7 @@ export function Card({
   className,
   ...rest
 }: CardProps) {
-  return <Tag className={cn(base, tones[tone], paddings[padding], className)} {...rest} />;
+  return (
+    <Tag className={cn(base, shapes.card, tones[tone], paddings[padding], className)} {...rest} />
+  );
 }

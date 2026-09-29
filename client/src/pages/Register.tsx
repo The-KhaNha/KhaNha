@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { Link, Navigate, useLocation } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { AuthCard } from '../features/auth/AuthCard';
@@ -99,17 +99,7 @@ export function RegisterPage() {
       subtitle="Order ahead and skip the queue in seconds."
       error={serverError}
       backTo={`/login${location.search}`}
-      footer={
-        <>
-          Already have an account?{' '}
-          <Link
-            to={{ pathname: '/login', search: location.search }}
-            className="inline-flex min-h-11 items-center font-semibold text-brand-600 underline-offset-2 hover:text-brand-700 hover:underline"
-          >
-            Sign in
-          </Link>
-        </>
-      }
+      footer={{ prompt: 'Already have an account?', to: '/login', label: 'Sign in' }}
     >
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
         <Input
