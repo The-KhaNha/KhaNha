@@ -130,10 +130,11 @@ function unverifiedChanges() {
 }
 
 /** The branch's changes, committed or not, against the base its PR merges into (origin/main for hotfix/*, else
- *  origin/dev; CLAUDE.md "Versioning and branches"). null on dev or main, or when the base is not fetched. */
+ *  origin/dev; CLAUDE.md "Versioning and branches"). null on dev or main, on release/* (release.yml's PR bundles
+ *  work already reviewed in its own PRs), or when the base is not fetched. */
 function branchChanges() {
   const branch = git('rev-parse', '--abbrev-ref', 'HEAD').trim();
-  if (['dev', 'main', 'HEAD'].includes(branch)) return null;
+  if (['dev', 'main', 'HEAD'].includes(branch) || branch.startsWith('release/')) return null;
   const base = branch.startsWith('hotfix/') ? 'origin/main' : 'origin/dev';
   let mergeBase;
   try {
@@ -141,11 +142,8 @@ function branchChanges() {
   } catch {
     return null;
   }
-  const rows = [];
-  for (const row of git('diff', mergeBase, '--numstat', '--no-renames').split('\n')) {
-    const [added, deleted, file] = row.split('\t');
-    if (file) rows.push({ file, lines: (Number(added) || 0) + (Number(deleted) || 0) });
-  }
+  // workingChanges also counts untracked files, which a plain `git diff` misses.
+  const rows = workingChanges(mergeBase);
   return { branch, base, rows };
 }
 
@@ -256,6 +254,16 @@ function testMarkSurvivesCommit() {
     run('--mark');
     const after = JSON.parse(run('--status'));
     assert.equal(after.major, false, 'marking again with no further changes clears the pending state');
+
+    // Unstaged new files count toward the PR size (a plain `git diff` would report zero).
+    g('update-ref', 'refs/remotes/origin/dev', 'HEAD~1');
+    g('checkout', '-q', '-b', 'feat/x');
+    for (let i = 0; i < 26; i++) fs.writeFileSync(path.join(tmp, `docs${i}.md`), 'x\n');
+    const sized = JSON.parse(run('--status')).pr;
+    assert.equal(sized.over, true, 'untracked files count toward the PR size');
+    // A release branch bundles PRs already reviewed one by one: it gets no size (CLAUDE.md "PR size").
+    g('checkout', '-q', '-b', 'release/2026-09-30');
+    assert.equal(JSON.parse(run('--status')).pr, null, 'release/* branches are exempt from the PR size');
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

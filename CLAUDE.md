@@ -543,7 +543,8 @@ hotfixes.
 
 **PR size (STRICTLY ENFORCED).** Keep every PR reviewable: at most **25 changed files or 500 changed lines** against
 its base (`git diff --shortstat origin/dev...HEAD`; `package-lock.json` and `server/src/types/database.ts` do not
-count, tests and docs do), and one theme per PR. Plan a task that is bigger than that as steps, each its own PR.
+count, tests and docs do), and one theme per PR. Plan a task that is bigger than that as steps, each its own PR. The
+release PR (`release/*`, from `release.yml`) is exempt: it bundles work already reviewed in its own PRs.
 
 - When a branch reaches either limit, or its theme is done: finish and verify the change in hand (the §13 gate,
   `/post-change` for a major change), commit, push, open the PR into the base, and tell the user it is ready.
