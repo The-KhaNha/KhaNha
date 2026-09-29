@@ -1,9 +1,9 @@
 import { lazy, useEffect, useRef } from 'react';
-import { BrowserRouter, Route, Routes, matchPath, useLocation } from 'react-router-dom';
+import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { BottomNav } from './components/BottomNav';
 import { CartButton } from './components/CartButton';
 import { PageBoundary } from './components/PageBoundary';
-import { TopBar, type TopBarTone } from './components/TopBar';
+import { TopBar } from './components/TopBar';
 import { useAuthStore } from './features/auth/authStore';
 import { RequireAuth } from './features/auth/RequireAuth';
 import { RequireRole } from './features/auth/RequireRole';
@@ -11,6 +11,7 @@ import { CartBar } from './features/cart/CartBar';
 import { selectCount, useCartStore } from './features/cart/cartStore';
 import { OutdatedBanner } from './features/version/OutdatedBanner';
 import { APP_TITLE } from './config/app';
+import { getShellConfig } from './appShell';
 import { cn } from './lib/cn';
 import { CartPage } from './pages/Cart';
 import { HomePage } from './pages/Home';
@@ -36,115 +37,7 @@ const StaffDashboardPage = lazy(() =>
   import('./pages/StaffDashboard').then((m) => ({ default: m.StaffDashboardPage })),
 );
 
-interface ShellConfig {
-  /** The page's name: the tab title and what a screen reader hears on arrival. Required, so no route ships untitled. */
-  title: string;
-  /** null hides the TopBar entirely. No title = wordmark. */
-  topBar: { title?: string; backTo?: string; tone?: TopBarTone } | null;
-  bottomNav: boolean;
-  cartButton: boolean;
-  cartBar: boolean;
-  /** 'column' = centred phone-width column; 'full' = the page owns its layout. */
-  layout: 'column' | 'full';
-  /** Desktop column width. 'wide' gives the menu's two-column food grid room so titles don't truncate. */
-  width?: 'default' | 'wide';
-}
-
 const WIDTH_CLASS = { default: 'max-w-md md:max-w-lg', wide: 'max-w-md md:max-w-2xl' } as const;
-
-const column: Pick<ShellConfig, 'bottomNav' | 'cartButton' | 'cartBar' | 'layout'> = {
-  bottomNav: true,
-  cartButton: true,
-  cartBar: false,
-  layout: 'column',
-};
-
-/** The page owns the whole screen: no top bar, bottom nav or cart. */
-const fullScreen: Omit<ShellConfig, 'title'> = {
-  topBar: null,
-  bottomNav: false,
-  cartButton: false,
-  cartBar: false,
-  layout: 'full',
-};
-
-const SHELL_BY_ROUTE: { pattern: string; config: ShellConfig }[] = [
-  {
-    pattern: '/',
-    config: { ...column, title: APP_TITLE, topBar: { tone: 'brand' }, cartBar: true },
-  },
-  {
-    pattern: '/menu',
-    config: {
-      ...column,
-      title: 'Menu',
-      topBar: { title: 'Menu', backTo: '/' },
-      cartBar: true,
-      width: 'wide',
-    },
-  },
-  {
-    pattern: '/cart',
-    config: {
-      ...column,
-      title: 'Your cart',
-      topBar: { title: 'Your cart', backTo: '/menu' },
-      cartButton: false,
-    },
-  },
-  {
-    pattern: '/checkout',
-    config: {
-      ...column,
-      title: 'Checkout',
-      topBar: { title: 'Checkout', backTo: '/cart' },
-      cartButton: false,
-    },
-  },
-  {
-    pattern: '/orders',
-    config: { ...column, title: 'Your orders', topBar: { title: 'Your orders', backTo: '/' } },
-  },
-  { pattern: '/orders/:id/success', config: { ...fullScreen, title: 'Order placed' } },
-  {
-    pattern: '/orders/:id',
-    config: {
-      ...column,
-      title: 'Order details',
-      topBar: { title: 'Order details', backTo: '/orders' },
-    },
-  },
-  {
-    pattern: '/profile',
-    config: { ...column, title: 'Profile', topBar: { title: 'Profile', backTo: '/' } },
-  },
-  {
-    pattern: '/admin',
-    config: {
-      ...column,
-      title: 'Site settings',
-      topBar: { title: 'Admin', backTo: '/profile' },
-      cartButton: false,
-    },
-  },
-  { pattern: '/login', config: { ...fullScreen, title: 'Sign in' } },
-  { pattern: '/register', config: { ...fullScreen, title: 'Create your account' } },
-  { pattern: '/staff', config: { ...fullScreen, title: 'Staff board' } },
-];
-
-const NOT_FOUND_SHELL: ShellConfig = {
-  ...column,
-  title: 'Page not found',
-  topBar: { title: 'Not found', backTo: '/' },
-  cartButton: false,
-};
-
-function getShellConfig(pathname: string): ShellConfig {
-  for (const { pattern, config } of SHELL_BY_ROUTE) {
-    if (matchPath({ path: pattern, end: true }, pathname)) return config;
-  }
-  return NOT_FOUND_SHELL;
-}
 
 function AppShell() {
   const { pathname } = useLocation();

@@ -7,6 +7,7 @@ vi.mock('./lib/supabase', () => ({
 }));
 
 const { default: App } = await import('./App');
+const { getShellConfig } = await import('./appShell');
 
 function go(path: string) {
   act(() => {
@@ -38,5 +39,14 @@ describe('App shell on navigation', () => {
     window.history.pushState({}, '', '/');
     render(<App />);
     expect(document.title).toBe('Food Pickup');
+  });
+});
+
+describe('shell by route', () => {
+  it('the customer tabs show on customer screens and never on the operator ones', () => {
+    for (const path of ['/', '/menu', '/orders', '/orders/o1', '/profile'])
+      expect(getShellConfig(path).bottomNav, path).toBe(true);
+    for (const path of ['/admin', '/staff'])
+      expect(getShellConfig(path).bottomNav, path).toBe(false);
   });
 });
