@@ -109,7 +109,7 @@ export function ItemDetailSheet({ item, onClose }: ItemDetailSheetProps) {
         onClick={requestClose}
         tabIndex={-1}
         className={cn(
-          'absolute inset-0 bg-ink/45 backdrop-blur-[2px]',
+          'absolute inset-0 bg-overlay/45 backdrop-blur-[2px]',
           closing ? 'animate-fade-out' : 'animate-fade-in',
         )}
       />

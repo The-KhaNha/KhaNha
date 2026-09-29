@@ -10,7 +10,7 @@ export function OutdatedBanner() {
   return (
     <div
       role="status"
-      className="sticky top-0 z-50 bg-ink pt-[env(safe-area-inset-top)] text-white"
+      className="sticky top-0 z-50 bg-ink-fill pt-[env(safe-area-inset-top)] text-white"
     >
       <div className="mx-auto flex max-w-2xl items-center justify-between gap-3 px-4 py-2">
         <p className="text-sm font-semibold">New version available</p>

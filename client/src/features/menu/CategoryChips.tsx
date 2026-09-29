@@ -75,7 +75,7 @@ export function CategoryChips({
                   'transition-[background-color,color,border-color,scale] duration-150 active:scale-95',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-bg',
                   active
-                    ? 'bg-ink text-white'
+                    ? 'bg-ink-fill text-white'
                     : 'border border-line bg-surface text-muted hover:border-brand-100 hover:bg-brand-50 hover:text-ink',
                 )}
               >

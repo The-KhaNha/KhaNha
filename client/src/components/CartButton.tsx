@@ -63,7 +63,7 @@ export function CartButton({ tone = 'default' }: CartButtonProps) {
           key={leaving ? 'leaving' : popKey}
           className={cn(
             'absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full px-1 text-2xs font-bold tabular-nums ring-2',
-            brand ? 'bg-gold-500 text-ink ring-brand-500' : 'bg-brand-500 text-white ring-bg',
+            brand ? 'bg-gold-500 text-on-gold ring-brand-500' : 'bg-brand-500 text-white ring-bg',
             leaving ? 'animate-fade-out' : 'animate-pop',
           )}
         >

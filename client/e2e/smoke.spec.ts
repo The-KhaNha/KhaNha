@@ -226,3 +226,20 @@ test('the page is described, installable and crawl-safe', async ({ page, request
   expect((await request.get(apple ?? '')).status()).toBe(200);
   expect(await (await request.get('/robots.txt')).text()).toContain('Disallow: /checkout');
 });
+
+test('follows the device colour scheme', async ({ browser }) => {
+  for (const [scheme, background] of [
+    ['light', 'rgb(251, 245, 236)'],
+    ['dark', 'rgb(22, 17, 14)'],
+  ] as const) {
+    const context = await browser.newContext({ colorScheme: scheme });
+    const page = await context.newPage();
+    await mockApi(page);
+    await page.goto('/menu');
+    await expect(page.getByRole('heading', { name: 'Campus Cafe' })).toBeVisible();
+    expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor), scheme).toBe(
+      background,
+    );
+    await context.close();
+  }
+});

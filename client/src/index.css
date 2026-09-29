@@ -50,6 +50,13 @@
   --text-number: 2rem; /* 32px: order numbers, big totals */
   --text-display: 2.5rem; /* 40px: the hero line, the amount to pay */
 
+  /* Fills that keep their role in both colour schemes (dark mode flips the text colours, never these):
+     the dark bar and active chip behind white text, a pressed paprika fill, text on a gold fill, the sheet backdrop. */
+  --color-ink-fill: #1b1410;
+  --color-brand-deep: #b72e0e;
+  --color-on-gold: #1b1410;
+  --color-overlay: #1b1410;
+
   /* Keyboard focus ring: solid, at least 3:1 against bg and surface (WCAG 2.2 focus appearance). */
   --color-focus: var(--color-brand-600);
 
@@ -323,6 +330,38 @@
     80% {
       transform: translateX(2px);
     }
+  }
+}
+
+/* Dark mode follows the device setting: the same roles, re-valued. Every text pairing stays at WCAG AA, checked for
+   both schemes by src/lib/palette.test.ts (docs/DESIGN.md "Dark mode"). Unlayered, so it wins over @theme. */
+:root {
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #16110e;
+    --color-surface: #211a16;
+    --color-surface-2: #2b221d;
+    --color-ink: #f5ede6;
+    --color-muted: #b9a99d;
+    --color-hint: #9c8c80;
+    --color-line: #3b3029;
+    --color-brand-50: #3b1b11;
+    --color-brand-100: #52241a;
+    --color-brand-600: #ff8b66;
+    --color-brand-700: #ffb49b;
+    --color-gold-50: #3a2a0c;
+    --color-gold-700: #f7c35c;
+    --color-success-50: #0f2e1c;
+    --color-success-700: #6ee29b;
+    --color-cancel-50: #252a31;
+    --color-cancel-500: #7b8798;
+    --color-cancel-700: #c3cad4;
+    --color-collected-500: #7d6f64;
+    --color-collected-700: #cdbfb3;
+    --color-ink-fill: #3a302a;
+    --color-overlay: #000000;
   }
 }
 

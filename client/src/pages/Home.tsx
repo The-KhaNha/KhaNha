@@ -20,7 +20,7 @@ export function HomePage() {
     // No page-level fade: the store card's cover is the page's largest paint, and a fading ancestor delays it.
     <div className="pb-6">
       {/* The one permitted decorative gradient in the app. */}
-      <section className="-mx-4 rounded-b-card bg-[linear-gradient(180deg,var(--color-brand-500),var(--color-brand-600))] text-white lg:mx-[calc(50%-50vw)]">
+      <section className="-mx-4 rounded-b-card bg-[linear-gradient(180deg,var(--color-brand-500),var(--color-brand-deep))] text-white lg:mx-[calc(50%-50vw)]">
         <div className="mx-auto w-full max-w-md px-4 pb-[72px] pt-4 md:max-w-lg">
           <p className="eyebrow text-white">Campus pickup</p>
           <h1 className="mt-2 text-display font-extrabold leading-none tracking-[-0.02em]">
@@ -78,7 +78,7 @@ export function HomePage() {
                 <span className="grid h-9 w-9 place-items-center rounded-xl bg-brand-50 text-brand-600">
                   <Icon className="h-[18px] w-[18px]" aria-hidden />
                 </span>
-                <span className="text-xs font-extrabold tabular-nums text-gold-500">
+                <span className="text-xs font-extrabold tabular-nums text-gold-700">
                   0{index + 1}
                 </span>
               </div>

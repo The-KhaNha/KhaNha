@@ -20,7 +20,7 @@ export function AddButton({ onAdd, disabled = false, className }: AddButtonProps
       aria-label="Add to cart"
       className={cn(
         'inline-flex h-11 min-w-[5.25rem] items-center justify-center gap-1 rounded-full bg-brand-500 px-4 text-body font-bold text-white shadow-brand',
-        'transition-[background-color,translate,scale,box-shadow] duration-[120ms] ease-out hover:bg-brand-600 hover:shadow-brand-hover active:scale-[0.94]',
+        'transition-[background-color,translate,scale,box-shadow] duration-[120ms] ease-out hover:bg-brand-deep hover:shadow-brand-hover active:scale-[0.94]',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-surface',
         'disabled:opacity-50',
         className,

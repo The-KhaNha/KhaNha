@@ -29,6 +29,25 @@ outside its atom: add a token, or use the nearest step.
 | Collected | `collected-500`, `collected-700` (the `COLLECTED` status: quiet, never alarming)                                        |
 | Focus     | `focus` (= `brand-600`): the keyboard focus ring, solid, at least 3:1 against `bg` and `surface`                        |
 
+## Dark mode
+
+Follows the device (`prefers-color-scheme`), no toggle. The dark palette in `client/src/index.css` re-values the same
+roles, so no component names a scheme: text tokens (`ink`, `muted`, `brand-600`, `brand-700`, the `-700` status
+texts) turn light, surfaces and tints turn dark, and the paprika, basil and gold fills stay as they are. Four tokens
+exist so a fill never doubles as text:
+
+| Token        | Light     | Dark      | Use                                                           |
+| ------------ | --------- | --------- | ------------------------------------------------------------- |
+| `ink-fill`   | `#1b1410` | `#3a302a` | the cart bar, the active chip, the update banner (white text) |
+| `brand-deep` | `#b72e0e` | `#b72e0e` | a pressed or hovered paprika fill, the hero gradient's end    |
+| `on-gold`    | `#1b1410` | `#1b1410` | text on a gold fill (the Popular badge, the cart count)       |
+| `overlay`    | `#1b1410` | `#000000` | the sheet backdrop                                            |
+
+`client/src/lib/palette.test.ts` reads both palettes from `index.css` and fails if any text pairing drops below
+4.5:1 or the focus ring or a meaningful icon below 3:1; add a new pairing there when a component introduces one.
+`client/index.html` paints the first frame, the boot frame and `theme-color` in the matching scheme. The hairline
+`line` border stays decorative (about 1.3:1) in both.
+
 ## Type
 
 Plus Jakarta Sans (`--font-sans`, `display=swap`). Tailwind's default steps plus the in-between sizes this design uses

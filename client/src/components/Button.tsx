@@ -20,7 +20,7 @@ const base =
   'disabled:pointer-events-none disabled:opacity-50';
 
 const variants: Record<ButtonVariant, string> = {
-  primary: 'bg-brand-500 text-white shadow-brand hover:bg-brand-600 hover:shadow-brand-hover',
+  primary: 'bg-brand-500 text-white shadow-brand hover:bg-brand-deep hover:shadow-brand-hover',
   secondary: 'bg-surface text-ink border border-line shadow-hairline hover:bg-surface-2',
   ghost: 'bg-transparent text-muted hover:text-ink hover:bg-surface-2',
   /** A quiet destructive action beside the main one ("Clear cart", "Cancel order"): slate on hover, never red. */

@@ -3,7 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#FBF5EC" />
+    <meta name="theme-color" content="#FBF5EC" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#16110E" media="(prefers-color-scheme: dark)" />
+    <meta name="color-scheme" content="light dark" />
     <title>Food Pickup</title>
     <meta
       name="description"
@@ -72,6 +74,18 @@
           'Segoe UI',
           Roboto,
           sans-serif;
+      }
+      /* Dark first frame, matching the dark tokens in src/index.css. */
+      @media (prefers-color-scheme: dark) {
+        html,
+        body {
+          background: #16110e;
+          color: #f5ede6;
+        }
+        .boot-name,
+        .boot-block {
+          background: #2b221d;
+        }
       }
     </style>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
