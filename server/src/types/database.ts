@@ -87,6 +87,47 @@ export type Database = {
         };
         Relationships: [];
       };
+      job_failures: {
+        Row: {
+          attempts: number;
+          failed_at: string;
+          id: number;
+          last_error: string;
+          message: Json;
+          queue_name: string;
+          resolved_at: string | null;
+          resolved_by: string | null;
+        };
+        Insert: {
+          attempts: number;
+          failed_at?: string;
+          id?: never;
+          last_error: string;
+          message: Json;
+          queue_name: string;
+          resolved_at?: string | null;
+          resolved_by?: string | null;
+        };
+        Update: {
+          attempts?: number;
+          failed_at?: string;
+          id?: never;
+          last_error?: string;
+          message?: Json;
+          queue_name?: string;
+          resolved_at?: string | null;
+          resolved_by?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'job_failures_resolved_by_fkey';
+            columns: ['resolved_by'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       menu_items: {
         Row: {
           category: string;
@@ -391,6 +432,45 @@ export type Database = {
       purge_domain_events: {
         Args: { p_keep?: string; p_now?: string };
         Returns: number;
+      };
+      queue_dead_letter: {
+        Args: {
+          p_attempts: number;
+          p_error: string;
+          p_message: Json;
+          p_msg_id: number;
+          p_queue: string;
+        };
+        Returns: boolean;
+      };
+      queue_delete: {
+        Args: { p_msg_id: number; p_queue: string };
+        Returns: boolean;
+      };
+      queue_metrics: {
+        Args: { p_queue: string };
+        Returns: {
+          oldest_msg_age_sec: number;
+          queue_length: number;
+        }[];
+      };
+      queue_read: {
+        Args: {
+          p_poll_seconds: number;
+          p_qty: number;
+          p_queue: string;
+          p_vt_seconds: number;
+        };
+        Returns: {
+          enqueued_at: string;
+          message: Json;
+          msg_id: number;
+          read_ct: number;
+        }[];
+      };
+      queue_retry: {
+        Args: { p_delay_seconds: number; p_msg_id: number; p_queue: string };
+        Returns: undefined;
       };
       reset_demo_orders: { Args: never; Returns: undefined };
       update_order_status: {

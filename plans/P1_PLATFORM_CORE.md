@@ -48,8 +48,9 @@ P0 already shipped parts of P1. The plan builds on them instead of rebuilding th
 | #   | PR                                                                         | Step       | Depends on                                      | Size (files / lines) |
 | --- | -------------------------------------------------------------------------- | ---------- | ----------------------------------------------- | -------------------- |
 | 01  | The 429 contract and one error-details union                               | P1.1, P1.6 | –                                               | 8 / 180              |
-| 02  | Outbox schema: events, subscriptions, queue wrappers, the first schedule   | P1.2       | –                                               | 7 / 450              |
-| 03  | The job runner                                                             | P1.2       | 02                                              | 9 / 450              |
+| 02  | Outbox schema: events, subscriptions, the first schedule                   | P1.2       | –                                               | 11 / 470             |
+| 02b | Queue wrappers and dead letters                                            | P1.2       | 02                                              | 6 / 300              |
+| 03  | The job runner                                                             | P1.2       | 02b                                             | 9 / 450              |
 | 04  | The worker process                                                         | P1.2       | 03                                              | 14 / 300             |
 | 05  | Today's transitions emit events and carry their actor; retry-safe statuses | P1.2, P1.4 | 03                                              | 10 / 490             |
 | 06  | Audit log                                                                  | P1.3       | 05                                              | 7 / 380              |
@@ -64,7 +65,7 @@ P0 already shipped parts of P1. The plan builds on them instead of rebuilding th
 | 15  | Server-side idle sign-out                                                  | ADR-011    | 02                                              | 9 / 380              |
 | 16  | Money in paise: contract                                                   | ADR-004    | P1 merged into `dev` and released to production | 7 / 220              |
 
-Who builds what, and when: [P1_WORK_SPLIT.md](P1_WORK_SPLIT.md) (lane A 02 → 03 → 04 → 05 → 06 → 08 → 09; lane B
+Who builds what, and when: [P1_WORK_SPLIT.md](P1_WORK_SPLIT.md) (lane A 02 → 02b → 03 → 05 → 06 → 04 → 08 → 09; lane B
 01 → 10 → 11 → 12 → 15 → 07 → 13 → 14). PR 16 is not part of `feat/P1`: it goes into `dev` once the release
 containing P1 runs in production.
 
@@ -158,7 +159,7 @@ holds one `warn`.
 
 - [x] Merged
 
-Split at 692 lines: the queue wrappers and `job_failures` moved to PR 02b, lane A's next.
+Split at 692 lines: the queue wrappers and `job_failures` moved to [PR 02b](#pr-02b--queue-wrappers-and-dead-letters-p12).
 
 `/before-write`: schema-guard, NEW TABLE ×3 (nothing stores events today; `job_failures` lands in 02b).
 
@@ -191,6 +192,34 @@ in the migration). Intent: `--server minor`.
 
 Verify: `npm run db:reset`, the gate, `select * from cron.job`; once merged, lane A pushes `feat/P1` to staging
 (`npm run db:push:staging`) and confirms both extensions appear under the project's Integrations.
+
+### PR 02b — Queue wrappers and dead letters (P1.2)
+
+- [x] Merged
+
+`/before-write`: schema-guard, NEW TABLE (`job_failures`, in PR 02's verdict for all three tables).
+
+Migration `<ts>_queue_wrappers.sql`:
+
+- `job_failures` as in the roadmap; RLS on, revoked from `anon` and `authenticated`.
+- Queue wrappers, `security definer`, `search_path = ''`, fully qualified `pgmq.*` calls, `EXECUTE` to `service_role`
+  only:
+  - `queue_read(p_queue, p_vt_seconds, p_qty, p_poll_seconds)` returns `(msg_id, read_ct, enqueued_at, message)`:
+    `pgmq.read_with_poll` when `p_poll_seconds > 0`, else `pgmq.read` (read_with_poll checks its deadline before
+    reading, so `0` there would never read anything);
+  - `queue_delete`; `queue_retry(p_queue, p_msg_id, p_delay_seconds)` (`pgmq.set_vt`);
+  - `queue_dead_letter(p_queue, p_msg_id, p_message, p_attempts, p_error)` deletes, and inserts `job_failures` only if
+    the delete took the message, returning whether it did;
+  - `queue_metrics(p_queue)`: depth and oldest age, for the worker's health.
+
+  Then `npm run db:types`.
+
+Tests (`test/api/queue.test.ts`): a read hides a message for its visibility timeout; `p_poll_seconds` `0` and `1` both
+read a waiting message; a retry brings it back with `read_ct + 1`; a dead letter writes `job_failures` and empties the
+queue; `queue_metrics` counts the depth. The lockdown test covers the new grants.
+
+Docs: `docs/SCHEMA.md` (`job_failures`, the wrappers); `docs/JOBS.md` (how the worker reaches the queues; the runbook's
+dead-letter rows: list open ones, replay one, close it). Intent: `--server minor`.
 
 ### PR 03 — The job runner (P1.2)
 

@@ -1,8 +1,8 @@
 # Jobs
 
 Background work: the outbox, the queues and the schedules ([ADR-002](adr/002-outbox-pgmq-pg-cron.md)). Tables and
-functions in detail: [SCHEMA.md](SCHEMA.md). The queue wrappers and dead letters, the job runner and the worker
-process arrive in P1 PRs 02b, 03 and 04 ([plan](../plans/P1_PLATFORM_CORE.md)).
+functions in detail: [SCHEMA.md](SCHEMA.md). The job runner and the worker process arrive in P1 PRs 03 and 04
+([plan](../plans/P1_PLATFORM_CORE.md)).
 
 ## The outbox
 
@@ -29,8 +29,13 @@ then its `event_subscriptions` rows. A subscription naming a queue that does not
 with it every transition that emits a matching event.
 
 The `pgmq` schema is not exposed through the Data API, and `pgmq_public` is not enabled: the API and the worker
-will reach the queues only through `security definer` wrappers (PR 02b) granted to `service_role`.
-`server/test/api/database-lockdown.test.ts` fails if `anon` or `authenticated` can use the `pgmq` or `cron` schema.
+reach the queues only through the `queue_*` wrappers (`security definer`, `EXECUTE` for `service_role` only): read,
+delete, retry, dead-letter and metrics. `server/test/api/database-lockdown.test.ts` fails if `anon` or
+`authenticated` can use the `pgmq` or `cron` schema.
+
+`queue_read`'s `p_poll_seconds` is how long to wait for a first message; `0` returns at once. A message the worker
+gives up on goes to `job_failures` through `queue_dead_letter`, which deletes it and records it only if it was still
+in the queue (another reader may have handled it after its visibility timeout ran out).
 
 ## Schedules
 
@@ -52,6 +57,7 @@ schedule calls a SQL function that takes `p_now timestamptz default now()`, so t
 | ----------------------- | ---------------------------------------- |
 | `domain_events`         | 30 days (`purge_domain_events`, nightly) |
 | a handled queue message | deleted when handled, never archived     |
+| `job_failures`          | until an operator replays or closes it   |
 
 ## Runbook
 
@@ -64,4 +70,6 @@ user's.
 | look at waiting messages without taking them  | `select msg_id, read_ct, enqueued_at, message from pgmq.q_q_notifications order by msg_id limit 20;` (table `q_<queue>`)                                       |
 | drop every waiting message in a queue         | `select pgmq.purge_queue('q_notifications');`                                                                                                                  |
 | check the schedules and their last runs       | `select jobname, schedule, active from cron.job;` and `select status, return_message, start_time from cron.job_run_details order by start_time desc limit 20;` |
+| list open dead letters                        | `select id, queue_name, attempts, last_error, failed_at from public.job_failures where resolved_at is null order by id;`                                       |
+| replay a dead letter, then close it           | `select pgmq.send(queue_name, message) from public.job_failures where id = <id>;` then `update public.job_failures set resolved_at = now() where id = <id>;`   |
 | purge old events now                          | `select public.purge_domain_events();`                                                                                                                         |
