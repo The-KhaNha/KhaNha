@@ -248,7 +248,8 @@ One owner per topic; other docs link to it instead of copying.
   photo goes through `python3 client/scripts/optimize-images.py` (compression + the 400px thumbnail, §2c).
 - Every `<img>` has `alt`, explicit dimensions or an aspect box, and `loading="lazy"` below the fold.
 - Runtime hosts allowed: Google Fonts and the Supabase project. Nothing else.
-- Future user uploads go to Supabase Storage and are never committed.
+- Restaurant uploads (P3.3) go to S3 behind CloudFront (`docs/adr/006-media-s3-cloudfront.md`) and are never
+  committed; `MEDIA_STORAGE=local` is a development-only fallback, refused in production.
 
 ## 10. Backend engineering
 
@@ -340,7 +341,8 @@ green.
 **Every fix ships with its guard.** A bug fix is done only when the check that would have caught it exists and you
 have seen it fail without the fix: a unit or API test, an e2e smoke case, a `scripts/ci/` check or CI step, or a
 numbered item in `ui-verifier` / `app-breaker`. Guard the class of bug, not the one line (a storage-key registry, not
-one key; a layout check over every route, not one card), at the cheapest layer that catches it. CI runs the same gate on every PR into `dev` and `main` (`.github/workflows/ci.yml`, aggregate job `ci-ok`;
+one key; a layout check over every route, not one card), at the cheapest layer that catches it. CI runs the same gate
+on every PR into `dev`, `main` and a phase feature branch (§21) (`.github/workflows/ci.yml`, aggregate job `ci-ok`;
 `docs/TESTING.md` "Continuous integration"). On GitHub Free nothing enforces it (no rulesets on a private repo,
 ADR-011): never merge with `ci-ok` red or pending.
 
@@ -539,12 +541,19 @@ relationships.
 (production, merged by the user) → a back-merge PR into `dev`. Hotfixes branch off `main` as `hotfix/*`, carry their
 own intent, get their own release run and are back-merged the same way. Migrations are immutable once merged into
 `dev`. Agents that compare against "the base" use the PR's base branch: `origin/dev` for features, `origin/main` for
-hotfixes.
+hotfixes, `origin/feat/P<n>` for a phase's PRs.
+
+**Phase feature branches.** A phase built by more than one agent at once gets its own feature branch `feat/P<n>`, cut
+from `dev` (P1: `plans/P1_WORK_SPLIT.md`). Its PRs come from `feat/p<n>-<NN>-<slug>` branches (git cannot hold
+`feat/P1` and `feat/P1/…` side by side) and go into `feat/P<n>`, with the same size limit, CI (`ci.yml` lists the
+branch for PRs and pushes) and CodeRabbit review (`.coderabbit.yaml` lists it too). Migrations are immutable once
+merged into the phase branch. When the phase is done, `feat/P<n>` goes into `dev` as one PR, merged by the user.
 
 **PR size (STRICTLY ENFORCED).** Keep every PR reviewable: at most **25 changed files or 500 changed lines** against
 its base (`git diff --shortstat origin/dev...HEAD`; `package-lock.json` and `server/src/types/database.ts` do not
 count, tests and docs do), and one theme per PR. Plan a task that is bigger than that as steps, each its own PR. The
-release PR (`release/*`, from `release.yml`) is exempt: it bundles work already reviewed in its own PRs.
+release PR (`release/*`, from `release.yml`) and a phase branch's PR into `dev` are exempt: each bundles work already
+reviewed in its own PRs.
 
 - When a branch reaches either limit, or its theme is done: finish and verify the change in hand (the §13 gate,
   `/post-change` for a major change), commit, push, open the PR into the base, and tell the user it is ready.

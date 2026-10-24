@@ -129,7 +129,7 @@ Every roadmap item, and the steps that deliver it.
 | R4.2   | Still pay the restaurant when the customer does not collect in the window                                 | [P5.9](#p59-sla-breaches-and-pickup-windows)                                                                                                                                                                                                                                                                                                 |
 | R4.2.1 | Restaurant resells at full price or as a limited-time discounted item                                     | [P3.6](#p36-surplus-and-limited-time-deals), [P5.9](#p59-sla-breaches-and-pickup-windows)                                                                                                                                                                                                                                                    |
 | R5     | Limited-quantity items need the restaurant's acceptance, else refund                                      | [P5.5](#p55-restaurant-acceptance-for-limited-items)                                                                                                                                                                                                                                                                                         |
-| R6     | Clean error logging                                                                                       | [P0.5](#p05-error-logging-clean-up), [P8.7](#p87-observability)                                                                                                                                                                                                                                                                              |
+| R6     | Clean error logging                                                                                       | [P0.5](#p05-error-logging-clean-up), [P8.7](#p87-observability), [P10.4](#p104-observability-v2-sentry-prometheus-and-grafana-low-priority) (low priority)                                                                                                                                                                                   |
 | R7     | Feedback and ratings per dish and restaurant                                                              | [P7.5](#p75-feedback-and-ratings)                                                                                                                                                                                                                                                                                                            |
 | R8     | Semantic versioning; Claude records FE/BE increments in a temp file, a script bumps                       | [P0.3](#p03-semantic-versioning-with-change-intents)                                                                                                                                                                                                                                                                                         |
 | R9     | CI: lint, build, perf, load testing                                                                       | [P0.2](#p02-continuous-integration), [P9.1](#p91-load-testing-from-100-to-1000-concurrent)                                                                                                                                                                                                                                                   |
@@ -193,7 +193,7 @@ flowchart LR
 | M6 Pickup flow       | ETA engine, tokens + QR verification, notifications and staff dashboard v2 are live                                                                                                                     | P6            | L    |
 | M7 Insights          | Store and platform analytics, COGS, ratings, "Your usuals" and recommendations are live                                                                                                                 | P7            | L    |
 | M8 Pilot live        | Production on AWS, load-tested to 1000 concurrent, failure drills done, runbooks and alerts in place; versions go to 1.0.0                                                                              | P8, P9        | L    |
-| M9 Scale             | The Kubernetes decision gate has been evaluated and acted on; recommender v2 if the data supports it                                                                                                    | P10           | L–XL |
+| M9 Scale             | The Kubernetes decision gate has been evaluated and acted on; recommender v2 if the data supports it; Sentry, Prometheus and Grafana (low priority) once their triggers fire                            | P10           | L–XL |
 
 ## Design principles
 
@@ -3927,6 +3927,51 @@ Only if P9.1 shows that polling drives database load or cost. The options:
 
 Either way, keep ETag polling as the fallback for flaky networks, and update CLAUDE.md §2b/§2c in the same change.
 
+### P10.4 Observability v2: Sentry, Prometheus and Grafana (low priority)
+
+**Priority: low.** Nothing in the pilot depends on it: P1.6's self-reported client errors and P8.7's CloudWatch logs,
+metrics and alarms cover the launch. Pick it up when one of these triggers fires:
+
+- client error log lines are too many to read by hand, or a release needs regressions tracked by error group;
+- CloudWatch metrics, Logs Insights queries or dashboards stop being enough, or cost more than this stack;
+- the move to Kubernetes (P10.1), where Prometheus and Grafana are the native stack.
+
+The parts:
+
+- **Sentry, for errors** (client and server; the later half of [decision 8](#decisions-needed)):
+  - Client: the browser SDK loads **after** the first paint (a dynamic import when idle), never in the initial chunk,
+    so the CLAUDE.md §2b budget holds; `check:bundle` enforces it. Errors from before it loads are queued by P1.6's
+    `errorReporter` and handed over. Sampling reuses `client_error_sample_percent`.
+  - Server: `@sentry/node` in the api and worker processes, called from the one place each already logs a failure
+    (`errorHandler`, the runner's dead-letter path), so nothing is reported twice.
+  - Privacy: no default PII; `beforeSend` applies the same scrub as `REDACT_PATHS` and the client's scrub (tokens,
+    `sb_` keys, phone numbers).
+  - Source maps are built hidden and uploaded by the image pipeline (P8.2), never served.
+  - Hosted Sentry, not self-hosted: self-hosting is a multi-service install far heavier than the pilot's hosts. Its
+    ingest host is a new runtime host (CSP `connect-src`, CLAUDE.md §9).
+  - `POST /api/client-errors` stays as the fallback when Sentry is blocked or unreachable.
+- **Prometheus, for metrics:**
+  - `prom-client` in the api and worker exposes `/metrics` on an internal port, never through nginx or the public
+    origin. The metric names are P8.7's (`http_requests`, `http_duration_ms`, `queue_depth`, `job_failures`,
+    `rate_limited` and the business counters), so dashboards and alarms carry over.
+  - Prometheus scrapes them, plus Supabase's Prometheus-compatible project metrics endpoint for Postgres (verify it
+    on the plan tier).
+  - It runs as a compose service on the EC2 host (ADR-007) or as a hosted Prometheus (Grafana Cloud); the host's
+    memory decides.
+- **Grafana, for dashboards and alerts:**
+  - Dashboards as code, provisioned from the repository (`infra/grafana/`): P8.7's API, business, pipeline and
+    infrastructure dashboards, rebuilt on Prometheus. CloudWatch Logs stays the log store, read through Grafana's
+    CloudWatch data source.
+  - Alerts move from CloudWatch alarms to Grafana alerting with the same conditions and windows (the P8.7 table), so
+    nothing alarms twice.
+  - Never public: behind Grafana's own login or an SSM tunnel, with its admin password in the secrets store (P8.6).
+- **Docs:** `docs/LOGGING.md` (error tracking), `docs/DEPLOYMENT.md` (services, env, secrets), CLAUDE.md §9 (the
+  Sentry host), and an ADR each for Sentry and for moving metrics from CloudWatch to Prometheus and Grafana.
+
+**Done when** a render error thrown on the throttled 360 px phone profile appears in Sentry, grouped, with a
+source-mapped stack and the client version, while the initial JS stays within budget; Grafana shows P8.7's
+dashboards from Prometheus; and one alert fires end to end.
+
 ## Testing strategy
 
 What is tested where. The existing edge-case matrix (`docs/TESTING.md`) applies to every new endpoint.
@@ -4029,7 +4074,7 @@ The ones marked ★ block a phase.
 | 5   | How a cancellation fee is split between the vendor and the platform                                                | P5.8            | the vendor keeps the fee minus commission                                                                                                                                                   |
 | 6   | Can a customer still collect after the pickup window closes (EXPIRED → COLLECTED)?                                 | P5.9            | yes, until the surplus is used or discarded                                                                                                                                                 |
 | 7   | SMS / WhatsApp provider                                                                                            | P6.3            | an Indian SMS provider with DLT support; WhatsApp later                                                                                                                                     |
-| 8   | Error tracking: self-reported (P1.6) or Sentry (a new runtime host, about 25 KB)                                   | P1.6            | self-reported                                                                                                                                                                               |
+| 8   | Error tracking: self-reported (P1.6) or Sentry (a new runtime host, about 25 KB)                                   | P1.6            | decided 2026-10-24: self-reported in P1; Sentry later, low priority ([P10.4](#p104-observability-v2-sentry-prometheus-and-grafana-low-priority))                                            |
 | 9   | CAPTCHA on registration (a new runtime host)                                                                       | P9.3            | Turnstile on register only                                                                                                                                                                  |
 | 10  | Browser-to-S3 presigned uploads (a new CSP host) or proxied uploads                                                | P3.3            | presigned                                                                                                                                                                                   |
 | 11  | Production migrations inside the pipeline (behind approval) or kept manual                                         | P8.5            | manual, per CLAUDE.md §2                                                                                                                                                                    |

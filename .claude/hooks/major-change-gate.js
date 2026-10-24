@@ -129,13 +129,23 @@ function unverifiedChanges() {
   return { changes: changes.filter((c) => verified[c.file] !== hashes[c.file]), hashes };
 }
 
-/** The branch's changes, committed or not, against the base its PR merges into (origin/main for hotfix/*, else
- *  origin/dev; CLAUDE.md "Versioning and branches"). null on dev or main, on release/* (release.yml's PR bundles
- *  work already reviewed in its own PRs), or when the base is not fetched. */
+/** The base a branch's PR merges into (CLAUDE.md "Versioning and branches"): origin/main for hotfix/*, the phase
+ *  branch for a phase PR (feat/p1-05-… → origin/feat/P1), else origin/dev. null for branches whose PR is not sized:
+ *  dev, main, release/* and a phase branch itself (each bundles work already reviewed in its own PRs). */
+function prBase(branch) {
+  if (['dev', 'main', 'HEAD'].includes(branch) || branch.startsWith('release/')) return null;
+  if (/^feat\/P\d+$/.test(branch)) return null;
+  const phase = /^feat\/p(\d+)-/i.exec(branch);
+  if (phase) return `origin/feat/P${phase[1]}`;
+  return branch.startsWith('hotfix/') ? 'origin/main' : 'origin/dev';
+}
+
+/** The branch's changes, committed or not, against the base its PR merges into (prBase). null when the PR is not
+ *  sized or the base is not fetched. */
 function branchChanges() {
   const branch = git('rev-parse', '--abbrev-ref', 'HEAD').trim();
-  if (['dev', 'main', 'HEAD'].includes(branch) || branch.startsWith('release/')) return null;
-  const base = branch.startsWith('hotfix/') ? 'origin/main' : 'origin/dev';
+  const base = prBase(branch);
+  if (!base) return null;
   let mergeBase;
   try {
     mergeBase = git('merge-base', base, 'HEAD').trim();
@@ -202,6 +212,12 @@ function selfTest() {
   const uncounted = [c('package-lock.json', 9000), c('client/package-lock.json', 900), c('server/src/types/database.ts', 800)];
   assert.deepEqual(prSize(uncounted), { files: 0, lines: 0, over: false }, 'lockfiles and generated types do not count');
   assert.equal(prSize([...uncounted, c('docs/API.md', 501)]).over, true, 'docs count');
+  assert.equal(prBase('feat/store-hours'), 'origin/dev');
+  assert.equal(prBase('hotfix/stock-race'), 'origin/main');
+  assert.equal(prBase('feat/p1-05-transitions-emit-events'), 'origin/feat/P1', 'a phase PR is sized against its phase');
+  assert.equal(prBase('feat/P12-07-x'), 'origin/feat/P12');
+  assert.equal(prBase('feat/P1'), null, 'the phase branch bundles PRs already reviewed one by one');
+  for (const exempt of ['dev', 'main', 'HEAD', 'release/2026-10-24']) assert.equal(prBase(exempt), null, exempt);
   testMarkSurvivesCommit();
   console.log('major-change-gate: ok');
 }

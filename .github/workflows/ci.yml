@@ -4,13 +4,15 @@ name: ci
 # so it is advisory: merge only when it is green. Heavy jobs run only when their files changed (the `changes` job), to
 # fit the 2,000 Actions minutes a month; a skipped job counts as passed. The workflow itself has no `paths:` filter, so
 # every PR still reports `ci-ok`.
+# A phase feature branch (feat/P1, CLAUDE.md §21) gets the same gate on the PRs into it, and on every push to it: two
+# PRs that were each green on their own can still break together once both are merged.
 on:
   pull_request:
-    branches: [dev, main]
+    branches: [dev, main, feat/P1]
     # labeled/unlabeled: adding `no-release` re-runs version-intent.
     types: [opened, synchronize, reopened, labeled, unlabeled]
   push:
-    branches: [dev, main]
+    branches: [dev, main, feat/P1]
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}

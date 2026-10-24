@@ -142,7 +142,9 @@ seen failing with the fix reverted. The guards added with the break-test fixes:
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` runs on every pull request into `dev` or `main` and on every push to them. Its aggregate
+`.github/workflows/ci.yml` runs on every pull request into `dev`, `main` or a phase feature branch (`feat/P1`, CLAUDE.md
+§21) and on every push to them; the push run on a phase branch catches two PRs that were each green alone but break
+together once both are merged. Its aggregate
 job `ci-ok` sums them up. On GitHub Free a private repository has no rulesets, so it is advisory: merge only when it
 is green ([ADR-011](adr/011-free-tiers.md)). It fails when any job failed or was cancelled, and counts
 skipped jobs as passed. The workflow has no `paths:` filter, so every PR reports `ci-ok`; inside it the `changes` job

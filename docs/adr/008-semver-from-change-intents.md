@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted (2026-10-24), by the user.
 
 ## Date
 
