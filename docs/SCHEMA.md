@@ -7,6 +7,8 @@ The Postgres schema in the Supabase project, from `server/supabase/migrations/`.
   database). `server/src/types/enums.ts` re-exports the enums from it.
 - Money is whole rupees stored as `integer`.
 - Every table is in the `public` schema. `profiles.id` references Supabase's `auth.users`.
+- Extensions: `pgmq` (queues, in its own `pgmq` schema) and `pg_cron` (schedules, in `cron`), both from
+  `20261024181904_outbox.sql`. How the queues and schedules are used: [JOBS.md](JOBS.md).
 
 ## Migrations
 
@@ -20,6 +22,7 @@ a new file (see [DEPLOYMENT.md](DEPLOYMENT.md#schema-changes)).
 | `20260927222002_min_client_version.sql`       | adds `site_settings.min_client_version` (the 426 gate's minimum)                                                                                                                                                                             |
 | `20260928180445_site_settings_config.sql`     | adds `site_settings.max_lines_per_order`, `order_poll_ms`, `orders_poll_ms`, `staff_board_poll_ms` (the configuration registry, [CONFIGURATION.md](CONFIGURATION.md))                                                                        |
 | `20260928193552_order_idempotency_key.sql`    | adds `orders.idempotency_key` and its partial unique index; drops and recreates `place_order` with `p_idempotency_key` (a function's argument list is its identity, so a new parameter cannot use `create or replace`), reissuing its grants |
+| `20261024181904_outbox.sql`                   | enables `pgmq` and `pg_cron`; adds `domain_events`, `event_subscriptions`, `emit_event` and `purge_domain_events`; creates the `q_notifications` queue, its `order.*` subscription and the nightly purge schedule                            |
 
 ## Enums
 
@@ -143,6 +146,28 @@ the table at one row (the migration seeds it with `insert ... values (true)`). E
 Only these two limits are editable. The per-item quantity cap (`MAX_QUANTITY_PER_ITEM = 10` in
 `server/src/schemas/order.schema.ts`) is a fixed constant, not a site setting (see [API.md](API.md#post-orders)).
 
+### domain_events
+
+The outbox's event log, written only by `emit_event` and kept 30 days (`purge_domain_events`). See
+[JOBS.md](JOBS.md#the-outbox).
+
+| Column           | Type        | Null | Default             | Notes                                                |
+| ---------------- | ----------- | ---- | ------------------- | ---------------------------------------------------- |
+| `id`             | uuid        | no   | `gen_random_uuid()` | primary key; the message's `eventId`                 |
+| `type`           | text        | no   |                     | `order.ready`; the family is the part before the dot |
+| `aggregate_type` | text        | no   |                     | `order`                                              |
+| `aggregate_id`   | uuid        | no   |                     | no foreign key: it may name a row of any table       |
+| `store_id`       | uuid        | yes  |                     | references `stores (id)`                             |
+| `payload`        | jsonb       | no   |                     | ids and statuses only, never an amount               |
+| `actor`          | jsonb       | yes  |                     | `{ type, id }` of who caused it                      |
+| `request_id`     | text        | yes  |                     | the API request that caused it                       |
+| `occurred_at`    | timestamptz | no   | `now()`             |                                                      |
+
+### event_subscriptions
+
+Which queues get which events: `event_type` is an exact type (`order.ready`) or a family (`order.*`). Primary key
+`(event_type, queue_name)`. Rows are added by the migration that creates their queue.
+
 ## Indexes
 
 | Index                                | Columns                                                                          |
@@ -152,6 +177,7 @@ Only these two limits are editable. The per-item quantity cap (`MAX_QUANTITY_PER
 | `orders_status_created_at_idx`       | `orders (status, created_at)`                                                    |
 | `order_items_menu_item_id_idx`       | `order_items (menu_item_id)`                                                     |
 | `orders_user_id_idempotency_key_idx` | `orders (user_id, idempotency_key)`, unique, `where idempotency_key is not null` |
+| `domain_events_aggregate_idx`        | `domain_events (aggregate_type, aggregate_id, occurred_at)`                      |
 | unique constraint                    | `order_items (order_id, line_number)`                                            |
 | unique constraint                    | `profiles (email)`, `orders (order_number)`                                      |
 
@@ -180,6 +206,8 @@ object (SQLSTATE `P0001`). How the API maps them is in [API.md](API.md#database-
 | `place_order(...)`           | plpgsql  | invoker  | uuid    | `order.service.createOrder`       | `service_role`       |
 | `update_order_status(...)`   | plpgsql  | invoker  | void    | `order.service.updateOrderStatus` | `service_role`       |
 | `reset_demo_orders()`        | sql      | definer  | void    | `server/scripts/seed.ts`          | `service_role`       |
+| `emit_event(...)`            | plpgsql  | definer  | uuid    | transition functions (P1 PR 05)   | `service_role`       |
+| `purge_domain_events(...)`   | sql      | invoker  | integer | pg_cron `purge-domain-events`     | `service_role`       |
 
 ### set_updated_at
 
@@ -269,17 +297,46 @@ The transition rules live in the API, not here. The function only enforces "the 
 because restarting the identity sequence needs its owner. Used only by the demo seed, which refuses to run against
 production (see [DEPLOYMENT.md](DEPLOYMENT.md#seeding)).
 
+### emit_event
+
+```sql
+emit_event(
+  p_type text,              -- 'order.ready'
+  p_aggregate_type text,    -- 'order'
+  p_aggregate_id uuid,
+  p_store_id uuid,
+  p_payload jsonb,          -- ids and statuses only
+  p_actor jsonb,            -- { type, id }
+  p_request_id text
+) returns uuid              -- the new domain_events id
+```
+
+Inserts the `domain_events` row, then `pgmq.send`s
+`{ eventId, type, aggregateId, storeId, payload, actor, requestId, occurredAt }` once to each distinct queue
+subscribed to `p_type` or to its family (`split_part(p_type, '.', 1) || '.*'`). It runs in the caller's transaction.
+`security definer` because the queue tables belong to the migration's role, not to `service_role`.
+
+### purge_domain_events
+
+`purge_domain_events(p_now timestamptz default now(), p_keep interval default '30 days') returns integer` deletes
+the events older than `p_now - p_keep` and returns how many. pg_cron runs it nightly at 21:17 UTC (02:47 IST) as job
+`purge-domain-events`; tests pass `p_now` instead of back-dating rows.
+
 ## Row-level security and grants
 
-- RLS is enabled on all six tables (`site_settings` included, by the same migration that creates it). There are no
-  policies.
-- `revoke all` on all six tables from `anon` and `authenticated`.
+- RLS is enabled on all eight tables (`site_settings` and the outbox tables included, each by the migration that
+  creates it). There are no policies.
+- `revoke all` on all eight tables from `anon` and `authenticated`.
 - Default privileges for role `postgres` in `public`: new tables grant nothing to `anon`/`authenticated`, and new
   functions grant no `EXECUTE` to `public`, `anon` or `authenticated`. This is why the `20260927094610` migration did
   not need its own `revoke`/`grant` for functions — it adds no new function — but still revokes table privileges for
   `site_settings` explicitly, matching every other table.
-- `EXECUTE` on all six functions is revoked from `public`, `anon` and `authenticated`, then granted to `service_role`
-  for `place_order`, `update_order_status` and `reset_demo_orders` only.
+- `EXECUTE` on every function is revoked from `public`, `anon` and `authenticated`, then granted to `service_role`
+  for all but the three trigger functions.
+- `anon` and `authenticated` have no `USAGE` on the `pgmq` or `cron` schema, and neither schema is exposed through
+  the Data API (`api.schemas` in `server/supabase/config.toml`).
+- `server/test/api/database-lockdown.test.ts` checks all of the above from the catalogs, for every table and function,
+  so a migration that forgets its RLS or revoke fails CI.
 - The migration does not change `service_role`'s table privileges. The API connects as `service_role` (the secret
   key), which bypasses RLS.
 

@@ -154,24 +154,24 @@ window). Intent: `--server minor --client patch`.
 Verify: with `RATE_LIMIT_WRITE_MAX=2`, three `PATCH /api/admin/settings` calls give a 429 with `details`, and the log
 holds one `warn`.
 
-### PR 02 — Outbox schema: events, subscriptions, queue wrappers, the first schedule (P1.2)
+### PR 02 — Outbox schema: events, subscriptions, the first schedule (P1.2)
 
-- [ ] Merged
+- [x] Merged
 
-`/before-write`: schema-guard, expected NEW TABLE ×3 (nothing stores events today).
+Split at 692 lines: the queue wrappers and `job_failures` moved to PR 02b, lane A's next.
+
+`/before-write`: schema-guard, NEW TABLE ×3 (nothing stores events today; `job_failures` lands in 02b).
 
 Migration `<ts>_outbox.sql`:
 
 - `create extension if not exists pgmq; create extension if not exists pg_cron;` in the schemas ADR-002 verified. The
   `pgmq` schema is not added to `api.schemas` in `config.toml`, and `pgmq_public` is not enabled.
-- `domain_events`, `event_subscriptions`, `job_failures` as in the roadmap (no `event_handled`).
+- `domain_events`, `event_subscriptions` as in the roadmap (no `event_handled`); only the aggregate index on
+  `domain_events` (nothing reads by type yet).
 - `emit_event(p_type, p_aggregate_type, p_aggregate_id, p_store_id, p_payload, p_actor, p_request_id)` inserts the
   event and sends `{ eventId, type, aggregateId, storeId, payload, actor, requestId, occurredAt }` to every queue
-  subscribed to the exact type or its family (`split_part(p_type, '.', 1) || '.*'`). Returns the event id.
-- Queue wrappers, `security definer`, `search_path = ''`, fully qualified `pgmq.*` calls: `queue_read(p_queue,
-p_vt_seconds, p_qty, p_poll_seconds)` (`pgmq.read_with_poll`), `queue_delete`, `queue_retry(p_queue, p_msg_id,
-p_delay_seconds)` (`pgmq.set_vt`), `queue_dead_letter(p_queue, p_msg_id, p_message, p_attempts, p_error)` (inserts
-  `job_failures`, then deletes), `queue_metrics(p_queue)` (depth and oldest age, for the worker's health).
+  subscribed to the exact type or its family (`split_part(p_type, '.', 1) || '.*'`), once per distinct queue.
+  Returns the event id. `security definer`: the queue tables are not `service_role`'s.
 - `select pgmq.create('q_notifications')`; subscription `('order.*', 'q_notifications')`.
 - `purge_domain_events(p_now timestamptz default now(), p_keep interval default '30 days')`, scheduled
   `cron.schedule('purge-domain-events', '17 21 * * *', …)` (21:17 UTC, 02:47 IST: off-peak).
@@ -179,14 +179,15 @@ p_delay_seconds)` (`pgmq.set_vt`), `queue_dead_letter(p_queue, p_msg_id, p_messa
   functions to `service_role` only. Then `npm run db:types`.
 
 Tests (`test/api/outbox.test.ts`): an event goes to an exact and a family subscription, once each; an unsubscribed
-type leaves only the event row; the publishable key can neither read the tables nor call any function;
-`purge_domain_events(p_now => now() + interval '31 days')` deletes and `'29 days'` keeps; `cron.job` lists the
-schedule.
+type leaves only the event row; `purge_domain_events(p_now => now() + interval '31 days')` deletes and `'29 days'`
+keeps; `cron.job` lists the schedule. `test/api/database-lockdown.test.ts` (with the `localSql` helper) checks from the
+catalogs that every `public` table has RLS on and grants nothing to `anon`/`authenticated`, that neither can execute a
+`public` function or use the `pgmq` or `cron` schema: the guard for every later migration.
 
 Docs: `docs/SCHEMA.md` (tables, functions, extensions, the schedule); **new `docs/JOBS.md`** (the outbox model,
-queues and subscriptions, schedules, retention, a runbook: inspect with `pgmq.metrics`, purge a queue, replay from
-`job_failures`) with its CLAUDE.md §6 row; `docs/CONFIGURATION.md` (the 30-day retention as a platform constant in
-the migration). Intent: `--server minor`.
+queues and subscriptions, schedules, retention, a runbook) with its CLAUDE.md §6 row; `docs/PERMISSIONS.md`;
+`docs/TESTING.md` (`localSql`, the lockdown test); `docs/CONFIGURATION.md` (the 30-day retention as a platform constant
+in the migration). Intent: `--server minor`.
 
 Verify: `npm run db:reset`, the gate, `select * from cron.job`; once merged, lane A pushes `feat/P1` to staging
 (`npm run db:push:staging`) and confirms both extensions appear under the project's Integrations.

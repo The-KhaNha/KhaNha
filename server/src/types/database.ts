@@ -28,6 +28,65 @@ export type Database = {
   };
   public: {
     Tables: {
+      domain_events: {
+        Row: {
+          actor: Json | null;
+          aggregate_id: string;
+          aggregate_type: string;
+          id: string;
+          occurred_at: string;
+          payload: Json;
+          request_id: string | null;
+          store_id: string | null;
+          type: string;
+        };
+        Insert: {
+          actor?: Json | null;
+          aggregate_id: string;
+          aggregate_type: string;
+          id?: string;
+          occurred_at?: string;
+          payload: Json;
+          request_id?: string | null;
+          store_id?: string | null;
+          type: string;
+        };
+        Update: {
+          actor?: Json | null;
+          aggregate_id?: string;
+          aggregate_type?: string;
+          id?: string;
+          occurred_at?: string;
+          payload?: Json;
+          request_id?: string | null;
+          store_id?: string | null;
+          type?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'domain_events_store_id_fkey';
+            columns: ['store_id'];
+            isOneToOne: false;
+            referencedRelation: 'stores';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      event_subscriptions: {
+        Row: {
+          event_type: string;
+          queue_name: string;
+        };
+        Insert: {
+          event_type: string;
+          queue_name: string;
+        };
+        Update: {
+          event_type?: string;
+          queue_name?: string;
+        };
+        Relationships: [];
+      };
       menu_items: {
         Row: {
           category: string;
@@ -304,6 +363,18 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      emit_event: {
+        Args: {
+          p_actor: Json;
+          p_aggregate_id: string;
+          p_aggregate_type: string;
+          p_payload: Json;
+          p_request_id: string;
+          p_store_id: string;
+          p_type: string;
+        };
+        Returns: string;
+      };
       place_order: {
         Args: {
           p_customer_name: string;
@@ -316,6 +387,10 @@ export type Database = {
           p_user_id: string;
         };
         Returns: string;
+      };
+      purge_domain_events: {
+        Args: { p_keep?: string; p_now?: string };
+        Returns: number;
       };
       reset_demo_orders: { Args: never; Returns: undefined };
       update_order_status: {
