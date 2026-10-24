@@ -77,7 +77,12 @@ export function localSql<Row>(sql: string): Row[] {
       stdio: ['ignore', 'pipe', 'pipe'],
     },
   );
-  return (JSON.parse(out) as { rows?: Row[] }).rows ?? [];
+  // A bare array, or `{ rows, boundary, warning }` in some local shells. Anything else throws: an empty fallback let
+  // the lockdown test pass in CI without checking anything.
+  const parsed = JSON.parse(out) as Row[] | { rows?: Row[] };
+  const rows = Array.isArray(parsed) ? parsed : parsed.rows;
+  if (!rows) throw new Error(`localSql: no rows in the CLI's output: ${out.slice(0, 200)}`);
+  return rows;
 }
 
 /** Deletes an account created through `POST /api/auth/register` (not `createTestUser`), by email. */

@@ -26,6 +26,8 @@ select 'schema ' || s
 
 describe('database lockdown', () => {
   it('no table, function or queue schema is open to anon or authenticated, and every table has RLS on', () => {
+    // An empty answer passes only if this channel can return rows at all.
+    expect(localSql('select 1 as ok')).toEqual([{ ok: 1 }]);
     expect(localSql<{ leak: string }>(LEAKS)).toEqual([]);
   });
 });
