@@ -68,6 +68,9 @@ If the guard throws, the whole run stops before a single request is made. `vites
   registered.
 - `resetDemoData()` runs `scripts/seed.ts`. That wipes every order through `reset_demo_orders` and restores the
   store, the menu (including stock) and the two demo accounts. It refuses to run unless the target is local.
+- `localSql(sql)` runs one row-returning statement as `postgres` (`supabase db query --local`) for what the API
+  cannot reach: pgmq, `cron.job`, the catalogs. Local only. `test/api/database-lockdown.test.ts` uses it to check
+  every table, function and queue schema is closed to `anon` and `authenticated` (SCHEMA.md "Row-level security").
 
 ### The per-file API server
 

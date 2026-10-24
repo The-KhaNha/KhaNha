@@ -62,6 +62,29 @@ export function resetDemoData(): void {
   invalidate();
 }
 
+/**
+ * Runs one row-returning SQL statement on the local database as `postgres`, for what the API cannot reach: pgmq,
+ * `cron.job`, the catalogs. Local only.
+ */
+export function localSql<Row>(sql: string): Row[] {
+  if (resolveTestTarget() !== 'local')
+    throw new Error('localSql reaches past the API: local only.');
+  const out = execFileSync(
+    'npx',
+    ['supabase', 'db', 'query', '--local', '--output-format', 'json', sql],
+    {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    },
+  );
+  // A bare array, or `{ rows, boundary, warning }` in some local shells. Anything else throws: an empty fallback let
+  // the lockdown test pass in CI without checking anything.
+  const parsed = JSON.parse(out) as Row[] | { rows?: Row[] };
+  const rows = Array.isArray(parsed) ? parsed : parsed.rows;
+  if (!rows) throw new Error(`localSql: no rows in the CLI's output: ${out.slice(0, 200)}`);
+  return rows;
+}
+
 /** Deletes an account created through `POST /api/auth/register` (not `createTestUser`), by email. */
 export async function deleteAccountByEmail(email: string): Promise<void> {
   const { data: profile } = await supabaseAdmin

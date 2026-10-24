@@ -58,10 +58,11 @@ Bounds both sides need, kept in one place per side and parity-tested (`server/te
 
 Server-only platform constants (no client copy, so not in the parity test):
 
-| Constant                | Value  | Enforced by                                                                                                                                                                                              |
-| ----------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `JSON_BODY_LIMIT_BYTES` | 100 kB | `server/src/app.ts` (refused on the declared length) and `client_max_body_size 100k` in `client/nginx/default.conf.template`; keep the two equal                                                         |
-| `MENU_ITEMS_MAX`        | 500    | `menu.service.ts`: most items one `GET /api/menu` carries (lowest `sort_order` first, ties by `id`); logs `warn` \"Menu truncated\" with the total when it bites; pagination comes with the P3.1 catalog |
+| Constant                  | Value   | Enforced by                                                                                                                                                                                              |
+| ------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `JSON_BODY_LIMIT_BYTES`   | 100 kB  | `server/src/app.ts` (refused on the declared length) and `client_max_body_size 100k` in `client/nginx/default.conf.template`; keep the two equal                                                         |
+| `domain_events` retention | 30 days | `purge_domain_events(p_keep default '30 days')` in `20261024181904_outbox.sql`, run nightly by pg_cron ([JOBS.md](JOBS.md#retention)); a new default is a new migration                                  |
+| `MENU_ITEMS_MAX`          | 500     | `menu.service.ts`: most items one `GET /api/menu` carries (lowest `sort_order` first, ties by `id`); logs `warn` \"Menu truncated\" with the total when it bites; pagination comes with the P3.1 catalog |
 
 ## What stays in code
 
