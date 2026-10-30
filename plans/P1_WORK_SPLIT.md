@@ -38,10 +38,10 @@ Then the user creates `feat/P1` from `dev` (`git push origin origin/dev:refs/hea
 
 ## The lanes
 
-| Lane | Machine      | Theme                                                     | PRs, in order                         | ≈ lines |
-| ---- | ------------ | --------------------------------------------------------- | ------------------------------------- | ------- |
-| A    | first (here) | background jobs, audit, the order transitions, money      | 02 → 03 → 04 → 05 → 06 → 08 → 09      | 2,800   |
-| B    | second       | errors and client reporting, sessions, audit reads, flags | 01 → 10 → 11 → 12 → 15 → 07 → 13 → 14 | 2,630   |
+| Lane | Machine      | Theme                                                     | PRs, in order                          | ≈ lines |
+| ---- | ------------ | --------------------------------------------------------- | -------------------------------------- | ------- |
+| A    | first (here) | background jobs, audit, the order transitions, money      | 02 → 02b → 03 → 05 → 06 → 04 → 08 → 09 | 3,100   |
+| B    | second       | errors and client reporting, sessions, audit reads, flags | 01 → 10 → 11 → 12 → 15 → 07 → 13 → 14  | 2,630   |
 
 PR 16 (money: drop the rupee columns) is not in either lane: it goes into `dev` after P1 has merged and its release
 runs in production ([after P1](#after-p1)).
@@ -78,15 +78,19 @@ A round is one PR open in each lane, both merged by the user before the next rou
 | Round | Lane A                     | Lane B                               |
 | ----- | -------------------------- | ------------------------------------ |
 | 1     | 02 outbox schema           | 01 the 429 contract                  |
-| 2     | 03 job runner (after 01)   | 10 `POST /api/client-errors`         |
-| 3     | 04 worker process          | 11 the error sample setting          |
+| 2     | 02b queue wrappers         | 10 `POST /api/client-errors`         |
+| 3     | 03 job runner (after 01)   | 11 the error sample setting          |
 | 4     | 05 transitions emit events | 12 the error reporter                |
 | 5     | 06 audit log               | 15 idle sign-out (after 02)          |
-| 6     | 08 order snapshots         | 07 `GET /api/admin/audit` (after 06) |
-| 7     | 09 money in paise: expand  | 13 feature flags (after 06)          |
-| 8     | closing P1 (below)         | 14 flags in `/api/config`            |
+| 6     | 04 worker process          | 07 `GET /api/admin/audit` (after 06) |
+| 7     | 08 order snapshots         | 13 feature flags (after 06)          |
+| 8     | 09 money in paise: expand  | 14 flags in `/api/config`            |
+| 9     | closing P1 (below)         | –                                    |
 
 If one lane runs ahead, it waits at the next row whose dependency is not merged yet; nothing else changes.
+
+Lane A builds 04 (the worker process) after 06: nothing depends on it, and 06 by round 5 keeps lane B's 07 and 13
+from waiting. Until 04, events queue up in `q_notifications` with no consumer, which costs a few rows.
 
 ## Who edits what
 
@@ -149,7 +153,7 @@ Paste one into a fresh Claude Code session on each machine; the same prompt resu
 
 ```text
 You are the lane A agent for P1. Read plans/P1_WORK_SPLIT.md and plans/P1_PLATFORM_CORE.md, and follow the split's
-rules. Your lane, in order: 02, 03, 04, 05, 06, 08, 09, then closing P1. Take the first lane A PR whose "Merged" box
+rules. Your lane, in order: 02, 02b, 03, 05, 06, 04, 08, 09, then closing P1. Take the first lane A PR whose "Merged" box
 in P1_PLATFORM_CORE.md is unticked on origin/feat/P1, check its cross-lane waits with gh, build it on a fresh
 feat/p1-<NN>-<slug> branch from origin/feat/P1, open the PR "P1 PR <NN> — <title>" into feat/P1, and stop until I say
 it merged.

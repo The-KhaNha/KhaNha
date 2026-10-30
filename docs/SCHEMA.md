@@ -23,6 +23,7 @@ a new file (see [DEPLOYMENT.md](DEPLOYMENT.md#schema-changes)).
 | `20260928180445_site_settings_config.sql`     | adds `site_settings.max_lines_per_order`, `order_poll_ms`, `orders_poll_ms`, `staff_board_poll_ms` (the configuration registry, [CONFIGURATION.md](CONFIGURATION.md))                                                                        |
 | `20260928193552_order_idempotency_key.sql`    | adds `orders.idempotency_key` and its partial unique index; drops and recreates `place_order` with `p_idempotency_key` (a function's argument list is its identity, so a new parameter cannot use `create or replace`), reissuing its grants |
 | `20261024181904_outbox.sql`                   | enables `pgmq` and `pg_cron`; adds `domain_events`, `event_subscriptions`, `emit_event` and `purge_domain_events`; creates the `q_notifications` queue, its `order.*` subscription and the nightly purge schedule                            |
+| `20261024192953_queue_wrappers.sql`           | adds `job_failures` and the five `queue_*` wrappers (the worker's only way into pgmq), granted to `service_role`                                                                                                                             |
 
 ## Enums
 
@@ -168,6 +169,21 @@ The outbox's event log, written only by `emit_event` and kept 30 days (`purge_do
 Which queues get which events: `event_type` is an exact type (`order.ready`) or a family (`order.*`). Primary key
 `(event_type, queue_name)`. Rows are added by the migration that creates their queue.
 
+### job_failures
+
+Dead letters, written by `queue_dead_letter` (`20261024192953_queue_wrappers.sql`).
+
+| Column        | Type        | Null | Default  | Notes                                           |
+| ------------- | ----------- | ---- | -------- | ----------------------------------------------- |
+| `id`          | bigint      | no   | identity | primary key                                     |
+| `queue_name`  | text        | no   |          |                                                 |
+| `message`     | jsonb       | no   |          | the queue message as it was read                |
+| `attempts`    | integer     | no   |          | reads before it was given up                    |
+| `last_error`  | text        | no   |          |                                                 |
+| `failed_at`   | timestamptz | no   | `now()`  |                                                 |
+| `resolved_at` | timestamptz | yes  |          | set by the operator who replays or dismisses it |
+| `resolved_by` | uuid        | yes  |          | references `profiles (id)` on delete set null   |
+
 ## Indexes
 
 | Index                                | Columns                                                                          |
@@ -207,6 +223,11 @@ object (SQLSTATE `P0001`). How the API maps them is in [API.md](API.md#database-
 | `update_order_status(...)`   | plpgsql  | invoker  | void    | `order.service.updateOrderStatus` | `service_role`       |
 | `reset_demo_orders()`        | sql      | definer  | void    | `server/scripts/seed.ts`          | `service_role`       |
 | `emit_event(...)`            | plpgsql  | definer  | uuid    | transition functions (P1 PR 05)   | `service_role`       |
+| `queue_read(...)`            | plpgsql  | definer  | table   | the worker (P1 PR 03)             | `service_role`       |
+| `queue_delete(...)`          | sql      | definer  | boolean | the worker                        | `service_role`       |
+| `queue_retry(...)`           | sql      | definer  | void    | the worker                        | `service_role`       |
+| `queue_dead_letter(...)`     | sql      | definer  | boolean | the worker                        | `service_role`       |
+| `queue_metrics(text)`        | sql      | definer  | table   | the worker's health report        | `service_role`       |
 | `purge_domain_events(...)`   | sql      | invoker  | integer | pg_cron `purge-domain-events`     | `service_role`       |
 
 ### set_updated_at
@@ -316,6 +337,18 @@ Inserts the `domain_events` row, then `pgmq.send`s
 subscribed to `p_type` or to its family (`split_part(p_type, '.', 1) || '.*'`). It runs in the caller's transaction.
 `security definer` because the queue tables belong to the migration's role, not to `service_role`.
 
+### Queue wrappers
+
+`security definer`, schema-qualified `pgmq.*` calls, the only way into the queues ([JOBS.md](JOBS.md)).
+
+| Function                                                               | Does                                                                                                                                                                                                    |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `queue_read(p_queue, p_vt_seconds, p_qty, p_poll_seconds)`             | up to `p_qty` messages `(msg_id, read_ct, enqueued_at, message)`, each hidden for `p_vt_seconds`; waits up to `p_poll_seconds` for the first (`pgmq.read_with_poll`), `0` returns at once (`pgmq.read`) |
+| `queue_delete(p_queue, p_msg_id)`                                      | deletes a handled message; `false` if it was already gone                                                                                                                                               |
+| `queue_retry(p_queue, p_msg_id, p_delay_seconds)`                      | hides the message for `p_delay_seconds` more (`pgmq.set_vt`); its next read has `read_ct + 1`                                                                                                           |
+| `queue_dead_letter(p_queue, p_msg_id, p_message, p_attempts, p_error)` | deletes the message and, only if it was still there, inserts a `job_failures` row and returns whether it did (a message another reader already handled is never dead-lettered)                          |
+| `queue_metrics(p_queue)`                                               | `(queue_length, oldest_msg_age_sec)` from `pgmq.metrics`                                                                                                                                                |
+
 ### purge_domain_events
 
 `purge_domain_events(p_now timestamptz default now(), p_keep interval default '30 days') returns integer` deletes
@@ -324,9 +357,9 @@ the events older than `p_now - p_keep` and returns how many. pg_cron runs it nig
 
 ## Row-level security and grants
 
-- RLS is enabled on all eight tables (`site_settings` and the outbox tables included, each by the migration that
+- RLS is enabled on all nine tables (`site_settings` and the outbox tables included, each by the migration that
   creates it). There are no policies.
-- `revoke all` on all eight tables from `anon` and `authenticated`.
+- `revoke all` on all nine tables from `anon` and `authenticated`.
 - Default privileges for role `postgres` in `public`: new tables grant nothing to `anon`/`authenticated`, and new
   functions grant no `EXECUTE` to `public`, `anon` or `authenticated`. This is why the `20260927094610` migration did
   not need its own `revoke`/`grant` for functions — it adds no new function — but still revokes table privileges for

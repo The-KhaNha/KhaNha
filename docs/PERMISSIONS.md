@@ -151,8 +151,8 @@ flowchart LR
   end
 
   subgraph Postgres["Postgres, public schema"]
-    Tables["profiles, stores, menu_items,<br/>orders, order_items, site_settings,<br/>domain_events, event_subscriptions<br/>RLS ON, no policies,<br/>all privileges revoked from anon/authenticated"]
-    Fns["place_order, update_order_status,<br/>reset_demo_orders, emit_event,<br/>purge_domain_events<br/>EXECUTE only for service_role"]
+    Tables["profiles, stores, menu_items,<br/>orders, order_items, site_settings,<br/>domain_events, event_subscriptions, job_failures<br/>RLS ON, no policies,<br/>all privileges revoked from anon/authenticated"]
+    Fns["place_order, update_order_status,<br/>reset_demo_orders, emit_event,<br/>queue_*, purge_domain_events<br/>EXECUTE only for service_role"]
     Trg["handle_new_user, handle_user_email_change<br/>security definer, fired by auth.users triggers only"]
   end
 
@@ -170,8 +170,8 @@ flowchart LR
 - `EXECUTE` on the RPCs is granted to `service_role` only. The trigger functions are callable by nobody; only their
   triggers run them.
 - The queues (`pgmq` schema) and schedules (`cron` schema) are closed to `anon` and `authenticated` and not exposed
-  through the Data API; the API and the worker will reach the queues only through `security definer` wrappers
-  (P1 PR 02b, [JOBS.md](JOBS.md)).
+  through the Data API; the API and the worker reach the queues only through the `queue_*` wrappers
+  ([JOBS.md](JOBS.md)).
 - Default privileges are changed so tables and functions created by later migrations also start closed. A migration
   that needs something public must grant it explicitly (and should not: the browser talks to Supabase only for
   sign-in).
