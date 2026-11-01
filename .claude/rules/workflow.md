@@ -119,9 +119,13 @@ Agents added during a session are not registered until the next session; meanwhi
 This project has a knowledge graph at `graphify-out/` with god nodes, community structure, and cross-file
 relationships.
 
-- For codebase questions, first run `graphify query "<question>"` when `graphify-out/graph.json` exists. Use
-  `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return
-  a scoped subgraph, usually much smaller than `GRAPH_REPORT.md` or raw grep output.
+- The graph is advisory. For a broad question (where is X, what depends on Y, what a change touches), start with
+  `graphify query "<question>"` when `graphify-out/graph.json` exists, `graphify path "<A>" "<B>"` for relationships
+  and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than
+  `GRAPH_REPORT.md` or raw grep output. For a known file, symbol or line, grep or Read directly.
+- `.claude/hooks/graphify-hint.js` (`PreToolUse` on `Bash|Grep` and `Read|Glob`) runs `graphify hook-guard`, which
+  decides when a search or a source read could start from the graph, and replaces its "MANDATORY" wording with a
+  one-line advisory tip. It never blocks a call; the agents' own "orient with graphify" steps are unchanged.
 - If `graphify-out/wiki/index.md` exists, use it for broad navigation instead of raw source browsing.
 - Read `graphify-out/GRAPH_REPORT.md` only for broad architecture review or when query/path/explain do not surface
   enough context.

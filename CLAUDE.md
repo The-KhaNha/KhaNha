@@ -361,8 +361,9 @@ loops. Levels and what each means: `docs/LOGGING.md`; the rules in full: `.claud
 
 ## 20. Knowledge graph (graphify)
 
-When `graphify-out/graph.json` exists, start codebase questions with `graphify query "<question>"` (or `path` /
-`explain`); run `graphify update .` after modifying code. Details: `.claude/rules/workflow.md`.
+The graph is advisory. For a broad codebase question (where is X, what depends on Y), `graphify query "<question>"`
+(or `path` / `explain`) is usually cheaper than grep when `graphify-out/graph.json` exists; for a known file or
+symbol, go straight to grep or Read. Run `graphify update .` after modifying code. Details: `.claude/rules/workflow.md`.
 
 ## 21. Versioning and branches
 
