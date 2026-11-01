@@ -6,9 +6,7 @@ import {
   IntegrationError,
   payloadTooLarge,
   type ErrorCode,
-  type ItemErrorDetails,
-  type FieldErrorDetails,
-  type ReplayedOrderDetails,
+  type ErrorDetails,
 } from '../utils/errors';
 import { asDatabaseUnavailable } from '../utils/supabase';
 import { describeIssue } from './validate';
@@ -17,8 +15,7 @@ interface ErrorDescription {
   status: number;
   code: ErrorCode;
   message: string;
-  /** Which cart line an item error is about, or which order a reused idempotency key placed. */
-  details?: ItemErrorDetails | ReplayedOrderDetails | FieldErrorDetails;
+  details?: ErrorDetails;
 }
 
 const UPSTREAM_UNAVAILABLE: ErrorDescription = {
@@ -34,6 +31,12 @@ const INTERNAL: ErrorDescription = {
   message: 'Something went wrong. Please try again.',
 };
 
+/**
+ * Responses whose failure was logged at debug. app.ts's access line follows them down, so an expected repeat (a stale
+ * tab's 426, a 429 after the first in its window) writes nothing above debug.
+ */
+export const loggedAtDebug = new WeakSet<object>();
+
 /** Final non-error middleware: anything that reached here matched no route. */
 export const notFoundHandler: RequestHandler = (req, res) => {
   res.status(404).json({
@@ -47,18 +50,24 @@ export const errorHandler: ErrorRequestHandler = (thrown: unknown, req, res, _ne
   const { status, code, message, details } = describeError(err);
   if (err instanceof IntegrationError) res.set('Retry-After', RETRY_AFTER_SECONDS);
   // The one place a failed request is logged. Only 5xx carries the error and its stack; a 4xx is an expected
-  // client error, and 401/403/429 are warn because a burst of them is worth noticing.
+  // client error, and 401/403/429 are warn because a burst of them is worth noticing. A repeat 429 in its window
+  // is debug (AppError.logLevel): the first one already said so.
   // A 426 is debug: a stale tab keeps asking until it reloads, and each ask is expected.
   if (status >= 500) {
     const route = req.route ? `${req.baseUrl}${String(req.route.path)}` : req.path;
     req.log.error({ err, route, status, code, userId: req.user?.id }, 'Request failed');
-  } else if (status === 426) req.log.debug({ status, code }, message);
-  else {
+  } else {
     const fields = { status, code, ...(err instanceof AppError && err.logFields) };
-    req.log[[401, 403, 429].includes(status) ? 'warn' : 'info'](fields, message);
+    const level =
+      status === 426
+        ? 'debug'
+        : (err instanceof AppError && err.logLevel) ||
+          ([401, 403, 429].includes(status) ? 'warn' : 'info');
+    if (level === 'debug') loggedAtDebug.add(res);
+    req.log[level](fields, message);
   }
-  // The envelope is { error: { code, message } }, plus `details` for a cart-line error, a reused idempotency key or
-  // the request field a validation error is about.
+  // The envelope is { error: { code, message } }, plus `details` when the error has them (utils/errors.ts
+  // ErrorDetails: a cart line, a reused idempotency key, the field at fault, the seconds until a limit resets).
   res.status(status).json({ error: { code, message, ...(details && { details }) } });
 };
 

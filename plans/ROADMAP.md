@@ -1101,7 +1101,14 @@ accepted before P0.6 commits to compose.
 **Goal:** give every later feature the shared machinery it needs: background jobs, audit, idempotency, snapshots,
 rate limits and flags. **Items:** R23, R27, R28 (engine), R33 (v1). **Depends on:** P0. **Size:** L.
 
+> **How it is built:** [P1_PLATFORM_CORE.md](P1_PLATFORM_CORE.md), PR by PR on the `feat/P1` branch. It also adds
+> the server-side idle sign-out ADR-011 left for P1, and moves every amount to paise (ADR-004 as amended). Each
+> subsection below notes where the build differs from what it describes.
+
 ### P1.1 Error details and codes
+
+> **As built:** the three detail shapes that predate P1 (item, replayed order, field) stay untagged, because the
+> deployed client reads them by `code`; every new shape carries a `kind`, starting with `RateLimitDetails` (P1 PR 01).
 
 Today `AppError.details` can only be `ItemErrorDetails`. Later phases need details for payments, policies, rate
 limits and pickups.
@@ -1124,6 +1131,12 @@ limits and pickups.
 **Done when** `errorHandler` passes any details kind through untouched and the client narrows on `kind`.
 
 ### P1.2 Background jobs: outbox, queues and scheduler
+
+> **As built** ([P1 plan](P1_PLATFORM_CORE.md#where-p1-builds-less-than-the-roadmap)): one queue, `q_notifications`, created with its first consumer; no `event_handled`
+> table; handled messages are deleted (`queue_delete`, not `queue_archive`); the queue wrappers are `queue_read`,
+> `queue_delete`, `queue_retry`, `queue_dead_letter` and `queue_metrics`; a per-handler `concurrency` field instead of
+> `WORKER_CONCURRENCY_<QUEUE>`; job durations on the log lines and queue depth in the worker's `/health` instead of
+> metrics (P8.7); the A5 event names (`order.placed`, `order.preparing`, …) instead of `order.status_changed`.
 
 R28 needs asynchronous work for notifications, analytics, expired holds and pickups, reconciliation, refund retries
 and recommendations. ADR-002 chooses three pieces:
@@ -1268,6 +1281,10 @@ interface JobHandler<T> {
 
 ### P1.3 Audit log
 
+> **As built** ([P1 plan](P1_PLATFORM_CORE.md#where-p1-builds-less-than-the-roadmap)): no store-scoped `GET /api/stores/:storeId/audit` until memberships exist (P2.2); triggers
+> on the tables that exist (`site_settings`, `orders.status`, `profiles.role`, `menu_items`, then `feature_flags`);
+> stock changes are not audited by trigger (P3.5); the 13-month retention job waits for P9.5.
+
 R27. This is the business record of who changed what, which the operational logs are not.
 
 ```sql
@@ -1322,6 +1339,10 @@ create index audit_log_actor_idx on public.audit_log (actor_id, occurred_at desc
 
 ### P1.4 Idempotency keys
 
+> **As built** (decision D4): not built in P1. `POST /api/orders` is already idempotent through
+> `orders.idempotency_key`; the table, the middleware and the `Idempotency-Key` header come with `POST /api/checkout`,
+> their first consumer, in P5.3. `IDEMPOTENCY_KEY_REUSED` stays 409, as shipped.
+
 On a flaky 3G connection, a tap that timed out may still have succeeded. Every write that creates something or moves
 money must be safe to retry.
 
@@ -1345,7 +1366,7 @@ create table public.idempotency_keys (
 - **Middleware.** `idempotent(scope)` runs after `requireAuth` and `validate`. It requires the `Idempotency-Key`
   header on its routes and claims the row with `insert ... on conflict`:
   - an existing `COMPLETED` row with the same hash → replay the stored status and body;
-  - the same key with a different hash → 422 `IDEMPOTENCY_KEY_REUSED`;
+  - the same key with a different hash → 409 `IDEMPOTENCY_KEY_REUSED` (as `POST /api/orders` shipped it);
   - `IN_PROGRESS` inside its lease → 409 `REQUEST_IN_PROGRESS`;
   - `IN_PROGRESS` with an expired lease → take it over. The business write underneath must itself be idempotent,
     for example `orders.idempotency_key` is unique, so a retry finds the order the crashed attempt created.
@@ -1359,6 +1380,10 @@ create table public.idempotency_keys (
 and the second returns the first's response.
 
 ### P1.5 Order snapshots v2
+
+> **As built** ([P1 plan](P1_PLATFORM_CORE.md#where-p1-builds-less-than-the-roadmap)): the photo and the store name are snapshotted; `store_slug`, `currency`, `subtotal`,
+> `discount_total`, `base_unit_price`, `deal_id` and `catalog_item_id` wait until something gives them a value (P2.1,
+> P3.6, P5), and `menu_items.archived_at` waits for the first delete path (P3.4). Amounts move to paise in P1 (ADR-004).
 
 R23. Order history must never change when the restaurant edits its menu.
 
@@ -1386,6 +1411,12 @@ the line photo and `stores (id, name)` for the store name, so both change later.
 order's API response byte-for-byte the same (tested).
 
 ### P1.6 Rate limiting and abuse protection v1
+
+> **As built** ([P1 plan](P1_PLATFORM_CORE.md#where-p1-builds-less-than-the-roadmap), ADR-009 as amended): the `express-rate-limit` limiter shipped in P0 stays (fixed windows,
+> in memory) until a third API instance needs Redis, so there is no fail-open or fail-closed mode yet; the limits stay
+> deployment env and only the client error sample rate is a site setting; the 429 carries
+> `details: { kind: 'rateLimit', retryAfterSeconds }` and logs `warn` once per key per window (P1 PR 01); the buckets
+> for routes that do not exist yet arrive with them.
 
 R33, first layer. Campus Wi-Fi puts thousands of students behind a few NAT addresses, so per-IP limits must be
 generous, and the real limits are per user.
@@ -1430,6 +1461,9 @@ users behind one IP stay under the IP bucket during the P9.1 load test.
 The edge layer (WAF) is [P9.3](#p93-edge-protection-and-security-review).
 
 ### P1.7 Feature flags
+
+> **As built** ([P1 plan](P1_PLATFORM_CORE.md#where-p1-builds-less-than-the-roadmap)): flags are flipped through `PATCH /api/admin/flags/:key` (ADMIN), so the audit row names who
+> flipped one; `GET /api/me/config` waits for the first client-visible flag targeted by role or user.
 
 ```sql
 create table public.feature_flags (
@@ -4187,7 +4221,7 @@ message is safe to show.
 | 426    | `CLIENT_OUTDATED`                        | the client is older than `min_client_version`                           | P0.7 |
 | 503    | `UPSTREAM_UNAVAILABLE`                   | a non-payment dependency failed (storage, provider)                     | P0.5 |
 | 429    | `RATE_LIMITED`                           | a bucket is exhausted (the client already knows this code from sign-in) | P1.6 |
-| 422    | `IDEMPOTENCY_KEY_REUSED`                 | the same key was sent with a different body                             | P1.4 |
+| 409    | `IDEMPOTENCY_KEY_REUSED`                 | the same key was sent with a different body (shipped in P0, as 409)     | P1.4 |
 | 409    | `REQUEST_IN_PROGRESS`                    | the same key is still being processed                                   | P1.4 |
 | 409    | `STORE_PAUSED`                           | the store paused new orders                                             | P2.5 |
 | 403    | `ACCOUNT_BLOCKED`                        | a platform admin blocked the account                                    | P7.4 |

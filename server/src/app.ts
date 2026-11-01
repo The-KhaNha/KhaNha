@@ -5,7 +5,7 @@ import express, { type Express } from 'express';
 import pino from 'pino';
 import { pinoHttp } from 'pino-http';
 import { readClientVersion } from './middleware/clientVersion';
-import { errorHandler, notFoundHandler } from './middleware/errorHandler';
+import { errorHandler, loggedAtDebug, notFoundHandler } from './middleware/errorHandler';
 import { floodLimiter } from './middleware/rateLimit';
 import { securityHeaders } from './middleware/securityHeaders';
 import { payloadTooLarge } from './utils/errors';
@@ -28,11 +28,12 @@ function requestId(req: IncomingMessage, res: ServerResponse): string {
 
 /**
  * One access line per request. Successful reads are debug: the customer and staff screens poll, and at info they
- * would flood production logs. Writes and every failure are info; the error handler adds the detail.
+ * would flood production logs. Writes and every failure are info, and the error handler adds the detail, except a
+ * failure it logged at debug (an expected repeat): that access line goes down with it.
  */
-function accessLevel(req: IncomingMessage, res: ServerResponse): 'debug' | 'info' {
+export function accessLevel(req: IncomingMessage, res: ServerResponse): 'debug' | 'info' {
   const read = req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS';
-  return read && res.statusCode < 400 ? 'debug' : 'info';
+  return (read && res.statusCode < 400) || loggedAtDebug.has(res) ? 'debug' : 'info';
 }
 
 /** The whole request pipeline, without `listen`, so tests can drive it with Supertest. */

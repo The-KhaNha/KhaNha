@@ -38,6 +38,19 @@ export interface ReplayedOrderDetails {
   orderNumber: number;
 }
 
+/** How long until the window that refused the request resets: the Retry-After header's number, in the body. */
+export interface RateLimitDetails {
+  kind: 'rateLimit';
+  retryAfterSeconds: number;
+}
+
+/**
+ * Every shape `error.details` can take. The first three predate `kind` and stay untagged, because the deployed client
+ * reads them by `code`; every new shape carries a `kind` (docs/API.md "Error details").
+ */
+export type ErrorDetails =
+  ItemErrorDetails | ReplayedOrderDetails | FieldErrorDetails | RateLimitDetails;
+
 /**
  * A dependency (Supabase's database or Auth, later the payment provider) failed or could not be reached. The error
  * handler answers 503 UPSTREAM_UNAVAILABLE with Retry-After, and logs it once at error with the whole cause chain.
@@ -60,9 +73,11 @@ export class AppError extends Error {
     public readonly status: number,
     public readonly code: ErrorCode,
     message: string,
-    public readonly details?: ItemErrorDetails | ReplayedOrderDetails | FieldErrorDetails,
+    public readonly details?: ErrorDetails,
     /** Extra fields for the error handler's log line only; never sent to the client. */
     public readonly logFields?: Record<string, string>,
+    /** Logs at debug instead of the status's usual level: a repeat nobody needs to read twice. */
+    public readonly logLevel?: 'debug',
   ) {
     super(message);
     this.name = 'AppError';
@@ -88,15 +103,22 @@ export const payloadTooLarge = (): AppError =>
 
 /**
  * Too many requests from one account or address in the window (middleware/rateLimit.ts). The log line says which
- * limiter refused and whether it counted an account or an address, so a burst can be told apart.
+ * limiter refused and whether it counted an account or an address, so a burst can be told apart. Only the first
+ * refusal per key per window logs at warn: a client hammering the limit would otherwise write a line per request.
  */
-export const rateLimited = (limiter: string, keyedBy: 'user' | 'ip'): AppError =>
+export const rateLimited = (
+  limiter: string,
+  keyedBy: 'user' | 'ip',
+  retryAfterSeconds: number,
+  firstInWindow: boolean,
+): AppError =>
   new AppError(
     429,
     'RATE_LIMITED',
     'Too many requests. Please wait a minute and try again.',
-    undefined,
+    { kind: 'rateLimit', retryAfterSeconds },
     { limiter, keyedBy },
+    firstInWindow ? undefined : 'debug',
   );
 
 /**
