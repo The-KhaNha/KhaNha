@@ -3,6 +3,9 @@ updates:
   - package-ecosystem: npm
     directory: /client
     schedule: { interval: weekly }
+    # A version must be a week old before it is proposed (a hijacked release is usually caught by then); security
+    # updates are not delayed.
+    cooldown: { default-days: 7 }
     target-branch: dev
     labels: [dependencies, no-release]
     groups:
@@ -11,6 +14,9 @@ updates:
   - package-ecosystem: npm
     directory: /server
     schedule: { interval: weekly }
+    # A version must be a week old before it is proposed (a hijacked release is usually caught by then); security
+    # updates are not delayed.
+    cooldown: { default-days: 7 }
     target-branch: dev
     labels: [dependencies, no-release]
     groups:
@@ -19,6 +25,9 @@ updates:
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: weekly }
+    # A version must be a week old before it is proposed (a hijacked release is usually caught by then); security
+    # updates are not delayed.
+    cooldown: { default-days: 7 }
     target-branch: dev
     labels: [dependencies, no-release]
     groups:
@@ -28,6 +37,9 @@ updates:
   - package-ecosystem: docker
     directories: [/client, /server]
     schedule: { interval: weekly }
+    # A version must be a week old before it is proposed (a hijacked release is usually caught by then); security
+    # updates are not delayed.
+    cooldown: { default-days: 7 }
     target-branch: dev
     labels: [dependencies, no-release]
     groups:

@@ -1,5 +1,5 @@
 import type { RequestHandler } from 'express';
-import type { ZodIssue, ZodTypeAny } from 'zod';
+import type { z } from 'zod';
 import { validationError } from '../utils/errors';
 
 type Source = 'body' | 'query';
@@ -8,7 +8,7 @@ type Source = 'body' | 'query';
  * Parses `req[source]` with the schema and replaces it with the parsed value,
  * so downstream handlers only ever see validated, stripped data.
  */
-export function validate(schema: ZodTypeAny, source: Source = 'body'): RequestHandler {
+export function validate(schema: z.ZodType, source: Source = 'body'): RequestHandler {
   return (req, _res, next) => {
     const result = schema.safeParse(stripNullBytes(req[source]));
     if (!result.success) {
@@ -32,7 +32,7 @@ export function validate(schema: ZodTypeAny, source: Source = 'body'): RequestHa
 }
 
 /** The request field an issue is about (`items` for `items[2].quantity`), for a form to show it in place. */
-function topLevelField(issue: ZodIssue | undefined): string | undefined {
+function topLevelField(issue: z.core.$ZodIssue | undefined): string | undefined {
   const first = issue?.path[0];
   return typeof first === 'string' ? first : undefined;
 }
@@ -50,17 +50,22 @@ function stripNullBytes(value: unknown): unknown {
 }
 
 /** Turns a zod issue into a sentence a customer can read, e.g. "Customer name is required." */
-export function describeIssue(issue: ZodIssue | undefined, source: Source = 'body'): string {
+export function describeIssue(
+  issue: z.core.$ZodIssue | undefined,
+  source: Source = 'body',
+): string {
   if (!issue) return 'The request is invalid.';
   const label = fieldLabel(issue.path, source);
+  // zod's own wording ("Invalid input: expected string, received undefined") is replaced; a schema's message is kept.
+  // The issue carries no input unless parsed with reportInput, so the wording is how a missing field is told apart.
   if (issue.code === 'invalid_type') {
-    if (issue.received === 'undefined') return `${label} is required.`;
-    if (issue.message.startsWith('Expected ')) return `${label} is invalid.`;
+    if (issue.message.endsWith('received undefined')) return `${label} is required.`;
+    if (issue.message.startsWith('Invalid input')) return `${label} is invalid.`;
   }
   return issue.message;
 }
 
-function fieldLabel(path: (string | number)[], source: Source): string {
+function fieldLabel(path: PropertyKey[], source: Source): string {
   const name = [...path]
     .reverse()
     .find((segment): segment is string => typeof segment === 'string');

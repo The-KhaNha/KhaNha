@@ -21,8 +21,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: .node-version
           cache: npm
@@ -35,14 +35,16 @@ jobs:
           cp .env.example .env
           npm run seed
       - name: Compose stack
+        env:
+          GIT_COMMIT: ${{ github.sha }}
         run: |
           SUPABASE_PUBLISHABLE_KEY=$(grep VITE_SUPABASE_PUBLISHABLE_KEY client/.env.development | cut -d= -f2)
           export SUPABASE_PUBLISHABLE_KEY
-          GIT_COMMIT=${{ github.sha }} docker compose up -d --build --wait web api
+          docker compose up -d --build --wait web api
       - name: Lighthouse
         working-directory: client
         run: npx --yes @lhci/cli@0.15.x autorun
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: lighthouse-report
