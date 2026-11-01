@@ -65,11 +65,13 @@ nothing above `debug`.
 
 ## Error classes
 
-| Error                                                        | Thrown by                                                                                                                             | Answer                                       | Logged                                                                                               |
-| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `AppError` (factories in `utils/errors.ts`)                  | services, middleware                                                                                                                  | its status and code                          | 401/403 and a first 429 `warn`; a repeat 429 (`AppError.logLevel`) and 426 `debug`; other 4xx `info` |
-| `IntegrationError { provider, operation, retryable, cause }` | `utils/supabase.ts` `asDatabaseUnavailable` (the error handler applies it to every error), `middleware/auth.ts` (`JWKS_FETCH_FAILED`) | 503 `UPSTREAM_UNAVAILABLE`, `Retry-After: 5` | once, `error`                                                                                        |
-| anything else                                                | –                                                                                                                                     | 500 `INTERNAL`                               | once, `error`                                                                                        |
+| Error                                                             | Thrown by                                                                                                                             | Answer                                                                | Logged                                                                                               |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `AppError` (factories in `utils/errors.ts`)                       | services, middleware                                                                                                                  | its status and code                                                   | 401/403 and a first 429 `warn`; a repeat 429 (`AppError.logLevel`) and 426 `debug`; other 4xx `info` |
+| `IntegrationError { provider, operation, retryable, cause }`      | `utils/supabase.ts` `asDatabaseUnavailable` (the error handler applies it to every error), `middleware/auth.ts` (`JWKS_FETCH_FAILED`) | 503 `UPSTREAM_UNAVAILABLE`, `Retry-After: 5`                          | once, `error`                                                                                        |
+| `RetryableError`, `PermanentError`                                | job handlers (`server/src/jobs/`)                                                                                                     | a retry or a dead letter ([JOBS.md](JOBS.md#handlers-and-the-runner)) | see [Jobs](#jobs)                                                                                    |
+| `InvariantError` (a programmer error: a state assumed impossible) | the job runner's impossible states; any code that asserts one                                                                         | 500 `INTERNAL`; a job is dead-lettered                                | once, `error`, with `invariant: true`                                                                |
+| anything else                                                     | –                                                                                                                                     | 500 `INTERNAL`                                                        | once, `error`                                                                                        |
 
 The database counts as unreachable when a call fails in transport: with `.throwOnError()`, postgrest-js retries an
 idempotent read three times (1, 2, 4 s) and then rethrows undici's own `TypeError: fetch failed`, whose `cause` is the
@@ -77,6 +79,24 @@ socket error; a non-throwing call returns an error with an empty `code` and that
 (`TimeoutError`, `AbortError`) count too. The `error` line carries `err` (serialized with `errWithCause`, so the
 whole chain appears: `err.cause.message`, `err.cause.cause.message`), `route`, `status`, `code` and `userId`.
 pino-http runs with `wrapSerializers: false` so its own `err` serializer cannot drop the cause.
+
+## Jobs
+
+The job runner (`server/src/jobs/runner.ts`) is the boundary for a job, as the error handler is for a request: it logs
+each outcome once. Every line about a message carries `queue`, `jobId`, `eventId`, `eventType` and `attempt` (a child
+logger, also handed to the handler); never the payload.
+
+| Line                       | Level   | Fields                            | When                                                                                                         |
+| -------------------------- | ------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| "Job handled"              | `debug` | `durationMs`                      | the handler resolved and the message was deleted                                                             |
+| "Job failed, retrying"     | `warn`  | `err`, `durationMs`, `retryInSec` | a retryable failure with attempts left                                                                       |
+| "Job dead-lettered"        | `error` | `err`, `durationMs`, `invariant`  | the failure was recorded in `job_failures`: once, and only when `queue_dead_letter` says it took the message |
+| "Job outcome not recorded" | `warn`  | `err`, `durationMs`               | the delete, retry or dead-letter call failed; the message comes back after its visibility timeout            |
+| "Queue read failed"        | `warn`  | `err`, `queue`                    | once per outage                                                                                              |
+| "Queue reachable again"    | `info`  | `queue`, `failedReads`            | the first good read after an outage                                                                          |
+
+An empty poll logs nothing. A handler's own lines (`notifyHandler`'s `info` "Order event") use the logger it is
+given.
 
 ## Never logged
 
