@@ -70,7 +70,7 @@ nothing above `debug`.
 | `AppError` (factories in `utils/errors.ts`)                       | services, middleware                                                                                                                  | its status and code                                                         | 401/403 and a first 429 `warn`; a repeat 429 (`AppError.logLevel`) and 426 `debug`; other 4xx `info` |
 | `IntegrationError { provider, operation, retryable, cause }`      | `utils/supabase.ts` `asDatabaseUnavailable` (the error handler applies it to every error), `middleware/auth.ts` (`JWKS_FETCH_FAILED`) | 503 `UPSTREAM_UNAVAILABLE`, `Retry-After: 5`                                | once, `error`                                                                                        |
 | `RetryableError`, `PermanentError`                                | job handlers (`server/src/jobs/`)                                                                                                     | a retry or a dead letter ([JOBS.md](JOBS.md#handlers-and-the-runner))       | see [Jobs](#jobs)                                                                                    |
-| `InvariantError` (a programmer error: a state assumed impossible) | the job runner's impossible states; any code that asserts one                                                                         | a job is dead-lettered; in a request, 500 `INTERNAL` like any unknown error | once, `error`; the job runner adds `invariant: true` (the request log gains it in P1 PR 04)          |
+| `InvariantError` (a programmer error: a state assumed impossible) | the job runner's impossible states; any code that asserts one                                                                         | a job is dead-lettered; in a request, 500 `INTERNAL` like any unknown error | once, `error`; the job runner and the request log (`Request failed`) add `invariant: true`           |
 | anything else                                                     | –                                                                                                                                     | 500 `INTERNAL`                                                              | once, `error`                                                                                        |
 
 The database counts as unreachable when a call fails in transport: with `.throwOnError()`, postgrest-js retries an
@@ -95,7 +95,19 @@ logger, also handed to the handler); never the payload.
 | "Queue read failed"        | `warn`  | `err`, `queue`                    | once per outage                                                                                              |
 | "Queue reachable again"    | `info`  | `queue`, `failedReads`            | the first good read after an outage                                                                          |
 
-An empty poll logs nothing. A handler's own lines (`notifyHandler`'s `info` "Order event") use the logger it is
+An empty poll logs nothing.
+
+### The worker process
+
+| Line                         | Level   | Fields                                                  | When                                                                                     |
+| ---------------------------- | ------- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| "Food Pickup worker running" | `info`  | `healthPort`, `queues`, `logLevel`, `version`, `commit` | the health port is listening                                                             |
+| "Worker loop crashed"        | `error` | `err`                                                   | a `runQueue` loop threw (it should not); the process then exits 1                        |
+| "Shutting down"              | `info`  | `signal`                                                | SIGTERM or SIGINT, once: API and worker alike (`utils/shutdown.ts`); repeats are ignored |
+| "Shutdown failed"            | `error` | `err`                                                   | the stop function rejected; exit 1                                                       |
+
+`GET /health` and a failed `queue_metrics` read are deliberately not logged: it is a polling path, and the depth is
+`null` in the body when the read fails. A handler's own lines (`notifyHandler`'s `info` "Order event") use the logger it is
 given.
 
 ## Never logged

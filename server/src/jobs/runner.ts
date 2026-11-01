@@ -63,12 +63,12 @@ export function backoffSeconds(
   return Math.max(1, Math.round(delay * (0.8 + 0.4 * random())));
 }
 
-/** How long a read waits for a first message: under PostgREST's statement timeout and the worker's shutdown grace. */
-export const POLL_SECONDS = 5;
+/** How long an empty queue waits before it is read again: the most a new job waits to start. */
+export const POLL_SECONDS = 2;
 
 // Bounds on the runner's own calls, so a connection that dies without closing cannot stall a queue, or the shutdown,
-// until Node's 5-minute HTTP default: a read gets its poll plus the margin, an outcome call the outcome timeout.
-const CALL_MARGIN_SECONDS = 5;
+// until Node's 5-minute HTTP default. Both return in milliseconds when the database is well.
+const READ_TIMEOUT_SECONDS = 5;
 const OUTCOME_TIMEOUT_SECONDS = 10;
 const outcomeDeadline = () => AbortSignal.timeout(OUTCOME_TIMEOUT_SECONDS * 1000);
 
@@ -79,12 +79,17 @@ export interface RunOptions {
   pollSeconds?: number;
   now?: () => number;
   random?: () => number;
+  /**
+   * Called after every read that returned, a failed one too. The worker's health check counts on it (jobs/health.ts);
+   * a loop that stops calling it is stuck, or has every slot busy for longer than a job may run.
+   */
+  onActive?: () => void;
 }
 
 /** Consumes one queue until `signal` aborts (docs/JOBS.md "Handlers and the runner"). */
 export async function runQueue<T>(handler: JobHandler<T>, options: RunOptions): Promise<void> {
-  const { signal, log } = options;
-  // At least 1: a read that never waits would spin the loop against the database.
+  const { signal, log, onActive = () => {} } = options;
+  // At least 1: a loop that never waited would spin against the database.
   const pollSeconds = Math.max(1, options.pollSeconds ?? POLL_SECONDS);
   const inFlight = new Set<Promise<void>>();
   let failedReads = 0;
@@ -96,8 +101,9 @@ export async function runQueue<T>(handler: JobHandler<T>, options: RunOptions): 
     }
     let rows: Row[];
     try {
-      rows = await read(handler, handler.concurrency - inFlight.size, pollSeconds);
+      rows = await read(handler, handler.concurrency - inFlight.size);
     } catch (err) {
+      onActive();
       // A read that timed out as the worker stops is not an outage worth reporting.
       if (signal.aborted) break;
       // Once per outage: every read fails the same way until the database is back.
@@ -106,6 +112,7 @@ export async function runQueue<T>(handler: JobHandler<T>, options: RunOptions): 
       await sleep(Math.min(5, failedReads) * 1000, undefined, { signal }).catch(() => {});
       continue;
     }
+    onActive();
     if (failedReads > 0) log.info({ queue: handler.queue, failedReads }, 'Queue reachable again');
     failedReads = 0;
     // Read just as the worker stops: not started, so they come back after their visibility timeout.
@@ -114,23 +121,28 @@ export async function runQueue<T>(handler: JobHandler<T>, options: RunOptions): 
       const job = handleOne(handler, row, options).finally(() => inFlight.delete(job));
       inFlight.add(job);
     }
+    // An empty queue is read again after the poll; one that had work at once, as more may be waiting. The wait is here,
+    // not in the database: a long-poll held a pooled connection per queue the whole time, from the pool the API shares
+    // (docs/JOBS.md "Capacity").
+    if (rows.length === 0) await sleep(pollSeconds * 1000, undefined, { signal }).catch(() => {});
   }
   await Promise.all(inFlight);
 }
 
 type Row = Awaited<ReturnType<typeof read>>[number];
 
-async function read(handler: JobHandler<unknown>, qty: number, pollSeconds: number) {
+async function read(handler: JobHandler<unknown>, qty: number) {
   const { data } = await supabaseAdmin
     .rpc('queue_read', {
       p_queue: handler.queue,
       p_vt_seconds: handler.visibilityTimeoutSec,
       p_qty: qty,
-      p_poll_seconds: pollSeconds,
+      // 0: pgmq.read, which returns at once instead of waiting for a message.
+      p_poll_seconds: 0,
     })
-    // Not the stop signal: a read cancelled here keeps polling in the database, and a message it takes there is hidden
-    // for its whole visibility timeout with nobody to handle it. Stopping waits for the read instead (at most a poll).
-    .abortSignal(AbortSignal.timeout((pollSeconds + CALL_MARGIN_SECONDS) * 1000))
+    // Not the stop signal: a read cancelled here may still take a message in the database, hidden for its whole
+    // visibility timeout with nobody to handle it. Stopping waits for the read instead (milliseconds).
+    .abortSignal(AbortSignal.timeout(READ_TIMEOUT_SECONDS * 1000))
     .throwOnError();
   return data;
 }

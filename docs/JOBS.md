@@ -2,7 +2,7 @@
 
 Background work: the outbox, the queues and the schedules ([ADR-002](adr/002-outbox-pgmq-pg-cron.md)). Tables and
 functions in detail: [SCHEMA.md](SCHEMA.md). The job runner is [below](#handlers-and-the-runner); the worker process
-that runs it arrives in P1 PR 04 ([plan](../plans/P1_PLATFORM_CORE.md)).
+that runs it is [below](#the-worker-process).
 
 ## The outbox
 
@@ -55,20 +55,47 @@ channel): a worker that dies mid-message leaves it to come back after its visibi
 A handler must not put personal data in an error message: the message reaches both the log (`err`) and
 `job_failures.last_error`.
 
-`runQueue(handler, { signal, log })` reads up to the free concurrency slots at a time, waiting up to `POLL_SECONDS`
-(5) for a first message. That stays under the 8 s statement timeout PostgREST's `authenticator` role runs with
-(Supabase's default; `service_role` inherits it), and under the worker's shutdown grace. On abort it stops reading,
-leaves anything read during the abort unstarted (back after its visibility timeout), and resolves once the handlers in
-flight finish. Every call the runner makes is bounded, so a connection that dies without closing cannot stall a queue: a
-read by its poll plus 5 s, a delete, retry or dead letter by 10 s. Stopping waits for the read in progress (at most
-the poll plus 5 s) rather than cancelling it: a cancelled read keeps polling in the database, and a message it took
-there would stay hidden for its whole visibility timeout with no one to handle it. A failing read (the database unreachable) backs off 1 s → 5 s. If recording an outcome fails, the
+`runQueue(handler, { signal, log, onActive })` reads up to the free concurrency slots at a time with `pgmq.read`, which
+returns at once. A read that found work is followed by another at once; an empty queue is read again after
+`POLL_SECONDS` (2), the most a new job waits to start. Nothing waits in the database (see "Capacity" below). On abort it
+stops reading (the idle wait ends at once), leaves anything read during the abort unstarted (back after its visibility
+timeout), and resolves once the handlers in flight finish. Every call the runner makes is bounded, so a connection that
+dies without closing cannot stall a queue: a read by 5 s, a delete, retry or dead letter by 10 s. Stopping waits for the
+read in progress rather than cancelling it: a cancelled read may still take a message in the database, and that message
+would stay hidden for its whole visibility timeout with no one to handle it. A failing read (the database unreachable) backs off 1 s → 5 s. If recording an outcome fails, the
 message simply comes back. A message never read, or one that is not a domain event, is an `InvariantError`:
 dead-lettered, logged with `invariant: true`. Log lines: [LOGGING.md](LOGGING.md#jobs).
 
 | Handler         | Queue             | Concurrency | Visibility | Attempts | Backoff     | Does (until P6.3)                        |
 | --------------- | ----------------- | ----------- | ---------- | -------- | ----------- | ---------------------------------------- |
 | `notifyHandler` | `q_notifications` | 4           | 30 s       | 5        | 5 s → 900 s | logs `info` "Order event" with `orderId` |
+
+## The worker process
+
+`server/src/worker.ts` is the second entry point ([ADR-005](adr/005-modular-monolith-three-processes.md)), next to `src/server.ts`. It runs
+the API's image with another command (`node dist/src/worker.js`; `npm run dev:worker`, `start:worker`) and the same
+env. It runs wherever the API runs; one or more replicas are safe, because pgmq's visibility timeouts hand each
+message to one reader at a time.
+
+- **Consumers.** The `HANDLERS` list in `worker.ts` (today `notifyHandler`). A new consumer is added there: one
+  `runQueue` per handler.
+- **`GET /health`** on `WORKER_HEALTH_PORT` (default 8001); any other path or method is 404. It answers 200 while every
+  queue's loop made progress within `staleAfterSec = max(3 × POLL_SECONDS, visibilityTimeoutSec)`, else 503. Progress
+  is `RunOptions.onActive`: a read returned (a failed one too) or a job finished. Body:
+  `{ ok, queues: [{ queue, lastActiveAt, stale, depth, oldestAgeSec }], version, commit }`. `depth` and `oldestAgeSec`
+  come from `queue_metrics` with a 1 s timeout and are `null` when the database does not answer. It is liveness only:
+  a database outage keeps the loops turning, so it never makes a healthy worker unhealthy. Code: `jobs/health.ts`.
+- **Shutdown.** SIGTERM or SIGINT stops reading; jobs in flight finish (a read in progress returns first, in
+  milliseconds). The process exits within `SHUTDOWN_DEADLINE_MS` (10 s) or exits 1. Unfinished messages come back after their
+  visibility timeout. Shared with the API: `utils/shutdown.ts`.
+- **Capacity.** The wait between reads is in the worker, not the database: a read holds a pooled connection for a
+  few milliseconds, so an idle worker holds none, however many queues it reads (the roadmap plans seven) and however
+  many replicas run. The cost is reads, about 30 a minute per idle queue at the 2 s poll, each about a millisecond in
+  the database (`docs/PERF_BASELINE.md` "Worker"). A long-poll would hold one connection per queue per replica from
+  PostgREST's pool, which the API shares and which is small ([ADR-011](adr/011-free-tiers.md)). A consumer that needs
+  sub-second pickup gets LISTEN/NOTIFY wake-ups on a direct connection, never a return to the long-poll.
+
+Deployment: [DEPLOYMENT.md](DEPLOYMENT.md#local-compose). Log lines: [LOGGING.md](LOGGING.md#the-worker-process).
 
 ## Schedules
 

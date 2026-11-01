@@ -116,6 +116,26 @@ All well within any reasonable latency budget (local network, seeded DB).
 
 All four changes are the react-hooks v7 fixes described in scope (ref/setState-in-effect → render-time derived state). None add a new fetch, change a `pollInterval`, or duplicate a GET already available via router state. No findings.
 
+## Worker (`server/src/worker.ts`, 2026-11-01, P1 PR 04, local Supabase)
+
+Reads are quick `pgmq.read` calls with a 2 s wait in the worker when a queue is empty (`POLL_SECONDS`). The first
+version long-polled for 5 s; its numbers are kept for comparison.
+
+| Measure                                     | Quick reads (current)                                                               | Long-poll (first version, replaced)                               |
+| ------------------------------------------- | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| Idle `queue_read` per queue                 | 30/min (measured 15 in 30 s)                                                        | ~12/min                                                           |
+| Connection held by an idle queue            | 1 of 100 samples (`pg_stat_activity`, every 250 ms)                                 | continuously: 1 per queue per replica                             |
+| `GET :8001/health` per probe                | 7-8 ms, one `queue_metrics` RPC per queue (~0.1-0.6 ms in the database)             | same                                                              |
+| Event pickup, `emit_event` to "Order event" | at most 2 s by design; 1.8-2.6 s measured through a CLI that takes 1.2-1.9 s itself | 101 / 130 / 106 ms                                                |
+| Worker stop on SIGTERM                      | 116 ms                                                                              | 2.8 s (the read in progress finished its poll)                    |
+| API `GET /api/orders` (customer), 40 req    | not re-measured (the worker now holds no connection)                                | with worker p50 9.9 / p95 11.8 ms; without p50 11.2 / p95 13.2 ms |
+
+`GET /api/menu` is served from the 10 s in-process cache (1.4 ms), so it does not exercise the shared pool.
+Local pooler config: `default_pool_size = 20`, `max_client_conn = 100`; PostgREST's own pool is separate.
+Scaling: N queues hold N connections permanently. Revisit a shared poll (one loop reading all queues, or one
+`queue_read` per ~5 s round-robin) or LISTEN/NOTIFY when N is about 5 or more on Free, or whenever the pooler or
+PostgREST pool (default 10 in hosted Free) is above ~50% held by idle polls.
+
 ## Known over budget
 
 - **LCP `/menu` = 6.15 s vs 2.5 s budget (146% over).** Root cause: 12 menu photos served at their full 900×700 source resolution (up to 164 KB each) while displayed at 112–170 px device boxes — 5–8× oversized in every case, 1.15 MB total page weight. Fix: a resize pipeline (or `srcset`/`sizes`) producing ~230–340 px variants would cut photo bytes by roughly 90%.

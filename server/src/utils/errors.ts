@@ -84,9 +84,8 @@ export class PermanentError extends Error {
 }
 
 /**
- * A programmer error: a state the code assumes cannot happen. A dead letter in a job, logged at error with
- * `invariant: true` so it stands apart from a failing dependency; 500 INTERNAL in a request, like any unknown error
- * (the request log gains `invariant: true` in P1 PR 04).
+ * A programmer error: a state the code assumes cannot happen. Logged at error with `invariant: true` so it stands
+ * apart from a failing dependency: a dead letter in a job, 500 INTERNAL in a request (like any unknown error).
  */
 export class InvariantError extends Error {
   constructor(message: string) {

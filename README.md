@@ -81,10 +81,10 @@ It prints the URLs and logins when both servers answer. Press **Ctrl+C** once to
 - Reads `APP_ENV` from `server/.env` and starts the web app in the matching mode (`local` → `npm run dev`, `staging` → `npm run dev:staging`), so the browser signs in to the same Supabase project the API uses. Refuses `APP_ENV=production`.
 - Stops with a clear message if `server/.env` is missing, or (for `local`) the Supabase stack is not running.
 - Runs `npm install` in `server/` and `client/` if `node_modules` is missing.
-- **Frees the API and web ports first** (8000 and 5173 unless configured) — anything still listening on them (a stray `npm run dev`, an earlier `start.sh`) is killed. Don't run it while another copy of the project is deliberately serving those ports.
+- **Frees the API, worker and web ports first** (8000, 8001 and 5173 unless configured) — anything still listening on them (a stray `npm run dev`, an earlier `start.sh`) is killed. Don't run it while another copy of the project is deliberately serving those ports.
 - `--seed` runs `npm run seed` before starting (see [Re-seeding wipes orders](#re-seeding-wipes-orders)).
-- Starts the API (`tsx watch`, auto-reloads on server edits) and the web app (Vite, hot reloads client edits). Their output goes to **`.logs/server.log`** and **`.logs/client.log`** (gitignored) — look there when something misbehaves.
-- Waits until `GET /api/health`, the web app and `GET /api/menu` all return 200. If the API is up but the menu isn't, it says **"Database looks empty or unreachable — run ./start.sh --seed"** and stops.
+- Starts the API and the job worker (`tsx watch`, auto-reload on server edits) and the web app (Vite, hot reloads client edits). Their output goes to **`.logs/server.log`**, **`.logs/worker.log`** and **`.logs/client.log`** (gitignored) — look there when something misbehaves.
+- Waits until `GET /api/health`, the worker's `http://localhost:8001/health`, the web app and `GET /api/menu` all return 200. If the API is up but the menu isn't, it says **"Database looks empty or unreachable — run ./start.sh --seed"** and stops.
 - Does _not_ start Supabase or apply migrations — that is step 1 above (or `npm run db:push:staging` for staging).
 
 ### Manual start (two terminals)
@@ -164,11 +164,11 @@ food-pickup/
 ├── client/        React 18 + Vite web app (docs/FRONTEND_STRUCTURE.md)
 ├── server/        Express 5 API, Supabase migrations, seed and db-push scripts (docs/BACKEND_STRUCTURE.md)
 ├── docs/          the documentation set (see Docs below)
-├── .logs/         server.log / client.log written by start.sh (gitignored)
-└── start.sh       starts both servers (see "What start.sh does")
+├── .logs/         server.log / worker.log / client.log written by start.sh (gitignored)
+└── start.sh       starts the API, the worker and the web app (see "What start.sh does")
 ```
 
-Ports: API **8000** (`PORT` in `server/.env`), web app **5173** (`VITE_DEV_PORT` in `client/.env.<mode>`). `start.sh` reads both and points the dev proxy at the API's port; Vite fails instead of moving when its port is busy (`strictPort`). The containers serve both on **8080** (`docker compose up web api`).
+Ports: API **8000** (`PORT` in `server/.env`), worker health **8001** (`WORKER_HEALTH_PORT`), web app **5173** (`VITE_DEV_PORT` in `client/.env.<mode>`). `start.sh` reads both and points the dev proxy at the API's port; Vite fails instead of moving when its port is busy (`strictPort`). The containers serve both on **8080** (`docker compose up web api worker`).
 
 ## Stock limits
 
@@ -190,6 +190,7 @@ Menu items can carry a `stockQuantity` (`null` = not tracked, which is the defau
 | ------- | -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | root    | `./start.sh [--seed]`                                                                  | Start (and optionally reseed) everything                                                                                                                                                              |
 | server/ | `npm run dev`                                                                          | API with reload (tsx watch) on :8000                                                                                                                                                                  |
+| server/ | `npm run dev:worker` / `start:worker`                                                  | The job worker (tsx watch / built) with `GET /health` on :8001                                                                                                                                        |
 | server/ | `npm run seed`                                                                         | Reset demo data (see above)                                                                                                                                                                           |
 | server/ | `npm run typecheck`                                                                    | `tsc --noEmit`                                                                                                                                                                                        |
 | server/ | `npm run lint`                                                                         | ESLint                                                                                                                                                                                                |

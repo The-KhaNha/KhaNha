@@ -104,8 +104,8 @@ Agents added during a session are not registered until the next session; meanwhi
   anything else that exits early: when it exits, the pipe kills the server mid-session. Redirect to a log file in the
   scratchpad and filter that.
 - **Probe before starting:** `curl -s -o /dev/null -w '%{http_code}'` on `http://localhost:8000/api/health`,
-  `http://localhost:5173`, `http://127.0.0.1:54321/rest/v1/` and, for compose, `http://localhost:8080/healthz`. Anything answering belongs to the user: use it, never
-  restart it. `start.sh` kills whatever holds 8000/5173, so never run it while the user's servers are up.
+  `http://localhost:8001/health` (the worker), `http://localhost:5173`, `http://127.0.0.1:54321/rest/v1/` and, for compose, `http://localhost:8080/healthz`. Anything answering belongs to the user: use it, never
+  restart it. `start.sh` kills whatever holds 8000/8001/5173, so never run it while the user's servers are up.
 - **Clean up only what you started** (`TaskStop`), then check those ports answer `000`. Leave the user's servers
   alone. Never `kill` by port unless you have confirmed the process is yours and told the user.
 - Delete every Playwright screenshot or trace you created before the final message (never anything under

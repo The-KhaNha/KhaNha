@@ -61,6 +61,10 @@ flowchart LR
     Verify["@supabase/server<br/>verifyCredentials"]
   end
 
+  subgraph Worker["Worker :8001 health (server/src/worker.ts)"]
+    Runner["runQueue per handler<br/>(notifyHandler)"]
+  end
+
   subgraph Supabase["Supabase project (local / staging / production)"]
     GoTrue["Auth (GoTrue)<br/>/auth/v1"]
     JWKS["JWKS<br/>/auth/v1/.well-known/jwks.json"]
@@ -84,10 +88,13 @@ flowchart LR
   Admin -->|"select / rpc"| PostgREST
   PostgREST --> PG
   GoTrue -->|"auth.users + trigger"| PG
+  Runner -->|"queue_read / delete / retry (pgmq)"| PostgREST
   SBJS -.->|"publishable key: permission denied on every table"| PostgREST
 ```
 
 The browser talks to Supabase **only** to sign in, refresh its token and sign out. All data goes through the API. The publishable key shipped in the bundle cannot read or write any table (see [Access control](#11-access-control)).
+
+The worker is a second process from the same image: it reads the pgmq queues in Postgres and has no HTTP surface but `GET /health` ([JOBS.md](JOBS.md#the-worker-process)).
 
 The API logs every request with pino. Each request gets an id, echoed in the `x-request-id` response header, and every log line inside the request carries it; the client logs that id when a call fails. See [LOGGING.md](LOGGING.md).
 
@@ -844,7 +851,7 @@ stateDiagram-v2
 
 ## 9. Server request pipeline and error handling
 
-Code: [server/src/app.ts](../server/src/app.ts), [server/src/routes/](../server/src/routes/), [server/src/middleware/](../server/src/middleware/), [server/src/utils/serializers.ts](../server/src/utils/serializers.ts). [server/src/server.ts](../server/src/server.ts) only calls `createApp()` from `app.ts`, listens on `PORT`, and on `SIGINT`/`SIGTERM` closes the server and flushes the logger. Module-by-module detail is in [BACKEND_STRUCTURE.md](BACKEND_STRUCTURE.md).
+Code: [server/src/app.ts](../server/src/app.ts), [server/src/routes/](../server/src/routes/), [server/src/middleware/](../server/src/middleware/), [server/src/utils/serializers.ts](../server/src/utils/serializers.ts). [server/src/server.ts](../server/src/server.ts) only calls `createApp()` from `app.ts`, listens on `PORT`, and on `SIGINT`/`SIGTERM` closes the server and flushes the logger (`utils/shutdown.ts`, shared with the worker). Module-by-module detail is in [BACKEND_STRUCTURE.md](BACKEND_STRUCTURE.md).
 
 ### 9.1 Pipeline
 

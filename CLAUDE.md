@@ -123,14 +123,15 @@ gzip on. See `docs/DEPLOYMENT.md` "Containers".
   refuses other majors), npm, TypeScript strict, ESLint (flat
   config per package), Prettier (root `.prettierrc.json`), Vitest.
 
-Both packages: `npm run dev`, `typecheck`, `lint`, `format`, `format:check`, `test`, `build`. Server: `db:start` /
-`db:stop`, `db:reset` (wipes local data), `db:new <name>`, `db:types` (regenerates `src/types/database.ts`), `seed`,
-`db:push:staging`; `npm run db:push:production` and `npm run seed -- --production` are **user only**. Root:
-`npm run change` (§21), `format`, `test`. Every script: README.md "Useful scripts".
+Both packages: `npm run dev`, `typecheck`, `lint`, `format`, `format:check`, `test`, `build`. Server: `dev:worker`
+(the job worker), `db:start` / `db:stop`, `db:reset` (wipes local data), `db:new <name>`, `db:types` (regenerates
+`src/types/database.ts`), `seed`, `db:push:staging`; `npm run db:push:production` and `npm run seed -- --production`
+are **user only**. Root: `npm run change` (§21), `format`, `test`. Every script: README.md "Useful scripts".
 
-Ports: client `5173` (`VITE_DEV_PORT`), API `8000` (`PORT`), local Supabase `54321` (`SUPABASE_URL`), read by
-`start.sh` from the env files. `./start.sh [--seed]` starts API + client and kills whatever
-holds 8000/5173 first (§18); `docker compose up web api` serves both on `8080`.
+Ports: client `5173` (`VITE_DEV_PORT`), API `8000` (`PORT`), worker health `8001` (`WORKER_HEALTH_PORT`), local
+Supabase `54321` (`SUPABASE_URL`), read by `start.sh` from the env files. `./start.sh [--seed]` starts the API, the
+worker and the client and kills whatever holds 8000/8001/5173 first (§18); `docker compose up web api worker` runs
+the containers, the web app on `8080`.
 
 ## 4. Project structure
 
@@ -143,7 +144,7 @@ rules:
 - **Server:** `routes/*.routes.ts` → `middleware/validate.ts` (zod) → `controllers/*.controller.ts` →
   `services/*.service.ts` → `utils/serializers.ts`. Controllers are thin and have no try/catch: Express 5 forwards
   rejected promises to `middleware/errorHandler.ts`. `src/app.ts` builds the app (`createApp()`); `src/server.ts`
-  only listens.
+  only listens. `src/worker.ts`, the second entry point, runs the queue consumers in `jobs/` (`docs/JOBS.md`).
 
 ## 5. Reusable components (STRICTLY ENFORCED)
 
@@ -305,8 +306,9 @@ CodeRabbit delegation in full: `.claude/rules/workflow.md`.
 
 ### What counts as a major change
 
-- Any change under `server/src/{routes,controllers,services,schemas,middleware}/`, `server/supabase/migrations/`,
-  `client/src/{pages,services,components}/`, `client/src/App.tsx`, or any `package.json`; or
+- Any change under `server/src/{routes,controllers,services,schemas,middleware,jobs}/`, `server/src/worker.ts`,
+  `server/supabase/migrations/`, `client/src/{pages,services,components}/`, `client/src/App.tsx`, or any
+  `package.json`; or
 - 5 or more source files; or
 - 150 or more changed lines across `client/src` + `server/src`.
 
@@ -348,8 +350,9 @@ Agents added during a session are not registered until the next session; meanwhi
   the `## In-flight` table (`| # | Kind | Started | Elapsed | Latest | Status |`), gone on the final turn.
 - **Never pipe a long-running process** through anything that exits early (`head`, `grep -m`): redirect to a log in
   the scratchpad.
-- **Probe before starting** (`curl` on `:8000/api/health`, `:5173`, `:54321/rest/v1/`): anything answering is the
-  user's; use it, never restart it. **Clean up only what you started**, then check those ports answer `000`.
+- **Probe before starting** (`curl` on `:8000/api/health`, `:8001/health`, `:5173`, `:54321/rest/v1/`): anything
+  answering is the user's; use it, never restart it. **Clean up only what you started**, then check those ports
+  answer `000`.
 - Details (screenshots, stalled agents): `.claude/rules/workflow.md`.
 
 ## 19. Logging
