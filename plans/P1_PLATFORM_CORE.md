@@ -5,10 +5,9 @@ file says in which order, in which pull requests, with which files, tests, docs 
 builds less than the roadmap describes (each with its reason and the phase that picks it up). When a PR merges, tick
 its box here and in the roadmap.
 
-> **Status: decisions answered, nothing built yet** (24 October 2026). P1 is sized **L** for a team of two or three.
-> Every [decision](#decisions) is answered, and ADR-001, 004, 005, 006, 008, 009 and 010 are accepted (001, 004, 006
-> and 009 with amendments). Two agents build it in parallel lanes on the `feat/P1` feature branch
-> ([P1_WORK_SPLIT.md](P1_WORK_SPLIT.md)); work starts once PR 00 is on `dev` and `feat/P1` exists.
+> **Status: in progress** (1 November 2026). PRs 02 and 02b are merged into `feat/P1`; next is PR 01. Every
+> [decision](#decisions) is answered, and ADR-001, 004, 005, 006, 008, 009 and 010 are accepted (001, 004, 006 and 009
+> with amendments). One agent builds P1 on the `feat/P1` feature branch, one PR at a time, in the order below.
 
 ## How the team works P1
 
@@ -17,12 +16,16 @@ that arrived after P0 and the phase feature branch:
 
 - **Every P1 PR goes into `feat/P1`**, the phase feature branch (CLAUDE.md §21), which goes into `dev` as one PR when
   P1 is done. CI and CodeRabbit run on every PR into `feat/P1` and on every push to it.
-- **At most 25 changed files or 500 changed lines per PR** against `origin/feat/P1` (`package-lock.json` and
-  `server/src/types/database.ts` do not count; tests and docs do), one theme each. Every PR below carries a size
-  estimate; one that grows past the limit splits at the seam its section names.
-- **Two agents, one PR at a time each.** [P1_WORK_SPLIT.md](P1_WORK_SPLIT.md) gives lane A and lane B their PRs, the
-  waits between them and who edits which files. Each agent finishes a PR (gate, `/post-change`, intent, owning docs),
-  opens it into `feat/P1` and stops until the user says it merged.
+- **At most 38 changed files or 750 changed lines per PR** against `origin/feat/P1` (`package-lock.json`,
+  `server/src/types/database.ts` and docs do not count; tests do), one theme each. Every PR below carries a size
+  estimate, written when docs still counted; one that grows past the limit splits at the seam its section names.
+- **One agent, one PR at a time,** in the [build order](#build-order). Each PR branches as `feat/p1-<NN>-<slug>` from a
+  fresh `origin/feat/P1`, is finished (gate, `/post-change`, intent, owning docs, its box ticked here), opened into
+  `feat/P1` as "P1 PR <NN> — <title>", and then the agent stops until the user says it merged.
+- **Migrations and staging.** A new migration must be newer than the newest on `feat/P1`. Staging takes migrations from
+  `feat/P1` only while P1 is open (`npm run db:push:staging` needs `supabase login` and the database password): staging
+  already holds `feat/P1`'s migrations, so a push from `dev` would be refused. When `dev` moves (Dependabot, a hotfix
+  back-merge), merge `dev` into `feat/P1` before the next PR, so a migration on `dev` never lands out of order.
 - **`/before-write` first** for every new table, function, endpoint, module or component, with the verdict in the PR
   description. The expected verdicts are noted per PR; a different verdict changes the PR, not the other way round.
 - **Every bug fix ships with its guard** (CLAUDE.md §13): each PR names the test that fails without it.
@@ -65,9 +68,8 @@ P0 already shipped parts of P1. The plan builds on them instead of rebuilding th
 | 15  | Server-side idle sign-out                                                  | ADR-011    | 02                                              | 9 / 380              |
 | 16  | Money in paise: contract                                                   | ADR-004    | P1 merged into `dev` and released to production | 7 / 220              |
 
-Who builds what, and when: [P1_WORK_SPLIT.md](P1_WORK_SPLIT.md) (lane A 02 → 02b → 03 → 05 → 06 → 04 → 08 → 09; lane B
-01 → 10 → 11 → 12 → 15 → 07 → 13 → 14). PR 16 is not part of `feat/P1`: it goes into `dev` once the release
-containing P1 runs in production.
+The PRs are built in the table's order: 01, then 03 to 15 (02 and 02b are merged). PR 16 is not part of `feat/P1`: it
+goes into `dev` once the release containing P1 runs in production.
 
 Why this order: the 429 contract first because it is small and every later 429 (P5, P6, P7 buckets) inherits it; the
 outbox schema before the runner and the runner before the process, so each lands testable on its own; today's
@@ -190,7 +192,7 @@ queues and subscriptions, schedules, retention, a runbook) with its CLAUDE.md §
 `docs/TESTING.md` (`localSql`, the lockdown test); `docs/CONFIGURATION.md` (the 30-day retention as a platform constant
 in the migration). Intent: `--server minor`.
 
-Verify: `npm run db:reset`, the gate, `select * from cron.job`; once merged, lane A pushes `feat/P1` to staging
+Verify: `npm run db:reset`, the gate, `select * from cron.job`; once merged, `feat/P1` is pushed to staging
 (`npm run db:push:staging`) and confirms both extensions appear under the project's Integrations.
 
 ### PR 02b — Queue wrappers and dead letters (P1.2)
@@ -244,7 +246,7 @@ Docs: `docs/JOBS.md` (the handler contract, the retry policy, "handlers are idem
 fields); `docs/LOGGING.md` (handled = `debug` with `durationMs`, retry = `warn`, dead letter = `error`, empty polls
 never logged); `docs/BACKEND_STRUCTURE.md` (`jobs/`). Intent: `--server patch` (no process runs it yet).
 
-Split seam if over 500 lines: the `InvariantError` mapping moves to PR 04.
+Split seam if over 750 lines: the `InvariantError` mapping moves to PR 04.
 
 ### PR 04 — The worker process (P1.2)
 
@@ -303,7 +305,7 @@ Docs: `docs/API.md` (`PATCH /orders/:id/status`: a repeat answers 200); `docs/SC
 CLAUDE.md §10 ("every transition function sets `app.actor` and `app.request_id` and calls `emit_event`"), §14 (the
 lifecycle walk checks `domain_events`; a repeated transition is 200). Intent: `--server minor`.
 
-Split seam if over 500 lines: the retry-safe repeat becomes its own PR with a second `create or replace` of
+Split seam if over 750 lines: the retry-safe repeat becomes its own PR with a second `create or replace` of
 `update_order_status` (same signature, so no re-grant).
 
 ### PR 06 — Audit log (P1.3)
@@ -335,7 +337,7 @@ Docs: `docs/SCHEMA.md`; `docs/PERMISSIONS.md` (append-only, who reads); `docs/AR
 audit: three records, three purposes, three retentions); CLAUDE.md §10 ("an audited table is written through an RPC
 that sets `app.actor`, or carries `updated_by`"). Intent: `--server minor`.
 
-Verify: once merged and pushed to staging from `feat/P1` (lane A), an `update` on `audit_log` with the staging secret
+Verify: once merged and pushed to staging from `feat/P1`, an `update` on `audit_log` with the staging secret
 key fails (the roadmap's
 "verify service_role's privileges on hosted Supabase").
 
@@ -510,7 +512,7 @@ Docs: `docs/SCHEMA.md`; `docs/API.md`; `docs/PERMISSIONS.md`; `docs/CONFIGURATIO
 setting); `docs/BACKEND_STRUCTURE.md`; CLAUDE.md §2c (flags read through `cached()`, invalidated by the flip). Intent:
 `--server minor --client patch`.
 
-Split seam if over 500 lines: the admin PATCH and its matrix move to their own PR, and the cache test waits for it.
+Split seam if over 750 lines: the admin PATCH and its matrix move to their own PR, and the cache test waits for it.
 
 ### PR 14 — Client-visible flags in `/api/config` (P1.7)
 
@@ -592,23 +594,30 @@ Docs: `docs/SCHEMA.md`. Intent: `--server patch`.
 
 Answered by the user on 24 October 2026.
 
-| #   | Decision                                                                                | Answer                                                                                               | Applies to |
-| --- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ---------- |
-| D1  | Rate limiter: keep `express-rate-limit`, or move to `rate-limiter-flexible` now         | keep it; ADR-009 accepted with that amendment (`rate-limiter-flexible` arrives with the Redis store) | PR 01      |
-| D2  | A staff status change repeated after a lost answer: 200 with the order, or 409 as today | 200; other invalid transitions stay 409                                                              | PR 05      |
-| D3  | The server-side idle sign-out in P1                                                     | yes, keyed per session                                                                               | PR 15      |
-| D4  | The generic idempotency table and middleware                                            | built in P5.3 with `POST /api/checkout`, its first consumer                                          | P5.3       |
-| D5  | Error tracking: self-reported or Sentry (roadmap decision 8)                            | self-reported in P1; Sentry later as a low-priority roadmap item (P10.4)                             | PR 10–12   |
-| D6  | How long `domain_events` are kept                                                       | 30 days; the audit log is the long-term record                                                       | PR 02      |
-| D7  | ADR-005 (three processes)                                                               | accepted as written                                                                                  | PR 04      |
-| D8  | When money moves to paise (ADR-004 as amended)                                          | in P1, right after the snapshots: expand in PR 09, contract in PR 16 once PR 09 runs in production   | PR 09, 16  |
-| D9  | How two agents work P1 at once                                                          | lanes A and B, each PR into the `feat/P1` feature branch, which goes into `dev` at the end           | all        |
+| #   | Decision                                                                                | Answer                                                                                                                                   | Applies to |
+| --- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| D1  | Rate limiter: keep `express-rate-limit`, or move to `rate-limiter-flexible` now         | keep it; ADR-009 accepted with that amendment (`rate-limiter-flexible` arrives with the Redis store)                                     | PR 01      |
+| D2  | A staff status change repeated after a lost answer: 200 with the order, or 409 as today | 200; other invalid transitions stay 409                                                                                                  | PR 05      |
+| D3  | The server-side idle sign-out in P1                                                     | yes, keyed per session                                                                                                                   | PR 15      |
+| D4  | The generic idempotency table and middleware                                            | built in P5.3 with `POST /api/checkout`, its first consumer                                                                              | P5.3       |
+| D5  | Error tracking: self-reported or Sentry (roadmap decision 8)                            | self-reported in P1; Sentry later as a low-priority roadmap item (P10.4)                                                                 | PR 10–12   |
+| D6  | How long `domain_events` are kept                                                       | 30 days; the audit log is the long-term record                                                                                           | PR 02      |
+| D7  | ADR-005 (three processes)                                                               | accepted as written                                                                                                                      | PR 04      |
+| D8  | When money moves to paise (ADR-004 as amended)                                          | in P1, right after the snapshots: expand in PR 09, contract in PR 16 once PR 09 runs in production                                       | PR 09, 16  |
+| D9  | Who builds P1, and where                                                                | one agent, PR by PR, each into the `feat/P1` feature branch, which goes into `dev` at the end (two parallel lanes until 1 November 2026) | all        |
+
+## Closing P1
+
+Once every box but PR 16's is ticked: on a fresh `origin/feat/P1`, the gate in both packages, `npm run e2e:chromium`
+and `/break` (P1 changes auth, orders, money and the request pipeline), with fixes as normal PRs into `feat/P1`. Then
+the PR `feat/P1` → `dev` ("P1 — platform core", exempt from the size limit, linking the plan's PRs); the user merges
+it and cuts the release as usual (`release.yml`).
 
 ## User steps (cannot be done from the repository)
 
 - Merge PR 00 into `dev` (the docs PR needs an exemption from the size limit), then create `feat/P1` from `dev`.
-- Merge each lane's PRs into `feat/P1`, merge `dev` into `feat/P1` between rounds when `dev` has moved, and merge
-  `feat/P1` into `dev` when P1 is done ([P1_WORK_SPLIT.md](P1_WORK_SPLIT.md)).
+- Merge each PR into `feat/P1`, merge `dev` into `feat/P1` when `dev` has moved, push `feat/P1`'s migrations to
+  staging (`npm run db:push:staging`), and merge `feat/P1` into `dev` when P1 is done ([closing P1](#closing-p1)).
 - After P1 reaches `main`: `npm run db:push:production` (user only), then check that pgmq and pg_cron show under the
   production project's Integrations.
 - Confirm when the release containing P1 runs in production, so PR 16 can start.
