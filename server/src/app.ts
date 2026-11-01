@@ -19,6 +19,31 @@ const REQUEST_ID = /^[\w.-]{1,64}$/;
 /** Largest JSON body accepted (docs/API.md "Headers and limits"); the web image's nginx enforces the same. */
 export const JSON_BODY_LIMIT_BYTES = 100 * 1024;
 
+// An upload refused for its declared size is read and thrown away before the 413, up to these bounds. Answering with it
+// unread made the OS reset the connection, and a client still sending could lose the 413 to the reset (nginx in front
+// drains the same way: its lingering close). Past either bound the 413 goes out anyway and the connection closes.
+const REFUSED_UPLOAD_DRAIN_BYTES = 1024 * 1024;
+const REFUSED_UPLOAD_DRAIN_MS = 2000;
+
+/** Reads the rest of a refused upload and throws it away, then calls `answer` once, within the drain bounds. */
+function drainThen(req: IncomingMessage, answer: () => void): void {
+  let read = 0;
+  let answered = false;
+  const finish = () => {
+    if (answered) return;
+    answered = true;
+    clearTimeout(timer);
+    answer();
+  };
+  const timer = setTimeout(finish, REFUSED_UPLOAD_DRAIN_MS);
+  req.on('data', (chunk: Buffer) => {
+    read += chunk.length;
+    if (read > REFUSED_UPLOAD_DRAIN_BYTES) finish();
+  });
+  req.once('end', finish);
+  req.once('close', finish);
+}
+
 function requestId(req: IncomingMessage, res: ServerResponse): string {
   const incoming = req.headers['x-request-id'];
   const id = typeof incoming === 'string' && REQUEST_ID.test(incoming) ? incoming : randomUUID();
@@ -82,12 +107,12 @@ export function createApp(): Express {
   // After the access log (a refused request still gets its line) and before the body is parsed (a flood is refused
   // before it costs anything). The probes in routes/index.ts count too: they are only cheaper, not exempt.
   app.use('/api', floodLimiter);
-  // body-parser reads an oversized body to its end before answering 413. Refusing on the declared length instead
-  // tells a phone on a slow link at once, and Connection: close drops the rest of the upload unread.
+  // body-parser reads an oversized body to its end, however long, before answering 413. Refusing on the declared
+  // length reads at most the drain bounds instead, then answers and closes the connection.
   app.use('/api', (req, res, next) => {
     if (Number(req.headers['content-length']) > JSON_BODY_LIMIT_BYTES) {
       res.set('Connection', 'close');
-      next(payloadTooLarge());
+      drainThen(req, () => next(payloadTooLarge()));
       return;
     }
     next();
