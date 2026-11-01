@@ -1,6 +1,6 @@
 # Backend structure
 
-The API in `server/`: Express 5, TypeScript, zod 3, Supabase (`@supabase/supabase-js`, `@supabase/server`), pino.
+The API in `server/`: Express 5, TypeScript, zod 4, Supabase (`@supabase/supabase-js`, `@supabase/server`), pino.
 The HTTP contract is in [API.md](API.md), the database in [SCHEMA.md](SCHEMA.md), and the flows in
 [ARCHITECTURE.md](ARCHITECTURE.md).
 

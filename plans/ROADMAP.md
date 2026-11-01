@@ -2,7 +2,7 @@
 
 From the single-store V0 to a multi-store, multi-branch pickup platform with real escrowed payments, restaurant and
 platform dashboards, background jobs and production hosting on AWS. This file is the plan for every item in the
-product roadmap (`Roadmap.pdf`, 33 items). It covers the target design (HLD), the detailed design of each feature
+product roadmap (`Roadmap.pdf`, 33 items), plus two added on 2026-11-01. It covers the target design (HLD), the detailed design of each feature
 (LLD) and the build order as small, verifiable steps.
 
 > **Status: proposal.** Nothing described as _target_ exists yet. [`docs/`](../docs/) describes the app as it is today,
@@ -12,8 +12,8 @@ product roadmap (`Roadmap.pdf`, 33 items). It covers the target design (HLD), th
 > **Companion:** [PAYMENT_OPTIONS.md](PAYMENT_OPTIONS.md) is the payment research record: provider rankings, fee
 > models, the model A vs B requirements and trade-offs, the fallback ladder and the switching options.
 
-Roadmap items are cited as **R1**–**R33** in the PDF's order, with sub-items such as **R4.1** and **R11.2**. Phases are
-**P0**–**P10** and steps are numbered like **P5.3**. [Traceability](#traceability) maps every item to the steps that
+Roadmap items are cited as **R1**–**R33** in the PDF's order, with sub-items such as **R4.1** and **R11.2**; **R34** and
+**R35** were added on 2026-11-01 and are not in the PDF. Phases are **P0**–**P12** and steps are numbered like **P5.3**. [Traceability](#traceability) maps every item to the steps that
 deliver it.
 
 ## Contents
@@ -35,6 +35,8 @@ deliver it.
 - [P8 — Infrastructure and delivery](#p8--infrastructure-and-delivery)
 - [P9 — Pilot readiness and launch](#p9--pilot-readiness-and-launch)
 - [P10 — Scale after the pilot](#p10--scale-after-the-pilot)
+- [P11 — In-restaurant QR ordering and dine-in](#p11--in-restaurant-qr-ordering-and-dine-in)
+- [P12 — Restaurant discovery and My restaurants](#p12--restaurant-discovery-and-my-restaurants)
 - [Testing strategy](#testing-strategy)
 - [Docs and rule changes](#docs-and-rule-changes)
 - [Risks](#risks)
@@ -51,6 +53,9 @@ deliver it.
     the KYC policy pages and the SMS DLT registration have no code dependency and are the longest lead items in the
     plan. Only the sandbox spike (P4.6) waits for the P5.1 port shape. P4 must finish before P5.
   - **P8** (infrastructure) must reach a staging environment before P5's webhook work starts.
+
+  **P11** and **P12** were added after the pilot plan, so they sit at the end, but they need only P6 (P11) and P2 plus
+  P7 (P12); either can start once those ship.
 
   Within a phase the steps are in build order, and each one is sized to be roughly one pull request.
 
@@ -159,6 +164,8 @@ Every roadmap item, and the steps that deliver it.
 | R31    | Operating hours, special occasions, extra hours, festivals                                                | [P2.4](#p24-operating-hours-and-special-schedules)                                                                                                                                                                                                                                                                                           |
 | R32    | Failure and recovery testing                                                                              | [P9.2](#p92-failure-and-recovery-testing)                                                                                                                                                                                                                                                                                                    |
 | R33    | Rate limiting and abuse protection                                                                        | [P1.6](#p16-rate-limiting-and-abuse-protection-v1), [P9.3](#p93-edge-protection-and-security-review)                                                                                                                                                                                                                                         |
+| R34    | Scan a QR in the restaurant to order; dine-in tabs with many orders, paid at the end (app or counter)     | [P11](#p11--in-restaurant-qr-ordering-and-dine-in) (all steps)                                                                                                                                                                                                                                                                               |
+| R35    | Restaurant search, location-based recommendations and a "My restaurants" list                             | [P12](#p12--restaurant-discovery-and-my-restaurants) (all steps), [P7.5](#p75-feedback-and-ratings) (ratings feed the ranking)                                                                                                                                                                                                               |
 
 ## Phases and milestones
 
@@ -180,6 +187,9 @@ flowchart LR
   P7 --> P9
   P8 --> P9
   P9 --> P10["P10 Scale after the pilot"]
+  P6 --> P11["P11 QR ordering and dine-in"]
+  P7 --> P12["P12 Discovery and My restaurants"]
+  P2 -.->|"search and favourites can start early"| P12
 ```
 
 | Milestone            | Exit criteria                                                                                                                                                                                           | Phases        | Size |
@@ -194,6 +204,8 @@ flowchart LR
 | M7 Insights          | Store and platform analytics, COGS, ratings, "Your usuals" and recommendations are live                                                                                                                 | P7            | L    |
 | M8 Pilot live        | Production on AWS, load-tested to 1000 concurrent, failure drills done, runbooks and alerts in place; versions go to 1.0.0                                                                              | P8, P9        | L    |
 | M9 Scale             | The Kubernetes decision gate has been evaluated and acted on; recommender v2 if the data supports it; Sentry, Prometheus and Grafana (low priority) once their triggers fire                            | P10           | L–XL |
+| M10 Dine-in          | Walk-in QR orders at every store; dine-in at a pilot store: a host-approved shared tab, orders named per person, bills split and paid in the app or at the counter                                      | P11           | XL   |
+| M11 Discovery        | Search, a "near you" ranking whose location never leaves the device, and a "My restaurants" list on the home page                                                                                       | P12           | M    |
 
 ## Design principles
 
@@ -669,6 +681,7 @@ Each of these is written up in P0.8 as an ADR in `docs/adr/` (context, options, 
 | 008 | Semantic versioning per package from committed change-intent files, applied by a bump script inside a release PR into `main` (`dev` receives the bump by back-merge)                                                                                                                                                                                                                                                                                                 | Bumping in every PR: version-line merge conflicts between parallel branches                                                                                                                                       |
 | 009 | Rate limiting: in-process token buckets (switchable to Redis) plus DB-enforced business limits, with WAF rules at the edge                                                                                                                                                                                                                                                                                                                                           | IP-only limits: campus Wi-Fi puts thousands of students behind a handful of NAT IPs                                                                                                                               |
 | 010 | Live updates: keep polling with ETags, and add Web Push for the moments that matter. SSE only if load tests show polling cost                                                                                                                                                                                                                                                                                                                                        | WebSockets now: a new stateful component for a need polling already meets                                                                                                                                         |
+| 012 | Dine-in is post-pay (written in P11.2). A store offers pickup and, optionally, dine-in. Dine-in orders join a table tab and go to the kitchen unpaid; the tab is paid through bills (one per payer, over order lines) in the app or at the counter. A payment belongs to an order or to a bill, and dine-in money is never held in escrow                                                                                                                            | Prepaying each dine-in round: a payment per round of food, and no single bill to split by person                                                                                                                  |
 
 ## P0 — Foundations and guardrails
 
@@ -4006,6 +4019,353 @@ The parts:
 source-mapped stack and the client version, while the initial JS stays within budget; Grafana shows P8.7's
 dashboards from Prometheus; and one alert fires end to end.
 
+## P11 — In-restaurant QR ordering and dine-in
+
+**Goal:** a customer inside a restaurant scans a QR and orders from the site. Every store gets walk-in QR ordering:
+today's prepaid pickup flow, tracked as today. A store that enables dine-in also gets table QRs: the table keeps one
+shared tab, everyone at it orders as often as they like and tracks each order, and the bill is paid at the end, in the
+app or at the counter (the model of apps such as Elite Dining). **Items:** R34. **Depends on:** P5 (payments and
+lifecycle v2), P6 (tokens, notifications, staff board v2) and P2 (stores). **Size:** XL. **Flag:** `dine_in` (per
+store).
+
+### Design (HLD): pickup is prepaid, dine-in is post-paid
+
+Everything up to P10 assumes one shape: the customer pays first, the money is held, and the store is paid on pickup
+(P5). Dine-in breaks that assumption, which makes it an architectural change rather than a feature
+([ADR-012](#architecture-decisions)):
+
+|            | Pickup (today, and walk-in QR)                   | Dine-in                                                                   |
+| ---------- | ------------------------------------------------ | ------------------------------------------------------------------------- |
+| Entry      | store list, store link, or the store's poster QR | the table's QR                                                            |
+| Payment    | before the kitchen sees the order (P5.3)         | after the meal, for the whole tab or one person's share                   |
+| Unit paid  | one order                                        | one bill: a set of order lines from the tab                               |
+| Escrow     | held until pickup (P5.6)                         | none: the diner is in the room and has eaten                              |
+| Ends at    | `COLLECTED` (or `EXPIRED`)                       | `SERVED`; the tab ends `SETTLED`                                          |
+| Paid where | in the app                                       | in the app, or at the counter (cash, card or UPI on the store's own till) |
+
+- **Service modes.** An order carries `service_mode` (`PICKUP` or `DINE_IN`). Dine-in is on at a store when the
+  `dine_in` flag allows it **and** the store has at least one active table, so it needs no extra store setting.
+- **Payments belong to an order or a bill.** P5.4's `payments` is expanded (P5 ships first, and migrations are
+  append-only): `order_id` drops `not null`, `bill_id` is added, and `check (num_nonnulls(order_id, bill_id) = 1)`
+  keeps exactly one. The gateway port, webhooks inbox, reconciler and refunds work unchanged on either.
+- **Counter settlement never touches platform money.** Staff record that a bill was paid at the counter, and how; the
+  money is the restaurant's own sale. Whether the platform takes commission on it is
+  [decision 17](#decisions-needed). **No POS software integration is planned:** the counter settle is the whole
+  interface with the restaurant's till.
+- **Sign-in is required**, as for pickup: a post-paid tab needs a known host.
+- **Every dine-in order names its person.** The member's display name on the tab is copied into the existing
+  `orders.customer_name`, so the table, the kitchen and the bill can all tell whose order is whose.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor H as Host
+  actor G as Guest
+  participant API as API
+  actor S as Staff
+  H->>API: scan the table QR, POST /api/tables/:qrSecret/tabs
+  API-->>H: tab OPEN, join code 4821
+  G->>API: scan the same QR, POST /api/tabs/:tabId/join with 4821 from the host's phone
+  H->>API: POST /api/tabs/:tabId/orders (round 1, "Asha")
+  API-->>S: first order of the tab: accept?
+  S->>API: accept, then prepare, ready, serve
+  G->>API: POST /api/tabs/:tabId/orders (round 2, "Ravi")
+  H->>API: POST /api/tabs/:tabId/bill-request
+  alt pay in the app
+    G->>API: POST /api/tabs/:tabId/bills (scope MINE), then pay as in P5.3
+    H->>API: POST /api/tabs/:tabId/bills (scope ALL_REMAINING), then pay
+  else pay at the counter
+    S->>API: POST /api/stores/:storeId/tabs/:tabId/settle (method CASH)
+  end
+  API-->>H: tab SETTLED
+```
+
+### P11.1 Walk-in QR ordering
+
+- **The poster QR** encodes `https://<origin>/s/<storeSlug>?src=qr` and opens the store page (P2.6). From there it is
+  the normal pickup flow: checkout (P5.3), token and pickup code (P6.2), live status (P6.5). Nothing changes in the
+  order path.
+- **`/manage` prints it.** A "QR poster" page renders the code with P6.2's lazily loaded encoder (no new dependency)
+  and prints through a print stylesheet, sized for A5 posters and table tents.
+- **Attribution.** `src=qr` travels to checkout as the order's `channel` (`APP` or `QR`), so P7.1 can count the orders
+  that start inside the restaurant.
+- **Done when** a 360px phone scans the poster, lands on that store's menu with no store picker, and pays, tracks and
+  collects an order exactly as from the home page.
+
+### P11.2 Tables, tabs and members
+
+```sql
+create type public.service_mode as enum ('PICKUP', 'DINE_IN');
+create type public.tab_status as enum ('OPEN', 'BILL_REQUESTED', 'SETTLED', 'VOID');
+
+create table public.dining_tables (
+  id uuid primary key default gen_random_uuid(),
+  store_id uuid not null references public.stores (id) on delete cascade,
+  label text not null check (char_length(label) between 1 and 20),   -- "T4", "Patio 2"
+  qr_secret text not null unique,              -- random, printed in the QR; rotating it voids old prints
+  active boolean not null default true,
+  unique (store_id, label)
+);
+
+create table public.dining_tabs (
+  id uuid primary key default gen_random_uuid(),
+  store_id uuid not null references public.stores (id),
+  table_id uuid not null references public.dining_tables (id),
+  host_user_id uuid not null references public.profiles (id),
+  join_code text not null check (join_code ~ '^[0-9]{4}$'),
+  status public.tab_status not null default 'OPEN',
+  opened_at timestamptz not null default now(),
+  closed_at timestamptz,
+  void_reason text check (char_length(void_reason) <= 200)
+);
+create unique index dining_tabs_one_open_per_table_idx on public.dining_tabs (table_id)
+  where status in ('OPEN', 'BILL_REQUESTED');
+
+create table public.dining_tab_members (
+  tab_id uuid not null references public.dining_tabs (id) on delete cascade,
+  user_id uuid not null references public.profiles (id),
+  display_name text not null check (char_length(display_name) between 1 and 60),
+  joined_at timestamptz not null default now(),
+  primary key (tab_id, user_id)
+);
+
+alter table public.orders
+  add column service_mode public.service_mode not null default 'PICKUP',
+  add column tab_id uuid references public.dining_tabs (id),
+  add column channel text not null default 'APP' check (channel in ('APP', 'QR')),
+  add constraint orders_tab_matches_mode check ((service_mode = 'DINE_IN') = (tab_id is not null));
+create index orders_tab_id_idx on public.orders (tab_id) where tab_id is not null;
+```
+
+- **Opening.** `GET /api/tables/:qrSecret` is public and answers the store, the table label and whether a tab is open
+  (never who is on it). `POST /api/tables/:qrSecret/tabs` runs `open_tab`, which makes the caller host and first
+  member and draws a random join code.
+  - Two people opening at once are settled by the partial unique index: the second gets 409 `TAB_ALREADY_OPEN` and the
+    join screen.
+  - An inactive table, or the flag off, answers 409 `DINE_IN_UNAVAILABLE`; a closed or paused store answers
+    `STORE_CLOSED` / `STORE_PAUSED` (P2.4, P2.5).
+- **Joining is host-approved.** The host's tab page shows the join code, and a guest types it into
+  `POST /api/tabs/:tabId/join { code, displayName }`.
+  - A wrong code is 400 `TAB_JOIN_CODE_INVALID`, rate-limited per user (P1.6), and the code rotates after 5 wrong
+    tries.
+  - The host can remove a member who has not ordered yet (`DELETE /api/tabs/:tabId/members/:userId`).
+  - The display name defaults to the profile name and can be edited on joining.
+- **Access.** Every tab endpoint is members-only, and a non-member gets 404, as for another user's order (CLAUDE.md
+  §10).
+- **Rotation.** `POST /api/stores/:storeId/tables/:tableId/rotate-qr` (`tables.edit`) issues a new secret, and old
+  printouts stop working at once.
+- **Idle tabs.** A pg_cron sweep flags tabs with no activity for `tab_idle_minutes` to staff. It never closes them: an
+  unpaid tab is a staff decision.
+- **ADR-012** records the post-pay model, written at the start of this step.
+
+### P11.3 Dine-in orders and the tab page
+
+```mermaid
+stateDiagram-v2
+  [*] --> AWAITING_ACCEPTANCE: first order of the tab
+  [*] --> PLACED: later orders
+  AWAITING_ACCEPTANCE --> PLACED: staff accepts
+  AWAITING_ACCEPTANCE --> REJECTED: staff rejects or time runs out
+  PLACED --> PREPARING: staff starts
+  PLACED --> CANCELLED: the member who ordered, or staff
+  PREPARING --> READY: staff marks it ready
+  PREPARING --> CANCELLED: staff
+  READY --> SERVED: staff serves it at the table
+  SERVED --> [*]
+  REJECTED --> [*]
+  CANCELLED --> [*]
+```
+
+- **Placing.** `POST /api/tabs/:tabId/orders` (`Idempotency-Key`, the P5.3 item shape) calls `place_dine_in_order`:
+  - the same pricing, modifiers, quantity rules and open and pause checks as checkout;
+  - stock taken with today's conditional decrement, with no hold, because nothing waits on a payment;
+  - the member's `display_name` copied into `customer_name`, and `service_mode = 'DINE_IN'`, skipping
+    `PENDING_PAYMENT`.
+- **The first order needs acceptance.** The tab's first order goes to `AWAITING_ACCEPTANCE` (P5.5's flow and timeout,
+  reused), so staff confirm someone is really at that table before any food is made. This blocks both a walk-out from
+  a fake table and orders from a photographed QR. Later orders go straight to `PLACED`
+  ([decision 18](#decisions-needed)).
+- **Unpaid cap.** An order that would take the tab's unpaid total past `tab_max_unpaid_rupees` gets 409
+  `TAB_LIMIT_REACHED` ("Pay part of the bill to keep ordering").
+- **No refunds.** A dine-in order is unpaid until billed, so `CANCELLED` and `REJECTED` drop its lines from the bill
+  and return stock under P5.2's rules. `SERVED` is a new `order_status` value in its own migration, like P5.2's, and
+  its transition emits `order.served`.
+- **The tab page** (`/tab/:tabId`, a lazy route):
+  - every order grouped by person, each with its live status from `orderStatus.ts` (new copy: "Served");
+  - the running total and what is still unpaid;
+  - **Order more** (the store menu in tab context, where checkout becomes "Send to kitchen"), **Request bill**, and,
+    for the host, the join code and the member list;
+  - polling through `useResource` with `order_poll_ms`, paused while hidden. It is user-specific, so it is never
+    `cached()` and never persisted (CLAUDE.md §2c).
+- **Cart.** The P2.6 cart gains an optional `tabId`. A pickup cart and a tab cart never mix: switching opens the
+  existing "Start a new cart?" sheet.
+
+### P11.4 Bills: split and pay
+
+```sql
+create type public.bill_status as enum ('CREATED', 'PAID', 'VOID');
+
+create table public.bills (
+  id uuid primary key default gen_random_uuid(),
+  tab_id uuid not null references public.dining_tabs (id),
+  payer_user_id uuid references public.profiles (id),        -- null when staff settle for the table
+  amount_paise bigint not null check (amount_paise > 0),
+  status public.bill_status not null default 'CREATED',
+  settled_via text check (settled_via in ('APP', 'COUNTER')),
+  counter_method text check (counter_method in ('CASH', 'CARD', 'UPI')),
+  settled_by uuid references public.profiles (id),           -- the staff member, for COUNTER
+  created_at timestamptz not null default now(),
+  paid_at timestamptz,
+  check ((settled_via = 'COUNTER') = (counter_method is not null))
+);
+create table public.bill_lines (
+  order_item_id uuid primary key references public.order_items (id),   -- a line is on one live bill at most
+  bill_id uuid not null references public.bills (id) on delete cascade
+);
+alter table public.payments add column bill_id uuid references public.bills (id);   -- plus the check in the design
+```
+
+- **Scopes.** `POST /api/tabs/:tabId/bills { scope, orderItemIds? }` creates a bill over unpaid lines in one RPC,
+  `create_bill`:
+  - `MINE`, the default: the lines of the orders I placed. Named orders make this the natural split by person;
+  - `ALL_REMAINING`: everything still unpaid, for one person paying for the table;
+  - `LINES`: the lines I pick, for "I'll get the dessert".
+
+  The amount comes from the order-line snapshots (P1.5), in paise (ADR-004). A line already on another live bill
+  answers 409 `LINES_ALREADY_BILLED`. An equal split by head is a later step, because it needs amount shares instead
+  of lines.
+
+- **Paying in the app** reuses P5.3 against the bill. The gateway order carries the bill id, and
+  `POST /api/bills/:billId/payment/confirm` and the webhook both call one `confirm_bill_payment`. A failed or expired
+  payment voids the bill and deletes its `bill_lines`, freeing the lines for another try. The store's share is paid
+  out at once (there is no pickup to wait for), through the P5.6 payout strategy.
+- **Settling.** The transaction that pays a tab's last unpaid line also moves the tab to `SETTLED` and emits
+  `tab.settled`. A tab never settles with an unpaid line, and Σ paid bills always equals Σ non-cancelled lines.
+- **Taxes and charges.** The bill shows GST from the pricing module. A service charge is never added by default
+  (CCPA guidelines, July 2022), and tips are a later decision.
+
+### P11.5 Staff tables view
+
+- **Tables lane** on the P6.4 board: one card per open tab, with the table label, members, time open, unpaid total, a
+  "bill requested" badge and the idle flag. Dine-in tickets in the kitchen lanes show the table and the person:
+  "T4 · Asha".
+- **Actions**, each one SQL function, idempotent and audited:
+  - accept or reject a tab's first order (P5.5), and **Serve** (`READY → SERVED`);
+  - **Settle at counter**: the method (cash, card or UPI) and the lines, the whole tab by default
+    (`settle_bill_at_counter`);
+  - **Void tab**, with a required reason: it closes an abandoned or walked-out tab, keeps every row, and flags the
+    host account for platform review (P7.4).
+- **`/manage` tables:** add, rename, deactivate and rotate a table's QR, and print table cards with P11.1's page.
+- **Permissions.** The P2.2 capability map gains `tabs.view` and `tabs.settle` (STAFF and up) and `tables.edit`
+  (MANAGER and up). Platform admins view only.
+- **Endpoints:** `GET /api/stores/:storeId/tabs?status=`, `POST /api/stores/:storeId/tabs/:tabId/{settle,void}`,
+  `POST /api/stores/:storeId/orders/:orderId/serve`, and `GET/POST/PATCH /api/stores/:storeId/tables[/:tableId]` with
+  `.../rotate-qr`.
+- **Done when** two phones share a tab at a pilot store and each orders twice; staff accept the first order and serve
+  all four; one person pays their own share in the app (test mode) and staff settle the rest at the counter; and the
+  tab ends `SETTLED`, with the bills adding up to the orders.
+
+**Tests for P11**
+
+- one open tab per table when two people open it at once;
+- the join code: a wrong code is refused, five wrong codes rotate it, and a non-member gets 404 on every tab endpoint;
+- a line is never on two live bills (concurrent `MINE` and `ALL_REMAINING`), and a failed payment frees its lines;
+- money conserved: at `SETTLED`, Σ paid bills = Σ non-cancelled lines, and a tab never settles with an unpaid line;
+- the unpaid cap, and first-order acceptance with its timeout;
+- the dine-in lifecycle, every from/to pair, with pickup orders unchanged;
+- counter settlements and voids audited with their actor.
+
+**Docs:** ARCHITECTURE (service modes, the dine-in flow and its money), API, SCHEMA, PERMISSIONS, COMPONENTS (tab page,
+tables lane), FRONTEND_STRUCTURE, PAYMENTS (bills), JOBS (the idle-tab sweep), and `docs/adr/012-dine-in-post-pay.md`.
+
+**Not planned:** POS software integration (the counter settle is the whole interface), an equal split by head, tips,
+and ordering without an account.
+
+## P12 — Restaurant discovery and My restaurants
+
+**Goal:** once many restaurants are live, the home page helps a customer find one: search, a ranked "near you" list,
+and their own "My restaurants" list that they add to and remove from. **Items:** R35. **Depends on:** P2.6 (the store
+list on `/`), P7.5 (ratings) and P7.1 (popularity); search and favourites can start right after P2. **Size:** M.
+**Flag:** `discovery`.
+
+### Design (HLD)
+
+- **Rank on the device, from public data.** The store list stays one public, cached, persisted read (P2.6). Search,
+  distance and ranking run in the browser over it, so the customer's location never reaches the server and the list
+  stays cacheable for everyone (CLAUDE.md §2c).
+- **Server-side search has one trigger: size.** When the `/` payload passes its budget (about 8 KB of JSON, P2.6), add
+  `GET /api/stores?q=&near=` with a `pg_trgm` index, a geo index and pagination. Until then it is not built.
+- **Home layout v2**, top to bottom: the search field, **My restaurants** (signed in and non-empty), **Near you** (or
+  by area when location is off), then every restaurant. Each section has a skeleton matching its layout, an empty
+  state and an error state, and P2.6's LCP rule (the first card photo loads eagerly) still holds.
+
+### P12.1 Search
+
+- It filters the cached list as the customer types (debounced), matching name, brand, area and cuisine tags, ignoring
+  case and accents, with the matched text highlighted. There is no request, so it also works on the persisted copy
+  offline.
+- `stores.tags text[]` (cuisine: "South Indian", "Cafe", "Desserts") is edited on the `/manage` store profile and
+  added to `StoreSummaryDto` (additive).
+- The empty state reads "No restaurants match 'dosa'", with a clear button. Searching dishes across restaurants is a
+  later step, once the catalog (P3.1) is big enough to need an index.
+
+### P12.2 Near you
+
+- **Location only on intent.** A "Use my location" button calls `navigator.geolocation.getCurrentPosition` with a
+  timeout and a `maximumAge`; it is never asked on page load. The coordinates stay in memory for the session, and are
+  never sent to the API or stored.
+- `StoreSummaryDto` gains `location: { lat, lng }`, rounded to 4 decimals (about 11 m), from P2.1's columns.
+- **Ranking** is a pure function, `rankStores(stores, { position, favourites, now, weights })`, in
+  `features/stores/storeRules.ts`:
+  - distance (haversine) scored inside `discovery_radius_km`, the Bayesian rating (P7.5) and popularity (a public
+    weekly-orders bucket from P7.1), weighted by `store_rank_weights` from `/api/config`;
+  - stores in My restaurants get a boost; closed and paused stores sink to the end with their opening time, and are
+    never hidden;
+  - each card gets a reason line: "0.4 km · Open till 9 PM", "Popular near you".
+- **Without location** (denied, unavailable or timed out), the list keeps P2.6's grouping by area, with one line
+  offering the button again. GPS indoors can be off by hundreds of metres, so distance is shown rounded and never
+  refuses anything.
+
+### P12.3 My restaurants
+
+```sql
+create table public.favourite_stores (
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  store_id uuid not null references public.stores (id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (user_id, store_id)
+);
+-- RLS on with no policies, like every table; the API scopes by user.
+```
+
+- **API** (signed in):
+  - `GET /api/me/favourite-stores` → `{ storeIds }`. Ids only: the cards come from the cached public list, so nothing
+    is sent twice.
+  - `PUT /api/me/favourite-stores/:storeId` adds and `DELETE` removes; both are idempotent.
+  - A store that is not `ACTIVE` answers 404, and past `max_favourite_stores` the answer is 409
+    `FAVOURITES_LIMIT_REACHED`.
+  - It is user-specific, so never `cached()` and never persisted on the client (CLAUDE.md §2c).
+- **UI.** A heart on every store card and on the store page toggles at once (instant feedback, CLAUDE.md §2b) and
+  rolls back with a toast if the call fails; `mutate()` keeps the rail in step. The "My restaurants" rail opens the
+  home page. A suspended or archived store drops out of the rail without being deleted, and returns if it reopens.
+- **Suggestions.** After a customer's second order at a store, or a visit through its QR (P11), the order page offers
+  "Add Campus Cafe to My restaurants?" once.
+- **Done when** on a throttled 360px phone the home page shows the favourites first, search narrows 20 stores as the
+  customer types without a request, "Use my location" re-ranks by distance with no coordinates in any request, and a
+  denied permission falls back to areas.
+
+**Tests for P12**
+
+- ranking properties: closer ranks higher when all else is equal, a closed store always sinks, and a favourite
+  outranks a non-favourite at the same distance;
+- the favourites matrix: 401 signed out, idempotent `PUT` and `DELETE`, the cap, 404 for an inactive store, and no
+  way to read another user's list;
+- an end-to-end check that no request URL or body carries the coordinates;
+- search with accents, mixed case, and the empty state.
+
+**Docs:** API, SCHEMA, COMPONENTS (search field, rails, heart toggle), FRONTEND_STRUCTURE (home v2), CONFIGURATION
+(the three settings), PERMISSIONS (favourites are own-only).
+
 ## Testing strategy
 
 What is tested where. The existing edge-case matrix (`docs/TESTING.md`) applies to every new endpoint.
@@ -4050,6 +4410,8 @@ Rules:
 | P7    | SCHEMA, API, COMPONENTS, PERMISSIONS, JOBS                                                                                                                                                                                                | `docs/ANALYTICS.md` (metric definitions)                                                          |
 | P8    | DEPLOYMENT (AWS, CD, secrets)                                                                                                                                                                                                             | `infra/README.md`                                                                                 |
 | P9    | TESTING, PERF_BASELINE                                                                                                                                                                                                                    | `docs/RUNBOOKS.md`, `docs/LOAD_BASELINE.md`                                                       |
+| P11   | ARCHITECTURE (service modes, the dine-in flow, post-pay money), API, SCHEMA, PERMISSIONS, COMPONENTS, FRONTEND_STRUCTURE, PAYMENTS (bills), JOBS (idle tabs)                                                                              | `docs/adr/012-dine-in-post-pay.md`                                                                |
+| P12   | API, SCHEMA, COMPONENTS, FRONTEND_STRUCTURE, CONFIGURATION, PERMISSIONS                                                                                                                                                                   | –                                                                                                 |
 
 **CLAUDE.md rules to change**, in the change that needs them, since "the code is the truth: fix the doc in the same
 change":
@@ -4072,6 +4434,8 @@ change":
 | §3      | Node 24 pin; root scripts; env-driven ports; compose on 8080                                                                                                                                                                                        | P0         |
 | §12     | CI's release commit inside the release PR is the one automated commit; only the user merges into `main`                                                                                                                                             | P0         |
 | New     | "Versioning and branches" (P0.3): feature → `dev` → release PR → `main`, hotfixes, level rules, `npm run change`                                                                                                                                    | P0         |
+| §2      | The app is no longer pickup-only: dine-in tabs, bills paid at the end in the app or at the counter, the `SERVED` state                                                                                                                              | P11        |
+| §2c     | Tabs, bills and "My restaurants" are user-specific and never cached; the device location never leaves the device                                                                                                                                    | P11, P12   |
 
 README's "What V0 deliberately leaves out" section shrinks as each phase ships.
 
@@ -4093,6 +4457,9 @@ README's "What V0 deliberately leaves out" section shrinks as each phase ships.
 | Polling cost at 1000 concurrent users                                                                            | medium     | medium | ETags, server-driven intervals, delta polling for staff; P10.3 only if measured                                                                                                                                                                                                                                                                |
 | Bundle and LCP regressions from dashboards, QR and payment scripts                                               | medium     | medium | Everything non-customer is lazy; bundle budget in CI; Lighthouse CI; perf-auditor on every major change                                                                                                                                                                                                                                        |
 | The payment checkout performs poorly on low-end phones                                                           | medium     | medium | Prefer UPI intent and redirect flows over heavy iframes; measure in the P4 spike on a throttled 360px profile                                                                                                                                                                                                                                  |
+| Dine-in walk-outs: a tab is eaten and never paid                                                                 | medium     | medium | Sign-in required; staff accept the first order of a tab; an unpaid cap per tab; counter settle; void with a reason, audited, which flags the host account ([P11](#p11--in-restaurant-qr-ordering-and-dine-in))                                                                                                                                 |
+| A photographed table QR is used from outside the restaurant                                                      | medium     | low    | Staff accept the first order of every tab; joining needs the host's code; managers rotate a table's QR                                                                                                                                                                                                                                         |
+| Location permission denied, or inaccurate indoors                                                                | high       | low    | Asked only on a tap; the list falls back to area grouping (P2.6)                                                                                                                                                                                                                                                                               |
 | Scope: 33 items for a small team                                                                                 | high       | high   | Milestones ship value alone; flags allow a partial rollout; the pilot needs only P0–P6 and the parts of P8–P9 on the launch checklist                                                                                                                                                                                                          |
 
 ## Decisions needed
@@ -4117,6 +4484,8 @@ The ones marked ★ block a phase.
 | 14  | Supabase plan tier (PITR, compute, read replicas)                                                                  | P8.4, P9.1      | a tier with PITR for production                                                                                                                                                             |
 | 15  | Token format and business-day start                                                                                | P6.2            | `A-017`, rolling over at 04:00                                                                                                                                                              |
 | 16  | Whether staff may edit stock by default                                                                            | P3.5            | yes (`staff_can_edit_stock` defaults on)                                                                                                                                                    |
+| 17  | Platform commission on dine-in bills settled at the counter (that money never passes through the platform)         | P11.4           | none in the pilot: commission only on bills paid in the app; a monthly invoice to the brand if that changes                                                                                 |
+| 18  | Does the first order of every dine-in tab need staff acceptance?                                                   | P11.3           | yes, per store (the walk-out and photographed-QR guard)                                                                                                                                     |
 
 ## Appendices
 
@@ -4177,6 +4546,9 @@ are proposals, and the bounds become check constraints. The full registry, with 
 | `recs_weights` (affinity, popularity, co-occurrence, novelty)                           | 0.4 / 0.3 / 0.2 / 0.1 | sum 1                 | P7.7        |
 | `rum_sample_percent`                                                                    | 10                    | 0–100                 | P8.7        |
 | `status_banner`                                                                         | empty                 | ≤ 140 chars           | P9.5        |
+| `max_favourite_stores`                                                                  | 50                    | 1–200                 | P12.3       |
+| `discovery_radius_km`                                                                   | 5                     | 1–50                  | P12.2       |
+| `store_rank_weights` (distance, rating, popularity)                                     | 0.5 / 0.3 / 0.2       | sum 1                 | P12.2       |
 
 **Store settings**
 
@@ -4198,6 +4570,7 @@ are proposals, and the bounds become check constraints. The full registry, with 
 | `rush_sensitivity` / `max_rush_factor` / `eta_min_samples` / `eta_max_correction_minutes`    | 0.5 / 1.5 / 30 / 10 | 0–2 / 1–3 / 5–500 / 0–30  | P6.1 |
 | `token_prefix` / `business_day_start`                                                        | `A` / 04:00         | 1–2 letters / 00:00–08:00 | P6.2 |
 | `pickup_counter_label`                                                                       | "Pickup counter"    | ≤ 40 chars                | P6.2 |
+| `tab_max_unpaid_rupees` / `tab_idle_minutes`                                                 | 3000 / 120          | 500–20000 / 30–360        | P11  |
 
 **Environment** (additions; every one goes into `utils/env.ts` and `.env.example`):
 
@@ -4240,6 +4613,13 @@ message is safe to show.
 | 409    | `PICKUP_NOT_READY`                       | a pickup was verified for an order that is not `READY`                  | P6.2 |
 | 409    | `REVIEW_NOT_ALLOWED` / `REVIEW_EXISTS`   | not eligible, or already reviewed                                       | P7.5 |
 | 409    | `MEMBERSHIP_EXISTS`                      | invited twice                                                           | P2.2 |
+| 409    | `DINE_IN_UNAVAILABLE`                    | the store has no dine-in, or the table is inactive                      | P11  |
+| 409    | `TAB_ALREADY_OPEN`                       | the table already has an open tab; join it instead                      | P11  |
+| 400    | `TAB_JOIN_CODE_INVALID`                  | wrong join code (rate-limited; locks after 5 tries)                     | P11  |
+| 409    | `TAB_CLOSED`                             | the tab is settled or void                                              | P11  |
+| 409    | `TAB_LIMIT_REACHED`                      | the order would take the tab past its unpaid cap                        | P11  |
+| 409    | `LINES_ALREADY_BILLED`                   | a selected line is already on another bill                              | P11  |
+| 409    | `FAVOURITES_LIMIT_REACHED`               | "My restaurants" is full                                                | P12  |
 
 ### A4 Endpoint inventory
 
@@ -4264,6 +4644,8 @@ Everything new or changed, with the step that adds it. Legacy endpoints stay unt
 | Payouts         | `GET /api/stores/:storeId/payouts`, `GET /api/brands/:brandId/payout-account`                                                                                                                                                                                                                                                        | P5.6             |
 | Admin           | `/api/admin/{brands,stores,users,flags,settings,refunds,reconciliation,jobs,metrics/summary,audit,analytics}`                                                                                                                                                                                                                        | P7.4             |
 | Audit           | `GET /api/stores/:storeId/audit`                                                                                                                                                                                                                                                                                                     | P1.3             |
+| Dine-in         | `GET /api/tables/:qrSecret`, `POST /api/tables/:qrSecret/tabs`, `GET /api/tabs/:tabId`, `POST /api/tabs/:tabId/{join,orders,bill-request,bills}`, `DELETE /api/tabs/:tabId/members/:userId`, `POST /api/bills/:billId/payment/confirm`, `GET /api/stores/:storeId/tabs`, `POST .../tabs/:tabId/{settle,void}`, tables CRUD           | P11              |
+| Discovery       | `GET /api/me/favourite-stores`, `PUT/DELETE /api/me/favourite-stores/:storeId`; later `GET /api/stores?q=`                                                                                                                                                                                                                           | P12              |
 
 ### A5 Domain events
 
@@ -4292,6 +4674,11 @@ Emitted with `emit_event` in the same transaction as the change (P1.2). The cons
 | `media.uploaded` / `media.processed`                      | media endpoints, handler                    | media handler, cache invalidation                             |
 | `review.submitted`                                        | `submit_review`                             | rating aggregates, moderation                                 |
 | `recon.exception`                                         | the reconciler                              | notifications (admin), alarms                                 |
+| `tab.opened` / `tab.member_joined`                        | `open_tab` / `join_tab`                     | analytics                                                     |
+| `tab.bill_requested`                                      | the bill-request endpoint                   | notifications (staff)                                         |
+| `order.served`                                            | `serve_order`                               | analytics, the rating prompt                                  |
+| `bill.paid` / `tab.settled`                               | the bill payment functions                  | payouts (bills paid in the app), notifications, analytics     |
+| `tab.voided`                                              | `void_tab`                                  | notifications (host), analytics                               |
 
 ### A6 Glossary
 
@@ -4313,3 +4700,8 @@ Emitted with `emit_event` in the same transaction as the change (P1.2). The cons
 | Outbox                 | writing an event in the same database transaction as the state change, so side effects are never lost or phantom       |
 | Expand / contract      | add the new shape, move readers and writers, then remove the old shape in a later release                              |
 | Change intent          | a `.changes/*.md` file stating a package's semver bump, applied by the release script (R8)                             |
+| Service mode           | how a store serves an order: `PICKUP` (prepaid, collected) or `DINE_IN` (served at a table, paid at the end)           |
+| Walk-in QR             | the store's poster QR: opens its menu for a normal pickup order from inside the restaurant                             |
+| Tab (dine-in)          | one table's running session: a host, the members who joined with the host's code, and their orders                     |
+| Bill (dine-in)         | one payer's share of a tab, over order lines, paid in the app or settled at the counter                                |
+| My restaurants         | the stores a customer saved to the top of their home page (`favourite_stores`)                                         |

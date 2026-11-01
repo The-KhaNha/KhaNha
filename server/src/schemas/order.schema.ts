@@ -64,8 +64,12 @@ export const createOrderSchema = z
 
 export type CreateOrderInput = z.infer<typeof createOrderSchema>;
 
+// zod 4 reports a missing enum value as a wrong one (invalid_value), so the "required" wording zod 3 gave is kept here.
 const status = z.enum(ORDER_STATUSES, {
-  errorMap: () => ({ message: `Status must be one of ${ORDER_STATUSES.join(', ')}.` }),
+  error: (issue) =>
+    issue.input === undefined
+      ? 'Status is required.'
+      : `Status must be one of ${ORDER_STATUSES.join(', ')}.`,
 });
 
 export const updateOrderStatusSchema = z.object({ status });

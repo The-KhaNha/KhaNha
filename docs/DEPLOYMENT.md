@@ -304,14 +304,22 @@ docker build -t fp-api --build-arg GIT_COMMIT=$(git rev-parse --short HEAD) serv
 docker build -t fp-web --build-arg GIT_COMMIT=$(git rev-parse --short HEAD) client
 ```
 
-| Image    | Base                                                | Runs                                       | Port   | Health check                 | Size budget |
-| -------- | --------------------------------------------------- | ------------------------------------------ | ------ | ---------------------------- | ----------- |
-| `fp-api` | `node:24-alpine` (deps → build → runtime stages)    | `node dist/src/server.js` as `node`, PID 1 | `8000` | `GET /api/health` on `$PORT` | 400 MB      |
-| `fp-web` | `nginxinc/nginx-unprivileged:1.27-alpine` (uid 101) | nginx serving `dist/` and proxying `/api/` | `8080` | `GET /healthz`               | 100 MB      |
+| Image    | Base                                                                                                    | Runs                                       | Port   | Health check                 | Size budget |
+| -------- | ------------------------------------------------------------------------------------------------------- | ------------------------------------------ | ------ | ---------------------------- | ----------- |
+| `fp-api` | `alpine:3.24` + the `node` binary from `node:24-alpine3.24` (deps → build → prod-deps → runtime stages) | `node dist/src/server.js` as `node`, PID 1 | `8000` | `GET /api/health` on `$PORT` | 300 MB      |
+| `fp-web` | `nginxinc/nginx-unprivileged:1.31-alpine-slim` (mainline, uid 101)                                      | nginx serving `dist/` and proxying `/api/` | `8080` | `GET /healthz`               | 50 MB       |
 
+- **Both** run `apk upgrade` in their final stage: an upstream image can lag Alpine's security releases by weeks
+  (`nginx-unprivileged:1.31-alpine-slim` shipped 3 fixable CVEs the upgrade removes; the full `-alpine` image shipped
+  52), and `security.yml` fails on any fixable CVE left in an image. The upgrade replaces only the outdated packages
+  (under 2 MB). Both run as a non-root user named in the Dockerfile. The `images` CI job holds the sizes to the budgets
+  above.
 - **`fp-api`** installs with `npm ci --ignore-scripts` (no Supabase CLI binary), keeps `dist/scripts` so staging can
   be seeded with `node dist/scripts/seed.js` (it refuses `APP_ENV=production`), and sets `NODE_ENV=production` and
-  `GIT_COMMIT` from the build arg. Its environment is the [server table above](#server-environment-variables).
+  `GIT_COMMIT` from the build arg. Its runtime is plain Alpine with `libstdc++` and the `node` binary copied from the
+  Node image, so npm, npx, corepack and yarn never ship (260 MB instead of 309 MB, and their advisories with them);
+  every `node:24-alpine3.24` and `alpine:3.24` in the Dockerfile must name the same Alpine release. Its environment is
+  the [server table above](#server-environment-variables).
 - **`fp-web`** builds with `npm run build:container` (`vite build --mode container`, placeholders from the committed
   `client/.env.container`; `vite.config.ts` skips its required-env check in that mode). At start the image's
   entrypoint renders `nginx/default.conf.template` and `nginx/security.conf.template` (substituting only variables
@@ -354,8 +362,9 @@ enforcing is a user decision, once staging shows no reports. The image build pre
 `/manifest.webmanifest` is served as `application/manifest+json` (nginx's MIME table would say octet-stream;
 the `images` CI job checks it). Request bodies are capped at 100 kB (`client_max_body_size`, the API's own limit) with the API's JSON 413 envelope,
 and a client silent mid-body for 15 s is dropped (`client_body_timeout`); nginx buffers bodies before proxying, so a
-slow upload never holds an API connection. `/api/` is proxied with HTTP/1.1, `Host`, `X-Forwarded-For`,
-`X-Forwarded-Proto` and a 30 s read timeout. The API
+slow upload never holds an API connection. `/api/` is proxied with HTTP/1.1, `X-Forwarded-For`,
+`X-Forwarded-Proto` and a 30 s read timeout; the upstream gets its own host name, never the browser's `Host` (the API
+builds nothing from it). The API
 sends its own hardening headers on every response (`server/src/middleware/securityHeaders.ts`,
 [API.md](API.md#headers-and-limits)), so it is safe when reached directly too; the `images` CI job checks both
 images for `X-Frame-Options` and `nosniff`.
