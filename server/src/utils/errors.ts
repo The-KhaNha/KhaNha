@@ -67,6 +67,34 @@ export class IntegrationError extends Error {
   }
 }
 
+/** A job failed in a way a later attempt may not (a timeout, a provider's 5xx): the runner retries it with backoff. */
+export class RetryableError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = 'RetryableError';
+  }
+}
+
+/** A job that can never succeed (bad input, a rule that forbids it): the runner dead-letters it at once. */
+export class PermanentError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = 'PermanentError';
+  }
+}
+
+/**
+ * A programmer error: a state the code assumes cannot happen. A dead letter in a job, logged at error with
+ * `invariant: true` so it stands apart from a failing dependency; 500 INTERNAL in a request, like any unknown error
+ * (the request log gains `invariant: true` in P1 PR 04).
+ */
+export class InvariantError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'InvariantError';
+  }
+}
+
 /** An expected failure that maps straight to an HTTP status and a user-friendly message. */
 export class AppError extends Error {
   constructor(

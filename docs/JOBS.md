@@ -1,8 +1,8 @@
 # Jobs
 
 Background work: the outbox, the queues and the schedules ([ADR-002](adr/002-outbox-pgmq-pg-cron.md)). Tables and
-functions in detail: [SCHEMA.md](SCHEMA.md). The job runner and the worker process arrive in P1 PRs 03 and 04
-([plan](../plans/P1_PLATFORM_CORE.md)).
+functions in detail: [SCHEMA.md](SCHEMA.md). The job runner is [below](#handlers-and-the-runner); the worker process
+that runs it arrives in P1 PR 04 ([plan](../plans/P1_PLATFORM_CORE.md)).
 
 ## The outbox
 
@@ -20,9 +20,9 @@ functions in detail: [SCHEMA.md](SCHEMA.md). The job runner and the worker proce
 
 ## Queues and subscriptions
 
-| Queue             | Subscribed to | Consumer                        | Added by                    |
-| ----------------- | ------------- | ------------------------------- | --------------------------- |
-| `q_notifications` | `order.*`     | the worker's notify job (PR 03) | `20261024181904_outbox.sql` |
+| Queue             | Subscribed to | Consumer                           | Added by                    |
+| ----------------- | ------------- | ---------------------------------- | --------------------------- |
+| `q_notifications` | `order.*`     | `notifyHandler` (`jobs/notify.ts`) | `20261024181904_outbox.sql` |
 
 A queue is created with its first consumer, never ahead of it, in one migration: `select pgmq.create('q_<name>')`,
 then its `event_subscriptions` rows. A subscription naming a queue that does not exist makes `emit_event` raise, and
@@ -36,6 +36,39 @@ delete, retry, dead-letter and metrics. `server/test/api/database-lockdown.test.
 `queue_read`'s `p_poll_seconds` is how long to wait for a first message; `0` returns at once. A message the worker
 gives up on goes to `job_failures` through `queue_dead_letter`, which deletes it and records it only if it was still
 in the queue (another reader may have handled it after its visibility timeout ran out).
+
+## Handlers and the runner
+
+A handler (`JobHandler<T>` in `server/src/jobs/runner.ts`) consumes one queue: its `concurrency`,
+`visibilityTimeoutSec` (longer than its slowest run, or a second reader takes the message too), `maxAttempts`,
+`backoff` and `handle(message, { log, signal })`. `message.event` is what `emit_event` sent, and `message.attempt` is
+pgmq's read count, 1 on the first delivery.
+
+| `handle` …                                                                       | The runner                                                                       |
+| -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| resolves                                                                         | deletes the message                                                              |
+| throws `RetryableError` (or a retryable `IntegrationError`), attempt < max       | hides it for `min(maxSec, baseSec × 2^(attempt−1))` ±20% seconds (`queue_retry`) |
+| throws `PermanentError`, anything else, or a retryable error on the last attempt | dead-letters it (`queue_dead_letter`: a `job_failures` row, the message deleted) |
+
+Delivery is at least once, so a handler is idempotent by a natural key (one notification per event, user and
+channel): a worker that dies mid-message leaves it to come back after its visibility timeout.
+A handler must not put personal data in an error message: the message reaches both the log (`err`) and
+`job_failures.last_error`.
+
+`runQueue(handler, { signal, log })` reads up to the free concurrency slots at a time, waiting up to `POLL_SECONDS`
+(5) for a first message. That stays under the 8 s statement timeout PostgREST's `authenticator` role runs with
+(Supabase's default; `service_role` inherits it), and under the worker's shutdown grace. On abort it stops reading,
+leaves anything read during the abort unstarted (back after its visibility timeout), and resolves once the handlers in
+flight finish. Every call the runner makes is bounded, so a connection that dies without closing cannot stall a queue: a
+read by its poll plus 5 s, a delete, retry or dead letter by 10 s. Stopping waits for the read in progress (at most
+the poll plus 5 s) rather than cancelling it: a cancelled read keeps polling in the database, and a message it took
+there would stay hidden for its whole visibility timeout with no one to handle it. A failing read (the database unreachable) backs off 1 s → 5 s. If recording an outcome fails, the
+message simply comes back. A message never read, or one that is not a domain event, is an `InvariantError`:
+dead-lettered, logged with `invariant: true`. Log lines: [LOGGING.md](LOGGING.md#jobs).
+
+| Handler         | Queue             | Concurrency | Visibility | Attempts | Backoff     | Does (until P6.3)                        |
+| --------------- | ----------------- | ----------- | ---------- | -------- | ----------- | ---------------------------------------- |
+| `notifyHandler` | `q_notifications` | 4           | 30 s       | 5        | 5 s → 900 s | logs `info` "Order event" with `orderId` |
 
 ## Schedules
 
