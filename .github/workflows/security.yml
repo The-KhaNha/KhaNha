@@ -5,7 +5,7 @@ name: security
 # set runs weekly, and Dependabot raises the alert in between. Static analysis runs on every change, in ci.yml.
 on:
   pull_request:
-    branches: [dev, main, feat/P1]
+    branches: [main, dev, 'feat/**']
     paths:
       [
         '**/package.json',

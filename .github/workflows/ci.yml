@@ -4,15 +4,17 @@ name: ci
 # so it is advisory: merge only when it is green. Heavy jobs run only when their files changed (the `changes` job), to
 # fit the 2,000 Actions minutes a month; a skipped job counts as passed. The workflow itself has no `paths:` filter, so
 # every PR still reports `ci-ok`.
-# A phase feature branch (feat/P1, CLAUDE.md §21) gets the same gate on the PRs into it, and on every push to it: two
-# PRs that were each green on their own can still break together once both are merged.
+# Branches by environment: main is production (release PRs), dev is staging, feat/** is development. Every PR into
+# one of them is gated. Pushes run on main, dev and the phase feature branches (feat/P<n>, CLAUDE.md §21), where two PRs
+# that were each green alone can still break together once both are merged; a push to a work branch (feat/p1-03-…,
+# feat/<slug>) does not, as its PR run already covers it.
 on:
   pull_request:
-    branches: [dev, main, feat/P1]
+    branches: [main, dev, 'feat/**']
     # labeled/unlabeled: adding `no-release` re-runs version-intent.
     types: [opened, synchronize, reopened, labeled, unlabeled]
   push:
-    branches: [dev, main, feat/P1]
+    branches: [main, dev, 'feat/P[0-9]+']
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -238,7 +240,7 @@ jobs:
       - name: hadolint
         run: |
           for f in server/Dockerfile client/Dockerfile; do
-            docker run --rm -i hadolint/hadolint < "$f"
+            docker run --rm -i hadolint/hadolint:v2.15.1 < "$f"
           done
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
       - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2

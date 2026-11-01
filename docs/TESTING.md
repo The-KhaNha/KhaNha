@@ -142,9 +142,10 @@ seen failing with the fix reverted. The guards added with the break-test fixes:
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` runs on every pull request into `dev`, `main` or a phase feature branch (`feat/P1`, CLAUDE.md
-§21) and on every push to them; the push run on a phase branch catches two PRs that were each green alone but break
-together once both are merged. Its aggregate
+`.github/workflows/ci.yml` runs on every pull request into `main` (production), `dev` (staging) or a `feat/**` branch
+(development: a phase feature branch, CLAUDE.md §21), and on every push to `main`, `dev` and the phase branches
+(`feat/P<n>`). The push run on a phase branch catches two PRs that were each green alone but break together once both
+are merged; a push to a work branch gets no run of its own, since its PR run covers it. Its aggregate
 job `ci-ok` sums them up. On GitHub Free a private repository has no rulesets, so it is advisory: merge only when it
 is green ([ADR-011](adr/011-free-tiers.md)). It fails when any job failed or was cancelled, and counts
 skipped jobs as passed. The workflow has no `paths:` filter, so every PR reports `ci-ok`; inside it the `changes` job
@@ -212,7 +213,7 @@ clean console, every `/api` call mocked). Failure screenshots are uploaded as `w
 
 ### Security checks (`security.yml`)
 
-Runs weekly (Monday 03:00 UTC), on demand, and on PRs into `dev`, `main` or `feat/P1` that change a `package.json`,
+Runs weekly (Monday 03:00 UTC), on demand, and on PRs into `main`, `dev` or a `feat/**` branch that change a `package.json`,
 a lockfile, an `.npmrc`, a Dockerfile, `client/nginx/` or `.gitleaks.toml`, where it gates the PR like any other check.
 A new advisory in an unchanged dependency does not block unrelated PRs: the weekly run fails and Dependabot raises
 the alert. A PR's own commits are scanned for secrets by `ci.yml`'s `repo` job on every PR, and its code by
