@@ -92,6 +92,10 @@ export interface ApiErrorDetails {
   /** IDEMPOTENCY_KEY_REUSED: the order the earlier attempt already placed. */
   orderId?: string;
   orderNumber?: number;
+  /** Shapes added since P1 carry a `kind`; the ones above predate it and are told apart by `code`. */
+  kind?: 'rateLimit';
+  /** RATE_LIMITED: seconds until the window resets, the same number as the Retry-After header. */
+  retryAfterSeconds?: number;
 }
 
 export interface ApiErrorEnvelope {

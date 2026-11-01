@@ -508,7 +508,7 @@ Agents added during a session are not registered until the next session; meanwhi
 | Level   | Meaning                                                                                                   | In this app                                                                                                        |
 | ------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | `error` | 5xx or unexpected; server logs it with `err` (stack and cause chain), `route`, `status`, `code`, `userId` | unhandled route error; 503 `UPSTREAM_UNAVAILABLE` (database or Auth unreachable, an `IntegrationError`)            |
-| `warn`  | expected but worth noticing                                                                               | 401 / 403 / 429 (426 `CLIENT_OUTDATED` is `debug`: a stale tab keeps asking)                                       |
+| `warn`  | expected but worth noticing                                                                               | 401 / 403, the first 429 per key per window (repeats and 426 `CLIENT_OUTDATED` are `debug`: each is expected)      |
 | `info`  | lifecycle and business events                                                                             | listening/shutdown, `Order placed`, `Order status changed`, 4xx like `INSUFFICIENT_STOCK`, access lines for writes |
 | `debug` | dev tracing                                                                                               | access lines for successful reads (polled lists)                                                                   |
 
