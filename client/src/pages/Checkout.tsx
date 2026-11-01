@@ -12,6 +12,8 @@ import { selectUser, useAuthStore } from '../features/auth/authStore';
 import {
   NAME_MAX_LENGTH,
   NOTE_MAX_LENGTH,
+  errorOnBlur,
+  errorOnChange,
   validateName,
   validateNote,
   validatePhone,
@@ -239,8 +241,11 @@ export function CheckoutPage() {
           placeholder="Who's picking up?"
           maxLength={NAME_MAX_LENGTH}
           value={name}
-          onChange={(e) => draft.setField('name', e.target.value)}
-          onBlur={() => setErrors((prev) => ({ ...prev, name: validateName(name) }))}
+          onChange={(e) => {
+            draft.setField('name', e.target.value);
+            setErrors(errorOnChange('name', validateName(e.target.value)));
+          }}
+          onBlur={() => setErrors(errorOnBlur('name', validateName(name)))}
           error={errors.name}
         />
         <Input
@@ -252,8 +257,11 @@ export function CheckoutPage() {
           inputMode="tel"
           placeholder="98765 43210"
           value={phone}
-          onChange={(e) => draft.setField('phone', e.target.value)}
-          onBlur={() => setErrors((prev) => ({ ...prev, phone: validatePhone(phone) }))}
+          onChange={(e) => {
+            draft.setField('phone', e.target.value);
+            setErrors(errorOnChange('phone', validatePhone(e.target.value)));
+          }}
+          onBlur={() => setErrors(errorOnBlur('phone', validatePhone(phone)))}
           error={errors.phone}
         />
         <Textarea

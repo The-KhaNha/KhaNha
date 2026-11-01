@@ -58,3 +58,21 @@ export function validateNote(value: string): string | undefined {
     return `Keep the note to ${NOTE_MAX_LENGTH} characters or fewer.`;
   return undefined;
 }
+
+type FieldErrors<K extends string> = Partial<Record<K, string>>;
+
+/**
+ * A field's error once it loses focus: a new problem shows, but an error already shown stays (an edit clears it,
+ * errorOnChange). Pressing the form's submit button is what blurs the field, and hiding a line then moves the button
+ * up under the finger between press and release: the press lands past it and nothing is sent.
+ */
+export const errorOnBlur =
+  <K extends string>(field: K, message: string | undefined) =>
+  <E extends FieldErrors<K>>(prev: E): E =>
+    prev[field] || !message ? prev : { ...prev, [field]: message };
+
+/** A field's error after an edit: once shown, it follows the value, so a fixed field clears while it is typed in. */
+export const errorOnChange =
+  <K extends string>(field: K, message: string | undefined) =>
+  <E extends FieldErrors<K>>(prev: E): E =>
+    prev[field] ? { ...prev, [field]: message } : prev;

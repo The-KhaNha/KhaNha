@@ -4,6 +4,8 @@ import {
   NOTE_MAX_LENGTH,
   PASSWORD_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
+  errorOnBlur,
+  errorOnChange,
   validateEmail,
   validateName,
   validateNote,
@@ -110,5 +112,46 @@ describe('validateNote', () => {
 
   it('is optional: blank passes', () => {
     expect(validateNote('')).toBeUndefined();
+  });
+});
+
+/** How the forms type their errors: every field optional. */
+type Errors = { name?: string; phone?: string };
+
+describe('errorOnBlur', () => {
+  it('shows a new problem', () => {
+    expect(errorOnBlur('phone', 'Bad phone.')({})).toEqual({ phone: 'Bad phone.' });
+  });
+
+  it('never hides or replaces a shown error: the press on submit is what blurs the field', () => {
+    const shown = { phone: 'The server refused this value.' };
+    expect(errorOnBlur('phone', undefined)(shown)).toBe(shown);
+    expect(errorOnBlur('phone', 'Bad phone.')(shown)).toBe(shown);
+  });
+
+  it('leaves a valid field with no error alone', () => {
+    const errors: Errors = { name: 'Please enter your name.' };
+    expect(errorOnBlur('phone', undefined)(errors)).toBe(errors);
+  });
+});
+
+describe('errorOnChange', () => {
+  it('clears a shown error once the value is fixed', () => {
+    const errors: Errors = { phone: 'Bad phone.', name: 'x' };
+    expect(errorOnChange('phone', undefined)(errors)).toEqual({
+      phone: undefined,
+      name: 'x',
+    });
+  });
+
+  it('updates a shown error while the value is still wrong', () => {
+    expect(errorOnChange('phone', 'Too short.')({ phone: 'Bad phone.' })).toEqual({
+      phone: 'Too short.',
+    });
+  });
+
+  it('shows nothing while the field has no error yet: typing is not judged', () => {
+    const errors: Errors = {};
+    expect(errorOnChange('phone', 'Too short.')(errors)).toBe(errors);
   });
 });
