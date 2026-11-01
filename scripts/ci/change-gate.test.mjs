@@ -8,3 +8,10 @@ test('major-change-gate self-test', () => {
     stdio: 'pipe',
   });
 });
+
+// The graphify tip rewrites graphify's own hook output; its self-test needs no graphify install.
+test('graphify-hint self-test', () => {
+  execFileSync(process.execPath, ['.claude/hooks/graphify-hint.js', '--self-test'], {
+    stdio: 'pipe',
+  });
+});

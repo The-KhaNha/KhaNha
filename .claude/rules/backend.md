@@ -1,0 +1,74 @@
+---
+paths:
+  - "server/**"
+  - "**/Dockerfile"
+  - "client/nginx/**"
+  - "compose.yaml"
+---
+
+# Backend rules (server/, images)
+
+Loaded with any `server/` file, a Dockerfile, the nginx config or `compose.yaml`. Section numbers match `CLAUDE.md`.
+
+## 10. Backend engineering
+
+- **Schema first:** zod in `schemas/*.schema.ts` with real bounds; `XInput` / `XQuery` inferred with `z.infer`.
+- **Serializers:** rows become `XDto` (`server/src/types/api.ts`) in `utils/serializers.ts`. Update the client copy
+  in `client/src/types/api.ts` (named `X`) in the same change.
+- **Errors:** throw the `AppError` factories in `utils/errors.ts`; add new codes to `ErrorCode`. The envelope is
+  `{ error: { code, message, details? } }`.
+  A dependency that fails or cannot be reached is an `IntegrationError { provider, operation, retryable, cause }`
+  (503 `UPSTREAM_UNAVAILABLE` with `Retry-After`); wrap with `{ cause }`, never swallow it (`docs/LOGGING.md`
+  "Error classes").
+- **Atomic multi-step writes** go into a SQL function (`p_` params; expected failures raise P0001 with the API error
+  code as the message and JSON detail, decoded by `raisedByDatabase` in `utils/supabase.ts`).
+- **Trust nothing from the client:** prices and totals come from the database. Someone else's resource is 404, never 403. The role is read from `profiles` on every request, never from the token.
+- **`supabaseAdmin` bypasses RLS,** so every query scopes by user explicitly.
+- Public reads are cached with `cached()` and invalidated by the writes that change them (§2c).
+- Sessions: access tokens stay 1 h (refreshed by supabase-js). A sign-in ends after 7 days without use; each use
+  restarts the week (`client/src/features/auth/sessionActivity.ts` + `auth.sessions.inactivity_timeout = "168h"` in
+  `server/supabase/config.toml` locally; on hosted Supabase Free the inactivity timeout is a Pro setting, so the
+  client cap is the only enforcement there, `docs/adr/011-free-tiers.md`). Never raise `jwt_expiry` to get longer
+  sign-ins: a long-lived bearer token cannot be revoked.
+- Env is read only through `utils/env.ts`. `src/types/database.ts` is generated (`npm run db:types`); never
+  hand-edit it.
+- Recipes: `/new-endpoint`, `/db-migration`.
+
+## 14. CRUD and lifecycle verification
+
+For any endpoint or order-flow change, exercise it against the local API with a real token:
+
+```bash
+KEY=$(grep VITE_SUPABASE_PUBLISHABLE_KEY client/.env.development | cut -d= -f2)
+TOKEN=$(curl -s "http://127.0.0.1:54321/auth/v1/token?grant_type=password" -H "apikey: $KEY" \
+  -H 'Content-Type: application/json' -d '{"email":"anishka@example.com","password":"test1234"}' | jq -r .access_token)
+curl -s localhost:8000/api/orders -H "Authorization: Bearer $TOKEN" | jq
+```
+
+Walk the lifecycle: create → get → list → each valid status transition (staff token: `staff@campuscafe.local` /
+`staff123`; admin: `admin@campuscafe.local` / `admin123`) → an invalid transition returns 409 → cancelling restores stock → another user's order returns 404. Then
+confirm the UI shows the result.
+
+## 19. Logging
+
+- Log only through `server/src/utils/logger.ts` (pino; inside a request use `req.log`, which carries the request id)
+  and `client/src/lib/logger.ts`. `console.*` fails lint.
+- Levels are tunable per environment: `LOG_LEVEL` on the server (default `debug` on local, `info` on staging and
+  production) and `VITE_LOG_LEVEL` on the client (default `debug` in dev, `warn` in builds; `debug`/`info` are
+  compiled out of production builds).
+
+| Level   | Meaning                                                                                                   | In this app                                                                                                        |
+| ------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `error` | 5xx or unexpected; server logs it with `err` (stack and cause chain), `route`, `status`, `code`, `userId` | unhandled route error; 503 `UPSTREAM_UNAVAILABLE` (database or Auth unreachable, an `IntegrationError`)            |
+| `warn`  | expected but worth noticing                                                                               | 401 / 403, the first 429 per key per window (repeats and 426 `CLIENT_OUTDATED` are `debug`: each is expected)      |
+| `info`  | lifecycle and business events                                                                             | listening/shutdown, `Order placed`, `Order status changed`, 4xx like `INSUFFICIENT_STOCK`, access lines for writes |
+| `debug` | dev tracing                                                                                               | access lines for successful reads (polled lists)                                                                   |
+
+- Access lines carry `clientVersion` (the `X-Client-Version` header, `none` when missing or malformed).
+- Structured fields first, a short constant message second: `req.log.info({ orderId, status }, 'Order status changed')`.
+- Never log tokens, the secret key, passwords, or raw email/phone. Redaction (`REDACT_PATHS`) covers object keys
+  only, never message strings.
+- Log a failure once, at the boundary (`errorHandler`). Do not log and rethrow. Nothing above `debug` on polling
+  paths or in loops.
+- Details: `docs/LOGGING.md`.
+

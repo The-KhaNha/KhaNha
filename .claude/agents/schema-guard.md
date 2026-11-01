@@ -2,7 +2,7 @@
 name: schema-guard
 description: Use PROACTIVELY before any new Supabase migration, table, column, enum or enum value, index, or Postgres function/RPC. Checks whether the existing schema in `server/supabase/migrations/*.sql` and `server/src/types/database.ts` already covers the need, and lists the RLS, grants, indexes and follow-up steps any change must carry. Returns exactly one verdict — REUSE table X / EXTEND X (add column, enum value or function param) / NEW TABLE (justified). Read-only.
 tools: Read, Grep, Glob, Bash
-model: sonnet
+model: haiku
 ---
 
 `$BASE` is the PR's base branch: `origin/dev` for features, `origin/main` for `hotfix/*` branches

@@ -22,7 +22,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "if command -v graphify >/dev/null 2>&1; then graphify hook-guard search; fi",
+            "command": "if command -v graphify >/dev/null 2>&1; then node \"$CLAUDE_PROJECT_DIR/.claude/hooks/graphify-hint.js\" search; fi",
             "timeout": 10
           }
         ]
@@ -32,7 +32,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "if command -v graphify >/dev/null 2>&1; then graphify hook-guard read; fi",
+            "command": "if command -v graphify >/dev/null 2>&1; then node \"$CLAUDE_PROJECT_DIR/.claude/hooks/graphify-hint.js\" read; fi",
             "timeout": 10
           }
         ]
