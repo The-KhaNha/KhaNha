@@ -544,15 +544,15 @@ own intent, get their own release run and are back-merged the same way. Migratio
 `dev`. Agents that compare against "the base" use the PR's base branch: `origin/dev` for features, `origin/main` for
 hotfixes, `origin/feat/P<n>` for a phase's PRs.
 
-**Phase feature branches.** A phase built by more than one agent at once gets its own feature branch `feat/P<n>`, cut
-from `dev` (P1: `plans/P1_WORK_SPLIT.md`). Its PRs come from `feat/p<n>-<NN>-<slug>` branches (git cannot hold
+**Phase feature branches.** A phase may get its own feature branch `feat/P<n>`, cut from `dev` (P1 has one; one agent
+builds its PRs in order). Its PRs come from `feat/p<n>-<NN>-<slug>` branches (git cannot hold
 `feat/P1` and `feat/P1/…` side by side) and go into `feat/P<n>`, with the same size limit, CI (`ci.yml` lists the
 branch for PRs and pushes) and CodeRabbit review (`.coderabbit.yaml` lists it too). Migrations are immutable once
 merged into the phase branch. When the phase is done, `feat/P<n>` goes into `dev` as one PR, merged by the user.
 
-**PR size (STRICTLY ENFORCED).** Keep every PR reviewable: at most **25 changed files or 500 changed lines** against
-its base (`git diff --shortstat origin/dev...HEAD`; `package-lock.json` and `server/src/types/database.ts` do not
-count, tests and docs do), and one theme per PR. Plan a task that is bigger than that as steps, each its own PR. The
+**PR size (STRICTLY ENFORCED).** Keep every PR reviewable: at most **38 changed files or 750 changed lines** against
+its base (`node .claude/hooks/major-change-gate.js --status` prints both; `package-lock.json`,
+`server/src/types/database.ts` and docs, meaning every Markdown file, do not count; tests do), and one theme per PR. Plan a task that is bigger than that as steps, each its own PR. The
 release PR (`release/*`, from `release.yml`) and a phase branch's PR into `dev` are exempt: each bundles work already
 reviewed in its own PRs.
 
