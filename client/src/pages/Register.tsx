@@ -9,6 +9,8 @@ import { useAuthRedirect } from '../features/auth/useAuthRedirect';
 import {
   NAME_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
+  errorOnBlur,
+  errorOnChange,
   validateEmail,
   validateName,
   validatePassword,
@@ -52,10 +54,11 @@ export function RegisterPage() {
   function update(field: Field, value: string) {
     if (field === 'password') setPassword(value);
     else updateDraft({ [field]: value });
+    setErrors(errorOnChange(field, validators[field](value)));
   }
 
   function validateField(field: Field) {
-    setErrors((prev) => ({ ...prev, [field]: validators[field](values[field]) }));
+    setErrors(errorOnBlur(field, validators[field](values[field])));
   }
 
   async function handleSubmit(event: FormEvent) {

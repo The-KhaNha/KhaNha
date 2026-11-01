@@ -8,7 +8,7 @@ import { AuthCard } from '../features/auth/AuthCard';
 import { selectUser, useAuthStore } from '../features/auth/authStore';
 import { homeFor } from '../features/auth/roles';
 import { useAuthRedirect } from '../features/auth/useAuthRedirect';
-import { validateEmail } from '../features/auth/validation';
+import { errorOnBlur, errorOnChange, validateEmail } from '../features/auth/validation';
 import { ApiError } from '../services/api';
 
 export function LoginPage() {
@@ -61,8 +61,11 @@ export function LoginPage() {
           inputMode="email"
           placeholder="you@example.com"
           value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          onBlur={() => setErrors((prev) => ({ ...prev, email: validateEmail(email) }))}
+          onChange={(e) => {
+            setEmail(e.target.value);
+            setErrors(errorOnChange('email', validateEmail(e.target.value)));
+          }}
+          onBlur={() => setErrors(errorOnBlur('email', validateEmail(email)))}
           error={errors.email}
         />
         <div className="relative">
