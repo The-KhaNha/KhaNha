@@ -118,4 +118,24 @@ describe('CheckoutPage when the server rejects one field', () => {
     expect(screen.getByText('Enter a valid phone number.')).toBeInTheDocument();
     expect(screen.queryByText("Your order didn't go through.")).not.toBeInTheDocument();
   });
+
+  it('keeps the server message through a blur and drops it once the phone is edited', async () => {
+    createOrder.mockRejectedValueOnce(
+      new ApiError(400, 'VALIDATION_ERROR', 'Enter a valid phone number.', {
+        field: 'customerPhone',
+      }),
+    );
+    renderCheckout();
+    fireEvent.click(screen.getByRole('button', { name: /Pay/ }));
+
+    const phone = await screen.findByRole('textbox', { name: /Phone/ });
+    await waitFor(() => expect(phone).toHaveFocus());
+
+    // The value is client-valid; a blur must not remove the line (the layout would shift under a press).
+    fireEvent.blur(phone);
+    expect(screen.getByText('Enter a valid phone number.')).toBeInTheDocument();
+
+    fireEvent.change(phone, { target: { value: '98765 43211' } });
+    expect(screen.queryByText('Enter a valid phone number.')).not.toBeInTheDocument();
+  });
 });
