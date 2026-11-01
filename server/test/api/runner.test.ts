@@ -164,7 +164,7 @@ describe('runQueue', () => {
     expect(at('Job handled')[0]).toHaveProperty('durationMs');
   });
 
-  it('reports progress through onActive: after each read, an empty one too, and when a job finishes', async () => {
+  it('reports progress through onActive after each read, and goes quiet while every slot is busy', async () => {
     const { log } = capture();
     const calls: number[] = [];
     let jobStart = 0;
@@ -184,8 +184,35 @@ describe('runQueue', () => {
 
     // With its one slot busy the loop does not read, so it is quiet: the health check allows a visibility timeout.
     expect(calls.filter((t) => t > jobStart && t < jobEnd)).toEqual([]);
-    // The job finishing counts at once, well before the next read's 1 s poll could end.
+    // A freed slot is read at once, not after the 1 s poll.
     expect((calls.find((t) => t >= jobEnd) ?? Infinity) - jobEnd).toBeLessThan(500);
+  });
+
+  it('never waits in the database: every read returns at once, and an empty queue is read about once per poll', async () => {
+    const { log } = capture();
+    const real = supabaseAdmin.rpc.bind(supabaseAdmin);
+    const reads: { at: number; poll: unknown }[] = [];
+    vi.spyOn(supabaseAdmin, 'rpc').mockImplementation(((
+      fn: string,
+      args: Record<string, unknown>,
+    ) => {
+      if (fn === 'queue_read') reads.push({ at: Date.now(), poll: args.p_poll_seconds });
+      return real(fn as 'queue_read', args as never);
+    }) as unknown as typeof supabaseAdmin.rpc);
+    const runner = start(
+      handler(async () => {}),
+      { log },
+    );
+    await new Promise((r) => setTimeout(r, 2500));
+    await runner.stop();
+
+    // A long-poll holds a pooled connection per queue for its whole wait (docs/JOBS.md "Capacity").
+    expect(reads.map((r) => r.poll)).toEqual(reads.map(() => 0));
+    // Idle: one read, then one per 1 s poll; never a spin.
+    expect(reads.length).toBeGreaterThanOrEqual(2);
+    expect(reads.length).toBeLessThanOrEqual(4);
+    const gaps = reads.slice(1).map((r, i) => r.at - (reads[i]?.at ?? 0));
+    expect(Math.min(...gaps)).toBeGreaterThanOrEqual(900);
   });
 
   it('retries a RetryableError after its backoff, and it succeeds on attempt 2', async () => {
@@ -302,8 +329,8 @@ describe('runQueue', () => {
     let started = false;
     let finished = false;
     send(event(6));
-    // concurrency 2: the loop is back in a read, not waiting on this handler, when the abort comes; the handler outlasts
-    // that read, so a runner that did not wait for it would resolve first.
+    // concurrency 2: the loop is back in its idle wait, not waiting on this handler, when the abort comes; the abort ends
+    // that wait at once, so a runner that did not wait for the handler would resolve first.
     const runner = start(
       handler(
         async () => {
@@ -436,7 +463,7 @@ describe('runQueue', () => {
     expect(max).toBe(c.expectedMax);
   });
 
-  it('a stop during a stalled read waits for it (at most the poll plus the margin) without calling it a failure', async () => {
+  it('a stop during a stalled read waits for it (at most the read timeout) without calling it a failure', async () => {
     const { log, at } = capture();
     const stalled = stallReads(1);
     const runner = start(
@@ -446,12 +473,12 @@ describe('runQueue', () => {
     await waitFor(() => stalled.length === 1);
     const stoppedAt = Date.now();
     await runner.stop();
-    expect(Date.now() - stoppedAt).toBeLessThan(7000); // 1 s poll + 5 s margin
+    expect(Date.now() - stoppedAt).toBeLessThan(6500); // the 5 s read timeout
     expect(stalled[0]?.aborted).toBe(true); // ended by its own timeout, not the stop
     expect(at('Queue read failed')).toHaveLength(0);
   });
 
-  it('a stalled read is abandoned after its poll plus the margin, and reading resumes', async () => {
+  it('a stalled read is abandoned after the read timeout, and reading resumes', async () => {
     const { log, at } = capture();
     const stalled = stallReads(1);
     const handled: number[] = [];
@@ -462,7 +489,7 @@ describe('runQueue', () => {
       }),
       { log },
     );
-    await waitFor(() => handled.length === 1, 12_000); // 1 s poll + 5 s margin, then a 1 s back-off
+    await waitFor(() => handled.length === 1, 12_000); // the 5 s read timeout, then a 1 s back-off
     await runner.stop();
     expect(stalled[0]?.aborted).toBe(true);
     expect(at('Queue read failed')).toEqual([

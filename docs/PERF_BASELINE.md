@@ -118,13 +118,17 @@ All four changes are the react-hooks v7 fixes described in scope (ref/setState-i
 
 ## Worker (`server/src/worker.ts`, 2026-11-01, P1 PR 04, local Supabase)
 
-| Measure                                         | Value                                                                                                                           |
-| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| Idle `queue_read` per queue                     | ~12/min (each long-poll holds 1 PostgREST/DB connection for ~5 s of every ~5 s, 1 `authenticator` connection busy continuously) |
-| Worker DB connections held                      | 1 per queue (concurrency 4 is jobs in flight, not connections, until a read returns rows)                                       |
-| `GET :8001/health` per probe                    | 7-8 ms, one `queue_metrics` RPC per queue (~0.1-0.6 ms in DB); 4/min at the 15 s Docker interval                                |
-| Event latency `emit_event` to "Order event" log | 101 / 130 / 106 ms (3 runs)                                                                                                     |
-| API `GET /api/orders` (customer), 40 req        | with worker p50 9.9 / p95 11.8 ms; without p50 11.2 / p95 13.2 ms (no difference)                                               |
+Reads are quick `pgmq.read` calls with a 2 s wait in the worker when a queue is empty (`POLL_SECONDS`). The first
+version long-polled for 5 s; its numbers are kept for comparison.
+
+| Measure                                     | Quick reads (current)                                                               | Long-poll (first version, replaced)                               |
+| ------------------------------------------- | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| Idle `queue_read` per queue                 | 30/min (measured 15 in 30 s)                                                        | ~12/min                                                           |
+| Connection held by an idle queue            | 1 of 100 samples (`pg_stat_activity`, every 250 ms)                                 | continuously: 1 per queue per replica                             |
+| `GET :8001/health` per probe                | 7-8 ms, one `queue_metrics` RPC per queue (~0.1-0.6 ms in the database)             | same                                                              |
+| Event pickup, `emit_event` to "Order event" | at most 2 s by design; 1.8-2.6 s measured through a CLI that takes 1.2-1.9 s itself | 101 / 130 / 106 ms                                                |
+| Worker stop on SIGTERM                      | 116 ms                                                                              | 2.8 s (the read in progress finished its poll)                    |
+| API `GET /api/orders` (customer), 40 req    | not re-measured (the worker now holds no connection)                                | with worker p50 9.9 / p95 11.8 ms; without p50 11.2 / p95 13.2 ms |
 
 `GET /api/menu` is served from the 10 s in-process cache (1.4 ms), so it does not exercise the shared pool.
 Local pooler config: `default_pool_size = 20`, `max_client_conn = 100`; PostgREST's own pool is separate.

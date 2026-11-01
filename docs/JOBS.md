@@ -55,14 +55,14 @@ channel): a worker that dies mid-message leaves it to come back after its visibi
 A handler must not put personal data in an error message: the message reaches both the log (`err`) and
 `job_failures.last_error`.
 
-`runQueue(handler, { signal, log, onActive })` reads up to the free concurrency slots at a time, waiting up to `POLL_SECONDS`
-(5) for a first message. That stays under the 8 s statement timeout PostgREST's `authenticator` role runs with
-(Supabase's default; `service_role` inherits it), and under the worker's shutdown grace. On abort it stops reading,
-leaves anything read during the abort unstarted (back after its visibility timeout), and resolves once the handlers in
-flight finish. Every call the runner makes is bounded, so a connection that dies without closing cannot stall a queue: a
-read by its poll plus 5 s, a delete, retry or dead letter by 10 s. Stopping waits for the read in progress (at most
-the poll plus 5 s) rather than cancelling it: a cancelled read keeps polling in the database, and a message it took
-there would stay hidden for its whole visibility timeout with no one to handle it. A failing read (the database unreachable) backs off 1 s → 5 s. If recording an outcome fails, the
+`runQueue(handler, { signal, log, onActive })` reads up to the free concurrency slots at a time with `pgmq.read`, which
+returns at once. A read that found work is followed by another at once; an empty queue is read again after
+`POLL_SECONDS` (2), the most a new job waits to start. Nothing waits in the database (see "Capacity" below). On abort it
+stops reading (the idle wait ends at once), leaves anything read during the abort unstarted (back after its visibility
+timeout), and resolves once the handlers in flight finish. Every call the runner makes is bounded, so a connection that
+dies without closing cannot stall a queue: a read by 5 s, a delete, retry or dead letter by 10 s. Stopping waits for the
+read in progress rather than cancelling it: a cancelled read may still take a message in the database, and that message
+would stay hidden for its whole visibility timeout with no one to handle it. A failing read (the database unreachable) backs off 1 s → 5 s. If recording an outcome fails, the
 message simply comes back. A message never read, or one that is not a domain event, is an `InvariantError`:
 dead-lettered, logged with `invariant: true`. Log lines: [LOGGING.md](LOGGING.md#jobs).
 
@@ -85,13 +85,15 @@ message to one reader at a time.
   `{ ok, queues: [{ queue, lastActiveAt, stale, depth, oldestAgeSec }], version, commit }`. `depth` and `oldestAgeSec`
   come from `queue_metrics` with a 1 s timeout and are `null` when the database does not answer. It is liveness only:
   a database outage keeps the loops turning, so it never makes a healthy worker unhealthy. Code: `jobs/health.ts`.
-- **Shutdown.** SIGTERM or SIGINT stops reading; jobs in flight finish (a read in progress finishes its poll, at most
-  5 s). The process exits within `SHUTDOWN_DEADLINE_MS` (10 s) or exits 1. Unfinished messages come back after their
+- **Shutdown.** SIGTERM or SIGINT stops reading; jobs in flight finish (a read in progress returns first, in
+  milliseconds). The process exits within `SHUTDOWN_DEADLINE_MS` (10 s) or exits 1. Unfinished messages come back after their
   visibility timeout. Shared with the API: `utils/shutdown.ts`.
-- **Capacity.** Each idle queue holds one database connection through its 5 s long-poll (about 12 reads a minute;
-  `docs/PERF_BASELINE.md` "Worker"), from the pool the API shares. One queue is negligible. Before the consumers
-  hold about three connections, which P6's queues would reach, let one loop read every queue or wake the reads with
-  LISTEN/NOTIFY, and check hosted Free's PostgREST pool size first (not yet recorded in ADR-011).
+- **Capacity.** The wait between reads is in the worker, not the database: a read holds a pooled connection for a
+  few milliseconds, so an idle worker holds none, however many queues it reads (the roadmap plans seven) and however
+  many replicas run. The cost is reads, about 30 a minute per idle queue at the 2 s poll, each about a millisecond in
+  the database (`docs/PERF_BASELINE.md` "Worker"). A long-poll would hold one connection per queue per replica from
+  PostgREST's pool, which the API shares and which is small ([ADR-011](adr/011-free-tiers.md)). A consumer that needs
+  sub-second pickup gets LISTEN/NOTIFY wake-ups on a direct connection, never a return to the long-poll.
 
 Deployment: [DEPLOYMENT.md](DEPLOYMENT.md#local-compose). Log lines: [LOGGING.md](LOGGING.md#the-worker-process).
 
