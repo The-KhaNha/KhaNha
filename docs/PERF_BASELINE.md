@@ -298,3 +298,24 @@ FCP 1953 → 1502 ms, score 94 → 98; `/menu` LCP 3755 → 2252 ms (runs 2104�
 CLS unchanged (0.053 / 0.002), TBT 0. Initial JS 145.5 → 87.4 KB gzip (supabase-js on demand), transferred JS
 173 → 88 KB (gzip_static at level 9), page weight `/menu` 528 → 419 KB. Applied throttling (Playwright + CDP, Slow 4G,
 4× CPU, 360×640): `/menu` LCP 1.66–2.05 s, `/` 1.63–1.78 s. `lhci autorun` assertions pass with no warnings.
+
+## Order writes with events (P1 PR 05, 2026-11-01, local API)
+
+`place_order` / `update_order_status` now call `emit_event` (one `domain_events` insert + one `pgmq.send` to
+`q_notifications`) in the same transaction; `update_order_status` takes `select … for update` first. The baseline
+above recorded no order-write latency, so these are the first absolute numbers (30 requests each, one customer,
+one staff, sequential).
+
+| Request                                             | p50   | p95   | Notes                                                                             |
+| --------------------------------------------------- | ----- | ----- | --------------------------------------------------------------------------------- |
+| `POST /api/orders` (1 line)                         | 19 ms | 33 ms | 201                                                                               |
+| `PATCH /api/orders/:id/status` (PLACED → PREPARING) | 13 ms | 15 ms | 200                                                                               |
+| `PATCH` repeat (same status)                        | 13 ms | 19 ms | 200, writes nothing: no `domain_events` row, no queue row, `updated_at` unchanged |
+
+- `emit_event` alone: ~0.1 ms per call (200 calls in 19.5 ms, rolled back); not a measurable share of the request.
+- Growth: 60 `domain_events` rows for 30 orders taken PLACED then PREPARING (1 row per write),
+  avg 270 B per row (`order.placed` 256 B, `.preparing` 296 B); a full order (PLACED, PREPARING, READY, COLLECTED)
+  is about 1.1 KB. The matching `q_notifications` row averages about 513 B until the worker archives or deletes it.
+- Bounds: `purge_domain_events()` (nightly, 30 days) bounds `domain_events`. `q_notifications` is bounded only
+  while the worker runs; with the worker stopped it grows by one row per event (80 rows after this run).
+- Rate limit: `RATE_LIMIT_WRITE_MAX` = 30 writes per user per 60 s, so a 30-request sample needs a fresh window.

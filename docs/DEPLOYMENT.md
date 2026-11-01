@@ -153,6 +153,10 @@ flowchart TD
 applied locally by `db:reset` already; staging needs `npm run db:push:staging` run once before a staging build (which
 ships the renamed status and the admin dashboard) can be pointed at it.
 
+`20261101131925_transitions_emit_events.sql` adds defaulted parameters (`p_actor`, `p_request_id`) to `place_order`
+and `update_order_status`, so the API already deployed keeps working against it (its events carry no actor). Push the
+migration first, then deploy the new API.
+
 ### Applying migrations
 
 `server/scripts/db-push.sh <staging|production>`:

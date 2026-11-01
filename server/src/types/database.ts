@@ -418,12 +418,14 @@ export type Database = {
       };
       place_order: {
         Args: {
+          p_actor?: Json;
           p_customer_name: string;
           p_customer_phone?: string;
           p_idempotency_key?: string;
           p_lines: Json;
           p_note?: string;
           p_payment_status: Database['public']['Enums']['payment_status'];
+          p_request_id?: string;
           p_store_id: string;
           p_user_id: string;
         };
@@ -475,11 +477,13 @@ export type Database = {
       reset_demo_orders: { Args: never; Returns: undefined };
       update_order_status: {
         Args: {
+          p_actor?: Json;
           p_from_statuses: Database['public']['Enums']['order_status'][];
           p_next_status: Database['public']['Enums']['order_status'];
           p_order_id: string;
+          p_request_id?: string;
         };
-        Returns: undefined;
+        Returns: boolean;
       };
     };
     Enums: {

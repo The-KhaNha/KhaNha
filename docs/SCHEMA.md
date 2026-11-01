@@ -24,6 +24,7 @@ a new file (see [DEPLOYMENT.md](DEPLOYMENT.md#schema-changes)).
 | `20260928193552_order_idempotency_key.sql`    | adds `orders.idempotency_key` and its partial unique index; drops and recreates `place_order` with `p_idempotency_key` (a function's argument list is its identity, so a new parameter cannot use `create or replace`), reissuing its grants |
 | `20261024181904_outbox.sql`                   | enables `pgmq` and `pg_cron`; adds `domain_events`, `event_subscriptions`, `emit_event` and `purge_domain_events`; creates the `q_notifications` queue, its `order.*` subscription and the nightly purge schedule                            |
 | `20261024192953_queue_wrappers.sql`           | adds `job_failures` and the five `queue_*` wrappers (the worker's only way into pgmq), granted to `service_role`                                                                                                                             |
+| `20261101131925_transitions_emit_events.sql`  | drops and recreates `place_order` and `update_order_status` with `p_actor` and `p_request_id` (defaulted), which emit their events; `update_order_status` locks the row, returns boolean and treats a repeat as a no-op; grants reissued     |
 
 ## Enums
 
@@ -214,21 +215,21 @@ All functions set `search_path = ''` and use schema-qualified names. Each call i
 raises leaves nothing behind. Expected failures are raised with `message` = an API error code and `detail` = a JSON
 object (SQLSTATE `P0001`). How the API maps them is in [API.md](API.md#database-errors-p0001).
 
-| Function                     | Language | Security | Returns | Called by                         | `EXECUTE` granted to |
-| ---------------------------- | -------- | -------- | ------- | --------------------------------- | -------------------- |
-| `set_updated_at()`           | plpgsql  | invoker  | trigger | `orders_set_updated_at`           | nobody               |
-| `handle_new_user()`          | plpgsql  | definer  | trigger | `on_auth_user_created`            | nobody               |
-| `handle_user_email_change()` | plpgsql  | definer  | trigger | `on_auth_user_email_changed`      | nobody               |
-| `place_order(...)`           | plpgsql  | invoker  | uuid    | `order.service.createOrder`       | `service_role`       |
-| `update_order_status(...)`   | plpgsql  | invoker  | void    | `order.service.updateOrderStatus` | `service_role`       |
-| `reset_demo_orders()`        | sql      | definer  | void    | `server/scripts/seed.ts`          | `service_role`       |
-| `emit_event(...)`            | plpgsql  | definer  | uuid    | transition functions (P1 PR 05)   | `service_role`       |
-| `queue_read(...)`            | plpgsql  | definer  | table   | the worker (P1 PR 03)             | `service_role`       |
-| `queue_delete(...)`          | sql      | definer  | boolean | the worker                        | `service_role`       |
-| `queue_retry(...)`           | sql      | definer  | void    | the worker                        | `service_role`       |
-| `queue_dead_letter(...)`     | sql      | definer  | boolean | the worker                        | `service_role`       |
-| `queue_metrics(text)`        | sql      | definer  | table   | the worker's health report        | `service_role`       |
-| `purge_domain_events(...)`   | sql      | invoker  | integer | pg_cron `purge-domain-events`     | `service_role`       |
+| Function                     | Language | Security | Returns | Called by                            | `EXECUTE` granted to |
+| ---------------------------- | -------- | -------- | ------- | ------------------------------------ | -------------------- |
+| `set_updated_at()`           | plpgsql  | invoker  | trigger | `orders_set_updated_at`              | nobody               |
+| `handle_new_user()`          | plpgsql  | definer  | trigger | `on_auth_user_created`               | nobody               |
+| `handle_user_email_change()` | plpgsql  | definer  | trigger | `on_auth_user_email_changed`         | nobody               |
+| `place_order(...)`           | plpgsql  | invoker  | uuid    | `order.service.createOrder`          | `service_role`       |
+| `update_order_status(...)`   | plpgsql  | invoker  | boolean | `order.service.updateOrderStatus`    | `service_role`       |
+| `reset_demo_orders()`        | sql      | definer  | void    | `server/scripts/seed.ts`             | `service_role`       |
+| `emit_event(...)`            | plpgsql  | definer  | uuid    | `place_order`, `update_order_status` | `service_role`       |
+| `queue_read(...)`            | plpgsql  | definer  | table   | the worker (P1 PR 03)                | `service_role`       |
+| `queue_delete(...)`          | sql      | definer  | boolean | the worker                           | `service_role`       |
+| `queue_retry(...)`           | sql      | definer  | void    | the worker                           | `service_role`       |
+| `queue_dead_letter(...)`     | sql      | definer  | boolean | the worker                           | `service_role`       |
+| `queue_metrics(text)`        | sql      | definer  | table   | the worker's health report           | `service_role`       |
+| `purge_domain_events(...)`   | sql      | invoker  | integer | pg_cron `purge-domain-events`        | `service_role`       |
 
 ### set_updated_at
 
@@ -259,11 +260,14 @@ place_order(
   p_lines jsonb,              -- [{ menu_item_id, name, unit_price, quantity }] in cart order
   p_customer_phone text default null,
   p_note text default null,
-  p_idempotency_key uuid default null  -- the client's per-attempt key (API.md "POST /orders")
+  p_idempotency_key uuid default null, -- the client's per-attempt key (API.md "POST /orders")
+  p_actor jsonb default null,          -- { type, id, role }: who asked (the controller's RequestContext)
+  p_request_id text default null       -- the request's x-request-id
 ) returns uuid                -- the new order's id, or the id of the order this key already placed
 ```
 
-The API has already checked and priced every line from the database. The function:
+The API has already checked and priced every line from the database. The function first sets `app.actor` and
+`app.request_id` for the transaction (`set_config(..., true)`; PR 06's audit trigger reads them). Then:
 
 0. With a `p_idempotency_key`: takes `pg_advisory_xact_lock` on a hash of `(user_id, key)` (held until the
    transaction ends, so two simultaneous repeats run one after the other), then returns the id of the order this
@@ -279,6 +283,8 @@ The API has already checked and priced every line from the database. The functio
    `idempotency_key = p_idempotency_key`.
 4. Inserts one `order_items` row per line with `line_number` = the line's position in `p_lines` (1-based) and
    `line_total = unit_price * quantity`.
+5. Calls `emit_event('order.placed', 'order', id, store_id, { orderNumber }, p_actor, p_request_id)`. An idempotent
+   replay returns at step 0 and emits nothing.
 
 The conditional decrement means two customers can never both get the last unit. The loser's `update` waits for the
 winner's row lock, then re-checks and finds too little stock.
@@ -293,17 +299,25 @@ winner's row lock, then re-checks and finds too little stock.
 update_order_status(
   p_order_id uuid,
   p_next_status order_status,
-  p_from_statuses order_status[]   -- statuses allowed to move to p_next_status (from ALLOWED_TRANSITIONS)
-) returns void
+  p_from_statuses order_status[],  -- statuses allowed to move to p_next_status (from ALLOWED_TRANSITIONS)
+  p_actor jsonb default null,      -- { type, id, role }
+  p_request_id text default null   -- the request's x-request-id
+) returns boolean                  -- true: the status changed; false: a repeat, nothing changed
 ```
 
-1. `update orders set status = p_next_status where id = p_order_id and status = any (p_from_statuses)`.
-2. When no row was updated, it reads the order:
-   - no order: raises `NOT_FOUND`;
-   - otherwise: raises `INVALID_STATUS_TRANSITION` with detail `{ orderNumber, status }` (the current status).
-3. When `p_next_status = 'CANCELLED'`: adds back the summed `order_items.quantity` per menu item to
-   `menu_items.stock_quantity`, only where `stock_quantity is not null`. The conditional update in step 1 succeeds at
-   most once per order, so stock is restored at most once.
+It sets `app.actor` and `app.request_id` for the transaction (as `place_order` does), then:
+
+1. Selects the order `for update` (a second request for it waits, then sees the first one's status). No order: raises
+   `NOT_FOUND`.
+2. When the order already has `p_next_status` and `p_from_statuses` is not empty (some transition leads there; never
+   `PLACED`): returns `false`. No update, no stock change, no event.
+3. When its status is not in `p_from_statuses`: raises `INVALID_STATUS_TRANSITION` with detail
+   `{ orderNumber, status }` (the current status).
+4. Updates the status. When `p_next_status = 'CANCELLED'`: adds back the summed `order_items.quantity` per menu item
+   to `menu_items.stock_quantity`, only where `stock_quantity is not null`. A second cancel is a repeat (step 2), so
+   stock is restored at most once.
+5. Calls `emit_event('order.<status lower>', 'order', id, store_id, { orderNumber, from, to }, p_actor,
+p_request_id)` and returns `true`.
 
 The transition rules live in the API, not here. The function only enforces "the status is still one of these".
 
@@ -327,7 +341,7 @@ emit_event(
   p_aggregate_id uuid,
   p_store_id uuid,
   p_payload jsonb,          -- ids and statuses only
-  p_actor jsonb,            -- { type, id }
+  p_actor jsonb,            -- { type, id, role }
   p_request_id text
 ) returns uuid              -- the new domain_events id
 ```

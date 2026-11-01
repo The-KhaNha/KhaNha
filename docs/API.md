@@ -255,13 +255,19 @@ Allowed transitions (`ALLOWED_TRANSITIONS` in `server/src/services/order.service
 | `COLLECTED` | none                     |
 | `CANCELLED` | none                     |
 
-The service passes every status that may move to the requested one as `p_from_statuses`. The database does one
-conditional update, so two staff devices pressing at once get one 200 and one 409. Cancelling puts the order's
+The service passes every status that may move to the requested one as `p_from_statuses`. The database locks the
+order row, so two staff devices pressing at once are served one after the other. Cancelling puts the order's
 tracked stock back in the same transaction (see [SCHEMA.md](SCHEMA.md#update_order_status)).
+
+A repeat is not an error. When the order already has the requested status and some transition leads to that status
+(anything but `PLACED`), the answer is 200 with the order unchanged: nothing is written, no stock moves and no event is
+emitted. This makes a retry after a lost answer, and two devices pressing the same button, safe. Only a real invalid
+move is a 409, `PLACED` → `PLACED` included. The request's `x-request-id` is recorded with the event of a change
+([JOBS.md](JOBS.md#order-events)).
 
 | Status | Code                        | When                                                                                                                     |
 | ------ | --------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| 200    |                             | `{ order: OrderDto }` with the new status                                                                                |
+| 200    |                             | `{ order: OrderDto }` with the new status, or unchanged for a repeat of a transition that already happened               |
 | 400    | `VALIDATION_ERROR`          | `status` missing or not one of the five                                                                                  |
 | 401    | `UNAUTHORIZED`              | see [Authentication](#authentication)                                                                                    |
 | 403    | `FORBIDDEN`                 | caller is not `STAFF`                                                                                                    |
