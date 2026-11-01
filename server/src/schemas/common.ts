@@ -1,11 +1,11 @@
-import { z, type ZodTypeAny } from 'zod';
+import { z } from 'zod';
 import { LIMITS } from './limits';
 
 const blankToUndefined = (value: unknown): unknown =>
   typeof value === 'string' && value.trim() === '' ? undefined : value;
 
 /** Optional field where a blank string counts as "not provided" (forms send "" for untouched inputs). */
-export const optionalField = <T extends ZodTypeAny>(schema: T) =>
+export const optionalField = <T extends z.ZodType>(schema: T) =>
   z.preprocess(blankToUndefined, schema.optional());
 
 /**
