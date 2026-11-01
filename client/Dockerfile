@@ -17,7 +17,14 @@ RUN npm run build:container \
   && find dist -type f \( -name '*.js' -o -name '*.css' -o -name '*.html' -o -name '*.svg' -o -name '*.json' \) \
       -exec gzip -9 -k {} +
 
-FROM nginxinc/nginx-unprivileged:1.27-alpine
+# Mainline nginx (nginx recommends it), slim: 21 packages instead of 71 and a third of the size, with every module
+# this config uses. An old line stops getting Alpine updates (1.27 carried 210 fixable CVEs).
+FROM nginxinc/nginx-unprivileged:1.31-alpine-slim
+# The upstream image can lag Alpine's security releases by weeks; take the fixes at build time (as root), then go back
+# to the image's nginx user (uid 101). COPY writes root-owned files whatever USER says.
+USER 0
+RUN apk upgrade --no-cache
+USER 101
 COPY --from=build /app/dist /usr/share/nginx/html
 # The image's entrypoint renders every templates/**/*.template into conf.d/, substituting only variables that are set
 # (so nginx's own $uri and $host survive).

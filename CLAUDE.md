@@ -546,8 +546,9 @@ hotfixes, `origin/feat/P<n>` for a phase's PRs.
 
 **Phase feature branches.** A phase may get its own feature branch `feat/P<n>`, cut from `dev` (P1 has one; one agent
 builds its PRs in order). Its PRs come from `feat/p<n>-<NN>-<slug>` branches (git cannot hold
-`feat/P1` and `feat/P1/…` side by side) and go into `feat/P<n>`, with the same size limit, CI (`ci.yml` lists the
-branch for PRs and pushes) and CodeRabbit review (`.coderabbit.yaml` lists it too). Migrations are immutable once
+`feat/P1` and `feat/P1/…` side by side) and go into `feat/P<n>`, with the same size limit, CI (`ci.yml` and `security.yml`
+match `feat/**` for PRs; `ci.yml` also runs on pushes to `feat/P<n>`) and CodeRabbit review (`.coderabbit.yaml`
+matches `feat/.*`). Migrations are immutable once
 merged into the phase branch. When the phase is done, `feat/P<n>` goes into `dev` as one PR, merged by the user.
 
 **PR size (STRICTLY ENFORCED).** Keep every PR reviewable: at most **38 changed files or 750 changed lines** against
