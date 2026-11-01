@@ -164,6 +164,30 @@ describe('runQueue', () => {
     expect(at('Job handled')[0]).toHaveProperty('durationMs');
   });
 
+  it('reports progress through onActive: after each read, an empty one too, and when a job finishes', async () => {
+    const { log } = capture();
+    const calls: number[] = [];
+    let jobStart = 0;
+    let jobEnd = 0;
+    const runner = start(
+      handler(async () => {
+        jobStart = Date.now();
+        await new Promise((r) => setTimeout(r, 1500));
+        jobEnd = Date.now();
+      }),
+      { log, onActive: () => calls.push(Date.now()) },
+    );
+    await waitFor(() => calls.length >= 1); // an empty read returned
+    send(event(10));
+    await waitFor(() => calls.some((t) => jobEnd > 0 && t >= jobEnd));
+    await runner.stop();
+
+    // With its one slot busy the loop does not read, so it is quiet: the health check allows a visibility timeout.
+    expect(calls.filter((t) => t > jobStart && t < jobEnd)).toEqual([]);
+    // The job finishing counts at once, well before the next read's 1 s poll could end.
+    expect((calls.find((t) => t >= jobEnd) ?? Infinity) - jobEnd).toBeLessThan(500);
+  });
+
   it('retries a RetryableError after its backoff, and it succeeds on attempt 2', async () => {
     const { log, at } = capture();
     const attempts: number[] = [];

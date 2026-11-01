@@ -2,7 +2,7 @@
 
 Background work: the outbox, the queues and the schedules ([ADR-002](adr/002-outbox-pgmq-pg-cron.md)). Tables and
 functions in detail: [SCHEMA.md](SCHEMA.md). The job runner is [below](#handlers-and-the-runner); the worker process
-that runs it arrives in P1 PR 04 ([plan](../plans/P1_PLATFORM_CORE.md)).
+that runs it is [below](#the-worker-process).
 
 ## The outbox
 
@@ -55,7 +55,7 @@ channel): a worker that dies mid-message leaves it to come back after its visibi
 A handler must not put personal data in an error message: the message reaches both the log (`err`) and
 `job_failures.last_error`.
 
-`runQueue(handler, { signal, log })` reads up to the free concurrency slots at a time, waiting up to `POLL_SECONDS`
+`runQueue(handler, { signal, log, onActive })` reads up to the free concurrency slots at a time, waiting up to `POLL_SECONDS`
 (5) for a first message. That stays under the 8 s statement timeout PostgREST's `authenticator` role runs with
 (Supabase's default; `service_role` inherits it), and under the worker's shutdown grace. On abort it stops reading,
 leaves anything read during the abort unstarted (back after its visibility timeout), and resolves once the handlers in
@@ -69,6 +69,31 @@ dead-lettered, logged with `invariant: true`. Log lines: [LOGGING.md](LOGGING.md
 | Handler         | Queue             | Concurrency | Visibility | Attempts | Backoff     | Does (until P6.3)                        |
 | --------------- | ----------------- | ----------- | ---------- | -------- | ----------- | ---------------------------------------- |
 | `notifyHandler` | `q_notifications` | 4           | 30 s       | 5        | 5 s → 900 s | logs `info` "Order event" with `orderId` |
+
+## The worker process
+
+`server/src/worker.ts` is the second entry point ([ADR-005](adr/005-modular-monolith-three-processes.md)), next to `src/server.ts`. It runs
+the API's image with another command (`node dist/src/worker.js`; `npm run dev:worker`, `start:worker`) and the same
+env. It runs wherever the API runs; one or more replicas are safe, because pgmq's visibility timeouts hand each
+message to one reader at a time.
+
+- **Consumers.** The `HANDLERS` list in `worker.ts` (today `notifyHandler`). A new consumer is added there: one
+  `runQueue` per handler.
+- **`GET /health`** on `WORKER_HEALTH_PORT` (default 8001); any other path or method is 404. It answers 200 while every
+  queue's loop made progress within `staleAfterSec = max(3 × POLL_SECONDS, visibilityTimeoutSec)`, else 503. Progress
+  is `RunOptions.onActive`: a read returned (a failed one too) or a job finished. Body:
+  `{ ok, queues: [{ queue, lastActiveAt, stale, depth, oldestAgeSec }], version, commit }`. `depth` and `oldestAgeSec`
+  come from `queue_metrics` with a 1 s timeout and are `null` when the database does not answer. It is liveness only:
+  a database outage keeps the loops turning, so it never makes a healthy worker unhealthy. Code: `jobs/health.ts`.
+- **Shutdown.** SIGTERM or SIGINT stops reading; jobs in flight finish (a read in progress finishes its poll, at most
+  5 s). The process exits within `SHUTDOWN_DEADLINE_MS` (10 s) or exits 1. Unfinished messages come back after their
+  visibility timeout. Shared with the API: `utils/shutdown.ts`.
+- **Capacity.** Each idle queue holds one database connection through its 5 s long-poll (about 12 reads a minute;
+  `docs/PERF_BASELINE.md` "Worker"), from the pool the API shares. One queue is negligible. Before the consumers
+  hold about three connections, which P6's queues would reach, let one loop read every queue or wake the reads with
+  LISTEN/NOTIFY, and check hosted Free's PostgREST pool size first (not yet recorded in ADR-011).
+
+Deployment: [DEPLOYMENT.md](DEPLOYMENT.md#local-compose). Log lines: [LOGGING.md](LOGGING.md#the-worker-process).
 
 ## Schedules
 

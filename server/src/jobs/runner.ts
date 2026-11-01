@@ -79,11 +79,16 @@ export interface RunOptions {
   pollSeconds?: number;
   now?: () => number;
   random?: () => number;
+  /**
+   * Called whenever the loop makes progress: a read returned (a failed one too) or a job finished. The worker's health
+   * check counts on it (jobs/health.ts); a loop that stops calling it is stuck.
+   */
+  onActive?: () => void;
 }
 
 /** Consumes one queue until `signal` aborts (docs/JOBS.md "Handlers and the runner"). */
 export async function runQueue<T>(handler: JobHandler<T>, options: RunOptions): Promise<void> {
-  const { signal, log } = options;
+  const { signal, log, onActive = () => {} } = options;
   // At least 1: a read that never waits would spin the loop against the database.
   const pollSeconds = Math.max(1, options.pollSeconds ?? POLL_SECONDS);
   const inFlight = new Set<Promise<void>>();
@@ -98,6 +103,7 @@ export async function runQueue<T>(handler: JobHandler<T>, options: RunOptions): 
     try {
       rows = await read(handler, handler.concurrency - inFlight.size, pollSeconds);
     } catch (err) {
+      onActive();
       // A read that timed out as the worker stops is not an outage worth reporting.
       if (signal.aborted) break;
       // Once per outage: every read fails the same way until the database is back.
@@ -106,12 +112,16 @@ export async function runQueue<T>(handler: JobHandler<T>, options: RunOptions): 
       await sleep(Math.min(5, failedReads) * 1000, undefined, { signal }).catch(() => {});
       continue;
     }
+    onActive();
     if (failedReads > 0) log.info({ queue: handler.queue, failedReads }, 'Queue reachable again');
     failedReads = 0;
     // Read just as the worker stops: not started, so they come back after their visibility timeout.
     if (signal.aborted) break;
     for (const row of rows) {
-      const job = handleOne(handler, row, options).finally(() => inFlight.delete(job));
+      const job = handleOne(handler, row, options).finally(() => {
+        inFlight.delete(job);
+        onActive();
+      });
       inFlight.add(job);
     }
   }

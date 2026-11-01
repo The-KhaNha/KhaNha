@@ -251,7 +251,16 @@ Split seam if over 750 lines: the `InvariantError` mapping moves to PR 04.
 
 ### PR 04 — The worker process (P1.2)
 
-- [ ] Merged
+- [x] Merged
+
+As built, the health rule counts progress rather than polls: a queue is healthy while its loop made progress
+(a read returned, a failed one too, or a job finished; `runQueue`'s `onActive`) within
+`max(3 × POLL_SECONDS, visibilityTimeoutSec)`. With every slot busy the loop does not read, and a database outage
+must not restart the worker: liveness only, like the API's `/api/health`. Depth and age come from `queue_metrics`
+(1 s, `null` when it does not answer). Two fixes found while verifying: `onShutdown` keeps catching repeat signals
+(tsx and a terminal's Ctrl+C deliver two, and an uncaught second one killed the process mid-stop), and `start.sh`
+stops whole process trees (it left `tsx watch` behind). The shutdown is shared as `utils/shutdown.ts`
+(`onShutdown`, `SHUTDOWN_DEADLINE_MS`).
 
 Also carries PR 03's split-off: `server/src/middleware/errorHandler.ts` logs an `InvariantError`'s 500 with
 `invariant: true`, with its case in `test/unit/errors.safe.test.ts`.
@@ -268,8 +277,9 @@ Implements [ADR-005](../docs/adr/005-modular-monolith-three-processes.md) (accep
 | `compose.yaml`                                   | `worker`: the api image, `command: ["node", "dist/src/worker.js"]`, healthcheck on `/health`; the `reconciler` placeholder comment says P5.10 (scheduled jobs are pg_cron)                                                                                                                                                                  |
 | `.claude/hooks/major-change-gate.js`             | `server/src/jobs/` and `server/src/worker.ts` are major-change paths (its `--self-test` covers them)                                                                                                                                                                                                                                        |
 
-Tests: `test/unit/worker-health.safe.test.ts` (healthy, then 503 once a queue's last poll is stale, with an injected
-clock).
+Tests: `test/unit/worker-health.safe.test.ts` (healthy, then 503 once a queue's loop is quiet past its limit, with an
+injected clock), `test/unit/shutdown.safe.test.ts` (one stop, repeats still caught, the deadline, a failed stop), a
+`runner.test.ts` case for `onActive`, and `app-breaker` E5 (`start.sh` stops cleanly and leaves nothing behind).
 
 Docs: CLAUDE.md §3 (scripts), §4 (`jobs/`, the `worker.ts` entry), §17 (paths), §18 (the worker is long-running;
 `start.sh` runs it); `docs/DEPLOYMENT.md` (env, the compose row, "the worker runs wherever the API runs");

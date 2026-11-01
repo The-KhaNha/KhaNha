@@ -46,6 +46,7 @@ Read from `server/.env` (copy `server/.env.example`) or the host's environment. 
 | `SUPABASE_JWKS_URL`                                                                            | no              | derived from `SUPABASE_URL`     | a URL                                                        | where to fetch the token signing keys when `SUPABASE_URL` is plain `http` on a host other than localhost (a container reaching the local stack at `host.docker.internal`); see [Containers](#signed-in-requests-from-a-container-supabase_jwks_url)                                        |
 | `SESSION_IDLE_DAYS`                                                                            | no              | `7`                             | integer 1–90                                                 | days a sign-in survives without use, served as `session.idleDays` by `GET /api/config`; must equal `auth.sessions.inactivity_timeout` in `supabase/config.toml` (hosted Supabase Free has none, ADR-011) ([CONFIGURATION.md](CONFIGURATION.md#deployment-settings))                        |
 | `PORT`                                                                                         | no              | `8000`                          | positive integer                                             | API port. `start.sh` reads it for its probes and passes it to the web app's dev proxy (`VITE_API_PROXY_TARGET`)                                                                                                                                                                            |
+| `WORKER_HEALTH_PORT`                                                                           | no              | `8001`                          | positive integer                                             | The worker process's `GET /health` port ([JOBS.md](JOBS.md#the-worker-process)); the API never listens on it. `start.sh` probes and frees it like `PORT`                                                                                                                                   |
 | `PUBLIC_READ_TTL_MS`                                                                           | no              | `10000`                         | integer 0–600000                                             | how long public reads (menu, store, site settings) stay in the per-process cache (`utils/cache.ts`); 0 turns it off. Another instance may serve an admin's change up to this late                                                                                                          |
 | `TRUST_PROXY_HOPS`                                                                             | no              | `0`                             | integer 0–10                                                 | proxies in front of the API whose `X-Forwarded-For` Express trusts for `req.ip` (`app.set('trust proxy', …)`); compose sets 1 for its nginx. 0 means `req.ip` is the socket peer and cannot be spoofed                                                                                     |
 | `CLIENT_ORIGIN`                                                                                | no              | `http://localhost:5173`         | a URL                                                        | the one origin CORS allows                                                                                                                                                                                                                                                                 |
@@ -222,16 +223,16 @@ flowchart TD
   App -->|"anything else"| X4["Exit: set APP_ENV"]
   ModeL --> Deps
   ModeS --> Deps
-  Deps["npm install where node_modules is missing"] --> Ports["Kill anything listening on 8000 and 5173"]
+  Deps["npm install where node_modules is missing"] --> Ports["Kill anything listening on 8000, 8001 and 5173"]
   Ports --> Seed{"--seed?"}
   Seed -->|"yes"| RunSeed["cd server && npm run seed"]
   Seed -->|"no"| Start
   RunSeed -->|"fails"| X5["Exit: database not migrated?"]
   RunSeed -->|"ok"| Start
-  Start["Start API (tsx watch) and Vite in the chosen mode<br/>logs → .logs/server.log, .logs/client.log"] --> Wait{"/api/health and :5173 return 200<br/>within 45 s?"}
-  Wait -->|"no"| X6["Stop both, point at the logs"]
+  Start["Start API and worker (tsx watch) and Vite in the chosen mode<br/>logs → .logs/server.log, .logs/worker.log, .logs/client.log"] --> Wait{"/api/health, :8001/health and :5173 return 200<br/>within 45 s?"}
+  Wait -->|"no"| X6["Stop all three, point at the logs"]
   Wait -->|"yes"| Menu{"/api/menu returns 200?"}
-  Menu -->|"no"| X7["Stop both: database empty or unreachable, run --seed"]
+  Menu -->|"no"| X7["Stop all three: database empty or unreachable, run --seed"]
   Menu -->|"yes"| Ready["Print URLs, test logins and APP_ENV, wait for Ctrl+C"]
 ```
 
@@ -390,19 +391,19 @@ Desktop, where "host" is Docker's VM.)
 ```bash
 cd server && npm run db:start && npm run seed && cd ..
 export SUPABASE_PUBLISHABLE_KEY=$(grep VITE_SUPABASE_PUBLISHABLE_KEY client/.env.development | cut -d= -f2)
-GIT_COMMIT=$(git rev-parse --short HEAD) docker compose up --build web api     # http://localhost:8080
-docker compose ps                                                             # both (healthy)
+GIT_COMMIT=$(git rev-parse --short HEAD) docker compose up --build web api worker     # http://localhost:8080
+docker compose ps                                                             # all three (healthy)
 ```
 
-| Service | Image     | Port   | Environment (on top of `server/.env` for `api`)                                                                                                                                                    |
-| ------- | --------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `api`   | `server/` | –      | `SUPABASE_URL=http://host.docker.internal:54321`, `SUPABASE_JWKS_URL` ([why](#signed-in-requests-from-a-container-supabase_jwks_url)), `CLIENT_ORIGIN=http://localhost:8080`, `TRUST_PROXY_HOPS=1` |
-| `web`   | `client/` | `8080` | `API_UPSTREAM=http://api:8000`, `SUPABASE_URL=http://127.0.0.1:54321` (the browser's view), `SUPABASE_PUBLISHABLE_KEY` from your shell                                                             |
+| Service  | Image     | Port   | Environment (on top of `server/.env` for `api`)                                                                                                                                                    |
+| -------- | --------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `api`    | `server/` | –      | `SUPABASE_URL=http://host.docker.internal:54321`, `SUPABASE_JWKS_URL` ([why](#signed-in-requests-from-a-container-supabase_jwks_url)), `CLIENT_ORIGIN=http://localhost:8080`, `TRUST_PROXY_HOPS=1` |
+| `worker` | `server/` | –      | the `api` image with `command: node dist/src/worker.js` and the same environment; its own healthcheck on `GET /health` (`$WORKER_HEALTH_PORT`, default 8001) replaces the image's API one          |
+| `web`    | `client/` | `8080` | `API_UPSTREAM=http://api:8000`, `SUPABASE_URL=http://127.0.0.1:54321` (the browser's view), `SUPABASE_PUBLISHABLE_KEY` from your shell                                                             |
 
 `web` waits for `api` to be healthy (`depends_on: condition: service_healthy`), because nginx resolves the upstream
 when it starts. The web container refuses to start without `SUPABASE_PUBLISHABLE_KEY`. Seed through the image with
-`docker compose run --rm api node dist/scripts/seed.js`. `worker`, `reconciler` and `minio` are commented placeholders
-for P1 and P3.
+`docker compose run --rm api node dist/scripts/seed.js`. The worker ([JOBS.md](JOBS.md#the-worker-process)) runs wherever the API runs; more than one replica is safe. `reconciler` and `minio` are commented placeholders for later phases.
 
 ### Running the images by hand
 

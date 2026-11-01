@@ -23,7 +23,8 @@ server/
 │   ├── config.toml           local Supabase stack (API :54321, DB :54322, Studio :54323)
 │   └── migrations/           schema, RLS, grants and database functions (SCHEMA.md)
 ├── src/
-│   ├── server.ts             entry point: createApp().listen(PORT), keep-alive timeouts, graceful shutdown
+│   ├── server.ts             entry point: createApp().listen(PORT), keep-alive timeouts, graceful shutdown (`onShutdown`)
+│   ├── worker.ts             entry point: the job worker (one runQueue per handler, GET /health on WORKER_HEALTH_PORT, graceful shutdown)
 │   ├── app.ts                createApp(): the whole middleware pipeline, no listen
 │   ├── routes/               route tables: index.ts + one *.routes.ts per resource
 │   ├── controllers/          thin handlers: read req → call a service → serialize → res.json
@@ -178,17 +179,19 @@ message names the field.
 | `serializers.ts` | `selectOrders()` (the one order query with lines, store and item photos), `OrderWithDetails`, `toUserDto`, `toStoreDto`, `toMenuItemDto`, `toOrderDto`, `isPurchasable`                                                                                                                                                                                                                                                                                                                                                 |
 | `ids.ts`         | `isUuid(value)`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `semver.ts`      | `parseSemver(version)`, `compareSemver(a, b)` on the numeric triple (prerelease ignored)                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `shutdown.ts`    | `onShutdown(stop)` (SIGTERM/SIGINT: run `stop`, flush the log, exit 0; exit 1 past the deadline or on failure; repeats ignored), `SHUTDOWN_DEADLINE_MS` (10 s); used by `server.ts` and `worker.ts`                                                                                                                                                                                                                                                                                                                     |
 | `version.ts`     | `APP_VERSION` (`package.json` in `process.cwd()`), `GIT_COMMIT` (env)                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `cache.ts`       | `cached<T>(key, ttlMs, load)`, `invalidate(key?)`, `PUBLIC_READ_TTL_MS` (env, default 10000 ms) — in-process TTL cache for public reads; shares one pending load between concurrent misses; a failed load is never cached. See [API.md#caching](API.md#caching)                                                                                                                                                                                                                                                         |
 
 ### jobs/
 
-| File        | Exports                                                                                                                                                                                                   |
-| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `runner.ts` | `JobHandler<T>`, `QueueMessage<T>`, `JobContext`, `DomainEvent<T>`, `Backoff`; `backoffSeconds(attempt, backoff, random)`; `runQueue(handler, { signal, log, pollSeconds, now, random })`; `POLL_SECONDS` |
-| `notify.ts` | `notifyHandler` (`q_notifications`)                                                                                                                                                                       |
+| File        | Exports                                                                                                                                                                                                             |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `runner.ts` | `JobHandler<T>`, `QueueMessage<T>`, `JobContext`, `DomainEvent<T>`, `Backoff`; `backoffSeconds(attempt, backoff, random)`; `runQueue(handler, { signal, log, pollSeconds, now, random, onActive })`; `POLL_SECONDS` |
+| `health.ts` | `healthReport(queues, now)`, `staleAfterSec(handler)`, `readQueueMetrics(queue)`, `QueueState` (the worker's `GET /health`)                                                                                         |
+| `notify.ts` | `notifyHandler` (`q_notifications`)                                                                                                                                                                                 |
 
-How handlers and the runner behave: [JOBS.md](JOBS.md#handlers-and-the-runner).
+How handlers, the runner and the worker behave: [JOBS.md](JOBS.md#handlers-and-the-runner).
 
 ## Adding an endpoint
 

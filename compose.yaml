@@ -1,8 +1,8 @@
 # Local containers: the API and web images against the Supabase stack on the host (`npm run db:start` in server/).
-#   docker compose up --build web api        then http://localhost:8080
+#   docker compose up --build web api worker        then http://localhost:8080
 # See docs/DEPLOYMENT.md "Local compose".
 services:
-  api:
+  api: &api
     build:
       context: server
       args:
@@ -38,7 +38,18 @@ services:
       api:
         condition: service_healthy
 
-  # P1 and P3 add these:
-  # worker:      # outbox and queue consumer (P1.2), same image as api with another command
-  # reconciler:  # scheduled jobs (P1.2)
+  # The job worker (src/worker.ts): the api image with another command, so it shares its env and host access.
+  worker:
+    <<: *api
+    command: ['node', 'dist/src/worker.js']
+    # Replaces the image's API healthcheck. $$ keeps compose from expanding the variable itself.
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- "http://127.0.0.1:$${WORKER_HEALTH_PORT:-8001}/health" > /dev/null || exit 1']
+      interval: 15s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+
+  # Later phases add these (scheduled jobs are pg_cron, so they need no container):
+  # reconciler:  # payment reconciliation (P5.10)
   # minio:       # S3-compatible media store for local development (P3.3)

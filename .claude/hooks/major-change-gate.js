@@ -31,7 +31,8 @@ const PR_UNCOUNTED = /(^|\/)package-lock\.json$|^server\/src\/types\/database\.t
 
 // Keep in sync with CLAUDE.md "What counts as a major change".
 const MAJOR_PATHS = [
-  /^server\/src\/(routes|controllers|services|schemas|middleware)\//,
+  /^server\/src\/(routes|controllers|services|schemas|middleware|jobs)\//,
+  /^server\/src\/worker\.ts$/,
   /^server\/supabase\/migrations\//,
   /^client\/src\/(pages|services|components)\//,
   /^client\/src\/App\.tsx$/,
@@ -188,6 +189,9 @@ function selfTest() {
   assert.equal(classify([c('client/src/lib/format.ts', 3)]).major, false);
   assert.equal(classify([c('client/src/index.css', 20)]).major, false);
   assert.equal(classify([c('server/src/routes/index.ts')]).major, true);
+  assert.equal(classify([c('server/src/jobs/notify.ts')]).major, true);
+  assert.equal(classify([c('server/src/worker.ts')]).major, true);
+  assert.equal(classify([c('server/src/utils/shutdown.ts', 20)]).major, false);
   assert.equal(classify([c('server/supabase/migrations/2026_x.sql')]).major, true);
   assert.equal(classify([c('client/src/App.tsx')]).major, true);
   assert.equal(classify([c('client/package.json')]).major, true);
