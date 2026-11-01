@@ -293,7 +293,13 @@ healthy; `kill -TERM` during a slow handler logs a clean stop.
 
 ### PR 05 — Today's transitions emit events and carry their actor; retry-safe statuses (P1.2, P1.4)
 
-- [ ] Merged
+- [x] Merged
+
+As built: the new parameters default to null on both functions, so the API already deployed (which calls them by
+name without them) keeps working between the migration and the new API; push the migration first. The repeat
+rule needs no list of staff targets in SQL: a repeat counts when the current status equals `p_next_status` and
+`p_from_statuses` (the API's `ALLOWED_TRANSITIONS`) is not empty, so `PLACED → PLACED` stays 409.
+`update_order_status` now locks the row (`for update`) before deciding, which also gives the event's `from`.
 
 Migration `<ts>_transitions_emit_events.sql`, both functions dropped and recreated (a new parameter changes the
 signature; re-granted to `service_role` only, as the idempotency migration did):

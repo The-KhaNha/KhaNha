@@ -22,6 +22,11 @@ Loaded with any `server/` file, a Dockerfile, the nginx config or `compose.yaml`
   "Error classes").
 - **Atomic multi-step writes** go into a SQL function (`p_` params; expected failures raise P0001 with the API error
   code as the message and JSON detail, decoded by `raisedByDatabase` in `utils/supabase.ts`).
+- **Every transition function** takes `p_actor jsonb` and `p_request_id text` (defaulted, so the deployed API keeps
+  working until the new one ships), sets them with `set_config('app.actor', …, true)` and
+  `set_config('app.request_id', …, true)`, and calls `emit_event` before returning, in the same transaction. The
+  service passes the controller's `RequestContext` (`types/auth.ts`). A repeat of a transition that already happened
+  changes nothing and emits nothing (`update_order_status`; docs/JOBS.md "Order events").
 - **Trust nothing from the client:** prices and totals come from the database. Someone else's resource is 404, never 403. The role is read from `profiles` on every request, never from the token.
 - **`supabaseAdmin` bypasses RLS,** so every query scopes by user explicitly.
 - Public reads are cached with `cached()` and invalidated by the writes that change them (§2c).
@@ -46,8 +51,10 @@ curl -s localhost:8000/api/orders -H "Authorization: Bearer $TOKEN" | jq
 ```
 
 Walk the lifecycle: create → get → list → each valid status transition (staff token: `staff@campuscafe.local` /
-`staff123`; admin: `admin@campuscafe.local` / `admin123`) → an invalid transition returns 409 → cancelling restores stock → another user's order returns 404. Then
-confirm the UI shows the result.
+`staff123`; admin: `admin@campuscafe.local` / `admin123`) → repeating the last transition returns 200 and changes
+nothing → an invalid transition returns 409 → cancelling restores stock → another user's order returns 404. Each
+step that changed something left one row in `domain_events` with the caller as `actor` and the request's
+`x-request-id`; the repeat and the refusals left none. Then confirm the UI shows the result.
 
 ## 19. Logging
 

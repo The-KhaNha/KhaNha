@@ -18,6 +18,27 @@ that runs it is [below](#the-worker-process).
 - Delivery is at least once: a message whose handler did not finish comes back after its visibility timeout. Every
   handler is idempotent through a natural key (one notification per event, user and channel).
 
+## Order events
+
+Emitted by `place_order` and `update_order_status` ([SCHEMA.md](SCHEMA.md#place_order)), in the same transaction as
+the change: a transition that raises (a stock refusal, an invalid move) leaves no event.
+
+| Type              | Emitted when                    | Payload                     |
+| ----------------- | ------------------------------- | --------------------------- |
+| `order.placed`    | an order is placed              | `{ orderNumber }`           |
+| `order.preparing` | a status changes to `PREPARING` | `{ orderNumber, from, to }` |
+| `order.ready`     | a status changes to `READY`     | `{ orderNumber, from, to }` |
+| `order.collected` | a status changes to `COLLECTED` | `{ orderNumber, from, to }` |
+| `order.cancelled` | a status changes to `CANCELLED` | `{ orderNumber, from, to }` |
+
+- Payloads are ids and statuses only, never an amount or personal data. `aggregateId` is the order id.
+- `actor` is `{ type: 'USER', id, role }`, built by the controller as the `RequestContext` (`server/src/types/auth.ts`)
+  and passed down as `p_actor`. `requestId` is the request's `x-request-id`. An API deployed before this change calls
+  the functions without them, and its events carry neither.
+- `order.*` is subscribed to `q_notifications`, consumed by `notifyHandler`.
+- An idempotent replay of `POST /orders` and a repeated status change ([API.md](API.md#patch-ordersidstatus)) emit
+  nothing.
+
 ## Queues and subscriptions
 
 | Queue             | Subscribed to | Consumer                           | Added by                    |

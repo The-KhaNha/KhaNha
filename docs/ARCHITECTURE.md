@@ -764,7 +764,7 @@ sequenceDiagram
   API->>Svc: updateOrderStatus(id, next)
   Svc->>Svc: id must be a UUID (else 404)
   Svc->>Svc: from = every status whose ALLOWED_TRANSITIONS include next
-  Svc->>DB: rpc update_order_status(id, next, from), one transaction (8.3)
+  Svc->>DB: rpc update_order_status(id, next, from, actor, request id), one transaction (8.3)
   alt order does not exist
     DB-->>Svc: raise NOT_FOUND
     Svc-->>B: 404
@@ -796,24 +796,45 @@ sequenceDiagram
   Note over DB: order 1001 is PLACED
   par both press Start Preparing
     S1->>API: PATCH status PREPARING
-    API->>DB: UPDATE orders SET status = PREPARING<br/>WHERE id = X AND status = ANY(PLACED)
-    DB->>DB: 1 row, locked until commit
+    API->>DB: update_order_status(..., actor, request id)<br/>SELECT ... FOR UPDATE
+    DB->>DB: row locked until commit
   and
     S2->>API: PATCH status PREPARING
-    API->>DB: same UPDATE, waits for the lock
+    API->>DB: same call, waits for the lock
   end
-  DB-->>API: device 1 commits (updated_at set by trigger)
+  DB->>DB: device 1: PLACED is allowed → UPDATE status, emit_event order.preparing
+  DB-->>API: committed, returns true
   API-->>S1: 200 { order PREPARING }
-  DB->>DB: device 2 re-checks: status is now PREPARING, not in (PLACED) → 0 rows
-  DB->>DB: SELECT status, order_number → RAISE INVALID_STATUS_TRANSITION
-  API-->>S2: 409 "Order #1001 cannot move from PREPARING to PREPARING."
+  DB->>DB: device 2: status is already PREPARING → returns false, no update, no event
+  API-->>S2: 200 { order PREPARING } (logged "Order status repeated")
 
+  Note over S1,DB: A real invalid move (PLACED to READY, PLACED to PLACED) raises INVALID_STATUS_TRANSITION: 409, no event.
   Note over S1,DB: Cancelling (from PLACED or PREPARING) runs in the same transaction:
   S1->>API: PATCH status CANCELLED
-  API->>DB: UPDATE ... WHERE status = ANY(PLACED, PREPARING)
+  API->>DB: update_order_status(..., CANCELLED, from PLACED, PREPARING)
   DB->>DB: UPDATE menu_items SET stock += SUM(order_items.quantity)<br/>WHERE stock_quantity IS NOT NULL (untracked items untouched)
-  DB-->>API: committed, stock restored exactly once
+  DB-->>API: committed with its order.cancelled event, stock restored exactly once
   API-->>S1: 200 { order CANCELLED }
+```
+
+The event leaves with the change ([JOBS.md](JOBS.md#order-events)):
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Svc as order.service
+  participant DB as update_order_status / place_order
+  participant Ev as emit_event
+  participant W as Worker (notifyHandler)
+
+  Svc->>DB: rpc(..., p_actor, p_request_id)
+  DB->>DB: set app.actor, app.request_id; change the order
+  DB->>Ev: emit_event('order.ready', ...) in the same transaction
+  Ev->>Ev: INSERT domain_events
+  Ev->>Ev: pgmq.send to q_notifications (subscription order.*)
+  DB-->>Svc: commit: change, event and message together (a raise leaves none)
+  W->>Ev: queue_read q_notifications
+  W->>W: notifyHandler(event)
 ```
 
 ### 8.4 Order lifecycle
@@ -830,7 +851,7 @@ stateDiagram-v2
   CANCELLED --> [*]
 ```
 
-`ALLOWED_TRANSITIONS` in [order.service.ts](../server/src/services/order.service.ts) is the single source of truth for these transitions. Anything not drawn here is a 409. The client's `STATUS_META` only decides which button to show.
+`ALLOWED_TRANSITIONS` in [order.service.ts](../server/src/services/order.service.ts) is the single source of truth for these transitions. Anything not drawn here is a 409, except repeating a transition that already happened (200, nothing changes). The client's `STATUS_META` only decides which button to show.
 
 ### 8.5 Stock for one tracked item
 

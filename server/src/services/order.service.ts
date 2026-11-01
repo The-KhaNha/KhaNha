@@ -1,5 +1,5 @@
 import { MAX_QUANTITY_PER_ITEM, type CreateOrderInput } from '../schemas/order.schema';
-import type { AuthUser } from '../types/auth';
+import type { AuthUser, RequestContext } from '../types/auth';
 import type { Tables } from '../types/database';
 import { ORDER_STATUSES, type OrderStatus } from '../types/enums';
 import { invalidate } from '../utils/cache';
@@ -52,6 +52,12 @@ interface PlacedOrder {
   replayed: boolean;
 }
 
+interface UpdatedOrder {
+  order: OrderWithDetails;
+  /** It already had this status (a retried request, a second device): nothing changed and nothing was emitted. */
+  repeated: boolean;
+}
+
 /**
  * Places a paid order. Prices are read from the database, never from the request:
  * store must be open -> validate items -> price lines -> total -> simulated payment -> place_order.
@@ -61,7 +67,11 @@ interface PlacedOrder {
  * place_order reserves the stock and writes the order in ONE transaction, so a refused order (sold out)
  * leaves no order rows and no stock decrements behind.
  */
-export async function createOrder(user: AuthUser, input: CreateOrderInput): Promise<PlacedOrder> {
+export async function createOrder(
+  user: AuthUser,
+  input: CreateOrderInput,
+  ctx: RequestContext,
+): Promise<PlacedOrder> {
   // Ids that are not UUIDs (e.g. a cart saved before the move to Supabase) cannot exist, so they are not queried.
   const ids = input.items.map((line) => line.menuItemId).filter(isUuid);
   // None of these reads depends on another, so they go out together: one round trip to the database instead of one
@@ -125,6 +135,9 @@ export async function createOrder(user: AuthUser, input: CreateOrderInput): Prom
         p_payment_status: paymentStatus,
         p_lines: lines,
         p_idempotency_key: input.idempotencyKey,
+        // Recorded with the order.placed event the function emits in the same transaction.
+        p_actor: ctx.actor,
+        p_request_id: ctx.requestId,
       })
       .throwOnError());
   } catch (err) {
@@ -240,24 +253,30 @@ export async function getOrder(user: AuthUser, id: string): Promise<OrderWithDet
 }
 
 /**
- * update_order_status is one conditional update, so two staff devices cannot overwrite each other:
- * the row only changes if its status is still one that ALLOWED_TRANSITIONS lets move to `nextStatus`.
- * Cancelling also puts the order's items back in stock, in the same transaction.
+ * update_order_status locks the order and checks its status in one transaction, so two staff devices cannot overwrite
+ * each other: the row only changes if its status is still one that ALLOWED_TRANSITIONS lets move to `nextStatus`.
+ * A repeat of a change that already happened (a retried request, a second device) answers with the order unchanged.
+ * Cancelling also puts the order's items back in stock, and every change emits its `order.<status>` event, all in the
+ * same transaction.
  */
 export async function updateOrderStatus(
   id: string,
   nextStatus: OrderStatus,
-): Promise<OrderWithDetails> {
+  ctx: RequestContext,
+): Promise<UpdatedOrder> {
   if (!isUuid(id)) throw notFound('Order not found.');
 
+  let changed: boolean;
   try {
-    await supabaseAdmin
+    ({ data: changed } = await supabaseAdmin
       .rpc('update_order_status', {
         p_order_id: id,
         p_next_status: nextStatus,
         p_from_statuses: statusesLeadingTo(nextStatus),
+        p_actor: ctx.actor,
+        p_request_id: ctx.requestId,
       })
-      .throwOnError();
+      .throwOnError());
   } catch (err) {
     if (raisedByDatabase(err, 'NOT_FOUND')) throw notFound('Order not found.');
     const current = raisedByDatabase(err, 'INVALID_STATUS_TRANSITION');
@@ -270,11 +289,11 @@ export async function updateOrderStatus(
     }
     throw err;
   }
-  // Cancelling puts the items back in stock.
-  if (nextStatus === 'CANCELLED') invalidate('menu');
+  // Cancelling puts the items back in stock (a repeated cancel moved nothing).
+  if (changed && nextStatus === 'CANCELLED') invalidate('menu');
 
   const { data: order } = await selectOrders().eq('id', id).single().throwOnError();
-  return order;
+  return { order, repeated: !changed };
 }
 
 /** Every status from which staff may move an order to `target`. */

@@ -493,6 +493,12 @@ describe('business rules', () => {
       return ALLOWED.some(([f, t]) => f === from && t === to);
     }
 
+    // A repeat of a transition that already happened answers 200 with the order unchanged: every status some
+    // transition leads to, so all but PLACED (PLACED -> PLACED is not a transition, and stays 409).
+    function isRepeat(from: OrderStatus, to: OrderStatus): boolean {
+      return from === to && ALLOWED.some(([, t]) => t === to);
+    }
+
     async function createOrderInStatus(from: OrderStatus): Promise<string> {
       const placed = await placeOrder(customer1);
       const orderId = placed.body.order.id as string;
@@ -512,7 +518,7 @@ describe('business rules', () => {
     it.each(pairs)('%s -> %s', async (from, to) => {
       const orderId = await createOrderInStatus(from);
       const res = await patchStatus(orderId, to);
-      if (isAllowed(from, to)) {
+      if (isAllowed(from, to) || isRepeat(from, to)) {
         expect(res.status).toBe(200);
         expect(res.body.order.status).toBe(to);
       } else {
@@ -523,7 +529,7 @@ describe('business rules', () => {
   });
 
   describe('cancelling restores stock', () => {
-    it('restores tracked stock exactly once; a second cancel is 409 and stock is unchanged', async () => {
+    it('restores tracked stock exactly once; a second cancel is a repeat (200) and stock is unchanged', async () => {
       const item = menuItem('Blueberry Muffin');
       await supabaseAdmin
         .from('menu_items')
@@ -557,8 +563,8 @@ describe('business rules', () => {
         expect(afterCancel.stock_quantity).toBe(5);
 
         const secondCancel = await patchStatus(orderId, 'CANCELLED');
-        expect(secondCancel.status).toBe(409);
-        expect(secondCancel.body.error.code).toBe('INVALID_STATUS_TRANSITION');
+        expect(secondCancel.status).toBe(200);
+        expect(secondCancel.body.order.status).toBe('CANCELLED');
 
         const { data: afterSecond } = await supabaseAdmin
           .from('menu_items')
