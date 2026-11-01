@@ -52,12 +52,17 @@ pgmq's read count, 1 on the first delivery.
 
 Delivery is at least once, so a handler is idempotent by a natural key (one notification per event, user and
 channel): a worker that dies mid-message leaves it to come back after its visibility timeout.
+A handler must not put personal data in an error message: the message reaches both the log (`err`) and
+`job_failures.last_error`.
 
 `runQueue(handler, { signal, log })` reads up to the free concurrency slots at a time, waiting up to `POLL_SECONDS`
 (5) for a first message. That stays under the 8 s statement timeout PostgREST's `authenticator` role runs with
 (Supabase's default; `service_role` inherits it), and under the worker's shutdown grace. On abort it stops reading,
 leaves anything read during the abort unstarted (back after its visibility timeout), and resolves once the handlers in
-flight finish. A failing read (the database unreachable) backs off 1 s → 5 s. If recording an outcome fails, the
+flight finish. Every call the runner makes is bounded, so a connection that dies without closing cannot stall a queue: a
+read by its poll plus 5 s, a delete, retry or dead letter by 10 s. Stopping waits for the read in progress (at most
+the poll plus 5 s) rather than cancelling it: a cancelled read keeps polling in the database, and a message it took
+there would stay hidden for its whole visibility timeout with no one to handle it. A failing read (the database unreachable) backs off 1 s → 5 s. If recording an outcome fails, the
 message simply comes back. A message never read, or one that is not a domain event, is an `InvariantError`:
 dead-lettered, logged with `invariant: true`. Log lines: [LOGGING.md](LOGGING.md#jobs).
 

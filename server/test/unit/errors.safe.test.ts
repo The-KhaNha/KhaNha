@@ -4,7 +4,6 @@ import { errorHandler, loggedAtDebug } from '../../src/middleware/errorHandler';
 import {
   AppError,
   IntegrationError,
-  InvariantError,
   clientOutdated,
   forbidden,
   idempotencyKeyReused,
@@ -150,21 +149,6 @@ describe('errorHandler mapping', () => {
       error: { code: 'INTERNAL', message: 'Something went wrong. Please try again.' },
     });
     expect(headers['Retry-After']).toBeUndefined();
-  });
-
-  it('answers an InvariantError 500 INTERNAL, logged at error with invariant: true', () => {
-    const { status, body, logged } = run(new InvariantError('order has no lines'), { id: 'u1' });
-    expect(status).toBe(500);
-    expect(body).toEqual({
-      error: { code: 'INTERNAL', message: 'Something went wrong. Please try again.' },
-    });
-    expect(logged).toEqual([
-      expect.objectContaining({
-        level: 'error',
-        fields: expect.objectContaining({ invariant: true }),
-      }),
-    ]);
-    expect(run(new Error('boom')).logged[0]?.fields).not.toHaveProperty('invariant', true);
   });
 
   it('keeps an AppError as it is, logged below error', () => {

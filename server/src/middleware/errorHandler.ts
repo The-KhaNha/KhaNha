@@ -4,7 +4,6 @@ import { ZodError } from 'zod';
 import {
   AppError,
   IntegrationError,
-  InvariantError,
   payloadTooLarge,
   type ErrorCode,
   type ErrorDetails,
@@ -56,8 +55,7 @@ export const errorHandler: ErrorRequestHandler = (thrown: unknown, req, res, _ne
   // A 426 is debug: a stale tab keeps asking until it reloads, and each ask is expected.
   if (status >= 500) {
     const route = req.route ? `${req.baseUrl}${String(req.route.path)}` : req.path;
-    const invariant = err instanceof InvariantError || undefined;
-    req.log.error({ err, route, status, code, userId: req.user?.id, invariant }, 'Request failed');
+    req.log.error({ err, route, status, code, userId: req.user?.id }, 'Request failed');
   } else {
     const fields = { status, code, ...(err instanceof AppError && err.logFields) };
     const level =

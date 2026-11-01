@@ -66,6 +66,12 @@ export function backoffSeconds(
 /** How long a read waits for a first message: under PostgREST's statement timeout and the worker's shutdown grace. */
 export const POLL_SECONDS = 5;
 
+// Bounds on the runner's own calls, so a connection that dies without closing cannot stall a queue, or the shutdown,
+// until Node's 5-minute HTTP default: a read gets its poll plus the margin, an outcome call the outcome timeout.
+const CALL_MARGIN_SECONDS = 5;
+const OUTCOME_TIMEOUT_SECONDS = 10;
+const outcomeDeadline = () => AbortSignal.timeout(OUTCOME_TIMEOUT_SECONDS * 1000);
+
 export interface RunOptions {
   /** Aborting stops reading; runQueue resolves once the handlers in flight have finished. */
   signal: AbortSignal;
@@ -75,7 +81,7 @@ export interface RunOptions {
   random?: () => number;
 }
 
-/** Consumes one queue until `signal` aborts (docs/JOBS.md "The runner"). */
+/** Consumes one queue until `signal` aborts (docs/JOBS.md "Handlers and the runner"). */
 export async function runQueue<T>(handler: JobHandler<T>, options: RunOptions): Promise<void> {
   const { signal, log } = options;
   // At least 1: a read that never waits would spin the loop against the database.
@@ -92,6 +98,8 @@ export async function runQueue<T>(handler: JobHandler<T>, options: RunOptions): 
     try {
       rows = await read(handler, handler.concurrency - inFlight.size, pollSeconds);
     } catch (err) {
+      // A read that timed out as the worker stops is not an outage worth reporting.
+      if (signal.aborted) break;
       // Once per outage: every read fails the same way until the database is back.
       if (failedReads === 0) log.warn({ err, queue: handler.queue }, 'Queue read failed');
       failedReads += 1;
@@ -120,6 +128,9 @@ async function read(handler: JobHandler<unknown>, qty: number, pollSeconds: numb
       p_qty: qty,
       p_poll_seconds: pollSeconds,
     })
+    // Not the stop signal: a read cancelled here keeps polling in the database, and a message it takes there is hidden
+    // for its whole visibility timeout with nobody to handle it. Stopping waits for the read instead (at most a poll).
+    .abortSignal(AbortSignal.timeout((pollSeconds + CALL_MARGIN_SECONDS) * 1000))
     .throwOnError();
   return data;
 }
@@ -158,12 +169,13 @@ async function handleOne<T>(
   const ids = { p_queue: handler.queue, p_msg_id: row.msg_id };
   try {
     if (!failed) {
-      await supabaseAdmin.rpc('queue_delete', ids).throwOnError();
+      await supabaseAdmin.rpc('queue_delete', ids).abortSignal(outcomeDeadline()).throwOnError();
       jobLog.debug({ durationMs }, 'Job handled');
     } else if (isRetryable(failure) && row.read_ct < handler.maxAttempts) {
       const retryInSec = backoffSeconds(row.read_ct, handler.backoff, random);
       await supabaseAdmin
         .rpc('queue_retry', { ...ids, p_delay_seconds: retryInSec })
+        .abortSignal(outcomeDeadline())
         .throwOnError();
       jobLog.warn({ err: failure, durationMs, retryInSec }, 'Job failed, retrying');
     } else {
@@ -174,6 +186,7 @@ async function handleOne<T>(
           p_attempts: row.read_ct,
           p_error: describe(failure),
         })
+        .abortSignal(outcomeDeadline())
         .throwOnError();
       // false: another reader already handled it after this one's visibility timeout ran out.
       if (recorded) {

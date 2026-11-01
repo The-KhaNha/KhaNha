@@ -8,7 +8,7 @@ import {
   type QueueMessage,
   type RunOptions,
 } from '../../src/jobs/runner';
-import { PermanentError, RetryableError } from '../../src/utils/errors';
+import { IntegrationError, PermanentError, RetryableError } from '../../src/utils/errors';
 import { supabaseAdmin } from '../../src/utils/supabase';
 import { localSql } from '../setup/helpers';
 
@@ -108,6 +108,29 @@ async function failures() {
     .eq('queue_name', Q)
     .throwOnError();
   return data;
+}
+
+/** Makes the next `count` queue_read calls hang like a dead connection: they settle only when their signal aborts. */
+function stallReads(count: number) {
+  const real = supabaseAdmin.rpc.bind(supabaseAdmin);
+  let left = count;
+  const stalled: AbortSignal[] = [];
+  vi.spyOn(supabaseAdmin, 'rpc').mockImplementation(((fn: string, args: object) => {
+    if (fn !== 'queue_read' || left === 0) return real(fn as 'queue_read', args as never);
+    left -= 1;
+    let signal: AbortSignal | undefined;
+    const hanging = {
+      abortSignal: (s: AbortSignal) => {
+        signal = s;
+        stalled.push(s);
+        return hanging;
+      },
+      throwOnError: () =>
+        new Promise((_, reject) => signal?.addEventListener('abort', () => reject(signal?.reason))),
+    };
+    return hanging;
+  }) as unknown as typeof supabaseAdmin.rpc);
+  return stalled;
 }
 
 describe('runQueue', () => {
@@ -281,7 +304,11 @@ describe('runQueue', () => {
     vi.spyOn(supabaseAdmin, 'rpc').mockImplementation(((fn: string, args: object) => {
       if (fn === 'queue_read' && outages > 0) {
         outages -= 1;
-        return { throwOnError: () => Promise.reject(new TypeError('fetch failed')) };
+        const failing = {
+          abortSignal: () => failing,
+          throwOnError: () => Promise.reject(new TypeError('fetch failed')),
+        };
+        return failing;
       }
       return real(fn as 'queue_read', args as never);
     }) as unknown as typeof supabaseAdmin.rpc);
@@ -300,5 +327,126 @@ describe('runQueue', () => {
     expect(at('Queue reachable again')).toEqual([
       expect.objectContaining({ level: 30, failedReads: 2 }),
     ]);
+  });
+
+  it('measures durationMs with the injected clock', async () => {
+    const { log, at } = capture();
+    const ticks = [1000, 1250];
+    send(event(8));
+    const runner = start(
+      handler(async () => {}),
+      { log, now: () => ticks.shift() ?? 9999 },
+    );
+    await waitFor(async () => at('Job handled').length === 1 && (await depth()) === 0);
+    await runner.stop();
+    expect(at('Job handled')[0]).toMatchObject({ durationMs: 250 });
+  });
+
+  it('retries a retryable IntegrationError, and dead-letters a non-retryable one at once', async () => {
+    const { log, at } = capture();
+    const cause = new Error('boom');
+    send(event(9));
+    const retried = start(
+      handler(async (m) => {
+        if (m.attempt === 1) throw new IntegrationError('provider', 'call', true, { cause });
+      }),
+      { log },
+    );
+    await waitFor(async () => at('Job failed, retrying').length === 1 && (await depth()) === 0);
+    await retried.stop();
+    expect(await failures()).toEqual([]);
+
+    const second = capture();
+    send(event(10));
+    const dead = start(
+      handler(async () => {
+        throw new IntegrationError('provider', 'call', false, { cause });
+      }),
+      { log: second.log },
+    );
+    await waitFor(async () => (await failures()).length === 1);
+    await dead.stop();
+    expect((await failures())[0]).toMatchObject({
+      attempts: 1,
+      last_error: 'IntegrationError: provider call failed',
+    });
+    expect(second.at('Job failed, retrying')).toHaveLength(0);
+    await supabaseAdmin.from('job_failures').delete().eq('queue_name', Q).throwOnError();
+  });
+
+  it.each([
+    { concurrency: 2, expectedMax: 2 },
+    { concurrency: 1, expectedMax: 1 },
+  ])('with concurrency $concurrency, at most $expectedMax handlers run together', async (c) => {
+    const { log } = capture();
+    let running = 0;
+    let max = 0;
+    let handled = 0;
+    let open!: () => void;
+    const gate = new Promise<void>((r) => (open = r));
+    send(event(11));
+    send(event(12));
+    const runner = start(
+      handler(
+        async () => {
+          running += 1;
+          max = Math.max(max, running);
+          await gate;
+          running -= 1;
+          handled += 1;
+        },
+        { concurrency: c.concurrency },
+      ),
+      { log },
+    );
+    // Concurrency 2 reaches 2 at once; concurrency 1 must stay at 1 while the gate is shut.
+    if (c.concurrency === 2) await waitFor(() => running === 2);
+    else {
+      await waitFor(() => running === 1);
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+    expect(max).toBe(c.expectedMax);
+    open();
+    await waitFor(() => handled === 2);
+    await runner.stop();
+    expect(max).toBe(c.expectedMax);
+  });
+
+  it('a stop during a stalled read waits for it (at most the poll plus the margin) without calling it a failure', async () => {
+    const { log, at } = capture();
+    const stalled = stallReads(1);
+    const runner = start(
+      handler(async () => {}),
+      { log },
+    );
+    await waitFor(() => stalled.length === 1);
+    const stoppedAt = Date.now();
+    await runner.stop();
+    expect(Date.now() - stoppedAt).toBeLessThan(7000); // 1 s poll + 5 s margin
+    expect(stalled[0]?.aborted).toBe(true); // ended by its own timeout, not the stop
+    expect(at('Queue read failed')).toHaveLength(0);
+  });
+
+  it('a stalled read is abandoned after its poll plus the margin, and reading resumes', async () => {
+    const { log, at } = capture();
+    const stalled = stallReads(1);
+    const handled: number[] = [];
+    send(event(8));
+    const runner = start(
+      handler(async (m) => {
+        handled.push(m.attempt);
+      }),
+      { log },
+    );
+    await waitFor(() => handled.length === 1, 12_000); // 1 s poll + 5 s margin, then a 1 s back-off
+    await runner.stop();
+    expect(stalled[0]?.aborted).toBe(true);
+    expect(at('Queue read failed')).toEqual([
+      expect.objectContaining({
+        level: 40,
+        err: expect.objectContaining({ name: 'TimeoutError' }), // the timeout's reason: a DOMException
+      }),
+    ]);
+    expect(at('Queue reachable again')).toHaveLength(1);
   });
 });
