@@ -2,6 +2,7 @@
 export type Role = 'CUSTOMER' | 'STAFF' | 'ADMIN';
 export type OrderStatus = 'PLACED' | 'PREPARING' | 'READY' | 'COLLECTED' | 'CANCELLED';
 export type PaymentStatus = 'PENDING' | 'PAID';
+export type ActorType = 'USER' | 'WORKER' | 'RECONCILER' | 'WEBHOOK' | 'SCHEDULER' | 'SYSTEM';
 
 export interface User {
   id: string;
@@ -136,4 +137,26 @@ export interface Config {
   /** Poll intervals in ms: one order's page, the customer's order list, the staff board. */
   polling: { orderMs: number; ordersMs: number; staffBoardMs: number };
   session: { idleDays: number };
+}
+
+/** One audit_log row (server AuditEntryDto). No screen reads it until the admin audit view (P7.4). */
+export interface AuditEntry {
+  id: number;
+  occurredAt: string;
+  actorType: ActorType;
+  actorId: string | null;
+  actorRole: string | null;
+  storeId: string | null;
+  action: string;
+  entityType: string;
+  entityId: string;
+  changes: Record<string, [unknown, unknown]> | null;
+  reason: string | null;
+  requestId: string | null;
+}
+
+/** GET /api/admin/audit (server AuditPageDto). */
+export interface AuditPage {
+  entries: AuditEntry[];
+  nextCursor: number | null;
 }

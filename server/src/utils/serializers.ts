@@ -1,6 +1,7 @@
 import type { QueryData } from '@supabase/supabase-js';
 import type { Tables } from '../types/database';
 import type {
+  AuditEntryDto,
   MenuItemDto,
   OrderDto,
   OrderItemDto,
@@ -120,5 +121,23 @@ export function toOrderDto(order: OrderWithDetails): OrderDto {
     updatedAt: toIso(order.updated_at),
     store: { id: order.stores.id, name: order.stores.name },
     items: order.order_items.map(toOrderItemDto),
+  };
+}
+
+export function toAuditEntryDto(entry: Tables<'audit_log'>): AuditEntryDto {
+  return {
+    id: entry.id,
+    occurredAt: toIso(entry.occurred_at),
+    actorType: entry.actor_type,
+    actorId: entry.actor_id,
+    actorRole: entry.actor_role,
+    storeId: entry.store_id,
+    action: entry.action,
+    entityType: entry.entity_type,
+    entityId: entry.entity_id,
+    // audit_row_change() writes only { column: [old, new] }; the generated type is plain Json.
+    changes: entry.changes as AuditEntryDto['changes'],
+    reason: entry.reason,
+    requestId: entry.request_id,
   };
 }

@@ -26,6 +26,7 @@ a new file (see [DEPLOYMENT.md](DEPLOYMENT.md#schema-changes)).
 | `20261024192953_queue_wrappers.sql`           | adds `job_failures` and the five `queue_*` wrappers (the worker's only way into pgmq), granted to `service_role`                                                                                                                             |
 | `20261101131925_transitions_emit_events.sql`  | drops and recreates `place_order` and `update_order_status` with `p_actor` and `p_request_id` (defaulted), which emit their events; `update_order_status` locks the row, returns boolean and treats a repeat as a no-op; grants reissued     |
 | `20261101201251_audit_log.sql`                | adds `actor_type`, the append-only `audit_log` (read-only to `service_role`) and `audit_row_change()` with its triggers on `site_settings`, `orders`, `profiles` and `menu_items`                                                            |
+| `20261102101707_audit_log_id_indexes.sql`     | rebuilds the `audit_log` indexes to end in `id desc` (plus `(entity_type, id desc)`), the order `GET /api/admin/audit` pages in                                                                                                              |
 
 ## Enums
 
@@ -191,7 +192,7 @@ Dead letters, written by `queue_dead_letter` (`20261024192953_queue_wrappers.sql
 
 Who changed what: the business record, kept 13 months (the retention job is P9.5). Written only by
 `audit_row_change()`, never by the API; append-only (see [Row-level security and grants](#row-level-security-and-grants)).
-No foreign keys: deleting a profile must not touch its rows. Read by `GET /api/admin/audit` from P1 PR 07. The P9.5
+No foreign keys: deleting a profile must not touch its rows. Read by admins through [`GET /api/admin/audit`](API.md#get-adminaudit), keyset-paged on `id`. The P9.5
 retention purge needs a sanctioned way past the append-only triggers, never a dropped trigger. `site_settings` is
 audited with `*`, so it never holds a secret: every column it gains is copied here for 13 months.
 
@@ -220,9 +221,10 @@ audited with `*`, so it never holds a secret: every column it gains is copied he
 | `order_items_menu_item_id_idx`       | `order_items (menu_item_id)`                                                     |
 | `orders_user_id_idempotency_key_idx` | `orders (user_id, idempotency_key)`, unique, `where idempotency_key is not null` |
 | `domain_events_aggregate_idx`        | `domain_events (aggregate_type, aggregate_id, occurred_at)`                      |
-| `audit_log_entity_idx`               | `audit_log (entity_type, entity_id, occurred_at desc)`                           |
-| `audit_log_store_idx`                | `audit_log (store_id, occurred_at desc)`                                         |
-| `audit_log_actor_idx`                | `audit_log (actor_id, occurred_at desc)`                                         |
+| `audit_log_entity_idx`               | `audit_log (entity_type, entity_id, id desc)`                                    |
+| `audit_log_entity_type_idx`          | `audit_log (entity_type, id desc)`                                               |
+| `audit_log_store_idx`                | `audit_log (store_id, id desc)`                                                  |
+| `audit_log_actor_idx`                | `audit_log (actor_id, id desc)`                                                  |
 | unique constraint                    | `order_items (order_id, line_number)`                                            |
 | unique constraint                    | `profiles (email)`, `orders (order_number)`                                      |
 

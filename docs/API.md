@@ -56,6 +56,7 @@ The API has no sign-in or sign-out route. The browser signs in and out with supa
 | PATCH  | `/orders/:id/status` | user + STAFF | body: [`updateOrderStatusSchema`](#patch-ordersidstatus) | 200 `{ order: OrderDto }`                       |
 | GET    | `/admin/settings`    | user + ADMIN | none                                                     | 200 `{ settings: SiteSettingsDto }`             |
 | PATCH  | `/admin/settings`    | user + ADMIN | body: [`updateSettingsSchema`](#patch-adminsettings)     | 200 `{ settings: SiteSettingsDto }`             |
+| GET    | `/admin/audit`       | user + ADMIN | query: [`auditQuerySchema`](#get-adminaudit)             | 200 `AuditPageDto`                              |
 
 `orderRouter.use(requireAuth)` runs before any `/orders` route matches. So any path under `/api/orders`, including
 one that matches no route, returns 401 without a valid token. `adminRouter.use(requireAuth, requireAdmin)` does the
@@ -319,6 +320,40 @@ Body (`server/src/schemas/admin.schema.ts`), every field optional but at least o
 | 401    | `UNAUTHORIZED`     | see [Authentication](#authentication)                    |
 | 403    | `FORBIDDEN`        | caller is not `ADMIN`                                    |
 
+### GET /admin/audit
+
+Code: `requireAuth` → `requireAdmin` → `validate(auditQuerySchema, 'query')` → `admin.controller.listAudit` →
+`audit.service.listAudit`. One page of the `audit_log` ([SCHEMA.md](SCHEMA.md#audit_log)), newest first, as
+`AuditPageDto`. Never read through the process cache: every request reads the table. Answered with
+`Cache-Control: no-store` instead of the global `no-cache`, so the log never stays in the browser's cache after the
+admin signs out (it is not polled, so an ETag would save nothing). No screen calls it yet (the admin
+audit view is P7.4).
+
+Query (`server/src/schemas/admin.schema.ts`), every parameter optional:
+
+| Param        | Type          | Rules                                                                                       |
+| ------------ | ------------- | ------------------------------------------------------------------------------------------- |
+| `entityType` | string        | one of `site_settings`, `order`, `profile`, `menu_item` (the audited entities)              |
+| `entityId`   | string        | 1–64 characters; needs `entityType` (the same id can belong to entities of different types) |
+| `actorId`    | string (uuid) | the profile that made the change                                                            |
+| `from`       | ISO 8601      | date and time with an offset (`2026-11-02T10:00:00Z`); `occurredAt >= from`                 |
+| `to`         | ISO 8601      | same format; `occurredAt < to`                                                              |
+| `before`     | number        | whole number ≥ 1: the previous page's `nextCursor`; only rows with a smaller `id`           |
+| `limit`      | number        | whole number, 1–100, default 50 (`AUDIT_PAGE`)                                              |
+
+- `from` must be before `to` when both are sent (400 otherwise).
+- Paging is keyset on `id`: pass `nextCursor` back as `before` until it is `null`. `before` is the only cursor:
+  `occurredAt` is rounded to the millisecond, so echoing it back as `to` can skip rows from the same millisecond. A row written mid-walk lands
+  before the first page, so a walk never repeats or skips a row. `nextCursor` is `null` exactly on the last page.
+- An entity with no rows is 200 `{ entries: [], nextCursor: null }`, never 404.
+
+| Status | Code               | When                                                                                            |
+| ------ | ------------------ | ----------------------------------------------------------------------------------------------- |
+| 200    |                    | `AuditPageDto`                                                                                  |
+| 400    | `VALIDATION_ERROR` | a parameter out of bounds or malformed; `entityId` without `entityType`; `from` not before `to` |
+| 401    | `UNAUTHORIZED`     | see [Authentication](#authentication)                                                           |
+| 403    | `FORBIDDEN`        | caller is not `ADMIN`                                                                           |
+
 ## Response DTOs
 
 From `server/src/types/api.ts`. The serializers in `server/src/utils/serializers.ts` turn snake_case rows into these
@@ -410,6 +445,25 @@ camelCase shapes and every timestamp into ISO 8601 (`new Date(ts).toISOString()`
 | `quantity`   | number        |                                                |
 | `lineTotal`  | number        | `unitPrice × quantity`                         |
 | `imageUrl`   | string        | the menu item's current photo (not a snapshot) |
+
+`AuditPageDto`: `{ entries: AuditEntryDto[], nextCursor: number | null }`.
+
+`AuditEntryDto`
+
+| Field        | Type                                                                       | Notes                                                                                        |
+| ------------ | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `id`         | number                                                                     | the keyset cursor                                                                            |
+| `occurredAt` | string (ISO 8601)                                                          |                                                                                              |
+| `actorType`  | `USER` \| `WORKER` \| `RECONCILER` \| `WEBHOOK` \| `SCHEDULER` \| `SYSTEM` |                                                                                              |
+| `actorId`    | string (uuid) \| null                                                      | the profile for `USER`, null for system actors                                               |
+| `actorRole`  | string \| null                                                             | the actor's role when the change happened                                                    |
+| `storeId`    | string (uuid) \| null                                                      | the row's store, when it has one                                                             |
+| `action`     | string                                                                     | `site_settings.changed`, `order.status_changed`, `profile.role_changed`, `menu_item.changed` |
+| `entityType` | string                                                                     | the first part of `action`                                                                   |
+| `entityId`   | string                                                                     | the changed row's id                                                                         |
+| `changes`    | `{ [column]: [old, new] }` \| null                                         | the watched columns that changed                                                             |
+| `reason`     | string \| null                                                             |                                                                                              |
+| `requestId`  | string \| null                                                             | the API request that made the change; null outside the API                                   |
 
 ## Shared field rules
 

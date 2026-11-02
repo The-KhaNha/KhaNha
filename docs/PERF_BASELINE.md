@@ -283,6 +283,7 @@ no-cache` and `Vary: Authorization, Origin`; normal `GET` 304 revalidation on `/
   - **Idle paint cost, `/orders/:id`, 2 s trace at 4× CPU (3 runs):** 0 `Paint` events, `Layerize` 0.01-0.71 ms in total, `PrePaint`
     0.8-2.6 ms and `UpdateLayoutTree` 0.7-1.9 ms over 5 frames, i.e. the pulse runs on the compositor and no longer repaints each frame.
   - Polling, API latency and caching not re-measured (untouched by this batch).
+| 2026-11-02 | feat/p1-07-audit-read (uncommitted) | Server-only run for GET /api/admin/audit; client bundle unchanged (types only, not rebuilt). Audit endpoint default page (11 rows, 3,571 B): p50 10 ms / p95 12 ms; limit=100 p50 9 ms. Existing routes: store 4.8 ms, menu 9 ms single request. |
 
 ## CI numbers
 
@@ -319,3 +320,4 @@ one staff, sequential).
 - Bounds: `purge_domain_events()` (nightly, 30 days) bounds `domain_events`. `q_notifications` is bounded only
   while the worker runs; with the worker stopped it grows by one row per event (80 rows after this run).
 - Rate limit: `RATE_LIMIT_WRITE_MAX` = 30 writes per user per 60 s, so a 30-request sample needs a fresh window.
+
