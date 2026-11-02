@@ -325,3 +325,17 @@ one staff, sequential).
 - Bounds: `purge_domain_events()` (nightly, 30 days) bounds `domain_events`. `q_notifications` is bounded only
   while the worker runs; with the worker stopped it grows by one row per event (80 rows after this run).
 - Rate limit: `RATE_LIMIT_WRITE_MAX` = 30 writes per user per 60 s, so a 30-request sample needs a fresh window.
+- **2026-11-02** · `feat/p1-08-order-snapshots` + uncommitted changes (P1 PR 08, order snapshots v2: `selectOrders()` reads
+  `orders.store_id/store_name` and `order_items.image_url` instead of joining `stores` and `menu_items`; `place_order`
+  reads `stores.name` and `menu_items` name/image/category once at insert). Server-only, no client change, so the bundle,
+  Web Vitals and polling intervals were not re-measured. Local API on :8108, WSL2, 25 orders placed first, 30 requests
+  per read after 2 warm-ups. `GET /api/orders` (customer, 20 orders) p50 9.0 / p95 10.1 ms, 11,732 B; `GET /api/orders`
+  (staff, 25 orders) p50 9.3 / p95 11.7 ms, 14,662 B; `?status=PLACED` p50 9.1 / p95 12.7 ms; `GET /api/orders/:id` p50
+  8.3 / p95 10.1 ms, 595 B (unchanged from the round-3 595 B: the DTO is identical). `POST /api/orders` (1 line, 25
+  requests, all 201) p50 18.5 / p95 26.0 ms (PR 05: 19 / 33 ms, not worse). EXPLAIN ANALYZE of the equivalent list query
+  over 25 orders: joined shape (old) 0.347 ms execution / 0.71 ms planning with an extra `stores_pkey` and a
+  `menu_items_pkey` index scan per order (20 loops each); snapshot shape (new) 0.264 ms / 0.58 ms, only the
+  `order_items_order_id_line_number_key` index scan remains; no Seq Scan on `order_items`. Caveat: the old code was not
+  re-run end to end, and the round-3 reads were taken on a different machine with 2 orders, so the HTTP p50s (6-8 ms
+  then, 8-9 ms now with 10x the rows) are not a like-for-like comparison; the within-database EXPLAIN pair is the
+  evidence that the read got cheaper. Snapshot sample verified through the API (`store.name`, `items[].imageUrl`).

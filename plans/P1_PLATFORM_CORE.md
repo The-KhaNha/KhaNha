@@ -399,7 +399,11 @@ Docs: `docs/API.md`, `docs/PERMISSIONS.md`, `docs/BACKEND_STRUCTURE.md`. Intent:
 
 ### PR 08 — Order snapshots v2 (P1.5)
 
-- [ ] Merged
+- [x] Merged
+
+> **As built:** the backfill runs with `orders_set_updated_at` disabled, so past orders keep their `updatedAt`.
+> `admin.test.ts` and `caching-gaps.test.ts`, which insert orders directly, now pass a `store_name`. `selectOrders()`
+> joins only `order_items` now.
 
 Migration `<ts>_order_snapshots.sql`: `order_items.image_url`, `order_items.category`, `orders.store_name`; backfill
 from today's `menu_items` and `stores` (the best copy left); then `set not null`. `create or replace place_order`
