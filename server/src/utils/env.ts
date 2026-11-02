@@ -46,6 +46,7 @@ const envSchema = z
     RATE_LIMIT_IP_MAX: z.coerce.number().int().min(0).default(600),
     RATE_LIMIT_WRITE_MAX: z.coerce.number().int().min(0).default(30),
     RATE_LIMIT_REGISTER_MAX: z.coerce.number().int().min(0).default(10),
+    RATE_LIMIT_CLIENT_ERRORS_MAX: z.coerce.number().int().min(0).default(30),
     CLIENT_ORIGIN: z
       .string()
       .url('CLIENT_ORIGIN must be a URL such as http://localhost:5173.')
@@ -76,7 +77,12 @@ const envSchema = z
 type Env = z.infer<typeof envSchema>;
 
 function loadEnv(): Env {
-  const result = envSchema.safeParse(process.env);
+  // A blank value (`RATE_LIMIT_IP_MAX=` in .env or a host's settings) means unset. Coerced as is it would be 0, which
+  // silently turns a rate limit or the read cache off instead of falling back to its default.
+  const set = Object.fromEntries(
+    Object.entries(process.env).filter(([, value]) => value?.trim() !== ''),
+  );
+  const result = envSchema.safeParse(set);
   if (result.success) return result.data;
 
   const problems = result.error.issues

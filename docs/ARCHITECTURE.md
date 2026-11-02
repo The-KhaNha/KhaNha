@@ -892,6 +892,7 @@ flowchart TD
   Cors --> Json["express.json (100 kB limit)"]
   Json --> Router{"/api router"}
   Router -->|"GET /health"| Health["{ ok: true }"]
+  Router -->|"POST /client-errors"| ValCE["clientErrorLimiter → validate(clientErrorsSchema)"] --> CECtl["clientErrors.controller: one warn per report, 204"]
   Router -->|"GET /store, GET /menu"| Public["controller → service"]
   Router -->|"POST /auth/register"| ValReg["validate(registerSchema)"] --> RegCtl["auth.controller.register"]
   Router -->|"GET /auth/me"| AuthMe["requireAuth"] --> MeCtl["auth.controller.me"]
