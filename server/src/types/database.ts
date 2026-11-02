@@ -132,6 +132,44 @@ export type Database = {
         };
         Relationships: [];
       };
+      feature_flags: {
+        Row: {
+          client_visible: boolean;
+          description: string;
+          enabled: boolean;
+          key: string;
+          rules: Json;
+          updated_at: string;
+          updated_by: string | null;
+        };
+        Insert: {
+          client_visible?: boolean;
+          description: string;
+          enabled?: boolean;
+          key: string;
+          rules?: Json;
+          updated_at?: string;
+          updated_by?: string | null;
+        };
+        Update: {
+          client_visible?: boolean;
+          description?: string;
+          enabled?: boolean;
+          key?: string;
+          rules?: Json;
+          updated_at?: string;
+          updated_by?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'feature_flags_updated_by_fkey';
+            columns: ['updated_by'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       job_failures: {
         Row: {
           attempts: number;

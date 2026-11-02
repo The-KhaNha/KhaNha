@@ -130,3 +130,17 @@ export interface AuditPageDto {
   entries: AuditEntryDto[];
   nextCursor: number | null;
 }
+
+/** One feature_flags row (PATCH /api/admin/flags/:key). */
+export interface FeatureFlagDto {
+  key: string;
+  description: string;
+  enabled: boolean;
+  /** Served to the client through GET /api/config (P1.7, PR 14). */
+  clientVisible: boolean;
+  /** Who gets it once enabled: each list narrows, `percent` is a stable share of signed-in users. */
+  rules: { storeIds?: string[]; roles?: Role[]; percent?: number };
+  updatedAt: string;
+  /** The admin who last changed it; null for a migration or a deleted account. */
+  updatedBy: string | null;
+}

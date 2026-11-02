@@ -284,6 +284,7 @@ no-cache` and `Vary: Authorization, Origin`; normal `GET` 304 revalidation on `/
     0.8-2.6 ms and `UpdateLayoutTree` 0.7-1.9 ms over 5 frames, i.e. the pulse runs on the compositor and no longer repaints each frame.
   - Polling, API latency and caching not re-measured (untouched by this batch).
 | 2026-11-02 | feat/p1-07-audit-read (uncommitted) | Server-only run for GET /api/admin/audit; client bundle unchanged (types only, not rebuilt). Audit endpoint default page (11 rows, 3,571 B): p50 10 ms / p95 12 ms; limit=100 p50 9 ms. Existing routes: store 4.8 ms, menu 9 ms single request. |
+| 2026-11-02 | feat/p1-13-feature-flags @ 4333a4b (uncommitted) | Server-only run (P1 PR 13); client bundle unchanged (types only, not rebuilt). `evaluateFlag` 0.1-1.8 us/call (off/plain/roles ~0.1, percent with sha256 ~1.3-1.8; 10 000 calls, no DB), so isEnabled cost is the cached Map lookup plus that. Cached read `select key, enabled, rules from feature_flags`: Seq Scan, 0.09 ms exec (a handful of rows, pkey covers key lookups, no index needed). `PATCH /api/admin/flags/:key` (22 flips, audit + updated_at triggers, 2.2 ms in-DB): p50 9.1 ms / p95 10.1 ms. Existing routes vs baseline: store p50 1.1 ms, menu 1.0 ms (p95 3.1), me 8.4 ms, orders customer 8.2 ms, staff 9.0 ms: none slower. |
 
 ## CI numbers
 

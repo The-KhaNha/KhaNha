@@ -19,6 +19,8 @@ The principle is in `CLAUDE.md` §2c; the client side is in `.claude/rules/front
   order responses a `max-age`.
 - Public, read-mostly data (menu, store, any future catalog) is read through `cached(key, PUBLIC_READ_TTL_MS, load)`
   from `server/src/utils/cache.ts`. It is per-process, has a TTL (10 s), and shares one load between concurrent misses.
+- Feature flags are read the same way (`flags.service.getFlags()`, key `feature_flags`) and evaluated per caller
+  after the read; the flip (`setFlag`) invalidates them. Never cache an evaluated result: it is per user.
 - Every write through the API that changes cached data calls `invalidate(key)` in the same service, as
   `order.service.ts` does after an order is placed or cancelled. A new cached read ships with its invalidation, and a
   test that fails without it (`server/test/api/menu-cache.test.ts`).
@@ -55,10 +57,10 @@ gzip on. See `docs/DEPLOYMENT.md` "Containers".
   `set_config('app.request_id', …, true)`, and calls `emit_event` before returning, in the same transaction. The
   service passes the controller's `RequestContext` (`types/auth.ts`). A repeat of a transition that already happened
   changes nothing and emits nothing (`update_order_status`; docs/JOBS.md "Order events").
-- **Audited tables** (`site_settings`, `orders.status`, `profiles.role`, `menu_items` except stock; docs/SCHEMA.md
+- **Audited tables** (`site_settings`, `orders.status`, `profiles.role`, `menu_items` except stock, `feature_flags`; docs/SCHEMA.md
   `audit_row_change`) are written through a transition function, or through the Data API with
   `.setHeader('x-actor', JSON.stringify(ctx.actor)).setHeader('x-request-id', ctx.requestId)` as
-  `settings.service.updateSettings` does. Anything else is recorded as `SYSTEM`. A new audited table gets its
+  `settings.service.updateSettings` and `flags.service.setFlag` do. Anything else is recorded as `SYSTEM`. A new audited table gets its
   `audit_row_change` trigger in the migration that creates it.
 - **Trust nothing from the client:** prices and totals come from the database. Someone else's resource is 404, never 403. The role is read from `profiles` on every request, never from the token.
 - **`supabaseAdmin` bypasses RLS,** so every query scopes by user explicitly.
