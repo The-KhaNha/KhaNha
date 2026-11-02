@@ -284,6 +284,11 @@ no-cache` and `Vary: Authorization, Origin`; normal `GET` 304 revalidation on `/
     0.8-2.6 ms and `UpdateLayoutTree` 0.7-1.9 ms over 5 frames, i.e. the pulse runs on the compositor and no longer repaints each frame.
   - Polling, API latency and caching not re-measured (untouched by this batch).
     | 2026-11-02 | feat/p1-07-audit-read (uncommitted) | Server-only run for GET /api/admin/audit; client bundle unchanged (types only, not rebuilt). Audit endpoint default page (11 rows, 3,571 B): p50 10 ms / p95 12 ms; limit=100 p50 9 ms. Existing routes: store 4.8 ms, menu 9 ms single request. |
+- **2026-11-02 (feat/p1-10-client-errors, uncommitted)** · server-only run for `POST /api/client-errors` (unauthenticated, per-IP limiter,
+  strict zod body, scrub regex, one `warn` per report, 204, no DB). Client bundle unchanged (no client change, not rebuilt). Local API on :8110, 20 requests each after 2 warm-ups.
+  - **Endpoint (5 reports, 13.8-20.4 KB body):** typical stack 1.7 / 2.1 ms (p50 / p95); max-size clean text 1.5 / 1.8 ms; 5 x ('a' x 500 message, 'a' x 3500 stack) 5.9 / 6.5 ms; 5 x 'eyJ' runs 1.4 / 1.6 ms. Limiter: 30 x 204 then 5 x 429 from a fresh window (default 30/60 s).
+  - **Other routes (mounted before the gate, no cost seen):** health 1.4 / 1.7 ms, config 1.3 / 1.5 ms (202 B), menu 1.1 / 1.4 ms (4,416 B, in-process cache; 1.4 ms at the last baseline), store 1.1 / 1.5 ms. Within noise (< 5 ms).
+  - **Scrub regex, direct microbench (tsx, parsing the schema in-process):** quadratic on a long run of characters that can start an email local part or a JWT. 5 reports at max length: 'a' x N 39 ms p50, `eyJ` x N 52 ms, '+' x N 43 ms, 'a.1-' x N 45 ms (max 60 ms); a 35,000-char run takes 830 ms, 350,000 chars 76 s (not reachable: zod `.max()` rejects before the transform). Not reproduced over HTTP (5.9 ms for the 'a' case), so the in-process figure is the pessimistic bound. Candidate fix: `(?<![\w.+-])[\w.+-]{1,64}@` for the email branch and `(?<![\w-])eyJ` for the JWT branch (0.03-0.07 ms on the same inputs).
 
 ## CI numbers
 
@@ -320,7 +325,6 @@ one staff, sequential).
 - Bounds: `purge_domain_events()` (nightly, 30 days) bounds `domain_events`. `q_notifications` is bounded only
   while the worker runs; with the worker stopped it grows by one row per event (80 rows after this run).
 - Rate limit: `RATE_LIMIT_WRITE_MAX` = 30 writes per user per 60 s, so a 30-request sample needs a fresh window.
-
 - **2026-11-02** · `feat/p1-08-order-snapshots` + uncommitted changes (P1 PR 08, order snapshots v2: `selectOrders()` reads
   `orders.store_id/store_name` and `order_items.image_url` instead of joining `stores` and `menu_items`; `place_order`
   reads `stores.name` and `menu_items` name/image/category once at insert). Server-only, no client change, so the bundle,
