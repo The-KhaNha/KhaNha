@@ -12,25 +12,35 @@ paths:
 Loaded with any file under `.claude/`, `.github/`, `.changes/`, `scripts/` or a `package.json`. Section numbers match
 `CLAUDE.md`.
 
-## 16. Agent-skills plugin usage
+## 16. Plugin usage
 
-Load these with the `Skill` tool at the matching moment:
+Seven plugins are enabled for every developer in `.claude/settings.json` (`agent-skills`, `superpowers`,
+`claude-security`, `code-review`, `frontend-design`, `ponytail`, `skill-creator`). Several cover the same moment;
+the table names one pick per moment so they do not fire over each other. Load the pick with the `Skill` tool. When
+the superpowers `SessionStart` hook asks for `brainstorming` first, the pick here wins: this table is the project's
+decision.
 
-| Moment                           | Skill                                                                                           |
-| -------------------------------- | ----------------------------------------------------------------------------------------------- |
-| a vague or underspecified ask    | `agent-skills:interview-me`, then `agent-skills:spec`                                           |
-| a feature                        | `agent-skills:plan` → `agent-skills:build`                                                      |
-| a bug                            | `agent-skills:test` (prove it with a failing test), `agent-skills:debugging-and-error-recovery` |
-| an endpoint or auth change       | `agent-skills:api-and-interface-design` + `agent-skills:security-and-hardening`                 |
-| UI work                          | `agent-skills:frontend-ui-engineering`                                                          |
-| before merge                     | `agent-skills:review` or the `agent-skills:code-reviewer` agent                                 |
-| auth, orders, money, user data   | the `agent-skills:security-auditor` agent                                                       |
-| performance                      | `agent-skills:webperf`, `agent-skills:performance-optimization`                                 |
-| a decision worth recording       | `agent-skills:documentation-and-adrs`                                                           |
-| branches, commits, PRs, releases | `agent-skills:git-workflow-and-versioning`                                                      |
-| before a release                 | `agent-skills:ship`                                                                             |
-| over-engineering creeping in     | `ponytail:ponytail`                                                                             |
-| a workflow repeated three times  | `anthropic-skills:skill-creator` to make it a project skill                                     |
+| Moment | Use | Not used here (same job) |
+| --- | --- | --- |
+| a vague or underspecified ask | `agent-skills:interview-me`, then `agent-skills:spec` | `superpowers:brainstorming` |
+| a feature | `agent-skills:plan` → `agent-skills:build` | `superpowers:writing-plans`, `executing-plans` |
+| a bug | `superpowers:systematic-debugging` or `agent-skills:debugging-and-error-recovery` (root cause), then `agent-skills:test` (prove it with a failing test) | – |
+| an endpoint or auth change | `agent-skills:api-and-interface-design` + `agent-skills:security-and-hardening` | – |
+| a new screen or a visual direction | `frontend-design:frontend-design` for the direction (inside the `@theme` tokens, §7), then `agent-skills:frontend-ui-engineering` to build it | – |
+| UI changes to an existing screen | `agent-skills:frontend-ui-engineering` | – |
+| before opening a PR | `code-review:code-review` on the diff (bugs; `--fix` is fine inside the scope), then `simplify`; `/post-change` runs it for a major change | `superpowers:requesting-code-review` |
+| before merging a large or cross-cutting PR | `agent-skills:review` (five axes) or the `agent-skills:code-reviewer` agent | – |
+| review comments arrive (CodeRabbit or a person) | `superpowers:receiving-code-review` (verify each point before applying), then `coderabbit-fixer` for CodeRabbit threads (§17) | – |
+| auth, orders, money, user data or the request pipeline | `claude-security:claude-security` scan of the branch's changes (static findings) + the `agent-skills:security-auditor` agent (threat model) | – |
+| before a release | `claude-security:claude-security` full scan → `/break` (live attack; confirms the scan's findings) → `agent-skills:ship` | – |
+| performance | `agent-skills:webperf`, `agent-skills:performance-optimization`; `perf-auditor` owns the numbers | – |
+| about to say "done", "fixed" or "passing" | `superpowers:verification-before-completion` (run the §13 gate and show the output first) | – |
+| a decision worth recording | `agent-skills:documentation-and-adrs` | – |
+| branches, commits, PRs, releases | `agent-skills:git-workflow-and-versioning`, within §21 | `superpowers:finishing-a-development-branch` (§21 already decides what happens to a branch) |
+| starting a PR while another branch has uncommitted work | `superpowers:using-git-worktrees` (a worktree off the PR's base; never a stash, §12) | – |
+| two or more independent tasks | `superpowers:dispatching-parallel-agents` for read-only agents only; agents that write source run one at a time (one shared working tree, §12) | `superpowers:subagent-driven-development` |
+| over-engineering creeping in | `ponytail:ponytail` | – |
+| a workflow repeated three times; editing `.claude/skills` | `skill-creator:skill-creator` to make or measure a project skill, `superpowers:writing-skills` for the writing itself | – |
 
 ## 17. Multi-agent workflows: details
 
@@ -54,6 +64,18 @@ Load these with the `Skill` tool at the matching moment:
 **Skills** (`.claude/skills/`): `/post-change`, `/fix-coderabbit`, `/resolve-conflicts`, `/before-write`,
 `/new-endpoint`, `/db-migration`, `/break`.
 
+### What counts as a major change
+
+- Any change under `server/src/{routes,controllers,services,schemas,middleware,jobs}/`, `server/src/worker.ts`,
+  `server/supabase/migrations/`, `client/src/{pages,services,components}/`, `client/src/App.tsx`, or any
+  `package.json`; or
+- 5 or more source files; or
+- 150 or more changed lines across `client/src` + `server/src`.
+
+Docs-only changes, a single-file style tweak, copy edits and one-line fixes are not major. The same rules live in
+`.claude/hooks/major-change-gate.js` (keep them in sync; its change-intent reminder mirrors `needsIntent` in
+`scripts/version/lib.mjs`).
+
 ### The post-change pipeline
 
 Run `/post-change` once a major piece of work is finished — not after every edit:
@@ -63,8 +85,10 @@ Run `/post-change` once a major piece of work is finished — not after every ed
 3. `test-generator` ∥ `docs-writer` (disjoint files);
 4. `ui-verifier` → `perf-auditor` (read-only, on the final state; sequential because the Playwright MCP is one shared
    browser — never run two browser-driving agents at once);
-5. act on every verdict (below), re-run the gate if anything changed;
-6. `graphify update .`, `node .claude/hooks/major-change-gate.js --mark`, stop what you started, delete screenshots.
+5. `code-review:code-review` on the diff, plus a `claude-security:claude-security` scan of the changes when the
+   scope touches auth, orders, money, middleware or the request pipeline;
+6. act on every verdict (below), re-run the gate if anything changed;
+7. `graphify update .`, `node .claude/hooks/major-change-gate.js --mark`, stop what you started, delete screenshots.
 
 The `Stop` hook classifies what changed since the last mark and, for a major change, records
 `.claude/.state/pending.json` and tells the user once. A `UserPromptSubmit` hook then reminds you on each prompt until
@@ -133,7 +157,33 @@ relationships.
   `Stop` hook runs `graphify update .` when source files are newer than the graph, and the git `post-commit` /
   `post-checkout` hooks (`graphify hook install`) refresh it on every commit and checkout.
 
-## 21. Versions and releases
+## 21. Branches, PR size, versions and releases
+
+**Branches.** Feature branches → PR into `dev` (`ci-ok` green before merging, by rule: GitHub Free enforces nothing;
+`dev` deploys staging) → a release PR into `main`
+(production, merged by the user) → a back-merge PR into `dev`. Hotfixes branch off `main` as `hotfix/*`, carry their
+own intent, get their own release run and are back-merged the same way. Migrations are immutable once merged into
+`dev`. Agents that compare against "the base" use the PR's base branch: `origin/dev` for features, `origin/main` for
+hotfixes, `origin/feat/P<n>` for a phase's PRs.
+
+**Phase feature branches.** A phase may get its own feature branch `feat/P<n>`, cut from `dev` (P1 has one; one agent
+builds its PRs in order). Its PRs come from `feat/p<n>-<NN>-<slug>` branches (git cannot hold
+`feat/P1` and `feat/P1/…` side by side) and go into `feat/P<n>`, with the same size limit, CI (`ci.yml` and `security.yml`
+match `feat/**` for PRs; `ci.yml` also runs on pushes to `feat/P<n>`) and CodeRabbit review (`.coderabbit.yaml`
+matches `feat/.*`). Migrations are immutable once
+merged into the phase branch. When the phase is done, `feat/P<n>` goes into `dev` as one PR, merged by the user.
+
+**PR size (STRICTLY ENFORCED).** Keep every PR reviewable: at most **38 changed files or 750 changed lines** against
+its base (`node .claude/hooks/major-change-gate.js --status` prints both; `package-lock.json`,
+`server/src/types/database.ts` and docs, meaning every Markdown file, do not count; tests do), and one theme per PR. Plan a task that is bigger than that as steps, each its own PR. The
+release PR (`release/*`, from `release.yml`) and a phase branch's PR into `dev` are exempt: each bundles work already
+reviewed in its own PRs.
+
+- When a branch reaches either limit, or its theme is done: finish and verify the change in hand (the §13 gate,
+  `/post-change` for a major change), commit, push, open the PR into the base, and tell the user it is ready.
+- Then **stop**: start no other work, and do not poll CI or the PR. The user says when it is merged (or what to fix);
+  only then branch fresh off the updated base for the next step.
+- `.claude/hooks/major-change-gate.js` reminds once per branch when it passes the limit (`--status` prints the size).
 
 **Versions.** `client/package.json` and `server/package.json` keep independent semver lines (0.x until the pilot
 launch). A change that touches `client/src`, `server/src`, `server/scripts`, `server/supabase/migrations` or a

@@ -10,6 +10,34 @@ paths:
 
 Loaded with any `server/` file, a Dockerfile, the nginx config or `compose.yaml`. Section numbers match `CLAUDE.md`.
 
+## 2c. Caching on the server (STRICTLY ENFORCED)
+
+The principle is in `CLAUDE.md` §2c; the client side is in `.claude/rules/frontend.md` §2c.
+
+- Every `/api` response carries `Cache-Control: no-cache` and `Vary: Authorization` (`server/src/app.ts`). With
+  Express's ETag, an unchanged body comes back as a bodiless 304, including on every poll. Never give stock, menu or
+  order responses a `max-age`.
+- Public, read-mostly data (menu, store, any future catalog) is read through `cached(key, PUBLIC_READ_TTL_MS, load)`
+  from `server/src/utils/cache.ts`. It is per-process, has a TTL (10 s), and shares one load between concurrent misses.
+- Every write through the API that changes cached data calls `invalidate(key)` in the same service, as
+  `order.service.ts` does after an order is placed or cancelled. A new cached read ships with its invalidation, and a
+  test that fails without it (`server/test/api/menu-cache.test.ts`).
+- Write paths never read through the cache (`createOrder` checks `is_open` with the uncached `getStore()`).
+  Nothing user-specific ever goes into `cached()`.
+
+**Containers (`server/Dockerfile`, `client/Dockerfile`, `client/nginx/`):** hashed `/assets/*`
+`public, max-age=31536000, immutable`; `/images/*` a week; `index.html`, SPA routes and `/runtime-env.js` `no-cache`;
+gzip on. See `docs/DEPLOYMENT.md` "Containers".
+
+`perf-auditor` checks all of this (check 10) and reports a missing safe cache as a finding.
+## 4. Server layering
+
+`routes/*.routes.ts` → `middleware/validate.ts` (zod) → `controllers/*.controller.ts` → `services/*.service.ts` →
+`utils/serializers.ts`. Controllers are thin and have no try/catch: Express 5 forwards rejected promises to
+`middleware/errorHandler.ts`. `src/app.ts` builds the app (`createApp()`); `src/server.ts` only listens.
+`src/worker.ts`, the second entry point, runs the queue consumers in `jobs/` (`docs/JOBS.md`). The map is
+`docs/BACKEND_STRUCTURE.md`.
+
 ## 10. Backend engineering
 
 - **Schema first:** zod in `schemas/*.schema.ts` with real bounds; `XInput` / `XQuery` inferred with `z.infer`.
@@ -38,6 +66,15 @@ Loaded with any `server/` file, a Dockerfile, the nginx config or `compose.yaml`
 - Env is read only through `utils/env.ts`. `src/types/database.ts` is generated (`npm run db:types`); never
   hand-edit it.
 - Recipes: `/new-endpoint`, `/db-migration`.
+
+## 12. Naming
+
+| Thing          | Convention                                                        |
+| -------------- | ----------------------------------------------------------------- |
+| Server modules | `<area>.routes.ts`, `.controller.ts`, `.service.ts`, `.schema.ts` |
+| Response types | `XDto` on the server, `X` on the client                           |
+| Database       | snake_case; JSON is camelCase (serializers convert)               |
+| Tests          | `*.test.ts(x)`; staging-safe suites `*.safe.test.ts`              |
 
 ## 14. CRUD and lifecycle verification
 
