@@ -41,6 +41,8 @@ nothing above `debug`.
 
 - `pino-http` gives every request an id. It keeps a caller's `x-request-id` if it is 1–64 characters of
   `[A-Za-z0-9_.-]`; otherwise it generates a UUID. The id is echoed in the `x-request-id` response header.
+- A write also carries the id into the database, so the log line, the `domain_events` row and the `audit_log` row of one
+  request can be matched ([SCHEMA.md](SCHEMA.md#audit_row_change)).
 - Every access line also carries `clientVersion`: the request's `X-Client-Version` (`none` when it is missing or
   malformed; `server/src/middleware/clientVersion.ts`). It tells a stale browser tab from a current one.
 - Log through `req.log` inside a request (controllers, middleware, the error handler). Every line then carries

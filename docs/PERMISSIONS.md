@@ -151,9 +151,9 @@ flowchart LR
   end
 
   subgraph Postgres["Postgres, public schema"]
-    Tables["profiles, stores, menu_items,<br/>orders, order_items, site_settings,<br/>domain_events, event_subscriptions, job_failures<br/>RLS ON, no policies,<br/>all privileges revoked from anon/authenticated"]
+    Tables["profiles, stores, menu_items,<br/>orders, order_items, site_settings,<br/>domain_events, event_subscriptions, job_failures,<br/>audit_log (service_role: select only)<br/>RLS ON, no policies,<br/>all privileges revoked from anon/authenticated"]
     Fns["place_order, update_order_status,<br/>reset_demo_orders, emit_event,<br/>queue_*, purge_domain_events<br/>EXECUTE only for service_role"]
-    Trg["handle_new_user, handle_user_email_change<br/>security definer, fired by auth.users triggers only"]
+    Trg["handle_new_user, handle_user_email_change, audit_row_change,<br/>audit_log_append_only<br/>security definer, fired by their triggers only"]
   end
 
   Anon -. "permission denied" .-> Tables
@@ -169,6 +169,11 @@ flowchart LR
   `authenticated`. The publishable key in the browser bundle cannot read or write any row.
 - `EXECUTE` on the RPCs is granted to `service_role` only. The trigger functions are callable by nobody; only their
   triggers run them.
+- `audit_log` is append-only. Only its trigger writes it (as the owner); the secret key may read it but not insert,
+  update or delete, and its own triggers refuse an update, delete or truncate even from the owner. An audited write
+  names its actor through a transition function's `p_actor` or the `x-actor` header
+  ([SCHEMA.md](SCHEMA.md#audit_row_change)); anything else is recorded as `SYSTEM`. Admins will read it through
+  `GET /api/admin/audit` (P1 PR 07).
 - The queues (`pgmq` schema) and schedules (`cron` schema) are closed to `anon` and `authenticated` and not exposed
   through the Data API; the API and the worker reach the queues only through the `queue_*` wrappers
   ([JOBS.md](JOBS.md)).

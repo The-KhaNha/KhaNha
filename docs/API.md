@@ -289,7 +289,8 @@ and store (key `'site_settings'`; see [Caching](#caching)).
 ### PATCH /admin/settings
 
 Code: `requireAuth` → `requireAdmin` → `validate(updateSettingsSchema)` → `admin.controller.updateSettings` →
-`settings.service.updateSettings`.
+`settings.service.updateSettings`. A save that changes a value writes one `audit_log` row naming the admin and the
+request id; a save of the same values writes none ([SCHEMA.md](SCHEMA.md#audit_row_change)).
 
 Body (`server/src/schemas/admin.schema.ts`), every field optional but at least one required:
 

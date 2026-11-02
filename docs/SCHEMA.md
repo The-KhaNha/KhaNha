@@ -25,14 +25,16 @@ a new file (see [DEPLOYMENT.md](DEPLOYMENT.md#schema-changes)).
 | `20261024181904_outbox.sql`                   | enables `pgmq` and `pg_cron`; adds `domain_events`, `event_subscriptions`, `emit_event` and `purge_domain_events`; creates the `q_notifications` queue, its `order.*` subscription and the nightly purge schedule                            |
 | `20261024192953_queue_wrappers.sql`           | adds `job_failures` and the five `queue_*` wrappers (the worker's only way into pgmq), granted to `service_role`                                                                                                                             |
 | `20261101131925_transitions_emit_events.sql`  | drops and recreates `place_order` and `update_order_status` with `p_actor` and `p_request_id` (defaulted), which emit their events; `update_order_status` locks the row, returns boolean and treats a repeat as a no-op; grants reissued     |
+| `20261101201251_audit_log.sql`                | adds `actor_type`, the append-only `audit_log` (read-only to `service_role`) and `audit_row_change()` with its triggers on `site_settings`, `orders`, `profiles` and `menu_items`                                                            |
 
 ## Enums
 
-| Enum             | Values                                                   |
-| ---------------- | -------------------------------------------------------- |
-| `user_role`      | `CUSTOMER`, `STAFF`, `ADMIN`                             |
-| `order_status`   | `PLACED`, `PREPARING`, `READY`, `COLLECTED`, `CANCELLED` |
-| `payment_status` | `PENDING`, `PAID`                                        |
+| Enum             | Values                                                           |
+| ---------------- | ---------------------------------------------------------------- |
+| `user_role`      | `CUSTOMER`, `STAFF`, `ADMIN`                                     |
+| `order_status`   | `PLACED`, `PREPARING`, `READY`, `COLLECTED`, `CANCELLED`         |
+| `payment_status` | `PENDING`, `PAID`                                                |
+| `actor_type`     | `USER`, `WORKER`, `RECONCILER`, `WEBHOOK`, `SCHEDULER`, `SYSTEM` |
 
 `ADMIN` was added with `alter type ... add value` (`20260927094610_admin_settings_collected.sql`); it is the
 site-wide developer/operator role (the `/admin` dashboard), not a restaurant role — see
@@ -185,6 +187,29 @@ Dead letters, written by `queue_dead_letter` (`20261024192953_queue_wrappers.sql
 | `resolved_at` | timestamptz | yes  |          | set by the operator who replays or dismisses it |
 | `resolved_by` | uuid        | yes  |          | references `profiles (id)` on delete set null   |
 
+### audit_log
+
+Who changed what: the business record, kept 13 months (the retention job is P9.5). Written only by
+`audit_row_change()`, never by the API; append-only (see [Row-level security and grants](#row-level-security-and-grants)).
+No foreign keys: deleting a profile must not touch its rows. Read by `GET /api/admin/audit` from P1 PR 07. The P9.5
+retention purge needs a sanctioned way past the append-only triggers, never a dropped trigger. `site_settings` is
+audited with `*`, so it never holds a secret: every column it gains is copied here for 13 months.
+
+| Column        | Type         | Null | Default  | Notes                                                                                        |
+| ------------- | ------------ | ---- | -------- | -------------------------------------------------------------------------------------------- |
+| `id`          | bigint       | no   | identity | primary key                                                                                  |
+| `occurred_at` | timestamptz  | no   | `now()`  | the transaction's start                                                                      |
+| `actor_type`  | `actor_type` | no   |          | `USER` for a signed-in caller, `SYSTEM` for the SQL editor, the seed, a migration            |
+| `actor_id`    | uuid         | yes  |          | `profiles.id` for `USER`                                                                     |
+| `actor_role`  | text         | yes  |          | the actor's role at the time                                                                 |
+| `store_id`    | uuid         | yes  |          | the row's `store_id`, when it has one                                                        |
+| `action`      | text         | no   |          | `site_settings.changed`, `order.status_changed`, `profile.role_changed`, `menu_item.changed` |
+| `entity_type` | text         | no   |          | the action's first part: `site_settings`, `order`, `profile`, `menu_item`                    |
+| `entity_id`   | text         | no   |          | the row's `id` as text (`true` for `site_settings`)                                          |
+| `changes`     | jsonb        | yes  |          | `{ column: [old, new] }`, the watched columns that changed                                   |
+| `reason`      | text         | yes  |          | unused until a transition takes a reason                                                     |
+| `request_id`  | text         | yes  |          | the API request behind it                                                                    |
+
 ## Indexes
 
 | Index                                | Columns                                                                          |
@@ -195,6 +220,9 @@ Dead letters, written by `queue_dead_letter` (`20261024192953_queue_wrappers.sql
 | `order_items_menu_item_id_idx`       | `order_items (menu_item_id)`                                                     |
 | `orders_user_id_idempotency_key_idx` | `orders (user_id, idempotency_key)`, unique, `where idempotency_key is not null` |
 | `domain_events_aggregate_idx`        | `domain_events (aggregate_type, aggregate_id, occurred_at)`                      |
+| `audit_log_entity_idx`               | `audit_log (entity_type, entity_id, occurred_at desc)`                           |
+| `audit_log_store_idx`                | `audit_log (store_id, occurred_at desc)`                                         |
+| `audit_log_actor_idx`                | `audit_log (actor_id, occurred_at desc)`                                         |
 | unique constraint                    | `order_items (order_id, line_number)`                                            |
 | unique constraint                    | `profiles (email)`, `orders (order_number)`                                      |
 
@@ -202,12 +230,18 @@ Dead letters, written by `queue_dead_letter` (`20261024192953_queue_wrappers.sql
 
 ## Triggers
 
-| Trigger                        | On                                                              | Function                     |
-| ------------------------------ | --------------------------------------------------------------- | ---------------------------- |
-| `orders_set_updated_at`        | before update on `orders`, each row                             | `set_updated_at()`           |
-| `site_settings_set_updated_at` | before update on `site_settings`, each row                      | `set_updated_at()`           |
-| `on_auth_user_created`         | after insert on `auth.users`                                    | `handle_new_user()`          |
-| `on_auth_user_email_changed`   | after update of `email` on `auth.users`, when the email changed | `handle_user_email_change()` |
+| Trigger                        | On                                                                                                                          | Function                                                 |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `orders_set_updated_at`        | before update on `orders`, each row                                                                                         | `set_updated_at()`                                       |
+| `site_settings_set_updated_at` | before update on `site_settings`, each row                                                                                  | `set_updated_at()`                                       |
+| `on_auth_user_created`         | after insert on `auth.users`                                                                                                | `handle_new_user()`                                      |
+| `on_auth_user_email_changed`   | after update of `email` on `auth.users`, when the email changed                                                             | `handle_user_email_change()`                             |
+| `site_settings_audit`          | after update on `site_settings`, each row                                                                                   | `audit_row_change('site_settings.changed', '*')`         |
+| `orders_audit`                 | after update of `status` on `orders`, each row                                                                              | `audit_row_change('order.status_changed', 'status')`     |
+| `profiles_audit`               | after update of `role` on `profiles`, each row                                                                              | `audit_row_change('profile.role_changed', 'role')`       |
+| `menu_items_audit`             | after update of `name`, `price`, `is_available`, `image_url`, `category` on `menu_items`, each row (never `stock_quantity`) | `audit_row_change('menu_item.changed', <those columns>)` |
+| `audit_log_no_change`          | before update or delete on `audit_log`, each row                                                                            | `audit_log_append_only()`                                |
+| `audit_log_no_truncate`        | before truncate on `audit_log`, each statement                                                                              | `audit_log_append_only()`                                |
 
 ## Functions
 
@@ -215,21 +249,23 @@ All functions set `search_path = ''` and use schema-qualified names. Each call i
 raises leaves nothing behind. Expected failures are raised with `message` = an API error code and `detail` = a JSON
 object (SQLSTATE `P0001`). How the API maps them is in [API.md](API.md#database-errors-p0001).
 
-| Function                     | Language | Security | Returns | Called by                            | `EXECUTE` granted to |
-| ---------------------------- | -------- | -------- | ------- | ------------------------------------ | -------------------- |
-| `set_updated_at()`           | plpgsql  | invoker  | trigger | `orders_set_updated_at`              | nobody               |
-| `handle_new_user()`          | plpgsql  | definer  | trigger | `on_auth_user_created`               | nobody               |
-| `handle_user_email_change()` | plpgsql  | definer  | trigger | `on_auth_user_email_changed`         | nobody               |
-| `place_order(...)`           | plpgsql  | invoker  | uuid    | `order.service.createOrder`          | `service_role`       |
-| `update_order_status(...)`   | plpgsql  | invoker  | boolean | `order.service.updateOrderStatus`    | `service_role`       |
-| `reset_demo_orders()`        | sql      | definer  | void    | `server/scripts/seed.ts`             | `service_role`       |
-| `emit_event(...)`            | plpgsql  | definer  | uuid    | `place_order`, `update_order_status` | `service_role`       |
-| `queue_read(...)`            | plpgsql  | definer  | table   | the worker (P1 PR 03)                | `service_role`       |
-| `queue_delete(...)`          | sql      | definer  | boolean | the worker                           | `service_role`       |
-| `queue_retry(...)`           | sql      | definer  | void    | the worker                           | `service_role`       |
-| `queue_dead_letter(...)`     | sql      | definer  | boolean | the worker                           | `service_role`       |
-| `queue_metrics(text)`        | sql      | definer  | table   | the worker's health report           | `service_role`       |
-| `purge_domain_events(...)`   | sql      | invoker  | integer | pg_cron `purge-domain-events`        | `service_role`       |
+| Function                     | Language | Security | Returns | Called by                             | `EXECUTE` granted to |
+| ---------------------------- | -------- | -------- | ------- | ------------------------------------- | -------------------- |
+| `set_updated_at()`           | plpgsql  | invoker  | trigger | `orders_set_updated_at`               | nobody               |
+| `handle_new_user()`          | plpgsql  | definer  | trigger | `on_auth_user_created`                | nobody               |
+| `handle_user_email_change()` | plpgsql  | definer  | trigger | `on_auth_user_email_changed`          | nobody               |
+| `place_order(...)`           | plpgsql  | invoker  | uuid    | `order.service.createOrder`           | `service_role`       |
+| `update_order_status(...)`   | plpgsql  | invoker  | boolean | `order.service.updateOrderStatus`     | `service_role`       |
+| `reset_demo_orders()`        | sql      | definer  | void    | `server/scripts/seed.ts`              | `service_role`       |
+| `emit_event(...)`            | plpgsql  | definer  | uuid    | `place_order`, `update_order_status`  | `service_role`       |
+| `queue_read(...)`            | plpgsql  | definer  | table   | the worker (P1 PR 03)                 | `service_role`       |
+| `queue_delete(...)`          | sql      | definer  | boolean | the worker                            | `service_role`       |
+| `queue_retry(...)`           | sql      | definer  | void    | the worker                            | `service_role`       |
+| `queue_dead_letter(...)`     | sql      | definer  | boolean | the worker                            | `service_role`       |
+| `queue_metrics(text)`        | sql      | definer  | table   | the worker's health report            | `service_role`       |
+| `purge_domain_events(...)`   | sql      | invoker  | integer | pg_cron `purge-domain-events`         | `service_role`       |
+| `audit_row_change()`         | plpgsql  | definer  | trigger | the four `*_audit` triggers           | nobody               |
+| `audit_log_append_only()`    | plpgsql  | invoker  | trigger | `audit_log_no_change`, `_no_truncate` | nobody               |
 
 ### set_updated_at
 
@@ -369,22 +405,42 @@ subscribed to `p_type` or to its family (`split_part(p_type, '.', 1) || '.*'`). 
 the events older than `p_now - p_keep` and returns how many. pg_cron runs it nightly at 21:17 UTC (02:47 IST) as job
 `purge-domain-events`; tests pass `p_now` instead of back-dating rows.
 
+### audit_row_change
+
+The audit trigger (`20261101201251_audit_log.sql`). Its arguments are the action, then the watched columns, or `*` for
+every column but `updated_at` and `updated_by`. It writes one `audit_log` row holding `{ column: [old, new] }` for the
+watched columns that changed, and none when nothing watched changed (a save of the same values, a repeated
+transition). The actor, first match wins:
+
+1. `app.actor` / `app.request_id`, set by a transition function (`place_order`, `update_order_status`);
+2. the `x-actor` / `x-request-id` headers of a table write through the Data API: PostgREST hands each request's headers
+   to its transaction as `request.headers`, and `settings.service.updateSettings` sets both. Only the secret key can
+   write an audited table, so the browser cannot claim an actor;
+3. otherwise `SYSTEM`, with no request id: the SQL editor, the seed, a migration.
+
+The actor is parsed only for a real change; one that does not parse, or names an unknown `actor_type`, fails the write
+on purpose. The API vouches for the actor it sends: the secret key cannot write `audit_log`, but it chooses whom a
+change is attributed to. An audited table is therefore written through a transition function or with those two headers; `updated_by` is
+never read (a later SQL edit would carry the last admin's id).
+
 ## Row-level security and grants
 
-- RLS is enabled on all nine tables (`site_settings` and the outbox tables included, each by the migration that
-  creates it). There are no policies.
-- `revoke all` on all nine tables from `anon` and `authenticated`.
+- RLS is enabled on all ten tables (`site_settings`, the outbox tables and `audit_log` included, each by the migration
+  that creates it). There are no policies.
+- `revoke all` on all ten tables from `anon` and `authenticated`.
 - Default privileges for role `postgres` in `public`: new tables grant nothing to `anon`/`authenticated`, and new
   functions grant no `EXECUTE` to `public`, `anon` or `authenticated`. This is why the `20260927094610` migration did
   not need its own `revoke`/`grant` for functions — it adds no new function — but still revokes table privileges for
   `site_settings` explicitly, matching every other table.
 - `EXECUTE` on every function is revoked from `public`, `anon` and `authenticated`, then granted to `service_role`
-  for all but the three trigger functions.
+  for all but the five trigger functions.
 - `anon` and `authenticated` have no `USAGE` on the `pgmq` or `cron` schema, and neither schema is exposed through
   the Data API (`api.schemas` in `server/supabase/config.toml`).
 - `server/test/api/database-lockdown.test.ts` checks all of the above from the catalogs, for every table and function,
   so a migration that forgets its RLS or revoke fails CI.
-- The migration does not change `service_role`'s table privileges. The API connects as `service_role` (the secret
-  key), which bypasses RLS.
+- `service_role`'s table privileges are left as Supabase grants them, except on `audit_log`: `select` only. The
+  trigger writes it as the owner, so the secret key can neither forge, change nor delete a row, and the
+  `audit_log_no_change` / `audit_log_no_truncate` triggers refuse even the owner (`server/test/api/audit.test.ts`). The
+  API connects as `service_role` (the secret key), which bypasses RLS.
 
 What this means for callers is in [PERMISSIONS.md](PERMISSIONS.md#database).

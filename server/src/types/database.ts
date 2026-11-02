@@ -28,6 +28,51 @@ export type Database = {
   };
   public: {
     Tables: {
+      audit_log: {
+        Row: {
+          action: string;
+          actor_id: string | null;
+          actor_role: string | null;
+          actor_type: Database['public']['Enums']['actor_type'];
+          changes: Json | null;
+          entity_id: string;
+          entity_type: string;
+          id: number;
+          occurred_at: string;
+          reason: string | null;
+          request_id: string | null;
+          store_id: string | null;
+        };
+        Insert: {
+          action: string;
+          actor_id?: string | null;
+          actor_role?: string | null;
+          actor_type: Database['public']['Enums']['actor_type'];
+          changes?: Json | null;
+          entity_id: string;
+          entity_type: string;
+          id?: never;
+          occurred_at?: string;
+          reason?: string | null;
+          request_id?: string | null;
+          store_id?: string | null;
+        };
+        Update: {
+          action?: string;
+          actor_id?: string | null;
+          actor_role?: string | null;
+          actor_type?: Database['public']['Enums']['actor_type'];
+          changes?: Json | null;
+          entity_id?: string;
+          entity_type?: string;
+          id?: never;
+          occurred_at?: string;
+          reason?: string | null;
+          request_id?: string | null;
+          store_id?: string | null;
+        };
+        Relationships: [];
+      };
       domain_events: {
         Row: {
           actor: Json | null;
@@ -487,6 +532,7 @@ export type Database = {
       };
     };
     Enums: {
+      actor_type: 'USER' | 'WORKER' | 'RECONCILER' | 'WEBHOOK' | 'SCHEDULER' | 'SYSTEM';
       order_status: 'PLACED' | 'PREPARING' | 'READY' | 'COLLECTED' | 'CANCELLED';
       payment_status: 'PENDING' | 'PAID';
       user_role: 'CUSTOMER' | 'STAFF' | 'ADMIN';
@@ -614,6 +660,7 @@ export const Constants = {
   },
   public: {
     Enums: {
+      actor_type: ['USER', 'WORKER', 'RECONCILER', 'WEBHOOK', 'SCHEDULER', 'SYSTEM'],
       order_status: ['PLACED', 'PREPARING', 'READY', 'COLLECTED', 'CANCELLED'],
       payment_status: ['PENDING', 'PAID'],
       user_role: ['CUSTOMER', 'STAFF', 'ADMIN'],

@@ -157,6 +157,10 @@ ships the renamed status and the admin dashboard) can be pointed at it.
 and `update_order_status`, so the API already deployed keeps working against it (its events carry no actor). Push the
 migration first, then deploy the new API.
 
+`20261101201251_audit_log.sql` is additive: the new table and triggers need no new API. An API deployed before it
+updates `site_settings` without the `x-actor` headers, so those audit rows are recorded as `SYSTEM`. Push the
+migration first, then deploy the new API.
+
 ### Applying migrations
 
 `server/scripts/db-push.sh <staging|production>`:

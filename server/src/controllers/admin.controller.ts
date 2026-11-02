@@ -1,5 +1,5 @@
 import type { RequestHandler } from 'express';
-import { currentUser } from '../middleware/auth';
+import { requestContext } from '../middleware/auth';
 import type { UpdateSettingsInput } from '../schemas/admin.schema';
 import * as settingsService from '../services/settings.service';
 import type { BodyHandler } from '../types/http';
@@ -10,9 +10,9 @@ export const getSettings: RequestHandler = async (_req, res) => {
 };
 
 export const updateSettings: BodyHandler<UpdateSettingsInput> = async (req, res) => {
-  const admin = currentUser(req);
-  const settings = toSiteSettingsDto(await settingsService.updateSettings(admin, req.body));
+  const ctx = requestContext(req);
+  const settings = toSiteSettingsDto(await settingsService.updateSettings(req.body, ctx));
   // The validated body holds only the settings that changed: no PII.
-  req.log.info({ ...req.body, by: admin.id }, 'Site settings changed');
+  req.log.info({ ...req.body, by: ctx.actor.id }, 'Site settings changed');
   res.json({ settings });
 };

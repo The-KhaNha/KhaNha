@@ -203,8 +203,9 @@ and are never committed. Details: `.claude/rules/frontend.md`.
 Schema first (zod with real bounds), rows become DTOs in `utils/serializers.ts` (client copy updated in the same
 change), errors through the `AppError` factories, atomic multi-step writes in a SQL function, prices and totals from
 the database, someone else's resource is 404 (never 403), and every `supabaseAdmin` query scopes by user. Every
-transition function sets `app.actor` and `app.request_id` and calls `emit_event` in the same transaction. Details
-(sessions, env, transitions, recipes): `.claude/rules/backend.md`.
+transition function sets `app.actor` and `app.request_id` and calls `emit_event` in the same transaction. An audited
+table is written through such a function or with the `x-actor` and `x-request-id` headers. Details (sessions, env,
+transitions, audit, recipes): `.claude/rules/backend.md`.
 
 ## 11. Code quality
 

@@ -1,4 +1,4 @@
-import type { AuthUser } from '../types/auth';
+import type { RequestContext } from '../types/auth';
 import type { Tables, TablesUpdate } from '../types/database';
 import { cached, invalidate, PUBLIC_READ_TTL_MS } from '../utils/cache';
 import { supabaseAdmin } from '../utils/supabase';
@@ -39,15 +39,18 @@ export function getSettings(): Promise<SiteSettings> {
 }
 
 export async function updateSettings(
-  admin: AuthUser,
   input: UpdateSettingsInput,
+  ctx: RequestContext,
 ): Promise<SiteSettings> {
   const { data } = await supabaseAdmin
     .from('site_settings')
-    .update({ ...toColumns(input), updated_by: admin.id })
+    .update({ ...toColumns(input), updated_by: ctx.actor.id })
     .eq('id', true)
     .select()
     .single()
+    // The audit trigger reads who and which request from these (the migration's audit_row_change explains why).
+    .setHeader('x-actor', JSON.stringify(ctx.actor))
+    .setHeader('x-request-id', ctx.requestId)
     .throwOnError();
   invalidate('site_settings');
   return data;

@@ -1,22 +1,15 @@
-import type { Request, RequestHandler } from 'express';
-import { currentUser } from '../middleware/auth';
+import type { RequestHandler } from 'express';
+import { currentUser, requestContext } from '../middleware/auth';
 import type {
   CreateOrderInput,
   ListOrdersQuery,
   UpdateOrderStatusInput,
 } from '../schemas/order.schema';
 import * as orderService from '../services/order.service';
-import type { RequestContext } from '../types/auth';
 import type { BodyHandler, QueryHandler } from '../types/http';
 import { toOrderDto } from '../utils/serializers';
 
 type OrderParams = { id: string };
-
-/** Who is asking, and which request: each order write records them with the event it emits. */
-function requestContext(req: Request): RequestContext {
-  const { id, role } = currentUser(req);
-  return { actor: { type: 'USER', id, role }, requestId: String(req.id) };
-}
 
 export const createOrder: BodyHandler<CreateOrderInput> = async (req, res) => {
   const placed = await orderService.createOrder(currentUser(req), req.body, requestContext(req));
@@ -49,10 +42,11 @@ export const updateOrderStatus: BodyHandler<UpdateOrderStatusInput, OrderParams>
   req,
   res,
 ) => {
+  const ctx = requestContext(req);
   const { order: updated, repeated } = await orderService.updateOrderStatus(
     req.params.id,
     req.body.status,
-    requestContext(req),
+    ctx,
   );
   const order = toOrderDto(updated);
   req.log.info(
@@ -60,7 +54,7 @@ export const updateOrderStatus: BodyHandler<UpdateOrderStatusInput, OrderParams>
       orderId: order.id,
       orderNumber: order.orderNumber,
       status: order.status,
-      by: currentUser(req).id,
+      by: ctx.actor.id,
     },
     // A repeat answers the same 200 (a retried request, a second device), but changed nothing: told apart in the logs,
     // like a replayed placement.
