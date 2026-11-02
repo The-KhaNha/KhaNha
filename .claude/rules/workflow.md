@@ -39,8 +39,10 @@ decision.
 | branches, commits, PRs, releases | `agent-skills:git-workflow-and-versioning`, within §21 | `superpowers:finishing-a-development-branch` (§21 already decides what happens to a branch) |
 | starting a PR while another branch has uncommitted work | `superpowers:using-git-worktrees` (a worktree off the PR's base; never a stash, §12) | – |
 | two or more independent tasks | `superpowers:dispatching-parallel-agents` for read-only agents only; agents that write source run one at a time (one shared working tree, §12) | `superpowers:subagent-driven-development` |
-| over-engineering creeping in | `ponytail:ponytail` | – |
+| over-engineering creeping in | `ponytail:ponytail`; before a release PR, `ponytail:ponytail-debt` lists the deliberate `ponytail:` shortcuts | `ponytail:ponytail-review`, `ponytail:ponytail-audit` (`simplify` and `refactorer` cover them) |
+| a CI workflow, a `scripts/ci` check or a release script | `agent-skills:ci-cd-and-automation` (a guard per §13; releases per §21) | – |
 | a workflow repeated three times; editing `.claude/skills` | `skill-creator:skill-creator` to make or measure a project skill, `superpowers:writing-skills` for the writing itself | – |
+| editing `CLAUDE.md`, `.claude/rules` or an agent prompt | `agent-skills:context-engineering` | – |
 
 ## 17. Multi-agent workflows: details
 
@@ -110,6 +112,14 @@ holds no machine paths, and the graphify hooks skip when graphify is not install
 
 Agents added during a session are not registered until the next session; meanwhile spawn `general-purpose` with
 "Read `.claude/agents/<name>.md` and act as that agent".
+
+**Subagent model.** An agent file's `model:` wins. For a built-in agent (`general-purpose`, `Plan`, …) pass `model`
+on the spawn:
+
+- `sonnet` when the work is clear and needs little planning or thought: the task, the files and the done-check are
+  already written down (a PR from its plan, a mechanical rename, a scripted check);
+- `opus` when it has to design, choose between approaches, find an unknown cause, or decide something about auth,
+  orders, money or a migration's shape.
 
 ## 18. Long-running processes
 
