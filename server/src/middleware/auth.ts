@@ -1,6 +1,6 @@
 import type { Request, RequestHandler } from 'express';
 import { verifyCredentials } from '@supabase/server/core';
-import type { AuthUser } from '../types/auth';
+import type { AuthUser, RequestContext } from '../types/auth';
 import { forbidden, IntegrationError, unauthorized } from '../utils/errors';
 import { supabaseAdmin, supabaseEnv } from '../utils/supabase';
 
@@ -80,4 +80,10 @@ export const requireAdmin: RequestHandler = (req, _res, next) => {
 export function currentUser(req: { user?: AuthUser }): AuthUser {
   if (!req.user) throw unauthorized();
   return req.user;
+}
+
+/** Who is asking, and which request: a write records them with the event it emits and its audit row. */
+export function requestContext(req: Request): RequestContext {
+  const { id, role } = currentUser(req);
+  return { actor: { type: 'USER', id, role }, requestId: String(req.id) };
 }

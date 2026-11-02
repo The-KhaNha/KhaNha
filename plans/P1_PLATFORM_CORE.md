@@ -332,7 +332,14 @@ Split seam if over 750 lines: the retry-safe repeat becomes its own PR with a se
 
 ### PR 06 — Audit log (P1.3)
 
-- [ ] Merged
+- [x] Merged
+
+As built: the actor never comes from `updated_by`. A later SQL edit leaves the last admin's id there, so that
+fallback would have pinned the edit on them. A table write through the Data API names its actor with the `x-actor`
+and `x-request-id` headers instead (PostgREST hands them to the transaction as `request.headers`); settings rows now
+carry their request id too. `actor_role` comes from the actor itself (the API read it from `profiles` on that
+request), so the trigger reads no other table. `service_role` gets `select` only: the trigger writes as the owner, so
+the secret key cannot insert, edit or remove a row (it still vouches for the actor it sends). The publishable-key check is the lockdown test's, which covers every table.
 
 `/before-write`: schema-guard, expected NEW TABLE (`domain_events` is trimmed at 30 days; the audit record is kept
 13 months and covers changes that are not events).

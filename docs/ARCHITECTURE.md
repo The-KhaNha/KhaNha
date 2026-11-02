@@ -98,6 +98,14 @@ The worker is a second process from the same image: it reads the pgmq queues in 
 
 The API logs every request with pino. Each request gets an id, echoed in the `x-request-id` response header, and every log line inside the request carries it; the client logs that id when a call fails. See [LOGGING.md](LOGGING.md).
 
+Three records, three purposes, three retentions, joined by that request id:
+
+| Record          | Answers                                          | Written by                                      | Kept                                                      |
+| --------------- | ------------------------------------------------ | ----------------------------------------------- | --------------------------------------------------------- |
+| logs (pino)     | what the process did, for debugging              | the API and the worker                          | the host's log retention                                  |
+| `domain_events` | what happened, for the jobs that react to it     | transition functions (`emit_event`)             | 30 days ([JOBS.md](JOBS.md))                              |
+| `audit_log`     | who changed what, for people (support, disputes) | `audit_row_change()` triggers on audited tables | 13 months, append-only ([SCHEMA.md](SCHEMA.md#audit_log)) |
+
 ---
 
 ## 2. Environments and configuration
@@ -829,10 +837,11 @@ sequenceDiagram
 
   Svc->>DB: rpc(..., p_actor, p_request_id)
   DB->>DB: set app.actor, app.request_id; change the order
+  DB->>DB: orders_audit trigger: INSERT audit_log (same actor and request id)
   DB->>Ev: emit_event('order.ready', ...) in the same transaction
   Ev->>Ev: INSERT domain_events
   Ev->>Ev: pgmq.send to q_notifications (subscription order.*)
-  DB-->>Svc: commit: change, event and message together (a raise leaves none)
+  DB-->>Svc: commit: change, audit row, event and message together (a raise leaves none)
   W->>Ev: queue_read q_notifications
   W->>W: notifyHandler(event)
 ```

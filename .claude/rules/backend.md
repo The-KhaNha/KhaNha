@@ -55,6 +55,11 @@ gzip on. See `docs/DEPLOYMENT.md` "Containers".
   `set_config('app.request_id', …, true)`, and calls `emit_event` before returning, in the same transaction. The
   service passes the controller's `RequestContext` (`types/auth.ts`). A repeat of a transition that already happened
   changes nothing and emits nothing (`update_order_status`; docs/JOBS.md "Order events").
+- **Audited tables** (`site_settings`, `orders.status`, `profiles.role`, `menu_items` except stock; docs/SCHEMA.md
+  `audit_row_change`) are written through a transition function, or through the Data API with
+  `.setHeader('x-actor', JSON.stringify(ctx.actor)).setHeader('x-request-id', ctx.requestId)` as
+  `settings.service.updateSettings` does. Anything else is recorded as `SYSTEM`. A new audited table gets its
+  `audit_row_change` trigger in the migration that creates it.
 - **Trust nothing from the client:** prices and totals come from the database. Someone else's resource is 404, never 403. The role is read from `profiles` on every request, never from the token.
 - **`supabaseAdmin` bypasses RLS,** so every query scopes by user explicitly.
 - Public reads are cached with `cached()` and invalidated by the writes that change them (§2c).
@@ -91,7 +96,8 @@ Walk the lifecycle: create → get → list → each valid status transition (st
 `staff123`; admin: `admin@campuscafe.local` / `admin123`) → repeating the last transition returns 200 and changes
 nothing → an invalid transition returns 409 → cancelling restores stock → another user's order returns 404. Each
 step that changed something left one row in `domain_events` with the caller as `actor` and the request's
-`x-request-id`; the repeat and the refusals left none. Then confirm the UI shows the result.
+`x-request-id`, and each status change one `audit_log` row with the same actor and request id; the repeat and the
+refusals left neither. Then confirm the UI shows the result.
 
 ## 19. Logging
 
