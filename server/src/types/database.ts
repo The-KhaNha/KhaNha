@@ -263,7 +263,9 @@ export type Database = {
       };
       order_items: {
         Row: {
+          category: string;
           id: string;
+          image_url: string;
           line_number: number;
           line_total: number;
           menu_item_id: string;
@@ -273,7 +275,9 @@ export type Database = {
           unit_price: number;
         };
         Insert: {
+          category: string;
           id?: string;
+          image_url: string;
           line_number: number;
           line_total: number;
           menu_item_id: string;
@@ -283,7 +287,9 @@ export type Database = {
           unit_price: number;
         };
         Update: {
+          category?: string;
           id?: string;
+          image_url?: string;
           line_number?: number;
           line_total?: number;
           menu_item_id?: string;
@@ -322,6 +328,7 @@ export type Database = {
           payment_status: Database['public']['Enums']['payment_status'];
           status: Database['public']['Enums']['order_status'];
           store_id: string;
+          store_name: string;
           total: number;
           updated_at: string;
           user_id: string;
@@ -338,6 +345,7 @@ export type Database = {
           payment_status?: Database['public']['Enums']['payment_status'];
           status?: Database['public']['Enums']['order_status'];
           store_id: string;
+          store_name: string;
           total: number;
           updated_at?: string;
           user_id: string;
@@ -354,6 +362,7 @@ export type Database = {
           payment_status?: Database['public']['Enums']['payment_status'];
           status?: Database['public']['Enums']['order_status'];
           store_id?: string;
+          store_name?: string;
           total?: number;
           updated_at?: string;
           user_id?: string;

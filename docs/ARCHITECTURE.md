@@ -539,7 +539,7 @@ sequenceDiagram
     Svc-->>CO: 400 INSUFFICIENT_STOCK "Only 1 Cheese Toast left..." or "... just sold out."
   else placed
     DB-->>Svc: order id
-    Svc->>DB: select order + stores(id, name) + order_items(... menu_items(image_url)) by line_number
+    Svc->>DB: select order + order_items by line_number (store name and photos are order-time snapshots, no joins)
     Svc-->>API: order row
     API-->>CO: 201 { order } (order number, PAID, PLACED, estimatedReadyAt = created + 15 min)
     CO->>CO: flushSync: show green Paid state + receipt
@@ -564,8 +564,8 @@ flowchart TD
   Why -->|"yes: not stock-tracked"| Next
   Why -->|"no: too few left, or item gone"| Raise["RAISE 'INSUFFICIENT_STOCK'<br/>detail = { menuItemId, name, available }<br/>→ whole transaction rolled back"]
   Next -->|"yes"| Loop
-  Next -->|"no"| InsOrder["INSERT orders: total = Σ unit_price × quantity,<br/>status PLACED, payment status,<br/>estimated_ready_at = now() + store.prep_time_max_minutes,<br/>order_number from identity (starts at 1001)"]
-  InsOrder --> InsItems["INSERT order_items with line_number = cart position,<br/>snapshot name + unit_price, line_total"]
+  Next -->|"no"| InsOrder["INSERT orders: store_name snapshot,<br/>total = Σ unit_price × quantity,<br/>status PLACED, payment status,<br/>estimated_ready_at = now() + store.prep_time_max_minutes,<br/>order_number from identity (starts at 1001)"]
+  InsOrder --> InsItems["INSERT order_items with line_number = cart position,<br/>snapshot name + unit_price + image_url + category,<br/>line_total"]
   InsItems --> Ret(["RETURN order id"])
 ```
 
@@ -892,6 +892,7 @@ flowchart TD
   Cors --> Json["express.json (100 kB limit)"]
   Json --> Router{"/api router"}
   Router -->|"GET /health"| Health["{ ok: true }"]
+  Router -->|"POST /client-errors"| ValCE["clientErrorLimiter → validate(clientErrorsSchema)"] --> CECtl["clientErrors.controller: one warn per report, 204"]
   Router -->|"GET /store, GET /menu"| Public["controller → service"]
   Router -->|"POST /auth/register"| ValReg["validate(registerSchema)"] --> RegCtl["auth.controller.register"]
   Router -->|"GET /auth/me"| AuthMe["requireAuth"] --> MeCtl["auth.controller.me"]
@@ -1017,6 +1018,7 @@ erDiagram
     int order_number UK "identity from 1001"
     uuid user_id FK
     uuid store_id FK
+    text store_name "snapshot"
     text customer_name
     text customer_phone
     text note
@@ -1036,10 +1038,12 @@ erDiagram
     int unit_price "snapshot"
     int quantity "at least 1"
     int line_total
+    text image_url "snapshot"
+    text category "snapshot, not sent"
   }
 ```
 
-Five tables: `profiles` (one per Auth user, holds the role), `stores` (one row in V0), `menu_items` (with optional tracked stock), `orders` and `order_items` (name and price snapshotted at order time). Columns with their types, defaults and constraints, the indexes, triggers and the `place_order` / `update_order_status` / `reset_demo_orders` functions are in [SCHEMA.md](SCHEMA.md).
+Five tables: `profiles` (one per Auth user, holds the role), `stores` (one row in V0), `menu_items` (with optional tracked stock), `orders` and `order_items` (name, price, photo and category on each line, and the store name, snapshotted at order time). Columns with their types, defaults and constraints, the indexes, triggers and the `place_order` / `update_order_status` / `reset_demo_orders` functions are in [SCHEMA.md](SCHEMA.md).
 
 ---
 

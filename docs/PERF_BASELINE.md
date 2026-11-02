@@ -284,6 +284,11 @@ no-cache` and `Vary: Authorization, Origin`; normal `GET` 304 revalidation on `/
     0.8-2.6 ms and `UpdateLayoutTree` 0.7-1.9 ms over 5 frames, i.e. the pulse runs on the compositor and no longer repaints each frame.
   - Polling, API latency and caching not re-measured (untouched by this batch).
     | 2026-11-02 | feat/p1-07-audit-read (uncommitted) | Server-only run for GET /api/admin/audit; client bundle unchanged (types only, not rebuilt). Audit endpoint default page (11 rows, 3,571 B): p50 10 ms / p95 12 ms; limit=100 p50 9 ms. Existing routes: store 4.8 ms, menu 9 ms single request. |
+- **2026-11-02 (feat/p1-10-client-errors, uncommitted)** · server-only run for `POST /api/client-errors` (unauthenticated, per-IP limiter,
+  strict zod body, scrub regex, one `warn` per report, 204, no DB). Client bundle unchanged (no client change, not rebuilt). Local API on :8110, 20 requests each after 2 warm-ups.
+  - **Endpoint (5 reports, 13.8-20.4 KB body):** typical stack 1.7 / 2.1 ms (p50 / p95); max-size clean text 1.5 / 1.8 ms; 5 x ('a' x 500 message, 'a' x 3500 stack) 5.9 / 6.5 ms; 5 x 'eyJ' runs 1.4 / 1.6 ms. Limiter: 30 x 204 then 5 x 429 from a fresh window (default 30/60 s).
+  - **Other routes (mounted before the gate, no cost seen):** health 1.4 / 1.7 ms, config 1.3 / 1.5 ms (202 B), menu 1.1 / 1.4 ms (4,416 B, in-process cache; 1.4 ms at the last baseline), store 1.1 / 1.5 ms. Within noise (< 5 ms).
+  - **Scrub regex, direct microbench (tsx, parsing the schema in-process):** quadratic on a long run of characters that can start an email local part or a JWT. 5 reports at max length: 'a' x N 39 ms p50, `eyJ` x N 52 ms, '+' x N 43 ms, 'a.1-' x N 45 ms (max 60 ms); a 35,000-char run takes 830 ms, 350,000 chars 76 s (not reachable: zod `.max()` rejects before the transform). Not reproduced over HTTP (5.9 ms for the 'a' case), so the in-process figure is the pessimistic bound. Candidate fix: `(?<![\w.+-])[\w.+-]{1,64}@` for the email branch and `(?<![\w-])eyJ` for the JWT branch (0.03-0.07 ms on the same inputs).
     | 2026-11-02 | feat/p1-13-feature-flags @ 4333a4b (uncommitted) | Server-only run (P1 PR 13); client bundle unchanged (types only, not rebuilt). `evaluateFlag` 0.1-1.8 us/call (off/plain/roles ~0.1, percent with sha256 ~1.3-1.8; 10 000 calls, no DB), so isEnabled cost is the cached Map lookup plus that. Cached read `select key, enabled, rules from feature_flags`: Seq Scan, 0.09 ms exec (a handful of rows, pkey covers key lookups, no index needed). `PATCH /api/admin/flags/:key` (22 flips, audit + updated_at triggers, 2.2 ms in-DB): p50 9.1 ms / p95 10.1 ms. Existing routes vs baseline: store p50 1.1 ms, menu 1.0 ms (p95 3.1), me 8.4 ms, orders customer 8.2 ms, staff 9.0 ms: none slower. |
 
 ## CI numbers
@@ -321,3 +326,17 @@ one staff, sequential).
 - Bounds: `purge_domain_events()` (nightly, 30 days) bounds `domain_events`. `q_notifications` is bounded only
   while the worker runs; with the worker stopped it grows by one row per event (80 rows after this run).
 - Rate limit: `RATE_LIMIT_WRITE_MAX` = 30 writes per user per 60 s, so a 30-request sample needs a fresh window.
+- **2026-11-02** · `feat/p1-08-order-snapshots` + uncommitted changes (P1 PR 08, order snapshots v2: `selectOrders()` reads
+  `orders.store_id/store_name` and `order_items.image_url` instead of joining `stores` and `menu_items`; `place_order`
+  reads `stores.name` and `menu_items` name/image/category once at insert). Server-only, no client change, so the bundle,
+  Web Vitals and polling intervals were not re-measured. Local API on :8108, WSL2, 25 orders placed first, 30 requests
+  per read after 2 warm-ups. `GET /api/orders` (customer, 20 orders) p50 9.0 / p95 10.1 ms, 11,732 B; `GET /api/orders`
+  (staff, 25 orders) p50 9.3 / p95 11.7 ms, 14,662 B; `?status=PLACED` p50 9.1 / p95 12.7 ms; `GET /api/orders/:id` p50
+  8.3 / p95 10.1 ms, 595 B (unchanged from the round-3 595 B: the DTO is identical). `POST /api/orders` (1 line, 25
+  requests, all 201) p50 18.5 / p95 26.0 ms (PR 05: 19 / 33 ms, not worse). EXPLAIN ANALYZE of the equivalent list query
+  over 25 orders: joined shape (old) 0.347 ms execution / 0.71 ms planning with an extra `stores_pkey` and a
+  `menu_items_pkey` index scan per order (20 loops each); snapshot shape (new) 0.264 ms / 0.58 ms, only the
+  `order_items_order_id_line_number_key` index scan remains; no Seq Scan on `order_items`. Caveat: the old code was not
+  re-run end to end, and the round-3 reads were taken on a different machine with 2 orders, so the HTTP p50s (6-8 ms
+  then, 8-9 ms now with 10x the rows) are not a like-for-like comparison; the within-database EXPLAIN pair is the
+  evidence that the read got cheaper. Snapshot sample verified through the API (`store.name`, `items[].imageUrl`).

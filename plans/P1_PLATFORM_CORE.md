@@ -399,7 +399,11 @@ Docs: `docs/API.md`, `docs/PERMISSIONS.md`, `docs/BACKEND_STRUCTURE.md`. Intent:
 
 ### PR 08 — Order snapshots v2 (P1.5)
 
-- [ ] Merged
+- [x] Merged
+
+> **As built:** the backfill runs with `orders_set_updated_at` disabled, so past orders keep their `updatedAt`.
+> `admin.test.ts` and `caching-gaps.test.ts`, which insert orders directly, now pass a `store_name`. `selectOrders()`
+> joins only `order_items` now.
 
 Migration `<ts>_order_snapshots.sql`: `order_items.image_url`, `order_items.category`, `orders.store_name`; backfill
 from today's `menu_items` and `stores` (the best copy left); then `set not null`. `create or replace place_order`
@@ -456,7 +460,15 @@ the database; `utils/money.ts` is the only converter"). Intent: `--server minor`
 
 ### PR 10 — `POST /api/client-errors` (P1.6)
 
-- [ ] Merged
+- [x] Merged
+
+As built: a blank env value now counts as unset (`utils/env.ts`), found while adding `RATE_LIMIT_CLIENT_ERRORS_MAX`:
+`z.coerce` read `RATE_LIMIT_IP_MAX=` as 0, which turned the limit off; `env-blank.safe.test.ts` guards it. `clientVersion` is not passed to the `warn` call, because `req.log` already carries it (pino-http
+`customProps` in `app.ts`), so it is written once rather than as a duplicate key; the line adds `at`, so a report
+sent late (a batch after an outage) still says when it happened. The limiter counts requests (each up to 5 reports),
+so the test's 31st report is the 31st one-report request. The test's own app copy stubs `getSettings` with
+`min_client_version` 9.0.0: the seeded `0.0.0` gates nothing, so it could not tell a mount after the gate apart.
+No route file: the route sits in `routes/index.ts` next to `/config`, which it shares the gate exemption with.
 
 Recipe: `/new-endpoint`. Self-reported, not Sentry (D5); Sentry is a later, low-priority roadmap item (P10.4).
 

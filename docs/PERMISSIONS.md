@@ -37,24 +37,25 @@ work exactly like a customer's. Its only privilege is the admin dashboard (`/adm
 
 ## Route matrix
 
-| Route                          | anonymous  | CUSTOMER            | STAFF                                  | ADMIN                 | Enforced by                                                              |
-| ------------------------------ | ---------- | ------------------- | -------------------------------------- | --------------------- | ------------------------------------------------------------------------ |
-| `GET /api/health`              | yes        | yes                 | yes                                    | yes                   | –                                                                        |
-| `GET /api/ready`               | yes        | yes                 | yes                                    | yes                   | –                                                                        |
-| `GET /api/config`              | yes        | yes                 | yes                                    | yes                   | – (public: the same config for everyone; before the client version gate) |
-| `GET /api/store`               | yes        | yes                 | yes                                    | yes                   | –                                                                        |
-| `GET /api/menu`                | yes        | yes                 | yes                                    | yes                   | –                                                                        |
-| `POST /api/auth/register`      | yes        | yes                 | yes                                    | yes                   | –                                                                        |
-| `GET /api/auth/me`             | 401        | own profile         | own profile                            | own profile           | `requireAuth`                                                            |
-| `POST /api/orders`             | 401        | yes                 | yes                                    | yes                   | `requireAuth`                                                            |
-| `GET /api/orders`              | 401        | own orders          | newest `staff_order_list_limit` of all | own orders            | `requireAuth` + `order.service.listOrders`                               |
-| `GET /api/orders/:id`          | 401        | own order, else 404 | any order                              | own order, else 404   | `requireAuth` + `order.service.getOrder`                                 |
-| `PATCH /api/orders/:id/status` | 401        | 403                 | yes                                    | 403                   | `requireAuth` + `requireStaff`                                           |
-| `GET /api/admin/settings`      | 401        | 403                 | 403                                    | yes                   | `requireAuth` + `requireAdmin`                                           |
-| `PATCH /api/admin/settings`    | 401        | 403                 | 403                                    | yes                   | `requireAuth` + `requireAdmin`                                           |
-| `GET /api/admin/audit`         | 401        | 403                 | 403                                    | yes                   | `requireAuth` + `requireAdmin`                                           |
-| `PATCH /api/admin/flags/:key`  | 401        | 403                 | 403                                    | yes (unknown key 404) | `requireAuth` + `requireAdmin`                                           |
-| `/admin` (client route)        | → `/login` | → `/`               | → `/`                                  | renders `AdminPage`   | `RequireRole role="ADMIN"` (client only)                                 |
+| Route                          | anonymous  | CUSTOMER            | STAFF                                  | ADMIN                 | Enforced by                                                                            |
+| ------------------------------ | ---------- | ------------------- | -------------------------------------- | --------------------- | -------------------------------------------------------------------------------------- |
+| `GET /api/health`              | yes        | yes                 | yes                                    | yes                   | –                                                                                      |
+| `GET /api/ready`               | yes        | yes                 | yes                                    | yes                   | –                                                                                      |
+| `GET /api/config`              | yes        | yes                 | yes                                    | yes                   | – (public: the same config for everyone; before the client version gate)               |
+| `POST /api/client-errors`      | yes        | yes                 | yes                                    | yes                   | – (public: no token; before the client version gate; per-address `clientErrorLimiter`) |
+| `GET /api/store`               | yes        | yes                 | yes                                    | yes                   | –                                                                                      |
+| `GET /api/menu`                | yes        | yes                 | yes                                    | yes                   | –                                                                                      |
+| `POST /api/auth/register`      | yes        | yes                 | yes                                    | yes                   | –                                                                                      |
+| `GET /api/auth/me`             | 401        | own profile         | own profile                            | own profile           | `requireAuth`                                                                          |
+| `POST /api/orders`             | 401        | yes                 | yes                                    | yes                   | `requireAuth`                                                                          |
+| `GET /api/orders`              | 401        | own orders          | newest `staff_order_list_limit` of all | own orders            | `requireAuth` + `order.service.listOrders`                                             |
+| `GET /api/orders/:id`          | 401        | own order, else 404 | any order                              | own order, else 404   | `requireAuth` + `order.service.getOrder`                                               |
+| `PATCH /api/orders/:id/status` | 401        | 403                 | yes                                    | 403                   | `requireAuth` + `requireStaff`                                                         |
+| `GET /api/admin/settings`      | 401        | 403                 | 403                                    | yes                   | `requireAuth` + `requireAdmin`                                                         |
+| `PATCH /api/admin/settings`    | 401        | 403                 | 403                                    | yes                   | `requireAuth` + `requireAdmin`                                                         |
+| `GET /api/admin/audit`         | 401        | 403                 | 403                                    | yes                   | `requireAuth` + `requireAdmin`                                                         |
+| `PATCH /api/admin/flags/:key`  | 401        | 403                 | 403                                    | yes (unknown key 404) | `requireAuth` + `requireAdmin`                                                         |
+| `/admin` (client route)        | → `/login` | → `/`               | → `/`                                  | renders `AdminPage`   | `RequireRole role="ADMIN"` (client only)                                               |
 
 Nothing stops a `STAFF` or `ADMIN` account from placing an order: `POST /api/orders` only requires a signed-in user.
 `staffOrderListLimit` and `customerOrderHistoryLimit` are the two editable `site_settings` (defaults 100 and 20); see

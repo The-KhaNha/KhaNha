@@ -90,3 +90,14 @@ export const registerLimiter = createRateLimiter({
   limit: env.RATE_LIMIT_REGISTER_MAX,
   keyBy: 'ip',
 });
+
+/**
+ * Browser error reports, by address: they arrive before sign-in too (RATE_LIMIT_CLIENT_ERRORS_MAX). Counts requests,
+ * each carrying at most five reports.
+ */
+export const clientErrorLimiter = createRateLimiter({
+  name: 'clientErrors',
+  windowMs: env.RATE_LIMIT_WINDOW_MS,
+  limit: env.RATE_LIMIT_CLIENT_ERRORS_MAX,
+  keyBy: 'ip',
+});
