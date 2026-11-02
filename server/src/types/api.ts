@@ -71,7 +71,7 @@ export interface OrderItemDto {
   unitPrice: number;
   quantity: number;
   lineTotal: number;
-  /** Current photo of the menu item, so order screens need no menu lookup for thumbnails. */
+  /** The menu item's photo when the order was placed, so order screens need no menu lookup for thumbnails. */
   imageUrl: string;
 }
 
@@ -87,6 +87,7 @@ export interface OrderDto {
   estimatedReadyAt: string;
   createdAt: string;
   updatedAt: string;
+  /** The store's name when the order was placed. */
   store: { id: string; name: string };
   items: OrderItemDto[];
 }

@@ -161,6 +161,7 @@ describe('customer order list is capped by site_settings (default 20)', () => {
     const rows = Array.from({ length: 55 }, (_, i) => ({
       user_id: customer.id,
       store_id: storeId,
+      store_name: 'Campus Cafe',
       customer_name: 'Bulk Test',
       total: 100,
       note: `bulk-${i}`,

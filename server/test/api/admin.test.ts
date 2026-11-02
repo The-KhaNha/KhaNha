@@ -177,6 +177,7 @@ describe('admin settings: the limits apply to the next request', () => {
     const rows = Array.from({ length: 5 }, (_, i) => ({
       user_id: customer.id,
       store_id: store.id,
+      store_name: 'Campus Cafe',
       customer_name: 'Settings Test',
       total: 100,
       note: `settings-${i}`,
