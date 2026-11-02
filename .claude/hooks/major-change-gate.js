@@ -3,9 +3,9 @@
 //   1. Classifies the files changed since the last /post-change (working tree vs HEAD, minus files whose content
 //      is unchanged since the mark). A major change is recorded in .claude/.state/pending.json and announced once.
 //   2. Reminds once per set of files when package source changed but no .changes/*.md intent was added
-//      (CLAUDE.md "Versioning and branches").
+//      (.claude/rules/workflow.md §21).
 //   3. Refreshes the graphify graph when source files are newer than graphify-out/graph.json.
-//   4. Reminds once per branch when the branch has outgrown a reviewable PR (CLAUDE.md "PR size").
+//   4. Reminds once per branch when the branch has outgrown a reviewable PR (.claude/rules/workflow.md "PR size").
 //
 //   node .claude/hooks/major-change-gate.js            the Stop hook
 //   node .claude/hooks/major-change-gate.js --mark     /post-change finished: record the current state as verified
@@ -23,13 +23,13 @@ const PENDING = path.join(STATE, 'pending.json');
 const INTENT_REMINDED = path.join(STATE, 'intent-reminded.json');
 const PR_REMINDED = path.join(STATE, 'pr-size-reminded.json');
 
-// Keep in sync with CLAUDE.md "PR size": a PR stays reviewable at up to 38 files and 750 changed lines against its
+// Keep in sync with .claude/rules/workflow.md "PR size": a PR stays reviewable at up to 38 files and 750 changed lines against its
 // base. The lockfiles, the generated database types and docs (every Markdown file) are not counted; tests are.
 const PR_MAX_FILES = 38;
 const PR_MAX_LINES = 750;
 const PR_UNCOUNTED = /(^|\/)package-lock\.json$|^server\/src\/types\/database\.ts$|\.md$/;
 
-// Keep in sync with CLAUDE.md "What counts as a major change".
+// Keep in sync with .claude/rules/workflow.md "What counts as a major change".
 const MAJOR_PATHS = [
   /^server\/src\/(routes|controllers|services|schemas|middleware|jobs)\//,
   /^server\/src\/worker\.ts$/,
@@ -130,7 +130,7 @@ function unverifiedChanges() {
   return { changes: changes.filter((c) => verified[c.file] !== hashes[c.file]), hashes };
 }
 
-/** The base a branch's PR merges into (CLAUDE.md "Versioning and branches"): origin/main for hotfix/*, the phase
+/** The base a branch's PR merges into (.claude/rules/workflow.md §21): origin/main for hotfix/*, the phase
  *  branch for a phase PR (feat/p1-05-… → origin/feat/P1), else origin/dev. null for branches whose PR is not sized:
  *  dev, main, release/* and a phase branch itself (each bundles work already reviewed in its own PRs). */
 function prBase(branch) {
@@ -289,7 +289,7 @@ function testMarkSurvivesCommit() {
     for (let i = 0; i <= PR_MAX_FILES; i++) fs.writeFileSync(path.join(tmp, `lib${i}.ts`), 'x\n');
     const sized = JSON.parse(run('--status')).pr;
     assert.equal(sized.over, true, 'untracked files count toward the PR size');
-    // A release branch bundles PRs already reviewed one by one: it gets no size (CLAUDE.md "PR size").
+    // A release branch bundles PRs already reviewed one by one: it gets no size (.claude/rules/workflow.md "PR size").
     g('checkout', '-q', '-b', 'release/2026-09-30');
     assert.equal(JSON.parse(run('--status')).pr, null, 'release/* branches are exempt from the PR size');
   } finally {
@@ -355,7 +355,7 @@ function main() {
       writeJson(PR_REMINDED, { at: new Date().toISOString(), branch: pr.branch });
       messages.push(
         `[pr-size] ${pr.branch} is at ${size.files} files / ${size.lines} lines against ${pr.base} ` +
-          `(limit ${PR_MAX_FILES} / ${PR_MAX_LINES}, CLAUDE.md "PR size"): finish the change in hand, raise the PR, ` +
+          `(limit ${PR_MAX_FILES} / ${PR_MAX_LINES}, .claude/rules/workflow.md "PR size"): finish the change in hand, raise the PR, ` +
           'tell the user, and stop until they say it is merged.',
       );
     }

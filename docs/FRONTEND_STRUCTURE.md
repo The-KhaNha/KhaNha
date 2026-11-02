@@ -235,7 +235,7 @@ produced by `python3 client/scripts/optimize-images.py` (see
 srcset. `components/FoodPhoto.tsx` renders it with a `sizes` prop that must match the photo's real rendered width so
 the browser downloads the small file: the default is `112px` (menu and cart list photos), `PopularRail` passes
 `188px`, `ItemDetailSheet` passes `"(min-width: 768px) 480px, 100vw"`. `lib/photo.test.ts` fails if a bundled photo
-is missing its `-400` thumbnail or is over the ~80 KB budget (CLAUDE.md §2b; `optimize-images.py --refit` fixes it).
+is missing its `-400` thumbnail or is over the ~80 KB budget (`.claude/rules/frontend.md` §2b; `optimize-images.py --refit` fixes it).
 
 ### The largest paint
 

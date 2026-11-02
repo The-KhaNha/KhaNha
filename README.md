@@ -9,6 +9,8 @@ One shop, one staff screen, real-time-enough status updates. The API and web app
 
 ## Docs
 
+Which doc to update for a given change: [docs/README.md](docs/README.md).
+
 | Doc                                                      | What it covers                                                                                                                                                                                         |
 | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)             | system overview and every flow, as diagrams                                                                                                                                                            |
@@ -184,6 +186,12 @@ Menu items can carry a `stockQuantity` (`null` = not tracked, which is the defau
 
 `npm run seed` (in `server/`, or `./start.sh --seed`) deletes **every order** and restarts numbering at **#1001**. The store, menu items and the two test accounts are updated in place and keep their ids, so logins and saved carts in an open browser keep working. Accounts registered while testing are removed. It seeds whichever project `server/.env` points at, and refuses `APP_ENV=production`.
 
+## Ports
+
+Client `5173` (`VITE_DEV_PORT`), API `8000` (`PORT`), worker health `8001` (`WORKER_HEALTH_PORT`), local Supabase
+`54321` (`SUPABASE_URL`); `start.sh` reads them from the env files and kills whatever holds 8000/8001/5173 first.
+`docker compose up web api worker` serves the web app on `8080`.
+
 ## Useful scripts
 
 | Where   | Command                                                                                | What it does                                                                                                                                                                                          |
@@ -213,7 +221,7 @@ Menu items can carry a `stockQuantity` (`null` = not tracked, which is the defau
 | client/ | `npm run e2e:webkit`                                                                   | The WebKit smoke (Safari's engine, 360px, API mocked); `npm run e2e:install` once first                                                                                                               |
 | root    | `npm run format` / `format:check`                                                      | Prettier over `scripts/**`, `.github/**` and `plans/**` (root `package.json`, not a workspace; only devDependency `prettier`)                                                                         |
 | root    | `npm test`                                                                             | `node --test` over `scripts/**/*.test.mjs`                                                                                                                                                            |
-| root    | `npm run change -- --client <level> --server <level> "summary"`                        | Record a change intent in `.changes/` (CLAUDE.md §21)                                                                                                                                                 |
+| root    | `npm run change -- --client <level> --server <level> "summary"`                        | Record a change intent in `.changes/` (`.claude/rules/workflow.md` §21)                                                                                                                               |
 | root    | `npm run release:dry` / `release`                                                      | Print / apply the version bump from the intents (release PR only)                                                                                                                                     |
 | root    | `npm run change:check`                                                                 | The `version-intent` CI check against `origin/dev`                                                                                                                                                    |
 | root    | `npm run check:bundle` / `check:migrations` / `check:durations` / `check:dist-secrets` | The CI checks: initial JS budget (after a client build), migrations append-only, no hard-coded durations, no secret in the built bundle                                                               |

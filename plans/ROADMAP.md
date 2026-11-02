@@ -1508,6 +1508,41 @@ create table public.feature_flags (
 **Done when** a flag limited to one store changes behaviour for that store only, and the audit log shows who flipped
 it.
 
+### P1.8 Tooling: pnpm (after the phase merges)
+
+Not part of the `feat/P1` branch: its own PR into `dev`, once `feat/P1` is in, so it never conflicts with phase PRs.
+
+**Why.** Three independent package roots (root, `client/`, `server/`) each install their own `node_modules`. pnpm
+keeps one content-addressable store per machine and hard-links into every `node_modules`, so a version installed
+once is on disk once, across this repo and every other project on the laptop; `--frozen-lockfile` installs are faster
+in CI. The repo stays three roots (no workspace) in this step: a workspace comes with the first shared package
+(P2 types, P3 media).
+
+**Step 1 — swap the package manager, per root.**
+
+- `"packageManager": "pnpm@<version>"` in each `package.json` (corepack, shipped with Node 24, pins it for everyone);
+  `.npmrc` keeps `engine-strict=true`; `pnpm-lock.yaml` replaces `package-lock.json` in all three roots.
+- CI: every `actions/setup-node` gets `cache: pnpm` with `cache-dependency-path: <root>/pnpm-lock.yaml`, every
+  `npm ci` becomes `pnpm install --frozen-lockfile` (`ci.yml`, `perf.yml`, `browsers.yml`, `release.yml`,
+  `security.yml`); the Playwright cache key hashes the new lockfile.
+- Dockerfiles: `corepack enable` then `pnpm fetch` + `pnpm install --frozen-lockfile --prod` (`--ignore-scripts`
+  where `npm ci` had it); `compose.yaml` unchanged.
+- `scripts/version/release.mjs` stops writing the version into the lockfile (`pnpm-lock.yaml` does not carry it);
+  `version.test.mjs` follows. `.claude/hooks/major-change-gate.js` uncounts `pnpm-lock.yaml` instead of
+  `package-lock.json` (`PR_UNCOUNTED` and its fixtures). `start.sh`, `server/scripts/db-push.sh` and
+  `client/scripts/make-icons.mjs` call `pnpm`.
+- Prose sweep: `npm run X` → `pnpm X`, `npx` → `pnpm dlx`/`pnpm exec`, in `README.md`, `CLAUDE.md`, `docs/`,
+  `.claude/` (agents, skills, rules), `.changes/README.md`, the PR template, the `.env.example` comments.
+- Change intent: `patch` for both packages (the Dockerfiles change what ships). The migrations job and the
+  `version-intent` check are unaffected.
+
+**Step 2 (later, with the first shared package) — workspace.** A root `pnpm-workspace.yaml`, one lockfile,
+`pnpm --filter`, `pnpm deploy` in the Dockerfiles, and one CI cache path.
+
+**Done when** a fresh clone installs with `pnpm install` in all three roots from the committed lockfiles, `ci-ok` is
+green, both images build and pass `/healthz`, `pnpm release:dry` prints the same bump as before, and
+`du -sh */node_modules` on a laptop with another pnpm project shows shared store links (`pnpm store path`).
+
 ## P2 — Multi-store and multi-branch
 
 **Goal:** many restaurants, some of them chains with several branches, each with its own staff, hours, stock and

@@ -41,7 +41,7 @@ To see what you changed, use `git diff HEAD -- <path>`, never a stash.
 - Shell state does not persist between Bash calls, so keep each measurement (with its variables) in one call, or in one
   script file in the temp dir.
 
-## Budgets (identical to CLAUDE.md "Target devices and network"; copy this table into the baseline)
+## Budgets (identical to .claude/rules/frontend.md §2b; copy this table into the baseline)
 
 | Budget | Limit | Measured at |
 |---|---|---|
@@ -217,7 +217,7 @@ Demo logins: customer `anishka@example.com / test1234`, staff `staff@campuscafe.
    instead of one hook; a `pollInterval` under 4 s or one that does not stop at a terminal state; a new `useResource`
    on a screen that already has the data through router `state` (`initialData`).
 
-10. **Caching, client and server** (CLAUDE.md §2c). Caching is wanted wherever it is safe; a missing cache on a
+10. **Caching, client and server** (CLAUDE.md §2c and the rules files). Caching is wanted wherever it is safe; a missing cache on a
     read path is a finding, not a style note.
     - **HTTP revalidation.** For `store`, `menu`, `orders` (customer token) and one order:
       ```bash
