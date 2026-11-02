@@ -399,7 +399,11 @@ Docs: `docs/API.md`, `docs/PERMISSIONS.md`, `docs/BACKEND_STRUCTURE.md`. Intent:
 
 ### PR 08 — Order snapshots v2 (P1.5)
 
-- [ ] Merged
+- [x] Merged
+
+> **As built:** the backfill runs with `orders_set_updated_at` disabled, so past orders keep their `updatedAt`.
+> `admin.test.ts` and `caching-gaps.test.ts`, which insert orders directly, now pass a `store_name`. `selectOrders()`
+> joins only `order_items` now.
 
 Migration `<ts>_order_snapshots.sql`: `order_items.image_url`, `order_items.category`, `orders.store_name`; backfill
 from today's `menu_items` and `stores` (the best copy left); then `set not null`. `create or replace place_order`
@@ -456,7 +460,15 @@ the database; `utils/money.ts` is the only converter"). Intent: `--server minor`
 
 ### PR 10 — `POST /api/client-errors` (P1.6)
 
-- [ ] Merged
+- [x] Merged
+
+As built: a blank env value now counts as unset (`utils/env.ts`), found while adding `RATE_LIMIT_CLIENT_ERRORS_MAX`:
+`z.coerce` read `RATE_LIMIT_IP_MAX=` as 0, which turned the limit off; `env-blank.safe.test.ts` guards it. `clientVersion` is not passed to the `warn` call, because `req.log` already carries it (pino-http
+`customProps` in `app.ts`), so it is written once rather than as a duplicate key; the line adds `at`, so a report
+sent late (a batch after an outage) still says when it happened. The limiter counts requests (each up to 5 reports),
+so the test's 31st report is the 31st one-report request. The test's own app copy stubs `getSettings` with
+`min_client_version` 9.0.0: the seeded `0.0.0` gates nothing, so it could not tell a mount after the gate apart.
+No route file: the route sits in `routes/index.ts` next to `/config`, which it shares the gate exemption with.
 
 Recipe: `/new-endpoint`. Self-reported, not Sentry (D5); Sentry is a later, low-priority roadmap item (P10.4).
 
@@ -524,7 +536,15 @@ the client version, the route and a stack.
 
 ### PR 13 — Feature flags: table, evaluation, the admin flip (P1.7)
 
-- [ ] Merged
+- [x] Merged
+
+As built: `audit_row_change()` took `entity_id` from the row's `id`, and `feature_flags` is keyed by `key`, so the
+migration redefines it (`create or replace`, same body) with `coalesce(id, key)`; `AUDIT_ENTITY_TYPES` gains
+`feature_flag`. `rules` is a strict zod object, both on the PATCH and when read: a misspelt key (`storeId`) is a 400,
+or turns a hand-edited flag off, instead of being stripped into "everyone". Lists need at least one entry (`{}` clears
+targeting). The percentage reads the first four bytes of the hash, mod 100. `setFlag(key, input, ctx)` takes the
+request context, like `updateSettings`. Nothing calls `isEnabled` yet, so the store-only done-when is tested on
+`isEnabled` directly. Push the migration to staging before the API ships.
 
 `/before-write`: schema-guard, expected NEW TABLE; reuse-scout, expected REUSE `cached()` / `invalidate()` and the
 admin router.
@@ -554,6 +574,9 @@ Split seam if over 750 lines: the admin PATCH and its matrix move to their own P
 ### PR 14 — Client-visible flags in `/api/config` (P1.7)
 
 - [ ] Merged
+
+Carried from PR 13's review: `isEnabled` and `getFlags` throw when the flags read fails. The first caller (this PR's
+`getConfig()`) must fail closed (no flags, never a 500 on `/api/config`), with its test.
 
 `config.service.ts`: `features` holds every `client_visible` flag without targeting rules, as `enabled`; a targeted
 client-visible flag is `false` here (it needs `/api/me/config`, built with the first such flag). `ConfigDto` does

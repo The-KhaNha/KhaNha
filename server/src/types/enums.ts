@@ -9,3 +9,4 @@ export type PaymentStatus = Enums['payment_status'];
 export type ActorType = Enums['actor_type'];
 
 export const ORDER_STATUSES = Constants.public.Enums.order_status;
+export const ROLES = Constants.public.Enums.user_role;

@@ -2,6 +2,7 @@ import type { QueryData } from '@supabase/supabase-js';
 import type { Tables } from '../types/database';
 import type {
   AuditEntryDto,
+  FeatureFlagDto,
   MenuItemDto,
   OrderDto,
   OrderItemDto,
@@ -13,7 +14,8 @@ import { supabaseAdmin } from './supabase';
 
 /**
  * Every order endpoint returns the order with its lines and a minimal store reference.
- * Each line also carries its menu item's current photo, so the client never needs the whole menu for thumbnails.
+ * The store's name and each line's photo are snapshots taken when the order was placed (place_order), so a later menu
+ * or store edit never rewrites a past order, and the read needs no join beyond its own lines.
  * Callers add their filters; lines always come back in cart order.
  */
 export function selectOrders() {
@@ -21,16 +23,15 @@ export function selectOrders() {
     .from('orders')
     .select(
       `id, order_number, status, payment_status, total, customer_name, customer_phone, note,
-       estimated_ready_at, created_at, updated_at,
-       stores (id, name),
-       order_items (id, line_number, menu_item_id, name, unit_price, quantity, line_total, menu_items (image_url))`,
+       estimated_ready_at, created_at, updated_at, store_id, store_name,
+       order_items (id, line_number, menu_item_id, name, unit_price, quantity, line_total, image_url)`,
     )
     .order('line_number', { referencedTable: 'order_items' });
 }
 
 export type OrderWithDetails = QueryData<ReturnType<typeof selectOrders>>[number];
 
-type OrderItemWithImage = OrderWithDetails['order_items'][number];
+type OrderItemRow = OrderWithDetails['order_items'][number];
 
 /** Postgres returns timestamps as "2026-09-25 10:00:00.123+00"-style strings; the API always sends ISO 8601. */
 const toIso = (timestamp: string): string => new Date(timestamp).toISOString();
@@ -94,7 +95,7 @@ export function toMenuItemDto(item: Tables<'menu_items'>): MenuItemDto {
   };
 }
 
-function toOrderItemDto(item: OrderItemWithImage): OrderItemDto {
+function toOrderItemDto(item: OrderItemRow): OrderItemDto {
   return {
     id: item.id,
     menuItemId: item.menu_item_id,
@@ -102,7 +103,7 @@ function toOrderItemDto(item: OrderItemWithImage): OrderItemDto {
     unitPrice: item.unit_price,
     quantity: item.quantity,
     lineTotal: item.line_total,
-    imageUrl: item.menu_items.image_url,
+    imageUrl: item.image_url,
   };
 }
 
@@ -119,7 +120,7 @@ export function toOrderDto(order: OrderWithDetails): OrderDto {
     estimatedReadyAt: toIso(order.estimated_ready_at),
     createdAt: toIso(order.created_at),
     updatedAt: toIso(order.updated_at),
-    store: { id: order.stores.id, name: order.stores.name },
+    store: { id: order.store_id, name: order.store_name },
     items: order.order_items.map(toOrderItemDto),
   };
 }
@@ -139,5 +140,18 @@ export function toAuditEntryDto(entry: Tables<'audit_log'>): AuditEntryDto {
     changes: entry.changes as AuditEntryDto['changes'],
     reason: entry.reason,
     requestId: entry.request_id,
+  };
+}
+
+export function toFeatureFlagDto(flag: Tables<'feature_flags'>): FeatureFlagDto {
+  return {
+    key: flag.key,
+    description: flag.description,
+    enabled: flag.enabled,
+    clientVisible: flag.client_visible,
+    // As stored: written through flagRulesSchema, but a hand edit may not parse, and the admin should see what is there.
+    rules: flag.rules as FeatureFlagDto['rules'],
+    updatedAt: toIso(flag.updated_at),
+    updatedBy: flag.updated_by,
   };
 }

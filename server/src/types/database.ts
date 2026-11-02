@@ -132,6 +132,44 @@ export type Database = {
         };
         Relationships: [];
       };
+      feature_flags: {
+        Row: {
+          client_visible: boolean;
+          description: string;
+          enabled: boolean;
+          key: string;
+          rules: Json;
+          updated_at: string;
+          updated_by: string | null;
+        };
+        Insert: {
+          client_visible?: boolean;
+          description: string;
+          enabled?: boolean;
+          key: string;
+          rules?: Json;
+          updated_at?: string;
+          updated_by?: string | null;
+        };
+        Update: {
+          client_visible?: boolean;
+          description?: string;
+          enabled?: boolean;
+          key?: string;
+          rules?: Json;
+          updated_at?: string;
+          updated_by?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'feature_flags_updated_by_fkey';
+            columns: ['updated_by'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       job_failures: {
         Row: {
           attempts: number;
@@ -225,7 +263,9 @@ export type Database = {
       };
       order_items: {
         Row: {
+          category: string;
           id: string;
+          image_url: string;
           line_number: number;
           line_total: number;
           menu_item_id: string;
@@ -235,7 +275,9 @@ export type Database = {
           unit_price: number;
         };
         Insert: {
+          category: string;
           id?: string;
+          image_url: string;
           line_number: number;
           line_total: number;
           menu_item_id: string;
@@ -245,7 +287,9 @@ export type Database = {
           unit_price: number;
         };
         Update: {
+          category?: string;
           id?: string;
+          image_url?: string;
           line_number?: number;
           line_total?: number;
           menu_item_id?: string;
@@ -284,6 +328,7 @@ export type Database = {
           payment_status: Database['public']['Enums']['payment_status'];
           status: Database['public']['Enums']['order_status'];
           store_id: string;
+          store_name: string;
           total: number;
           updated_at: string;
           user_id: string;
@@ -300,6 +345,7 @@ export type Database = {
           payment_status?: Database['public']['Enums']['payment_status'];
           status?: Database['public']['Enums']['order_status'];
           store_id: string;
+          store_name: string;
           total: number;
           updated_at?: string;
           user_id: string;
@@ -316,6 +362,7 @@ export type Database = {
           payment_status?: Database['public']['Enums']['payment_status'];
           status?: Database['public']['Enums']['order_status'];
           store_id?: string;
+          store_name?: string;
           total?: number;
           updated_at?: string;
           user_id?: string;
