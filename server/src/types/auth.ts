@@ -7,8 +7,8 @@ export interface AuthUser {
 }
 
 /**
- * Who caused a write: recorded with the domain event it emits and, from P1 PR 06, its audit row. The roadmap's actor
- * shape; a job's writes will use another `type`.
+ * Who caused a write: recorded with the domain event it emits and its audit row. The roadmap's actor shape; a job's
+ * writes will use another `type` (`actor_type` in the database).
  */
 type Actor = { type: 'USER'; id: string; role: Role };
 

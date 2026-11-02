@@ -32,8 +32,8 @@ the change: a transition that raises (a stock refusal, an invalid move) leaves n
 | `order.cancelled` | a status changes to `CANCELLED` | `{ orderNumber, from, to }` |
 
 - Payloads are ids and statuses only, never an amount or personal data. `aggregateId` is the order id.
-- `actor` is `{ type: 'USER', id, role }`, built by the controller as the `RequestContext` (`server/src/types/auth.ts`)
-  and passed down as `p_actor`. `requestId` is the request's `x-request-id`. An API deployed before this change calls
+- `actor` is `{ type: 'USER', id, role }`, built by `requestContext(req)` (`server/src/middleware/auth.ts`, a
+  `RequestContext` from `server/src/types/auth.ts`) and passed down as `p_actor`. `requestId` is the request's `x-request-id`. An API deployed before this change calls
   the functions without them, and its events carry neither.
 - `order.*` is subscribed to `q_notifications`, consumed by `notifyHandler`.
 - An idempotent replay of `POST /orders` and a repeated status change ([API.md](API.md#patch-ordersidstatus)) emit
@@ -139,6 +139,7 @@ schedule calls a SQL function that takes `p_now timestamptz default now()`, so t
 | `domain_events`         | 30 days (`purge_domain_events`, nightly) |
 | a handled queue message | deleted when handled, never archived     |
 | `job_failures`          | until an operator replays or closes it   |
+| `audit_log`             | 13 months; no purge job yet (P9.5)       |
 
 ## Runbook
 
