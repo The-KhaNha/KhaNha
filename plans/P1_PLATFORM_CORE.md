@@ -536,7 +536,15 @@ the client version, the route and a stack.
 
 ### PR 13 — Feature flags: table, evaluation, the admin flip (P1.7)
 
-- [ ] Merged
+- [x] Merged
+
+As built: `audit_row_change()` took `entity_id` from the row's `id`, and `feature_flags` is keyed by `key`, so the
+migration redefines it (`create or replace`, same body) with `coalesce(id, key)`; `AUDIT_ENTITY_TYPES` gains
+`feature_flag`. `rules` is a strict zod object, both on the PATCH and when read: a misspelt key (`storeId`) is a 400,
+or turns a hand-edited flag off, instead of being stripped into "everyone". Lists need at least one entry (`{}` clears
+targeting). The percentage reads the first four bytes of the hash, mod 100. `setFlag(key, input, ctx)` takes the
+request context, like `updateSettings`. Nothing calls `isEnabled` yet, so the store-only done-when is tested on
+`isEnabled` directly. Push the migration to staging before the API ships.
 
 `/before-write`: schema-guard, expected NEW TABLE; reuse-scout, expected REUSE `cached()` / `invalidate()` and the
 admin router.
@@ -566,6 +574,9 @@ Split seam if over 750 lines: the admin PATCH and its matrix move to their own P
 ### PR 14 — Client-visible flags in `/api/config` (P1.7)
 
 - [ ] Merged
+
+Carried from PR 13's review: `isEnabled` and `getFlags` throw when the flags read fails. The first caller (this PR's
+`getConfig()`) must fail closed (no flags, never a 500 on `/api/config`), with its test.
 
 `config.service.ts`: `features` holds every `client_visible` flag without targeting rules, as `enabled`; a targeted
 client-visible flag is `false` here (it needs `/api/me/config`, built with the first such flag). `ConfigDto` does

@@ -28,6 +28,7 @@ a new file (see [DEPLOYMENT.md](DEPLOYMENT.md#schema-changes)).
 | `20261101201251_audit_log.sql`                | adds `actor_type`, the append-only `audit_log` (read-only to `service_role`) and `audit_row_change()` with its triggers on `site_settings`, `orders`, `profiles` and `menu_items`                                                                 |
 | `20261102101707_audit_log_id_indexes.sql`     | rebuilds the `audit_log` indexes to end in `id desc` (plus `(entity_type, id desc)`), the order `GET /api/admin/audit` pages in                                                                                                                   |
 | `20261102110820_order_snapshots.sql`          | adds the snapshots `order_items.image_url`, `order_items.category` and `orders.store_name`, backfilled from today's `menu_items` and `stores` (without touching `orders.updated_at`), then `not null`; `place_order` (same signature) writes them |
+| `20261102110856_feature_flags.sql`            | adds `feature_flags` (RLS, revoked, `set_updated_at` and `audit_row_change('feature_flag.changed', '*')` triggers, no rows); `audit_row_change()` takes `entity_id` from `key` when the row has no `id`                                           |
 
 ## Enums
 
@@ -200,20 +201,40 @@ No foreign keys: deleting a profile must not touch its rows. Read by admins thro
 retention purge needs a sanctioned way past the append-only triggers, never a dropped trigger. `site_settings` is
 audited with `*`, so it never holds a secret: every column it gains is copied here for 13 months.
 
-| Column        | Type         | Null | Default  | Notes                                                                                        |
-| ------------- | ------------ | ---- | -------- | -------------------------------------------------------------------------------------------- |
-| `id`          | bigint       | no   | identity | primary key                                                                                  |
-| `occurred_at` | timestamptz  | no   | `now()`  | the transaction's start                                                                      |
-| `actor_type`  | `actor_type` | no   |          | `USER` for a signed-in caller, `SYSTEM` for the SQL editor, the seed, a migration            |
-| `actor_id`    | uuid         | yes  |          | `profiles.id` for `USER`                                                                     |
-| `actor_role`  | text         | yes  |          | the actor's role at the time                                                                 |
-| `store_id`    | uuid         | yes  |          | the row's `store_id`, when it has one                                                        |
-| `action`      | text         | no   |          | `site_settings.changed`, `order.status_changed`, `profile.role_changed`, `menu_item.changed` |
-| `entity_type` | text         | no   |          | the action's first part: `site_settings`, `order`, `profile`, `menu_item`                    |
-| `entity_id`   | text         | no   |          | the row's `id` as text (`true` for `site_settings`)                                          |
-| `changes`     | jsonb        | yes  |          | `{ column: [old, new] }`, the watched columns that changed                                   |
-| `reason`      | text         | yes  |          | unused until a transition takes a reason                                                     |
-| `request_id`  | text         | yes  |          | the API request behind it                                                                    |
+| Column        | Type         | Null | Default  | Notes                                                                                                                |
+| ------------- | ------------ | ---- | -------- | -------------------------------------------------------------------------------------------------------------------- |
+| `id`          | bigint       | no   | identity | primary key                                                                                                          |
+| `occurred_at` | timestamptz  | no   | `now()`  | the transaction's start                                                                                              |
+| `actor_type`  | `actor_type` | no   |          | `USER` for a signed-in caller, `SYSTEM` for the SQL editor, the seed, a migration                                    |
+| `actor_id`    | uuid         | yes  |          | `profiles.id` for `USER`                                                                                             |
+| `actor_role`  | text         | yes  |          | the actor's role at the time                                                                                         |
+| `store_id`    | uuid         | yes  |          | the row's `store_id`, when it has one                                                                                |
+| `action`      | text         | no   |          | `site_settings.changed`, `order.status_changed`, `profile.role_changed`, `menu_item.changed`, `feature_flag.changed` |
+| `entity_type` | text         | no   |          | the action's first part: `site_settings`, `order`, `profile`, `menu_item`, `feature_flag`                            |
+| `entity_id`   | text         | no   |          | the row's `id` as text (`true` for `site_settings`), or its `key` for `feature_flags`                                |
+| `changes`     | jsonb        | yes  |          | `{ column: [old, new] }`, the watched columns that changed                                                           |
+| `reason`      | text         | yes  |          | unused until a transition takes a reason                                                                             |
+| `request_id`  | text         | yes  |          | the API request behind it                                                                                            |
+
+### feature_flags
+
+Added by `20261102110856_feature_flags.sql`. One row per flag, evaluated by the API (`flags.service.isEnabled`) and
+read through the server read cache. No rows yet: each flag ships in the migration of the phase that uses it. Flipped
+by an admin through [`PATCH /api/admin/flags/:key`](API.md#patch-adminflagskey); every change is audited with `*`.
+
+| Column           | Type        | Null | Default | Constraints                                                                                                                                             |
+| ---------------- | ----------- | ---- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `key`            | text        | no   |         | primary key; `check (key ~ '^[a-z][a-z0-9_]{2,63}$')`                                                                                                   |
+| `description`    | text        | no   |         | what the flag turns on                                                                                                                                  |
+| `enabled`        | boolean     | no   | `false` | off means off for everyone, whatever the rules                                                                                                          |
+| `client_visible` | boolean     | no   | `false` | served to the client through `GET /api/config` (P1 PR 14)                                                                                               |
+| `rules`          | jsonb       | no   | `'{}'`  | `{ storeIds?, roles?, percent? }`, each optional; a rule that does not parse (`flagRulesSchema`, strict) turns the flag off, logged once per cache load |
+| `updated_at`     | timestamptz | no   | `now()` | set on every update by `feature_flags_set_updated_at`                                                                                                   |
+| `updated_by`     | uuid        | yes  |         | references `profiles (id)` on delete set null; the admin who last flipped it                                                                            |
+
+Evaluation, in order: `enabled`; then `storeIds` (the caller's store must be listed); then `roles`; then `percent`, a
+stable share of signed-in users (`sha256(key + ':' + userId)`, first four bytes, mod 100; no user is never in it). No
+index on `updated_by`: nothing filters on it, and the whole table is read at once.
 
 ## Indexes
 
@@ -240,12 +261,14 @@ audited with `*`, so it never holds a secret: every column it gains is copied he
 | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
 | `orders_set_updated_at`        | before update on `orders`, each row                                                                                         | `set_updated_at()`                                       |
 | `site_settings_set_updated_at` | before update on `site_settings`, each row                                                                                  | `set_updated_at()`                                       |
+| `feature_flags_set_updated_at` | before update on `feature_flags`, each row                                                                                  | `set_updated_at()`                                       |
 | `on_auth_user_created`         | after insert on `auth.users`                                                                                                | `handle_new_user()`                                      |
 | `on_auth_user_email_changed`   | after update of `email` on `auth.users`, when the email changed                                                             | `handle_user_email_change()`                             |
 | `site_settings_audit`          | after update on `site_settings`, each row                                                                                   | `audit_row_change('site_settings.changed', '*')`         |
 | `orders_audit`                 | after update of `status` on `orders`, each row                                                                              | `audit_row_change('order.status_changed', 'status')`     |
 | `profiles_audit`               | after update of `role` on `profiles`, each row                                                                              | `audit_row_change('profile.role_changed', 'role')`       |
 | `menu_items_audit`             | after update of `name`, `price`, `is_available`, `image_url`, `category` on `menu_items`, each row (never `stock_quantity`) | `audit_row_change('menu_item.changed', <those columns>)` |
+| `feature_flags_audit`          | after update on `feature_flags`, each row                                                                                   | `audit_row_change('feature_flag.changed', '*')`          |
 | `audit_log_no_change`          | before update or delete on `audit_log`, each row                                                                            | `audit_log_append_only()`                                |
 | `audit_log_no_truncate`        | before truncate on `audit_log`, each statement                                                                              | `audit_log_append_only()`                                |
 
@@ -270,7 +293,7 @@ object (SQLSTATE `P0001`). How the API maps them is in [API.md](API.md#database-
 | `queue_dead_letter(...)`     | sql      | definer  | boolean | the worker                            | `service_role`       |
 | `queue_metrics(text)`        | sql      | definer  | table   | the worker's health report            | `service_role`       |
 | `purge_domain_events(...)`   | sql      | invoker  | integer | pg_cron `purge-domain-events`         | `service_role`       |
-| `audit_row_change()`         | plpgsql  | definer  | trigger | the four `*_audit` triggers           | nobody               |
+| `audit_row_change()`         | plpgsql  | definer  | trigger | the five `*_audit` triggers           | nobody               |
 | `audit_log_append_only()`    | plpgsql  | invoker  | trigger | `audit_log_no_change`, `_no_truncate` | nobody               |
 
 ### set_updated_at
@@ -420,9 +443,12 @@ transition). The actor, first match wins:
 
 1. `app.actor` / `app.request_id`, set by a transition function (`place_order`, `update_order_status`);
 2. the `x-actor` / `x-request-id` headers of a table write through the Data API: PostgREST hands each request's headers
-   to its transaction as `request.headers`, and `settings.service.updateSettings` sets both. Only the secret key can
+   to its transaction as `request.headers`, and `settings.service.updateSettings` and `flags.service.setFlag` set both. Only the secret key can
    write an audited table, so the browser cannot claim an actor;
 3. otherwise `SYSTEM`, with no request id: the SQL editor, the seed, a migration.
+
+`entity_id` is the row's `id`, or its `key` when the row has none (`feature_flags`; `20261102110856_feature_flags.sql`
+redefines the function with `coalesce(id, key)`, same signature, so the revokes stay).
 
 The actor is parsed only for a real change; one that does not parse, or names an unknown `actor_type`, fails the write
 on purpose. The API vouches for the actor it sends: the secret key cannot write `audit_log`, but it chooses whom a
@@ -431,9 +457,9 @@ never read (a later SQL edit would carry the last admin's id).
 
 ## Row-level security and grants
 
-- RLS is enabled on all ten tables (`site_settings`, the outbox tables and `audit_log` included, each by the migration
+- RLS is enabled on all eleven tables (`site_settings`, the outbox tables, `audit_log` and `feature_flags` included, each by the migration
   that creates it). There are no policies.
-- `revoke all` on all ten tables from `anon` and `authenticated`.
+- `revoke all` on all eleven tables from `anon` and `authenticated`.
 - Default privileges for role `postgres` in `public`: new tables grant nothing to `anon`/`authenticated`, and new
   functions grant no `EXECUTE` to `public`, `anon` or `authenticated`. This is why the `20260927094610` migration did
   not need its own `revoke`/`grant` for functions — it adds no new function — but still revokes table privileges for

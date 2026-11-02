@@ -160,3 +160,14 @@ export interface AuditPage {
   entries: AuditEntry[];
   nextCursor: number | null;
 }
+
+/** One feature_flags row (server FeatureFlagDto). No screen reads it until the admin flags page (P7.4). */
+export interface FeatureFlag {
+  key: string;
+  description: string;
+  enabled: boolean;
+  clientVisible: boolean;
+  rules: { storeIds?: string[]; roles?: Role[]; percent?: number };
+  updatedAt: string;
+  updatedBy: string | null;
+}

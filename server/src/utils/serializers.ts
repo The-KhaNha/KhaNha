@@ -2,6 +2,7 @@ import type { QueryData } from '@supabase/supabase-js';
 import type { Tables } from '../types/database';
 import type {
   AuditEntryDto,
+  FeatureFlagDto,
   MenuItemDto,
   OrderDto,
   OrderItemDto,
@@ -139,5 +140,18 @@ export function toAuditEntryDto(entry: Tables<'audit_log'>): AuditEntryDto {
     changes: entry.changes as AuditEntryDto['changes'],
     reason: entry.reason,
     requestId: entry.request_id,
+  };
+}
+
+export function toFeatureFlagDto(flag: Tables<'feature_flags'>): FeatureFlagDto {
+  return {
+    key: flag.key,
+    description: flag.description,
+    enabled: flag.enabled,
+    clientVisible: flag.client_visible,
+    // As stored: written through flagRulesSchema, but a hand edit may not parse, and the admin should see what is there.
+    rules: flag.rules as FeatureFlagDto['rules'],
+    updatedAt: toIso(flag.updated_at),
+    updatedBy: flag.updated_by,
   };
 }

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ROLES } from '../types/enums';
 import { LIMITS } from './limits';
 
 // Same bounds as the check constraints on public.site_settings, so a bad value is a 400, never a database error.
@@ -35,7 +36,13 @@ export const AUDIT_PAGE = { default: 50, max: 100 } as const;
 
 // The entity types the audit_row_change triggers write: the first part of each trigger's action. A new audited table
 // adds its type here; audit-read.test.ts compares this list with the triggers.
-export const AUDIT_ENTITY_TYPES = ['site_settings', 'order', 'profile', 'menu_item'] as const;
+export const AUDIT_ENTITY_TYPES = [
+  'site_settings',
+  'order',
+  'profile',
+  'menu_item',
+  'feature_flag',
+] as const;
 
 const timestamp = (name: string) =>
   z.iso
@@ -82,3 +89,40 @@ export const auditQuerySchema = z
   });
 
 export type AuditQuery = z.infer<typeof auditQuerySchema>;
+
+// A flag's targeting (feature_flags.rules). Each list narrows who gets the flag; a missing one narrows nothing. Strict:
+// a misspelt key ("storeId") stripped silently would turn a targeted flag on for everyone.
+const noDuplicates = (list: readonly string[]) => new Set(list).size === list.length;
+
+export const flagRulesSchema = z.strictObject(
+  {
+    storeIds: z
+      .array(z.uuid('storeIds must hold store ids.'))
+      .min(1)
+      .max(100)
+      .refine(noDuplicates, 'storeIds must not repeat a store.')
+      .optional(),
+    roles: z
+      .array(z.enum(ROLES, `roles must be some of: ${ROLES.join(', ')}.`))
+      .min(1)
+      .max(ROLES.length)
+      .refine(noDuplicates, 'roles must not repeat a role.')
+      .optional(),
+    percent: integer('percent', 0, 100).optional(),
+  },
+  'rules may hold only storeIds, roles and percent.',
+);
+
+export type FlagRules = z.infer<typeof flagRulesSchema>;
+
+export const updateFlagSchema = z
+  .object({
+    enabled: z.boolean('enabled must be true or false.').optional(),
+    clientVisible: z.boolean('clientVisible must be true or false.').optional(),
+    rules: flagRulesSchema.optional(),
+  })
+  .refine((input) => Object.values(input).some((value) => value !== undefined), {
+    message: 'Send enabled, clientVisible or rules.',
+  });
+
+export type UpdateFlagInput = z.infer<typeof updateFlagSchema>;

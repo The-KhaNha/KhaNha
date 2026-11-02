@@ -6,12 +6,12 @@ are drawn in [ARCHITECTURE.md](ARCHITECTURE.md#3-authentication). Status codes a
 
 ## Roles
 
-| Role       | Who                                                       | Can                                                                                                              |
-| ---------- | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| anonymous  | anyone without a token                                    | read the store and menu, register, sign in                                                                       |
-| `CUSTOMER` | every new account (the `profiles.role` default)           | place orders, list and read their own orders                                                                     |
-| `STAFF`    | accounts whose `profiles.role` was set to `STAFF` by hand | read every order (newest `staff_order_list_limit` in the list, default 100), change order status                 |
-| `ADMIN`    | accounts whose `profiles.role` was set to `ADMIN` by hand | read and edit the site settings (`GET`/`PATCH /api/admin/settings`), read the audit log (`GET /api/admin/audit`) |
+| Role       | Who                                                       | Can                                                                                                                                                                  |
+| ---------- | --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| anonymous  | anyone without a token                                    | read the store and menu, register, sign in                                                                                                                           |
+| `CUSTOMER` | every new account (the `profiles.role` default)           | place orders, list and read their own orders                                                                                                                         |
+| `STAFF`    | accounts whose `profiles.role` was set to `STAFF` by hand | read every order (newest `staff_order_list_limit` in the list, default 100), change order status                                                                     |
+| `ADMIN`    | accounts whose `profiles.role` was set to `ADMIN` by hand | read and edit the site settings (`GET`/`PATCH /api/admin/settings`), read the audit log (`GET /api/admin/audit`), flip feature flags (`PATCH /api/admin/flags/:key`) |
 
 `ADMIN` is a **site-wide developer/operator role**, not a restaurant role: a separate track from `STAFF` with no
 staff powers (`requireStaff` still checks `role === 'STAFF'` exactly, so an admin gets 403 on
@@ -37,24 +37,25 @@ work exactly like a customer's. Its only privilege is the admin dashboard (`/adm
 
 ## Route matrix
 
-| Route                          | anonymous  | CUSTOMER            | STAFF                                  | ADMIN               | Enforced by                                                                            |
-| ------------------------------ | ---------- | ------------------- | -------------------------------------- | ------------------- | -------------------------------------------------------------------------------------- |
-| `GET /api/health`              | yes        | yes                 | yes                                    | yes                 | –                                                                                      |
-| `GET /api/ready`               | yes        | yes                 | yes                                    | yes                 | –                                                                                      |
-| `GET /api/config`              | yes        | yes                 | yes                                    | yes                 | – (public: the same config for everyone; before the client version gate)               |
-| `POST /api/client-errors`      | yes        | yes                 | yes                                    | yes                 | – (public: no token; before the client version gate; per-address `clientErrorLimiter`) |
-| `GET /api/store`               | yes        | yes                 | yes                                    | yes                 | –                                                                                      |
-| `GET /api/menu`                | yes        | yes                 | yes                                    | yes                 | –                                                                                      |
-| `POST /api/auth/register`      | yes        | yes                 | yes                                    | yes                 | –                                                                                      |
-| `GET /api/auth/me`             | 401        | own profile         | own profile                            | own profile         | `requireAuth`                                                                          |
-| `POST /api/orders`             | 401        | yes                 | yes                                    | yes                 | `requireAuth`                                                                          |
-| `GET /api/orders`              | 401        | own orders          | newest `staff_order_list_limit` of all | own orders          | `requireAuth` + `order.service.listOrders`                                             |
-| `GET /api/orders/:id`          | 401        | own order, else 404 | any order                              | own order, else 404 | `requireAuth` + `order.service.getOrder`                                               |
-| `PATCH /api/orders/:id/status` | 401        | 403                 | yes                                    | 403                 | `requireAuth` + `requireStaff`                                                         |
-| `GET /api/admin/settings`      | 401        | 403                 | 403                                    | yes                 | `requireAuth` + `requireAdmin`                                                         |
-| `PATCH /api/admin/settings`    | 401        | 403                 | 403                                    | yes                 | `requireAuth` + `requireAdmin`                                                         |
-| `GET /api/admin/audit`         | 401        | 403                 | 403                                    | yes                 | `requireAuth` + `requireAdmin`                                                         |
-| `/admin` (client route)        | → `/login` | → `/`               | → `/`                                  | renders `AdminPage` | `RequireRole role="ADMIN"` (client only)                                               |
+| Route                          | anonymous  | CUSTOMER            | STAFF                                  | ADMIN                 | Enforced by                                                                            |
+| ------------------------------ | ---------- | ------------------- | -------------------------------------- | --------------------- | -------------------------------------------------------------------------------------- |
+| `GET /api/health`              | yes        | yes                 | yes                                    | yes                   | –                                                                                      |
+| `GET /api/ready`               | yes        | yes                 | yes                                    | yes                   | –                                                                                      |
+| `GET /api/config`              | yes        | yes                 | yes                                    | yes                   | – (public: the same config for everyone; before the client version gate)               |
+| `POST /api/client-errors`      | yes        | yes                 | yes                                    | yes                   | – (public: no token; before the client version gate; per-address `clientErrorLimiter`) |
+| `GET /api/store`               | yes        | yes                 | yes                                    | yes                   | –                                                                                      |
+| `GET /api/menu`                | yes        | yes                 | yes                                    | yes                   | –                                                                                      |
+| `POST /api/auth/register`      | yes        | yes                 | yes                                    | yes                   | –                                                                                      |
+| `GET /api/auth/me`             | 401        | own profile         | own profile                            | own profile           | `requireAuth`                                                                          |
+| `POST /api/orders`             | 401        | yes                 | yes                                    | yes                   | `requireAuth`                                                                          |
+| `GET /api/orders`              | 401        | own orders          | newest `staff_order_list_limit` of all | own orders            | `requireAuth` + `order.service.listOrders`                                             |
+| `GET /api/orders/:id`          | 401        | own order, else 404 | any order                              | own order, else 404   | `requireAuth` + `order.service.getOrder`                                               |
+| `PATCH /api/orders/:id/status` | 401        | 403                 | yes                                    | 403                   | `requireAuth` + `requireStaff`                                                         |
+| `GET /api/admin/settings`      | 401        | 403                 | 403                                    | yes                   | `requireAuth` + `requireAdmin`                                                         |
+| `PATCH /api/admin/settings`    | 401        | 403                 | 403                                    | yes                   | `requireAuth` + `requireAdmin`                                                         |
+| `GET /api/admin/audit`         | 401        | 403                 | 403                                    | yes                   | `requireAuth` + `requireAdmin`                                                         |
+| `PATCH /api/admin/flags/:key`  | 401        | 403                 | 403                                    | yes (unknown key 404) | `requireAuth` + `requireAdmin`                                                         |
+| `/admin` (client route)        | → `/login` | → `/`               | → `/`                                  | renders `AdminPage`   | `RequireRole role="ADMIN"` (client only)                                               |
 
 Nothing stops a `STAFF` or `ADMIN` account from placing an order: `POST /api/orders` only requires a signed-in user.
 `staffOrderListLimit` and `customerOrderHistoryLimit` are the two editable `site_settings` (defaults 100 and 20); see
@@ -153,7 +154,7 @@ flowchart LR
   end
 
   subgraph Postgres["Postgres, public schema"]
-    Tables["profiles, stores, menu_items,<br/>orders, order_items, site_settings,<br/>domain_events, event_subscriptions, job_failures,<br/>audit_log (service_role: select only)<br/>RLS ON, no policies,<br/>all privileges revoked from anon/authenticated"]
+    Tables["profiles, stores, menu_items,<br/>orders, order_items, site_settings,<br/>domain_events, event_subscriptions, job_failures,<br/>feature_flags, audit_log (service_role: select only)<br/>RLS ON, no policies,<br/>all privileges revoked from anon/authenticated"]
     Fns["place_order, update_order_status,<br/>reset_demo_orders, emit_event,<br/>queue_*, purge_domain_events<br/>EXECUTE only for service_role"]
     Trg["handle_new_user, handle_user_email_change, audit_row_change,<br/>audit_log_append_only<br/>security definer, fired by their triggers only"]
   end
@@ -176,6 +177,9 @@ flowchart LR
   names its actor through a transition function's `p_actor` or the `x-actor` header
   ([SCHEMA.md](SCHEMA.md#audit_row_change)); anything else is recorded as `SYSTEM`. Admins read it through
   `GET /api/admin/audit`.
+- `feature_flags` is closed like every table; admins flip a flag through `PATCH /api/admin/flags/:key`, which names
+  them in its audit row. A flip made in the SQL editor is recorded as `SYSTEM`, so production flags are flipped
+  through the API.
 - The queues (`pgmq` schema) and schedules (`cron` schema) are closed to `anon` and `authenticated` and not exposed
   through the Data API; the API and the worker reach the queues only through the `queue_*` wrappers
   ([JOBS.md](JOBS.md)).

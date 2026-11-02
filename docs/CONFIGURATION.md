@@ -9,6 +9,7 @@ hard-coded in two places. Add a row here in the same change that adds a setting 
 | ----------------- | ---------------------------------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------ |
 | Site setting      | the one `site_settings` row                          | an admin, `PATCH /api/admin/settings` (the `/admin` page) | the next request on this API instance; others within the 10 s read cache |
 | Deployment (env)  | `server/.env`, the host, the web image's runtime env | whoever deploys                                           | the next process start ([DEPLOYMENT.md](DEPLOYMENT.md))                  |
+| Feature flag      | a `feature_flags` row                                | an admin, `PATCH /api/admin/flags/:key`                   | the next request on this API instance; others within the 10 s read cache |
 | Platform constant | code, with a parity test where both sides need it    | a code change and a release                               | the next release                                                         |
 
 ## Site settings
@@ -31,6 +32,16 @@ same in three places: the `site_settings` check constraints ([SCHEMA.md](SCHEMA.
 The client reads them through `GET /api/config` (`useConfig()`, persisted) and falls back to
 `client/src/config/fallbacks.json` until it loads or when it cannot.
 
+## Feature flags
+
+Not a limit but a switch: whether a feature is on, and for whom. One `feature_flags` row per flag
+([SCHEMA.md](SCHEMA.md#feature_flags)), created by the migration of the phase that ships the feature (none yet; the
+planned ones are in the roadmap's P1.7). Evaluated on the server by `flags.service.isEnabled(key, { userId, role,
+storeId })`: `enabled`, then the store list, then the role list, then a stable percentage of signed-in users. An
+unknown key is off, so code can ship before its flag's row. Read through `getFlags()` (cached as `feature_flags`,
+invalidated by the flip). Flipped through [`PATCH /api/admin/flags/:key`](API.md#patch-adminflagskey), audited with
+the admin's name; there is no screen until P7.4.
+
 ## Deployment settings
 
 A blank value (`RATE_LIMIT_IP_MAX=`) counts as unset and takes the default; write `0` to turn a limit off.
@@ -42,7 +53,7 @@ A blank value (`RATE_LIMIT_IP_MAX=`) counts as unset and takes the default; writ
 
 | `RATE_LIMIT_WINDOW_MS` | 60000 | 1000–3600000 | `middleware/rateLimit.ts`: the fixed window every limit below counts in |
 | `RATE_LIMIT_IP_MAX` | 600 | ≥ 0 (0 = off) | requests per window on all of `/api`, per signed-in account (verified token) or else per address: a flood guard only; campus Wi-Fi puts many customers behind one address, so a signed-in customer never shares it ([ADR-009](adr/009-rate-limiting-token-buckets.md)) |
-| `RATE_LIMIT_WRITE_MAX` | 30 | ≥ 0 (0 = off) | writes per signed-in user per window (`POST /orders`, `PATCH /orders/:id/status`, `PATCH /admin/settings`): the real abuse limit |
+| `RATE_LIMIT_WRITE_MAX` | 30 | ≥ 0 (0 = off) | writes per signed-in user per window (`POST /orders`, `PATCH /orders/:id/status`, `PATCH /admin/settings`, `PATCH /admin/flags/:key`): the real abuse limit |
 | `RATE_LIMIT_REGISTER_MAX` | 10 | ≥ 0 (0 = off) | `POST /auth/register` per address per window |
 | `RATE_LIMIT_CLIENT_ERRORS_MAX` | 30 | ≥ 0 (0 = off) | `POST /client-errors` requests (each up to 5 reports) per address per window |
 
