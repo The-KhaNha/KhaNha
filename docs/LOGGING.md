@@ -47,11 +47,17 @@ nothing above `debug`.
   malformed; `server/src/middleware/clientVersion.ts`). It tells a stale browser tab from a current one.
 - Log through `req.log` inside a request (controllers, middleware, the error handler). Every line then carries
   `req.id`. Use the module `logger` only outside requests (startup, shutdown, `scripts/seed.ts`).
+- The server-side idle check (`middleware/auth.ts` `enforceSessionIdle`): `error` "Session idle check failed"
+  (`{ err, userId, suppressed }`, the `touch_session` call failed, so the request went on: at most once per 5 minutes
+  per process, whatever the number of sessions, with `suppressed` counting the failures it skipped since its last line) and `warn` "Idle session not revoked" (`{ err, userId }`, the sign-out after an idle 401 really failed, so the
+  refresh token may still work; a session already gone answers `AuthSessionMissingError` and logs nothing; the same
+  session is checked and revoked again after the 5-minute window). The 401 itself is the error handler's usual `warn`. The
+  session id is never logged.
 - The client logs `requestId` from the response header when an API call fails, so a browser report can be matched to
   the server line.
 - Other client events: `warn` "Session activity storage unavailable" (`features/auth/sessionActivity.ts`,
   `{ operation, error }`, once per session when `localStorage` refuses the write, so the client-side 7-day cap is off;
-  locally `inactivity_timeout` still applies, on hosted Supabase Free nothing does, see ADR-011); `warn` "Session expired from inactivity" (`features/auth/authStore.ts`, `{ idleDays }`, once when
+  locally `inactivity_timeout` still applies, on hosted Supabase Free only the API's idle check does, see ADR-011); `warn` "Session expired from inactivity" (`features/auth/authStore.ts`, `{ idleDays }`, once when
   an unused device is signed out after 7 days); `error` "Page chunk failed to load" (`components/PageBoundary.tsx`, once per failed lazy
   route); `debug` "Resource cache unavailable" (`lib/useResource.ts`, once per key when `localStorage` is full or
   blocked).

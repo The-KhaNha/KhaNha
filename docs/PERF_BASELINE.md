@@ -283,7 +283,8 @@ no-cache` and `Vary: Authorization, Origin`; normal `GET` 304 revalidation on `/
   - **Idle paint cost, `/orders/:id`, 2 s trace at 4× CPU (3 runs):** 0 `Paint` events, `Layerize` 0.01-0.71 ms in total, `PrePaint`
     0.8-2.6 ms and `UpdateLayoutTree` 0.7-1.9 ms over 5 frames, i.e. the pulse runs on the compositor and no longer repaints each frame.
   - Polling, API latency and caching not re-measured (untouched by this batch).
-| 2026-11-02 | feat/p1-07-audit-read (uncommitted) | Server-only run for GET /api/admin/audit; client bundle unchanged (types only, not rebuilt). Audit endpoint default page (11 rows, 3,571 B): p50 10 ms / p95 12 ms; limit=100 p50 9 ms. Existing routes: store 4.8 ms, menu 9 ms single request. |
+    | 2026-11-02 | feat/p1-07-audit-read (uncommitted) | Server-only run for GET /api/admin/audit; client bundle unchanged (types only, not rebuilt). Audit endpoint default page (11 rows, 3,571 B): p50 10 ms / p95 12 ms; limit=100 p50 9 ms. Existing routes: store 4.8 ms, menu 9 ms single request. |
+    | 2026-11-02 | feat/p1-15-idle-signout (uncommitted) | Server-only run for the idle sign-out check in `requireAuth` (`LOG_LEVEL=warn`, local API, curl, new session per fresh sample). Warm session, map hit: `GET /api/auth/me` p50 10.3 / p95 12.3 ms, `GET /api/orders` p50 10.6 / p95 13.3 ms. First request of a fresh session (one `touch_session` RPC): `auth/me` p50 15.6 / p95 18.6 ms, `orders` p50 16.6 / p95 19.9 ms, so the RPC costs about +5 to +6 ms once per session per 5 min per process (the second request of a fresh session is back to warm, 9.1 ms). Same-run unauthenticated controls: health/store/menu p50 1.3-1.4 ms. No A/B against the pre-change code (tree is uncommitted), so the map-hit overhead is not isolated; code inspection says one `Map.get` and an early-breaking sweep, microseconds. Eight concurrent first requests of one session each call the RPC (the map is set after it answers): 28-96 ms. `touch_session` statements: `auth.sessions` lookup is an Index Only Scan on `sessions_pkey` (0.02 ms), upsert via `session_activity_pkey` 0.43 ms, whole function 1.9 ms execution, planning ~0.6 ms. `purge_session_activity()` at 50k activity rows / 20k sessions: Hash Anti Join with two seq scans, 11.8 ms for a no-op run, 54 ms deleting 30k orphans, linear and nightly. |
 
 ## CI numbers
 
@@ -320,4 +321,3 @@ one staff, sequential).
 - Bounds: `purge_domain_events()` (nightly, 30 days) bounds `domain_events`. `q_notifications` is bounded only
   while the worker runs; with the worker stopped it grows by one row per event (80 rows after this run).
 - Rate limit: `RATE_LIMIT_WRITE_MAX` = 30 writes per user per 60 s, so a 30-request sample needs a fresh window.
-

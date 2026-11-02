@@ -120,12 +120,13 @@ Deployment: [DEPLOYMENT.md](DEPLOYMENT.md#local-compose). Log lines: [LOGGING.md
 
 ## Schedules
 
-Registered by migrations with `cron.schedule(name, schedule, command)`. Scheduling an existing name replaces it. Each
-schedule calls a SQL function that takes `p_now timestamptz default now()`, so tests choose the time.
+Registered by migrations with `cron.schedule(name, schedule, command)`. Scheduling an existing name replaces it. A
+schedule that purges by age calls a SQL function that takes `p_now timestamptz default now()`, so tests choose the time.
 
-| Job                   | Schedule (UTC)            | Runs                           | Added by                    |
-| --------------------- | ------------------------- | ------------------------------ | --------------------------- |
-| `purge-domain-events` | `17 21 * * *` (02:47 IST) | `public.purge_domain_events()` | `20261024181904_outbox.sql` |
+| Job                      | Schedule (UTC)            | Runs                              | Added by                              |
+| ------------------------ | ------------------------- | --------------------------------- | ------------------------------------- |
+| `purge-domain-events`    | `17 21 * * *` (02:47 IST) | `public.purge_domain_events()`    | `20261024181904_outbox.sql`           |
+| `purge-session-activity` | `27 21 * * *` (02:57 IST) | `public.purge_session_activity()` | `20261102110929_session_activity.sql` |
 
 - Supabase recommends at most 8 jobs running at once, each under 10 minutes.
 - A paused Free project runs nothing; staging's schedules resume after a restore (ADR-002).
@@ -134,12 +135,13 @@ schedule calls a SQL function that takes `p_now timestamptz default now()`, so t
 
 ## Retention
 
-| What                    | Kept                                     |
-| ----------------------- | ---------------------------------------- |
-| `domain_events`         | 30 days (`purge_domain_events`, nightly) |
-| a handled queue message | deleted when handled, never archived     |
-| `job_failures`          | until an operator replays or closes it   |
-| `audit_log`             | 13 months; no purge job yet (P9.5)       |
+| What                    | Kept                                                                        |
+| ----------------------- | --------------------------------------------------------------------------- |
+| `domain_events`         | 30 days (`purge_domain_events`, nightly)                                    |
+| a handled queue message | deleted when handled, never archived                                        |
+| `job_failures`          | until an operator replays or closes it                                      |
+| `audit_log`             | 13 months; no purge job yet (P9.5)                                          |
+| `session_activity`      | until Supabase Auth removes the session (`purge_session_activity`, nightly) |
 
 ## Runbook
 

@@ -298,9 +298,12 @@ A sign-in lasts 7 days without use (`client/src/features/auth/sessionActivity.ts
 [PERMISSIONS.md#session-lifetime](PERMISSIONS.md#session-lifetime)). `config.toml` only configures the local Docker
 stack. On a hosted project the same limit is **`inactivity_timeout`, a Pro-plan setting** (Authentication → Sessions),
 not a config file. The project runs on Supabase Free ([ADR-011](adr/011-free-tiers.md)), so hosted staging and
-production do not have it: the client's own 7-day check runs, but Supabase's refresh token does not expire on
-inactivity, and a copied refresh token stays valid until the user signs out. A server-side idle check is the planned
-fix (ADR-011). `jwt_expiry` (the 1 h access token lifetime) is a project setting whose default already matches
+production do not have it, and Supabase's refresh token does not expire on inactivity. The API enforces the limit
+instead: `requireAuth` refuses a sign-in unused for `SESSION_IDLE_DAYS` and revokes it, so a copied refresh token
+stops working on its next use, and refuses a signed-out or revoked sign-in whose access token has not expired
+([PERMISSIONS.md](PERMISSIONS.md#session-lifetime)). It needs the
+`session_activity` migration on the project; until it is pushed the check fails open and logs `error` "Session idle
+check failed". `jwt_expiry` (the 1 h access token lifetime) is a project setting whose default already matches
 `config.toml`'s `3600`.
 
 ## Containers

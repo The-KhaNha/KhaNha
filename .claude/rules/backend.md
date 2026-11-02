@@ -65,8 +65,9 @@ gzip on. See `docs/DEPLOYMENT.md` "Containers".
 - Public reads are cached with `cached()` and invalidated by the writes that change them (§2c).
 - Sessions: access tokens stay 1 h (refreshed by supabase-js). A sign-in ends after 7 days without use; each use
   restarts the week (`client/src/features/auth/sessionActivity.ts` + `auth.sessions.inactivity_timeout = "168h"` in
-  `server/supabase/config.toml` locally; on hosted Supabase Free the inactivity timeout is a Pro setting, so the
-  client cap is the only enforcement there, `docs/adr/011-free-tiers.md`). Never raise `jwt_expiry` to get longer
+  `server/supabase/config.toml` locally; on hosted Supabase Free, where the inactivity timeout is a Pro setting,
+  `requireAuth` enforces it per session through `touch_session`, revokes an idle sign-in and refuses a signed-out one,
+  `docs/PERMISSIONS.md` "Session lifetime"). Never raise `jwt_expiry` to get longer
   sign-ins: a long-lived bearer token cannot be revoked.
 - Env is read only through `utils/env.ts`. `src/types/database.ts` is generated (`npm run db:types`); never
   hand-edit it.

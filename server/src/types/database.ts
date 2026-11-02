@@ -364,6 +364,32 @@ export type Database = {
         };
         Relationships: [];
       };
+      session_activity: {
+        Row: {
+          last_seen_at: string;
+          session_id: string;
+          user_id: string;
+        };
+        Insert: {
+          last_seen_at: string;
+          session_id: string;
+          user_id: string;
+        };
+        Update: {
+          last_seen_at?: string;
+          session_id?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'session_activity_user_id_fkey';
+            columns: ['user_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       site_settings: {
         Row: {
           customer_order_history_limit: number;
@@ -480,6 +506,7 @@ export type Database = {
         Args: { p_keep?: string; p_now?: string };
         Returns: number;
       };
+      purge_session_activity: { Args: never; Returns: number };
       queue_dead_letter: {
         Args: {
           p_attempts: number;
@@ -520,6 +547,15 @@ export type Database = {
         Returns: undefined;
       };
       reset_demo_orders: { Args: never; Returns: undefined };
+      touch_session: {
+        Args: {
+          p_idle: string;
+          p_now?: string;
+          p_session_id: string;
+          p_user_id: string;
+        };
+        Returns: boolean;
+      };
       update_order_status: {
         Args: {
           p_actor?: Json;

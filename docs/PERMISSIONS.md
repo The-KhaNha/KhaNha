@@ -126,14 +126,23 @@ A sign-in lasts **7 days without use**; using the app (which refreshes the 1 h a
 > Supabase also expires the refresh token server-side (`jwt_expiry`, the 1 h access token lifetime, is unchanged).
 > **Consequences:** a device idle for a week is signed out even if it never calls the API; on hosted projects the
 > server-side half is missing, because `inactivity_timeout` is a Pro-plan setting and the project runs on Supabase
-> Free ([ADR-011](adr/011-free-tiers.md), [DEPLOYMENT.md](DEPLOYMENT.md#hosted-session-timeout)): there the client
-> cap is the only enforcement until a server-side idle check lands; a missing `fp_last_active` record (a session that predates
-> this feature) counts as active, so the week starts fresh instead of expiring at once.
+> Free ([ADR-011](adr/011-free-tiers.md), [DEPLOYMENT.md](DEPLOYMENT.md#hosted-session-timeout)), so the API checks
+> it itself (below); a missing `fp_last_active` record (a session that predates this feature) counts as active, so the
+> week starts fresh instead of expiring at once.
 
 - `markActive()` runs on login and whenever `hydrate()` or a tab-visible check finds the session still within its
   week; `clearActivity()` runs on logout and on an idle-expired session.
 - Coming back to a hidden tab counts as use: `authStore.ts`'s `visibilitychange` listener re-checks and either signs
   out (the week ran out in the background) or restarts it.
+- **The server check** (every environment, Free included): `requireAuth` records each sign-in's last use per session
+  (the token's `session_id`, table `session_activity`, [SCHEMA.md](SCHEMA.md#touch_session)) at most every 5 minutes
+  per API process. A sign-in unused for `SESSION_IDLE_DAYS` gets 401 and is revoked with
+  `auth.admin.signOut(token, 'local')`, so a copied refresh token stops working on its next use; the client then
+  clears its session as on any 401. A signed-out or revoked sign-in gets the same 401 even while its access token
+  (1 h) is still valid, at the latest 5 minutes after the sign-out on a process that had just checked it. Per session,
+  not per user: a phone in use does not keep a stolen laptop session
+  alive. A sign-in made before the check shipped starts its week at its first request. If the check cannot run (the
+  database call fails) the request goes on: the token is still verified, and the client cap still holds.
 - Client code: [COMPONENTS.md](COMPONENTS.md#featuresauth). Server config:
   [DEPLOYMENT.md](DEPLOYMENT.md#hosted-session-timeout).
 

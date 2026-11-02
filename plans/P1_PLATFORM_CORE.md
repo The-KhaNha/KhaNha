@@ -567,7 +567,36 @@ Docs: `docs/API.md` (`features`). Intent: `--server minor`.
 
 ### PR 15 — Server-side idle sign-out (ADR-011 follow-up)
 
-- [ ] Merged
+- [x] Merged
+
+As built (perf review): concurrent first requests of a session (a page load) share one in-flight check, so a
+session costs one `touch_session` call per window per process, not one per parallel request. As built: schema-guard NEW TABLE `session_activity`, as expected (`auth.sessions` is GoTrue's, outside the Data API,
+and moves on token refresh, not on API use). `verifyCredentials` exposes the claim as `jwtClaims.session_id`
+(`unknown`, so it is checked as a UUID; a token without one skips the check). The 401 reuses the existing "Your
+session has expired. Please sign in again." rather than a near-duplicate. The check runs after the profile lookup (the
+row references `profiles`) in `enforceSessionIdle`, which `requireAuth` calls. **Fail-open:** if `touch_session` fails
+(the migration not yet on an environment, a dropped connection) the request goes on and `error` "Session idle check
+failed" is logged at most once per 5 minutes per process (with a `suppressed` count; a missing function would
+otherwise log once per active session); the token is verified and the client cap still holds, while
+fail-closed would sign every user out whenever the call fails. **A live session is required** (user decision, from
+code review): sign-out revokes the refresh token, but the access token (checked locally) stays valid for up to 1 h;
+`touch_session` therefore also refuses a session gone from `auth.sessions`, row or no row, so a replay is not let back
+in as "never seen" once the purge drops its row. It is security definer for that read, like the purge. A refusal is
+remembered in-process for the 5-minute window, so a replayed token costs no RPC and no sign-out call; after the
+window it is checked (and revoked) again. A sign-out that answers session_not_found (auth-js:
+`AuthSessionMissingError`, status 400, no code) counts as already revoked and logs nothing; any other failure is
+`warn` "Idle session not revoked". A process that checked a session within the last 5 minutes lets its token through
+until the window ends, so a sign-out takes effect within 5 minutes.
+`last_seen_at` has no index, so a touch stays a HOT update. **Purge by session end, not age** (user decision):
+`purge_session_activity()` deletes a row only when its session is gone from `auth.sessions`, so it can never be
+refreshed again. The planned 90-day purge would have let a stolen refresh token held unused for 90+ days back in (an
+unknown session counts as never seen). It is security definer (owner `postgres`, as pg_cron runs it), because
+`service_role` cannot read `auth.sessions`; confirmed locally through a real pg_cron run. **Staging must confirm the
+same** after the migration lands: `select status, return_message from cron.job_run_details` for
+`purge-session-activity` reads `succeeded` (hosted Supabase lets the `postgres` role read `auth`), and
+`touch_session`, which reads `auth.sessions` the same way, answers true for a live session: a signed-in request on
+staging must not log `error` "Session idle check failed" (a permission error there fails open, so it would not show as
+a 401).
 
 D3: in P1, per session. `/before-write`: schema-guard, expected NEW TABLE (activity is per session, which no table
 holds; a `profiles` column would let a phone in use keep a stolen laptop session alive).
@@ -576,19 +605,23 @@ holds; a `profiles` column would let a phone in use keep a stolen laptop session
 references profiles on delete cascade, last_seen_at timestamptz not null)`; RLS on, `service_role` only.
   `touch_session(p_session_id, p_user_id, p_idle interval, p_now timestamptz default now()) returns boolean`: true
   and `last_seen_at = p_now` for a session seen within `p_idle` or never seen (sessions older than the deploy start
-  their clock then); false, untouched, for one idle longer. A daily `purge-session-activity` job deletes rows older
-  than 90 days (`SESSION_IDLE_DAYS`' upper bound, so any setting is safe).
+  their clock then); false, untouched, for one idle longer. A daily `purge-session-activity` job deletes the rows
+  whose session is gone from `auth.sessions` (never by age, see As built).
 - `middleware/auth.ts` `requireAuth`: reads the token's `session_id` claim (confirm `verifyCredentials` exposes it);
   calls `touch_session` at most once per session per 5 minutes per process (a module-level map); an idle session is
-  401 `UNAUTHORIZED` "Your session expired. Please sign in again." and is revoked with
+  401 `UNAUTHORIZED` "Your session has expired. Please sign in again." and is revoked with
   `supabaseAdmin.auth.admin.signOut(token, 'local')`, so its refresh token stops working. The client already clears
   its session on a 401.
 
 Cost: one RPC per active session per 5 minutes per API instance.
 
-Tests: `test/api/session-activity.test.ts` (the SQL through `p_now`: fresh, within the window, past it, never seen);
+Tests: `test/api/session-activity.test.ts` (the SQL through `p_now`: fresh, within the window, past it, never seen
+but live, gone from `auth.sessions` with or without a row; the purge drops an ended session's row and keeps a live
+one's however old); `test/api/session-idle.test.ts` (an idle session is 401 and revoked; a signed-out session's
+still-valid access token is 401);
 `test/unit/auth.safe.test.ts` (with the RPC stubbed: the throttle skips a second call within 5 minutes; false means
-401 and one sign-out call).
+401 and one sign-out call, and a replay within the window is 401 with no second RPC or sign-out; session_not_found
+from the sign-out logs no warn, another failure does).
 
 Docs: `docs/PERMISSIONS.md` (sessions); `docs/DEPLOYMENT.md` "Hosted session timeout" (the server now enforces it);
 `docs/SCHEMA.md`; `docs/API.md` (the 401); `docs/JOBS.md` (the schedule); CLAUDE.md §10 sessions bullet; a link in
