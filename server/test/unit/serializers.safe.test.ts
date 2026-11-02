@@ -65,7 +65,8 @@ function orderWithDetails(overrides: Partial<OrderWithDetails> = {}): OrderWithD
     estimated_ready_at: '2026-09-25 10:15:00.000+00',
     created_at: '2026-09-25 10:00:00.000+00',
     updated_at: '2026-09-25 10:00:00.000+00',
-    stores: { id: 'store-1', name: 'Campus Cafe' },
+    store_id: 'store-1',
+    store_name: 'Campus Cafe',
     order_items: [
       {
         id: 'oi-1',
@@ -75,7 +76,7 @@ function orderWithDetails(overrides: Partial<OrderWithDetails> = {}): OrderWithD
         unit_price: 120,
         quantity: 2,
         line_total: 240,
-        menu_items: { image_url: '/images/cold-coffee.jpg' },
+        image_url: '/images/cold-coffee.jpg',
       },
     ],
     ...overrides,
@@ -157,7 +158,7 @@ describe('toMenuItemDto', () => {
 });
 
 describe('toOrderDto', () => {
-  it('maps order, store reference, and lines, converting every timestamp', () => {
+  it('maps order, store snapshot, and lines with their photo snapshot, converting every timestamp', () => {
     const dto = toOrderDto(orderWithDetails());
     expect(dto).toEqual({
       id: 'order-1',
@@ -204,7 +205,7 @@ describe('toOrderDto', () => {
             unit_price: 90,
             quantity: 1,
             line_total: 90,
-            menu_items: { image_url: '/images/espresso.jpg' },
+            image_url: '/images/espresso.jpg',
           },
           {
             id: 'oi-1',
@@ -214,7 +215,7 @@ describe('toOrderDto', () => {
             unit_price: 120,
             quantity: 2,
             line_total: 240,
-            menu_items: { image_url: '/images/cold-coffee.jpg' },
+            image_url: '/images/cold-coffee.jpg',
           },
         ] as OrderWithDetails['order_items'],
       }),

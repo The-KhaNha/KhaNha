@@ -431,20 +431,20 @@ camelCase shapes and every timestamp into ISO 8601 (`new Date(ts).toISOString()`
 | `estimatedReadyAt` | string (ISO 8601)              |                                            |
 | `createdAt`        | string (ISO 8601)              |                                            |
 | `updatedAt`        | string (ISO 8601)              | set by the `orders_set_updated_at` trigger |
-| `store`            | `{ id: string, name: string }` |                                            |
+| `store`            | `{ id: string, name: string }` | `name` is the store's name at order time   |
 | `items`            | `OrderItemDto[]`               | cart order                                 |
 
 `OrderItemDto`
 
-| Field        | Type          | Notes                                          |
-| ------------ | ------------- | ---------------------------------------------- |
-| `id`         | string (uuid) |                                                |
-| `menuItemId` | string (uuid) |                                                |
-| `name`       | string        | snapshot at order time                         |
-| `unitPrice`  | number        | snapshot at order time                         |
-| `quantity`   | number        |                                                |
-| `lineTotal`  | number        | `unitPrice × quantity`                         |
-| `imageUrl`   | string        | the menu item's current photo (not a snapshot) |
+| Field        | Type          | Notes                               |
+| ------------ | ------------- | ----------------------------------- |
+| `id`         | string (uuid) |                                     |
+| `menuItemId` | string (uuid) |                                     |
+| `name`       | string        | snapshot at order time              |
+| `unitPrice`  | number        | snapshot at order time              |
+| `quantity`   | number        |                                     |
+| `lineTotal`  | number        | `unitPrice × quantity`              |
+| `imageUrl`   | string        | the menu item's photo at order time |
 
 `AuditPageDto`: `{ entries: AuditEntryDto[], nextCursor: number | null }`.
 
