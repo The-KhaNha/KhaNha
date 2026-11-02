@@ -63,6 +63,7 @@ Use Supabase Free and GitHub Free. Everything the project builds must work withi
 - [ADR-002][adr-002] (queues and cron on the free tier)
 - [ADR-007][adr-007] (secrets outside GitHub)
 - [P0 plan][p0] (the user steps that no longer apply)
+- [P1 PR 15][p1-15] (the server-side idle check: per-session `session_activity`, enforced in `requireAuth`)
 - [Supabase pricing](https://supabase.com/pricing), [project pausing](https://supabase.com/docs/guides/platform/free-project-pausing),
   [session limits](https://supabase.com/docs/guides/auth/sessions),
   [GitHub rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets)
@@ -70,3 +71,4 @@ Use Supabase Free and GitHub Free. Everything the project builds must work withi
 [adr-002]: 002-outbox-pgmq-pg-cron.md
 [adr-007]: 007-pilot-on-ec2-compose.md
 [p0]: ../../plans/P0_FOUNDATIONS.md
+[p1-15]: ../../plans/P1_PLATFORM_CORE.md#pr-15--server-side-idle-sign-out-adr-011-follow-up

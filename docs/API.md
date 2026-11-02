@@ -28,7 +28,15 @@ gets it from `supabase.auth.signInWithPassword` and supabase-js refreshes it (`j
    signature, expired, another project) is 401 `UNAUTHORIZED` "Your session has expired. Please sign in again."
 3. Loads `id, role` from `profiles`. No profile: 401 `UNAUTHORIZED` "That account no longer exists. Please sign in
    again."
-4. Sets `req.user = { id, role }`.
+4. Records the use of the sign-in (the token's `session_id`) with `touch_session`, at most once per session per
+   5 minutes per API process. A sign-in unused for `SESSION_IDLE_DAYS` is 401 `UNAUTHORIZED` "Your session has
+   expired. Please sign in again." and is revoked (`auth.admin.signOut(token, 'local')`), so its refresh token stops
+   working too ([PERMISSIONS.md](PERMISSIONS.md#session-lifetime)). The same 401 answers a sign-in no longer live in
+   Supabase Auth (signed out or revoked) whose access token has not expired yet; a process that already checked that
+   session in the last 5 minutes lets it through until its window ends. A refusal is remembered for 5 minutes per
+   process, so a replayed token is refused without a database call. If the check itself fails, the request goes on
+   (fail-open, logged `error` "Session idle check failed").
+5. Sets `req.user = { id, role }`.
 
 `requireStaff` must run after `requireAuth`. A role other than `STAFF` is 403 `FORBIDDEN` "Only staff can do that."
 

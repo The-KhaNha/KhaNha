@@ -29,6 +29,7 @@ a new file (see [DEPLOYMENT.md](DEPLOYMENT.md#schema-changes)).
 | `20261102101707_audit_log_id_indexes.sql`     | rebuilds the `audit_log` indexes to end in `id desc` (plus `(entity_type, id desc)`), the order `GET /api/admin/audit` pages in                                                                                                                   |
 | `20261102110820_order_snapshots.sql`          | adds the snapshots `order_items.image_url`, `order_items.category` and `orders.store_name`, backfilled from today's `menu_items` and `stores` (without touching `orders.updated_at`), then `not null`; `place_order` (same signature) writes them |
 | `20261102110856_feature_flags.sql`            | adds `feature_flags` (RLS, revoked, `set_updated_at` and `audit_row_change('feature_flag.changed', '*')` triggers, no rows); `audit_row_change()` takes `entity_id` from `key` when the row has no `id`                                           |
+| `20261102110929_session_activity.sql`         | adds `session_activity`, `touch_session` and `purge_session_activity` (the server-side idle sign-out, ADR-011) and the nightly `purge-session-activity` schedule                                                                                  |
 
 ## Enums
 
@@ -236,6 +237,17 @@ Evaluation, in order: `enabled`; then `storeIds` (the caller's store must be lis
 stable share of signed-in users (`sha256(key + ':' + userId)`, first four bytes, mod 100; no user is never in it). No
 index on `updated_by`: nothing filters on it, and the whole table is read at once.
 
+### session_activity
+
+When each sign-in was last used, for the server-side idle sign-out ([PERMISSIONS.md](PERMISSIONS.md#session-lifetime)).
+One row per Supabase Auth session, written only by `touch_session`; a row is purged nightly once its `auth.sessions` row is gone.
+
+| Column         | Type        | Null | Default | Notes                                                       |
+| -------------- | ----------- | ---- | ------- | ----------------------------------------------------------- |
+| `session_id`   | uuid        | no   |         | primary key; the access token's `session_id` claim          |
+| `user_id`      | uuid        | no   |         | references `profiles (id)` on delete cascade                |
+| `last_seen_at` | timestamptz | no   |         | the last recorded use (at most every 5 min per API process) |
+
 ## Indexes
 
 | Index                                | Columns                                                                          |
@@ -250,10 +262,13 @@ index on `updated_by`: nothing filters on it, and the whole table is read at onc
 | `audit_log_entity_type_idx`          | `audit_log (entity_type, id desc)`                                               |
 | `audit_log_store_idx`                | `audit_log (store_id, id desc)`                                                  |
 | `audit_log_actor_idx`                | `audit_log (actor_id, id desc)`                                                  |
+| `session_activity_user_id_idx`       | `session_activity (user_id)`, for the cascade from `profiles`                    |
 | unique constraint                    | `order_items (order_id, line_number)`                                            |
 | unique constraint                    | `profiles (email)`, `orders (order_number)`                                      |
 
-`site_settings` has no indexes on purpose (one row), including on `updated_by`.
+`site_settings` has no indexes on purpose (one row), including on `updated_by`. `session_activity.last_seen_at` has
+none either: the API moves it every few minutes per session, and an index would cost each of those updates an index
+write for one small nightly scan.
 
 ## Triggers
 
@@ -434,6 +449,26 @@ subscribed to `p_type` or to its family (`split_part(p_type, '.', 1) || '.*'`). 
 the events older than `p_now - p_keep` and returns how many. pg_cron runs it nightly at 21:17 UTC (02:47 IST) as job
 `purge-domain-events`; tests pass `p_now` instead of back-dating rows.
 
+### touch_session
+
+`touch_session(p_session_id uuid, p_user_id uuid, p_idle interval, p_now timestamptz default now()) returns boolean`
+records a use of a sign-in. A live session (one in `auth.sessions`) never seen (one signed in before the table
+existed starts its clock here) or last seen within `p_idle` returns true and moves `last_seen_at` to `p_now` (never
+backwards). One idle longer returns false and is left as it was, so it stays refused. A session gone from
+`auth.sessions` (signed out, revoked or removed by Supabase Auth) returns false and writes nothing, row or no row: its
+access token is valid for up to an hour after its refresh token dies, and once the purge drops its row it would
+otherwise count as never seen. Security definer, because `auth.sessions` is readable by the owner (`postgres`) and not
+by `service_role`. `requireAuth` passes `SESSION_IDLE_DAYS` as `p_idle` and revokes a refused session
+([API.md](API.md#authentication)).
+
+### purge_session_activity
+
+`purge_session_activity() returns integer` deletes the rows whose session is no longer in `auth.sessions` (signed out,
+revoked or cleaned up by Supabase Auth, so it can never be refreshed again) and returns how many. It never purges by
+age: a live session without a row counts as never seen, so dropping a live session's row would accept its refresh token again
+after any idle time. Security definer, because `auth.sessions` is readable by the owner (`postgres`) and not by
+`service_role`. pg_cron runs it nightly at 21:27 UTC (02:57 IST) as job `purge-session-activity`.
+
 ### audit_row_change
 
 The audit trigger (`20261101201251_audit_log.sql`). Its arguments are the action, then the watched columns, or `*` for
@@ -457,9 +492,9 @@ never read (a later SQL edit would carry the last admin's id).
 
 ## Row-level security and grants
 
-- RLS is enabled on all eleven tables (`site_settings`, the outbox tables, `audit_log` and `feature_flags` included, each by the migration
+- RLS is enabled on all twelve tables (`site_settings`, the outbox tables, `audit_log`, `feature_flags` and `session_activity` included, each by the migration
   that creates it). There are no policies.
-- `revoke all` on all eleven tables from `anon` and `authenticated`.
+- `revoke all` on all twelve tables from `anon` and `authenticated`.
 - Default privileges for role `postgres` in `public`: new tables grant nothing to `anon`/`authenticated`, and new
   functions grant no `EXECUTE` to `public`, `anon` or `authenticated`. This is why the `20260927094610` migration did
   not need its own `revoke`/`grant` for functions — it adds no new function — but still revokes table privileges for

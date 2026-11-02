@@ -329,8 +329,16 @@ sequenceDiagram
     alt no profile (account deleted)
       MW-->>C: 401 "That account no longer exists..."
     else found
-      MW->>H: req.user = { id, role }, next()
-      H-->>C: 2xx JSON
+      opt session not checked by this process in the last 5 min
+        MW->>DB: touch_session(session_id, user, SESSION_IDLE_DAYS)
+      end
+      alt idle longer than SESSION_IDLE_DAYS, or the session is gone from auth.sessions
+        MW->>Auth: auth.admin.signOut(token, local) (revokes the refresh token; once per 5 min, replays answered from memory)
+        MW-->>C: 401 "Your session has expired. Please sign in again."
+      else active, or the check failed (fail-open)
+        MW->>H: req.user = { id, role }, next()
+        H-->>C: 2xx JSON
+      end
     end
   end
   opt response is 401 and a token was sent
