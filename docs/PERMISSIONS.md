@@ -6,12 +6,12 @@ are drawn in [ARCHITECTURE.md](ARCHITECTURE.md#3-authentication). Status codes a
 
 ## Roles
 
-| Role       | Who                                                       | Can                                                                                              |
-| ---------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| anonymous  | anyone without a token                                    | read the store and menu, register, sign in                                                       |
-| `CUSTOMER` | every new account (the `profiles.role` default)           | place orders, list and read their own orders                                                     |
-| `STAFF`    | accounts whose `profiles.role` was set to `STAFF` by hand | read every order (newest `staff_order_list_limit` in the list, default 100), change order status |
-| `ADMIN`    | accounts whose `profiles.role` was set to `ADMIN` by hand | read and edit the site settings (`GET`/`PATCH /api/admin/settings`)                              |
+| Role       | Who                                                       | Can                                                                                                              |
+| ---------- | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| anonymous  | anyone without a token                                    | read the store and menu, register, sign in                                                                       |
+| `CUSTOMER` | every new account (the `profiles.role` default)           | place orders, list and read their own orders                                                                     |
+| `STAFF`    | accounts whose `profiles.role` was set to `STAFF` by hand | read every order (newest `staff_order_list_limit` in the list, default 100), change order status                 |
+| `ADMIN`    | accounts whose `profiles.role` was set to `ADMIN` by hand | read and edit the site settings (`GET`/`PATCH /api/admin/settings`), read the audit log (`GET /api/admin/audit`) |
 
 `ADMIN` is a **site-wide developer/operator role**, not a restaurant role: a separate track from `STAFF` with no
 staff powers (`requireStaff` still checks `role === 'STAFF'` exactly, so an admin gets 403 on
@@ -52,6 +52,7 @@ work exactly like a customer's. Its only privilege is the admin dashboard (`/adm
 | `PATCH /api/orders/:id/status` | 401        | 403                 | yes                                    | 403                 | `requireAuth` + `requireStaff`                                           |
 | `GET /api/admin/settings`      | 401        | 403                 | 403                                    | yes                 | `requireAuth` + `requireAdmin`                                           |
 | `PATCH /api/admin/settings`    | 401        | 403                 | 403                                    | yes                 | `requireAuth` + `requireAdmin`                                           |
+| `GET /api/admin/audit`         | 401        | 403                 | 403                                    | yes                 | `requireAuth` + `requireAdmin`                                           |
 | `/admin` (client route)        | → `/login` | → `/`               | → `/`                                  | renders `AdminPage` | `RequireRole role="ADMIN"` (client only)                                 |
 
 Nothing stops a `STAFF` or `ADMIN` account from placing an order: `POST /api/orders` only requires a signed-in user.
@@ -172,8 +173,8 @@ flowchart LR
 - `audit_log` is append-only. Only its trigger writes it (as the owner); the secret key may read it but not insert,
   update or delete, and its own triggers refuse an update, delete or truncate even from the owner. An audited write
   names its actor through a transition function's `p_actor` or the `x-actor` header
-  ([SCHEMA.md](SCHEMA.md#audit_row_change)); anything else is recorded as `SYSTEM`. Admins will read it through
-  `GET /api/admin/audit` (P1 PR 07).
+  ([SCHEMA.md](SCHEMA.md#audit_row_change)); anything else is recorded as `SYSTEM`. Admins read it through
+  `GET /api/admin/audit`.
 - The queues (`pgmq` schema) and schedules (`cron` schema) are closed to `anon` and `authenticated` and not exposed
   through the Data API; the API and the worker reach the queues only through the `queue_*` wrappers
   ([JOBS.md](JOBS.md)).

@@ -1317,9 +1317,11 @@ create table public.audit_log (
   reason text,
   request_id text
 );
-create index audit_log_entity_idx on public.audit_log (entity_type, entity_id, occurred_at desc);
-create index audit_log_store_idx on public.audit_log (store_id, occurred_at desc);
-create index audit_log_actor_idx on public.audit_log (actor_id, occurred_at desc);
+-- Keyed on id, the order GET /api/admin/audit pages in (P1 PR 07 rebuilt PR 06's occurred_at-keyed ones).
+create index audit_log_entity_idx on public.audit_log (entity_type, entity_id, id desc);
+create index audit_log_entity_type_idx on public.audit_log (entity_type, id desc);
+create index audit_log_store_idx on public.audit_log (store_id, id desc);
+create index audit_log_actor_idx on public.audit_log (actor_id, id desc);
 ```
 
 - **Append-only.** Revoke `update, delete, truncate` on `audit_log` from `service_role`, so the API can only insert,

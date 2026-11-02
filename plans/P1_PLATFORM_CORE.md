@@ -372,7 +372,15 @@ key fails (the roadmap's
 
 ### PR 07 — `GET /api/admin/audit` (P1.3)
 
-- [ ] Merged
+- [x] Merged
+
+As built: `limit` is defaulted in `listAudit`, not by zod: a required key would not fit Express's `ParsedQs`-typed
+handlers. `entityId` needs `entityType` (ids repeat across types, and the entity index leads with the type). `from` is
+inclusive and `to` exclusive, and `from` must be before `to`. The service reads one row past the page, so `nextCursor`
+is null exactly on the last page. The response is `no-store` (it must not outlive the admin's sign-out).
+Migration `20261102101707_audit_log_id_indexes.sql`: PR 06's indexes ended in `occurred_at desc`, so every filtered
+page sorted all its matches; they now end in `id desc`, plus `(entity_type, id desc)` for a type filter alone. The
+P9.5 purge will want its own `occurred_at` index. Push it to staging (`npm run db:push:staging`) before the API ships.
 
 Recipe: `/new-endpoint`. `/before-write`: reuse-scout, expected NO MATCH for the service, REUSE for the admin
 router, `requireAdmin` and the serializer pattern.

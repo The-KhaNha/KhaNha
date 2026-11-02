@@ -1,5 +1,5 @@
 // Response shapes shared with the client. Keep these in sync with the API contract.
-import type { OrderStatus, PaymentStatus, Role } from './enums';
+import type { ActorType, OrderStatus, PaymentStatus, Role } from './enums';
 
 export interface UserDto {
   id: string;
@@ -103,4 +103,30 @@ export interface ConfigDto {
   /** Poll intervals in ms: one order's page, the customer's order list, the staff board. */
   polling: { orderMs: number; ordersMs: number; staffBoardMs: number };
   session: { idleDays: number };
+}
+
+/** One audit_log row (GET /api/admin/audit): who changed what, when. */
+export interface AuditEntryDto {
+  id: number;
+  occurredAt: string;
+  actorType: ActorType;
+  /** The profile id for a USER, null for system actors. */
+  actorId: string | null;
+  /** The actor's role when the change happened. */
+  actorRole: string | null;
+  storeId: string | null;
+  /** 'order.status_changed', 'menu_item.changed', ... */
+  action: string;
+  entityType: string;
+  entityId: string;
+  /** The watched columns that changed, as { column: [old, new] }. */
+  changes: Record<string, [unknown, unknown]> | null;
+  reason: string | null;
+  requestId: string | null;
+}
+
+/** GET /api/admin/audit: one page, newest first. Pass nextCursor back as `before`; null on the last page. */
+export interface AuditPageDto {
+  entries: AuditEntryDto[];
+  nextCursor: number | null;
 }
