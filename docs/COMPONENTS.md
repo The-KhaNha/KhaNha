@@ -299,6 +299,7 @@ off the menu).
 | `fix(id)`                        | trims to the limit, or removes when the limit is 0                                                                                      |
 | `setAvailability(id, available)` | records a checkout error's `details.available`                                                                                          |
 | `syncAvailability(items)`        | refreshes every line's `maxQuantity` from a menu load; items missing from the menu become 0. Prices, names and photos are never changed |
+| `syncPrices(items)`              | sets every line's `unitPrice` from a menu load; Checkout calls it only on the reload after a `PRICE_CHANGED` refusal                    |
 
 Selectors: `selectLines`, `selectCount`, `selectTotal`, `selectQuantityOf(id)`. It also re-exports
 `MAX_LINE_QUANTITY`.

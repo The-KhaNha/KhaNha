@@ -5,7 +5,11 @@ The Postgres schema in the Supabase project, from `server/supabase/migrations/`.
 
 - Generated TypeScript types: `server/src/types/database.ts` (`cd server && npm run db:types`, from the local
   database). `server/src/types/enums.ts` re-exports the enums from it.
-- Money is whole rupees stored as `integer`.
+- Money is paise in `bigint` columns named `…_paise` ([ADR-004](adr/004-rupees-and-paise.md)); the API sends whole
+  rupees, converted only by `server/src/utils/money.ts`. While a rupee API field exists for a column, its paise column
+  has a `check (… % 100 = 0)`, so the rupee field never rounds. The old whole-rupee `integer` columns (`price`,
+  `total`, `unit_price`, `line_total`) are still written, for the API deployed before the move, and are dropped by
+  the contract migration (P1 PR 16); nothing in the current API reads them.
 - Every table is in the `public` schema. `profiles.id` references Supabase's `auth.users`.
 - Extensions: `pgmq` (queues, in its own `pgmq` schema) and `pg_cron` (schedules, in `cron`), both from
   `20261024181904_outbox.sql`. How the queues and schedules are used: [JOBS.md](JOBS.md).
@@ -15,22 +19,23 @@ The Postgres schema in the Supabase project, from `server/supabase/migrations/`.
 Applied in file-name order. Once a migration is pushed to staging or production it is never edited; a change goes in
 a new file (see [DEPLOYMENT.md](DEPLOYMENT.md#schema-changes)).
 
-| File                                             | What it does                                                                                                                                                                                                                                      |
-| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `20260925120000_init.sql`                        | the three enums, the five tables, indexes, RLS and grants, the triggers and the three RPCs below                                                                                                                                                  |
-| `20260927094610_admin_settings_collected.sql`    | adds `user_role` value `ADMIN`; renames `order_status` value `COMPLETED` to `COLLECTED`; adds `public.site_settings` (RLS, revoked, `set_updated_at` trigger)                                                                                     |
-| `20260927222002_min_client_version.sql`          | adds `site_settings.min_client_version` (the 426 gate's minimum)                                                                                                                                                                                  |
-| `20260928180445_site_settings_config.sql`        | adds `site_settings.max_lines_per_order`, `order_poll_ms`, `orders_poll_ms`, `staff_board_poll_ms` (the configuration registry, [CONFIGURATION.md](CONFIGURATION.md))                                                                             |
-| `20260928193552_order_idempotency_key.sql`       | adds `orders.idempotency_key` and its partial unique index; drops and recreates `place_order` with `p_idempotency_key` (a function's argument list is its identity, so a new parameter cannot use `create or replace`), reissuing its grants      |
-| `20261024181904_outbox.sql`                      | enables `pgmq` and `pg_cron`; adds `domain_events`, `event_subscriptions`, `emit_event` and `purge_domain_events`; creates the `q_notifications` queue, its `order.*` subscription and the nightly purge schedule                                 |
-| `20261024192953_queue_wrappers.sql`              | adds `job_failures` and the five `queue_*` wrappers (the worker's only way into pgmq), granted to `service_role`                                                                                                                                  |
-| `20261101131925_transitions_emit_events.sql`     | drops and recreates `place_order` and `update_order_status` with `p_actor` and `p_request_id` (defaulted), which emit their events; `update_order_status` locks the row, returns boolean and treats a repeat as a no-op; grants reissued          |
-| `20261101201251_audit_log.sql`                   | adds `actor_type`, the append-only `audit_log` (read-only to `service_role`) and `audit_row_change()` with its triggers on `site_settings`, `orders`, `profiles` and `menu_items`                                                                 |
-| `20261102101707_audit_log_id_indexes.sql`        | rebuilds the `audit_log` indexes to end in `id desc` (plus `(entity_type, id desc)`), the order `GET /api/admin/audit` pages in                                                                                                                   |
-| `20261102110820_order_snapshots.sql`             | adds the snapshots `order_items.image_url`, `order_items.category` and `orders.store_name`, backfilled from today's `menu_items` and `stores` (without touching `orders.updated_at`), then `not null`; `place_order` (same signature) writes them |
-| `20261102110856_feature_flags.sql`               | adds `feature_flags` (RLS, revoked, `set_updated_at` and `audit_row_change('feature_flag.changed', '*')` triggers, no rows); `audit_row_change()` takes `entity_id` from `key` when the row has no `id`                                           |
-| `20261102110929_session_activity.sql`            | adds `session_activity`, `touch_session` and `purge_session_activity` (the server-side idle sign-out, ADR-011) and the nightly `purge-session-activity` schedule                                                                                  |
-| `20261102183749_client_error_sample_percent.sql` | adds `site_settings.client_error_sample_percent` (the share of page loads that report their errors, [CONFIGURATION.md](CONFIGURATION.md))                                                                                                         |
+| File                                             | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `20260925120000_init.sql`                        | the three enums, the five tables, indexes, RLS and grants, the triggers and the three RPCs below                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `20260927094610_admin_settings_collected.sql`    | adds `user_role` value `ADMIN`; renames `order_status` value `COMPLETED` to `COLLECTED`; adds `public.site_settings` (RLS, revoked, `set_updated_at` trigger)                                                                                                                                                                                                                                                                                                                                                                     |
+| `20260927222002_min_client_version.sql`          | adds `site_settings.min_client_version` (the 426 gate's minimum)                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `20260928180445_site_settings_config.sql`        | adds `site_settings.max_lines_per_order`, `order_poll_ms`, `orders_poll_ms`, `staff_board_poll_ms` (the configuration registry, [CONFIGURATION.md](CONFIGURATION.md))                                                                                                                                                                                                                                                                                                                                                             |
+| `20260928193552_order_idempotency_key.sql`       | adds `orders.idempotency_key` and its partial unique index; drops and recreates `place_order` with `p_idempotency_key` (a function's argument list is its identity, so a new parameter cannot use `create or replace`), reissuing its grants                                                                                                                                                                                                                                                                                      |
+| `20261024181904_outbox.sql`                      | enables `pgmq` and `pg_cron`; adds `domain_events`, `event_subscriptions`, `emit_event` and `purge_domain_events`; creates the `q_notifications` queue, its `order.*` subscription and the nightly purge schedule                                                                                                                                                                                                                                                                                                                 |
+| `20261024192953_queue_wrappers.sql`              | adds `job_failures` and the five `queue_*` wrappers (the worker's only way into pgmq), granted to `service_role`                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `20261101131925_transitions_emit_events.sql`     | drops and recreates `place_order` and `update_order_status` with `p_actor` and `p_request_id` (defaulted), which emit their events; `update_order_status` locks the row, returns boolean and treats a repeat as a no-op; grants reissued                                                                                                                                                                                                                                                                                          |
+| `20261101201251_audit_log.sql`                   | adds `actor_type`, the append-only `audit_log` (read-only to `service_role`) and `audit_row_change()` with its triggers on `site_settings`, `orders`, `profiles` and `menu_items`                                                                                                                                                                                                                                                                                                                                                 |
+| `20261102101707_audit_log_id_indexes.sql`        | rebuilds the `audit_log` indexes to end in `id desc` (plus `(entity_type, id desc)`), the order `GET /api/admin/audit` pages in                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `20261102110820_order_snapshots.sql`             | adds the snapshots `order_items.image_url`, `order_items.category` and `orders.store_name`, backfilled from today's `menu_items` and `stores` (without touching `orders.updated_at`), then `not null`; `place_order` (same signature) writes them                                                                                                                                                                                                                                                                                 |
+| `20261102110856_feature_flags.sql`               | adds `feature_flags` (RLS, revoked, `set_updated_at` and `audit_row_change('feature_flag.changed', '*')` triggers, no rows); `audit_row_change()` takes `entity_id` from `key` when the row has no `id`                                                                                                                                                                                                                                                                                                                           |
+| `20261102110929_session_activity.sql`            | adds `session_activity`, `touch_session` and `purge_session_activity` (the server-side idle sign-out, ADR-011) and the nightly `purge-session-activity` schedule                                                                                                                                                                                                                                                                                                                                                                  |
+| `20261102183749_client_error_sample_percent.sql` | adds `site_settings.client_error_sample_percent` (the share of page loads that report their errors, [CONFIGURATION.md](CONFIGURATION.md))                                                                                                                                                                                                                                                                                                                                                                                         |
+| `20261102183832_money_paise.sql`                 | adds `menu_items.price_paise`, `orders.total_paise`, `order_items.unit_price_paise` and `line_total_paise` (`bigint`, backfilled ×100 without touching `orders.updated_at`, `not null`, `>= 0`, whole rupees); `place_order` (same signature) prices every line from `menu_items.price_paise`, refuses a line whose `unit_price_paise` is no longer the price (`PRICE_CHANGED`) and writes both units; `menu_items_audit` also watches `price_paise`; `menu_items_sync_price` keeps `price` and `price_paise` in step until PR 16 |
 
 ## Enums
 
@@ -80,19 +85,25 @@ V0 has exactly one row, created by `npm run seed`.
 
 ### menu_items
 
-| Column           | Type    | Null | Default             | Constraints                                         |
-| ---------------- | ------- | ---- | ------------------- | --------------------------------------------------- |
-| `id`             | uuid    | no   | `gen_random_uuid()` | primary key                                         |
-| `store_id`       | uuid    | no   |                     | references `stores (id)`                            |
-| `category`       | text    | no   |                     |                                                     |
-| `name`           | text    | no   |                     |                                                     |
-| `description`    | text    | no   |                     |                                                     |
-| `price`          | integer | no   |                     | `check (price >= 0)`; whole rupees                  |
-| `image_url`      | text    | no   |                     |                                                     |
-| `is_available`   | boolean | no   | `true`              |                                                     |
-| `is_popular`     | boolean | no   | `false`             |                                                     |
-| `sort_order`     | integer | no   | `0`                 |                                                     |
-| `stock_quantity` | integer | yes  |                     | `check (stock_quantity >= 0)`; `null` = not tracked |
+| Column        | Type    | Null | Default             | Constraints                                     |
+| ------------- | ------- | ---- | ------------------- | ----------------------------------------------- |
+| `id`          | uuid    | no   | `gen_random_uuid()` | primary key                                     |
+| `store_id`    | uuid    | no   |                     | references `stores (id)`                        |
+| `category`    | text    | no   |                     |                                                 |
+| `name`        | text    | no   |                     |                                                 |
+| `description` | text    | no   |                     |                                                 |
+| `price`       | integer | no   |                     | `check (price >= 0)`; whole rupees; until PR 16 |
+| `price_paise` | bigint  | no   |                     | `>= 0`, `% 100 = 0` (whole rupees); the price   |
+
+Until PR 16 drops `price`, the `menu_items_sync_price` trigger keeps the two price columns in step: a write that sets
+only one (an insert with the other null, or an update that changes one) derives the other (`price_paise = price *
+100`, `price = price_paise / 100`); a write that changes both to values that disagree is refused. An update counts a
+column as written when its value changes.
+| `image_url` | text | no | | |
+| `is_available` | boolean | no | `true` | |
+| `is_popular` | boolean | no | `false` | |
+| `sort_order` | integer | no | `0` | |
+| `stock_quantity` | integer | yes | | `check (stock_quantity >= 0)`; `null` = not tracked |
 
 `stock_quantity` is decremented by `place_order` and restored when an order is cancelled.
 
@@ -108,7 +119,8 @@ V0 has exactly one row, created by `npm run seed`.
 | `customer_name`      | text             | no   |                     |                                                                                            |
 | `customer_phone`     | text             | yes  |                     |                                                                                            |
 | `note`               | text             | yes  |                     |                                                                                            |
-| `total`              | integer          | no   |                     | computed in `place_order`                                                                  |
+| `total`              | integer          | no   |                     | `total_paise / 100`; until PR 16                                                           |
+| `total_paise`        | bigint           | no   |                     | computed in `place_order`; `>= 0`, `% 100 = 0`                                             |
 | `payment_status`     | `payment_status` | no   | `PENDING`           |                                                                                            |
 | `status`             | `order_status`   | no   | `PLACED`            |                                                                                            |
 | `estimated_ready_at` | timestamptz      | no   |                     |                                                                                            |
@@ -118,18 +130,20 @@ V0 has exactly one row, created by `npm run seed`.
 
 ### order_items
 
-| Column         | Type    | Null | Default             | Constraints                                            |
-| -------------- | ------- | ---- | ------------------- | ------------------------------------------------------ |
-| `id`           | uuid    | no   | `gen_random_uuid()` | primary key                                            |
-| `order_id`     | uuid    | no   |                     | references `orders (id)` on delete cascade             |
-| `line_number`  | integer | no   |                     | position in the cart; `unique (order_id, line_number)` |
-| `menu_item_id` | uuid    | no   |                     | references `menu_items (id)`                           |
-| `name`         | text    | no   |                     | snapshot at order time                                 |
-| `unit_price`   | integer | no   |                     | snapshot at order time                                 |
-| `quantity`     | integer | no   |                     | `check (quantity > 0)`                                 |
-| `line_total`   | integer | no   |                     | `unit_price * quantity`                                |
-| `image_url`    | text    | no   |                     | snapshot of `menu_items.image_url` at order time       |
-| `category`     | text    | no   |                     | snapshot at order time; for analytics (P7.1), not sent |
+| Column             | Type    | Null | Default             | Constraints                                               |
+| ------------------ | ------- | ---- | ------------------- | --------------------------------------------------------- |
+| `id`               | uuid    | no   | `gen_random_uuid()` | primary key                                               |
+| `order_id`         | uuid    | no   |                     | references `orders (id)` on delete cascade                |
+| `line_number`      | integer | no   |                     | position in the cart; `unique (order_id, line_number)`    |
+| `menu_item_id`     | uuid    | no   |                     | references `menu_items (id)`                              |
+| `name`             | text    | no   |                     | snapshot at order time                                    |
+| `unit_price`       | integer | no   |                     | `unit_price_paise / 100`; until PR 16                     |
+| `unit_price_paise` | bigint  | no   |                     | snapshot of `menu_items.price_paise`; `>= 0`, `% 100 = 0` |
+| `quantity`         | integer | no   |                     | `check (quantity > 0)`                                    |
+| `line_total`       | integer | no   |                     | `line_total_paise / 100`; until PR 16                     |
+| `line_total_paise` | bigint  | no   |                     | `unit_price_paise * quantity`; `>= 0`, `% 100 = 0`        |
+| `image_url`        | text    | no   |                     | snapshot of `menu_items.image_url` at order time          |
+| `category`         | text    | no   |                     | snapshot at order time; for analytics (P7.1), not sent    |
 
 Foreign keys without an `on delete` clause (`menu_items.store_id`, `orders.user_id`, `orders.store_id`,
 `order_items.menu_item_id`) block deleting a row that is still referenced. `npm run seed` wipes orders first for that
@@ -275,20 +289,21 @@ write for one small nightly scan.
 
 ## Triggers
 
-| Trigger                        | On                                                                                                                          | Function                                                 |
-| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| `orders_set_updated_at`        | before update on `orders`, each row                                                                                         | `set_updated_at()`                                       |
-| `site_settings_set_updated_at` | before update on `site_settings`, each row                                                                                  | `set_updated_at()`                                       |
-| `feature_flags_set_updated_at` | before update on `feature_flags`, each row                                                                                  | `set_updated_at()`                                       |
-| `on_auth_user_created`         | after insert on `auth.users`                                                                                                | `handle_new_user()`                                      |
-| `on_auth_user_email_changed`   | after update of `email` on `auth.users`, when the email changed                                                             | `handle_user_email_change()`                             |
-| `site_settings_audit`          | after update on `site_settings`, each row                                                                                   | `audit_row_change('site_settings.changed', '*')`         |
-| `orders_audit`                 | after update of `status` on `orders`, each row                                                                              | `audit_row_change('order.status_changed', 'status')`     |
-| `profiles_audit`               | after update of `role` on `profiles`, each row                                                                              | `audit_row_change('profile.role_changed', 'role')`       |
-| `menu_items_audit`             | after update of `name`, `price`, `is_available`, `image_url`, `category` on `menu_items`, each row (never `stock_quantity`) | `audit_row_change('menu_item.changed', <those columns>)` |
-| `feature_flags_audit`          | after update on `feature_flags`, each row                                                                                   | `audit_row_change('feature_flag.changed', '*')`          |
-| `audit_log_no_change`          | before update or delete on `audit_log`, each row                                                                            | `audit_log_append_only()`                                |
-| `audit_log_no_truncate`        | before truncate on `audit_log`, each statement                                                                              | `audit_log_append_only()`                                |
+| Trigger                        | On                                                                                                                                         | Function                                                 |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------- |
+| `orders_set_updated_at`        | before update on `orders`, each row                                                                                                        | `set_updated_at()`                                       |
+| `site_settings_set_updated_at` | before update on `site_settings`, each row                                                                                                 | `set_updated_at()`                                       |
+| `feature_flags_set_updated_at` | before update on `feature_flags`, each row                                                                                                 | `set_updated_at()`                                       |
+| `on_auth_user_created`         | after insert on `auth.users`                                                                                                               | `handle_new_user()`                                      |
+| `on_auth_user_email_changed`   | after update of `email` on `auth.users`, when the email changed                                                                            | `handle_user_email_change()`                             |
+| `site_settings_audit`          | after update on `site_settings`, each row                                                                                                  | `audit_row_change('site_settings.changed', '*')`         |
+| `orders_audit`                 | after update of `status` on `orders`, each row                                                                                             | `audit_row_change('order.status_changed', 'status')`     |
+| `profiles_audit`               | after update of `role` on `profiles`, each row                                                                                             | `audit_row_change('profile.role_changed', 'role')`       |
+| `menu_items_sync_price`        | before insert or update of `price`, `price_paise` on `menu_items`, each row; dropped by PR 16                                              | `menu_items_sync_price()`                                |
+| `menu_items_audit`             | after update of `name`, `price`, `price_paise`, `is_available`, `image_url`, `category` on `menu_items`, each row (never `stock_quantity`) | `audit_row_change('menu_item.changed', <those columns>)` |
+| `feature_flags_audit`          | after update on `feature_flags`, each row                                                                                                  | `audit_row_change('feature_flag.changed', '*')`          |
+| `audit_log_no_change`          | before update or delete on `audit_log`, each row                                                                                           | `audit_log_append_only()`                                |
+| `audit_log_no_truncate`        | before truncate on `audit_log`, each statement                                                                                             | `audit_log_append_only()`                                |
 
 ## Functions
 
@@ -296,23 +311,24 @@ All functions set `search_path = ''` and use schema-qualified names. Each call i
 raises leaves nothing behind. Expected failures are raised with `message` = an API error code and `detail` = a JSON
 object (SQLSTATE `P0001`). How the API maps them is in [API.md](API.md#database-errors-p0001).
 
-| Function                     | Language | Security | Returns | Called by                             | `EXECUTE` granted to |
-| ---------------------------- | -------- | -------- | ------- | ------------------------------------- | -------------------- |
-| `set_updated_at()`           | plpgsql  | invoker  | trigger | `orders_set_updated_at`               | nobody               |
-| `handle_new_user()`          | plpgsql  | definer  | trigger | `on_auth_user_created`                | nobody               |
-| `handle_user_email_change()` | plpgsql  | definer  | trigger | `on_auth_user_email_changed`          | nobody               |
-| `place_order(...)`           | plpgsql  | invoker  | uuid    | `order.service.createOrder`           | `service_role`       |
-| `update_order_status(...)`   | plpgsql  | invoker  | boolean | `order.service.updateOrderStatus`     | `service_role`       |
-| `reset_demo_orders()`        | sql      | definer  | void    | `server/scripts/seed.ts`              | `service_role`       |
-| `emit_event(...)`            | plpgsql  | definer  | uuid    | `place_order`, `update_order_status`  | `service_role`       |
-| `queue_read(...)`            | plpgsql  | definer  | table   | the worker (P1 PR 03)                 | `service_role`       |
-| `queue_delete(...)`          | sql      | definer  | boolean | the worker                            | `service_role`       |
-| `queue_retry(...)`           | sql      | definer  | void    | the worker                            | `service_role`       |
-| `queue_dead_letter(...)`     | sql      | definer  | boolean | the worker                            | `service_role`       |
-| `queue_metrics(text)`        | sql      | definer  | table   | the worker's health report            | `service_role`       |
-| `purge_domain_events(...)`   | sql      | invoker  | integer | pg_cron `purge-domain-events`         | `service_role`       |
-| `audit_row_change()`         | plpgsql  | definer  | trigger | the five `*_audit` triggers           | nobody               |
-| `audit_log_append_only()`    | plpgsql  | invoker  | trigger | `audit_log_no_change`, `_no_truncate` | nobody               |
+| Function                     | Language | Security | Returns | Called by                                                                               | `EXECUTE` granted to |
+| ---------------------------- | -------- | -------- | ------- | --------------------------------------------------------------------------------------- | -------------------- |
+| `set_updated_at()`           | plpgsql  | invoker  | trigger | `orders_set_updated_at`, `site_settings_set_updated_at`, `feature_flags_set_updated_at` | nobody               |
+| `handle_new_user()`          | plpgsql  | definer  | trigger | `on_auth_user_created`                                                                  | nobody               |
+| `handle_user_email_change()` | plpgsql  | definer  | trigger | `on_auth_user_email_changed`                                                            | nobody               |
+| `place_order(...)`           | plpgsql  | invoker  | uuid    | `order.service.createOrder`                                                             | `service_role`       |
+| `update_order_status(...)`   | plpgsql  | invoker  | boolean | `order.service.updateOrderStatus`                                                       | `service_role`       |
+| `reset_demo_orders()`        | sql      | definer  | void    | `server/scripts/seed.ts`                                                                | `service_role`       |
+| `emit_event(...)`            | plpgsql  | definer  | uuid    | `place_order`, `update_order_status`                                                    | `service_role`       |
+| `queue_read(...)`            | plpgsql  | definer  | table   | the worker (P1 PR 03)                                                                   | `service_role`       |
+| `queue_delete(...)`          | sql      | definer  | boolean | the worker                                                                              | `service_role`       |
+| `queue_retry(...)`           | sql      | definer  | void    | the worker                                                                              | `service_role`       |
+| `queue_dead_letter(...)`     | sql      | definer  | boolean | the worker                                                                              | `service_role`       |
+| `queue_metrics(text)`        | sql      | definer  | table   | the worker's health report                                                              | `service_role`       |
+| `purge_domain_events(...)`   | sql      | invoker  | integer | pg_cron `purge-domain-events`                                                           | `service_role`       |
+| `audit_row_change()`         | plpgsql  | definer  | trigger | the five `*_audit` triggers                                                             | nobody               |
+| `audit_log_append_only()`    | plpgsql  | invoker  | trigger | `audit_log_no_change`, `_no_truncate`                                                   | nobody               |
+| `menu_items_sync_price()`    | plpgsql  | invoker  | trigger | `menu_items_sync_price`                                                                 | nobody               |
 
 ### set_updated_at
 
@@ -340,7 +356,7 @@ place_order(
   p_store_id uuid,
   p_customer_name text,
   p_payment_status payment_status,
-  p_lines jsonb,              -- [{ menu_item_id, name, unit_price, quantity }] in cart order
+  p_lines jsonb,              -- [{ menu_item_id, name, quantity, unit_price_paise }] in cart order
   p_customer_phone text default null,
   p_note text default null,
   p_idempotency_key uuid default null, -- the client's per-attempt key (API.md "POST /orders")
@@ -349,7 +365,12 @@ place_order(
 ) returns uuid                -- the new order's id, or the id of the order this key already placed
 ```
 
-The API has already checked and priced every line from the database. The function first sets `app.actor` and
+The API has already checked every line and charged for it. The function prices them itself, from
+`menu_items.price_paise`, and each line's `unit_price_paise` is the price the API charged: a line whose price has
+changed since refuses the order (step 3), so nothing is stored at a price other than the one charged. A line without
+`unit_price_paise` (the API deployed before the paise move sends rupees in `unit_price`) is not checked, and its
+`unit_price` is ignored.
+It first sets `app.actor` and
 `app.request_id` for the transaction (`set_config(..., true)`; PR 06's audit trigger reads them). Then:
 
 0. With a `p_idempotency_key`: takes `pg_advisory_xact_lock` on a hash of `(user_id, key)` (held until the
@@ -361,11 +382,16 @@ The API has already checked and priced every line from the database. The functio
    - row found with `null` stock: the item is not tracked, nothing to reserve;
    - otherwise (too few left, or the item does not exist): raises `INSUFFICIENT_STOCK` with detail
      `{ menuItemId, name, available }`, where `available` is the stock left (0 when the item is missing).
-3. Inserts the `orders` row: `total = sum(unit_price * quantity)` over `p_lines`, `status = 'PLACED'`,
+3. Reads every line's `menu_items` row once (price, name, photo, category), so the total and the lines come from the
+   same versions even if a price changes meanwhile. If any line's `unit_price_paise` differs from that read's
+   `price_paise`, raises `PRICE_CHANGED` with detail `{ menuItemId, name, price }` (the first such line in cart order;
+   `price` is the current price in rupees), which rolls back the stock reserved in step 1. Otherwise inserts the
+   `orders` row: `total_paise = sum(price_paise * quantity)` (and `total = total_paise / 100`), `status = 'PLACED'`,
    `payment_status = p_payment_status`, `estimated_ready_at = now() + stores.prep_time_max_minutes` minutes,
    `idempotency_key = p_idempotency_key`, and the snapshot `store_name = stores.name`.
 4. Inserts one `order_items` row per line with `line_number` = the line's position in `p_lines` (1-based),
-   `line_total = unit_price * quantity`, and the snapshots `image_url` and `category` read from `menu_items`.
+   `unit_price_paise = price_paise`, `line_total_paise = unit_price_paise * quantity` (and the rupee columns, each
+   paise value / 100), and the snapshots `name`, `image_url` and `category`, all from that read.
 5. Calls `emit_event('order.placed', 'order', id, store_id, { orderNumber }, p_actor, p_request_id)`. An idempotent
    replay returns at step 0 and emits nothing.
 
@@ -375,6 +401,7 @@ winner's row lock, then re-checks and finds too little stock.
 | Raises               | Detail                            |
 | -------------------- | --------------------------------- |
 | `INSUFFICIENT_STOCK` | `{ menuItemId, name, available }` |
+| `PRICE_CHANGED`      | `{ menuItemId, name, price }`     |
 
 ### update_order_status
 
@@ -503,7 +530,7 @@ never read (a later SQL edit would carry the last admin's id).
   not need its own `revoke`/`grant` for functions — it adds no new function — but still revokes table privileges for
   `site_settings` explicitly, matching every other table.
 - `EXECUTE` on every function is revoked from `public`, `anon` and `authenticated`, then granted to `service_role`
-  for all but the five trigger functions.
+  for all but the six trigger functions.
 - `anon` and `authenticated` have no `USAGE` on the `pgmq` or `cron` schema, and neither schema is exposed through
   the Data API (`api.schemas` in `server/supabase/config.toml`).
 - `server/test/api/database-lockdown.test.ts` checks all of the above from the catalogs, for every table and function,

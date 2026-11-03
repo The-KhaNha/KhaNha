@@ -15,7 +15,8 @@ export const STORE = {
 export interface SeedMenuItem {
   category: string;
   name: string;
-  price: number;
+  /** Whole rupees in paise (the database refuses anything else while the API sends rupees). */
+  pricePaise: number;
   description: string;
   imageUrl: string;
   isPopular?: boolean;
@@ -30,7 +31,7 @@ export const MENU: SeedMenuItem[] = [
   {
     category: 'Coffee',
     name: 'Cold Coffee',
-    price: 120,
+    pricePaise: 12000,
     description: 'Creamy chilled coffee, blended smooth',
     imageUrl: '/images/cold-coffee.jpg',
     isPopular: true,
@@ -38,14 +39,14 @@ export const MENU: SeedMenuItem[] = [
   {
     category: 'Coffee',
     name: 'Espresso',
-    price: 90,
+    pricePaise: 9000,
     description: 'Bold double shot, freshly pulled',
     imageUrl: '/images/espresso.jpg',
   },
   {
     category: 'Coffee',
     name: 'Cappuccino',
-    price: 140,
+    pricePaise: 14000,
     description: 'Velvety steamed milk over rich espresso',
     imageUrl: '/images/cappuccino.jpg',
     isPopular: true,
@@ -53,7 +54,7 @@ export const MENU: SeedMenuItem[] = [
   {
     category: 'Snacks',
     name: 'Veg Sandwich',
-    price: 150,
+    pricePaise: 15000,
     description: 'Grilled with fresh veggies, cheese and mint chutney',
     imageUrl: '/images/veg-sandwich.jpg',
     isPopular: true,
@@ -61,7 +62,7 @@ export const MENU: SeedMenuItem[] = [
   {
     category: 'Snacks',
     name: 'French Fries',
-    price: 120,
+    pricePaise: 12000,
     description: 'Crispy, golden, lightly salted',
     imageUrl: '/images/french-fries.jpg',
     isPopular: true,
@@ -69,7 +70,7 @@ export const MENU: SeedMenuItem[] = [
   {
     category: 'Snacks',
     name: 'Cheese Toast',
-    price: 130,
+    pricePaise: 13000,
     description: 'Buttery toast with melted cheese and herbs',
     imageUrl: '/images/cheese-toast.jpg',
     stockQuantity: 1,
@@ -77,21 +78,21 @@ export const MENU: SeedMenuItem[] = [
   {
     category: 'Juices',
     name: 'Orange Juice',
-    price: 100,
+    pricePaise: 10000,
     description: 'Freshly squeezed, no added sugar',
     imageUrl: '/images/orange-juice.jpg',
   },
   {
     category: 'Juices',
     name: 'Watermelon Juice',
-    price: 110,
+    pricePaise: 11000,
     description: 'Cold-pressed and refreshing',
     imageUrl: '/images/watermelon-juice.jpg',
   },
   {
     category: 'Juices',
     name: 'Berry Smoothie',
-    price: 150,
+    pricePaise: 15000,
     description: 'Mixed berries blended with yogurt',
     imageUrl: '/images/berry-smoothie.jpg',
     isAvailable: false,
@@ -99,7 +100,7 @@ export const MENU: SeedMenuItem[] = [
   {
     category: 'Desserts',
     name: 'Chocolate Brownie',
-    price: 110,
+    pricePaise: 11000,
     description: 'Fudgy, dense, with a crackly top',
     imageUrl: '/images/chocolate-brownie.jpg',
     stockQuantity: 2,
@@ -107,7 +108,7 @@ export const MENU: SeedMenuItem[] = [
   {
     category: 'Desserts',
     name: 'Blueberry Muffin',
-    price: 90,
+    pricePaise: 9000,
     description: 'Soft-baked with bursting blueberries',
     imageUrl: '/images/blueberry-muffin.jpg',
     stockQuantity: 5,

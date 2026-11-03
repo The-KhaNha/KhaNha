@@ -216,6 +216,7 @@ describe('admin settings: the limits apply to the next request', () => {
       store_name: 'Campus Cafe',
       customer_name: 'Settings Test',
       total: 100,
+      total_paise: 10000,
       note: `settings-${i}`,
       estimated_ready_at: new Date(now + 600_000).toISOString(),
       created_at: new Date(now + i * 1000).toISOString(),

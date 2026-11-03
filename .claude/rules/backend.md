@@ -62,6 +62,9 @@ gzip on. See `docs/DEPLOYMENT.md` "Containers".
   `.setHeader('x-actor', JSON.stringify(ctx.actor)).setHeader('x-request-id', ctx.requestId)` as
   `settings.service.updateSettings` and `flags.service.setFlag` do. Anything else is recorded as `SYSTEM`. A new audited table gets its
   `audit_row_change` trigger in the migration that creates it.
+- **Money is paise in the database** (`bigint`, `…_paise`), whole rupees in the API's existing fields; `utils/money.ts`
+  is the only converter (`money-boundary.safe.test.ts`), and `place_order` prices every line from `menu_items` itself
+  and refuses one whose charged `unit_price_paise` is no longer the price, `PRICE_CHANGED` (ADR-004).
 - **Trust nothing from the client:** prices and totals come from the database. Someone else's resource is 404, never 403. The role is read from `profiles` on every request, never from the token.
 - **`supabaseAdmin` bypasses RLS,** so every query scopes by user explicitly.
 - Public reads are cached with `cached()` and invalidated by the writes that change them (§2c).

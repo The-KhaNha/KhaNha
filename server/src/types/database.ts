@@ -221,6 +221,7 @@ export type Database = {
           is_popular: boolean;
           name: string;
           price: number;
+          price_paise: number;
           sort_order: number;
           stock_quantity: number | null;
           store_id: string;
@@ -234,6 +235,7 @@ export type Database = {
           is_popular?: boolean;
           name: string;
           price: number;
+          price_paise: number;
           sort_order?: number;
           stock_quantity?: number | null;
           store_id: string;
@@ -247,6 +249,7 @@ export type Database = {
           is_popular?: boolean;
           name?: string;
           price?: number;
+          price_paise?: number;
           sort_order?: number;
           stock_quantity?: number | null;
           store_id?: string;
@@ -268,11 +271,13 @@ export type Database = {
           image_url: string;
           line_number: number;
           line_total: number;
+          line_total_paise: number;
           menu_item_id: string;
           name: string;
           order_id: string;
           quantity: number;
           unit_price: number;
+          unit_price_paise: number;
         };
         Insert: {
           category: string;
@@ -280,11 +285,13 @@ export type Database = {
           image_url: string;
           line_number: number;
           line_total: number;
+          line_total_paise: number;
           menu_item_id: string;
           name: string;
           order_id: string;
           quantity: number;
           unit_price: number;
+          unit_price_paise: number;
         };
         Update: {
           category?: string;
@@ -292,11 +299,13 @@ export type Database = {
           image_url?: string;
           line_number?: number;
           line_total?: number;
+          line_total_paise?: number;
           menu_item_id?: string;
           name?: string;
           order_id?: string;
           quantity?: number;
           unit_price?: number;
+          unit_price_paise?: number;
         };
         Relationships: [
           {
@@ -330,6 +339,7 @@ export type Database = {
           store_id: string;
           store_name: string;
           total: number;
+          total_paise: number;
           updated_at: string;
           user_id: string;
         };
@@ -347,6 +357,7 @@ export type Database = {
           store_id: string;
           store_name: string;
           total: number;
+          total_paise: number;
           updated_at?: string;
           user_id: string;
         };
@@ -364,6 +375,7 @@ export type Database = {
           store_id?: string;
           store_name?: string;
           total?: number;
+          total_paise?: number;
           updated_at?: string;
           user_id?: string;
         };

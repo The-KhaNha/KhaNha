@@ -5,6 +5,7 @@
 // Production (`npm run seed -- --production`): first-time setup only. Creates the store and menu while production
 // has no store yet, and nothing else: no wipes, and no test accounts with well-known passwords.
 import { env } from '../src/utils/env';
+import { paiseToRupees } from '../src/utils/money';
 import { logger } from '../src/utils/logger';
 import { supabaseAdmin as db } from '../src/utils/supabase';
 import type { Tables } from '../src/types/database';
@@ -47,7 +48,9 @@ async function seedMenu(storeId: string): Promise<Tables<'menu_items'>[]> {
       category: item.category,
       name: item.name,
       description: item.description,
-      price: item.price,
+      price_paise: item.pricePaise,
+      // The rupee column is still read by the API deployed before the paise move; dropped in PR 16.
+      price: paiseToRupees(item.pricePaise),
       image_url: item.imageUrl,
       is_popular: item.isPopular ?? false,
       is_available: item.isAvailable ?? true,

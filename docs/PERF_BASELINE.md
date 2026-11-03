@@ -366,3 +366,37 @@ one staff, sequential).
   each client one extra 614 B download; harmless, but `.order('key')` in `getFlags()` would make the ETag depend on
   content only. Run notes: the first visible-flag cold sample was discarded (10 of its 20 PATCHes hit the 30/min write
   limiter, 429) and rerun in a fresh window (20 PATCH 200).
+- **2026-11-03 (feat/p1-09-paise-expand, uncommitted)** · server-only run for P1 PR 09 (money in paise, expand: `place_order` prices every line from
+  `menu_items.price_paise` in one read and compares each sent `unit_price_paise`, a `BEFORE INSERT OR UPDATE OF price, price_paise` sync trigger on
+  `menu_items`, serializers convert paise to rupees on every menu and order read). Client bundle, Web Vitals and polling intervals unchanged (no client
+  change, not re-measured). Local API on :8109 (`LOG_LEVEL=warn`, write limiter raised so 100+ POSTs fit), 30 requests per cell after 2 warm-ups, seed
+  freshly reset. No HIGH or MEDIUM finding.
+  - **Bytes are unchanged, by construction and measured:** the DTO keys and their order are identical (serializer diff only wraps four fields in
+    `paiseToRupees`), and in the DB every rupee column equals its paise column over 100 (132 orders, 422 lines, 11 menu rows, 0 mismatches), so the same
+    integers are sent. `GET /api/menu` 4,416 B on the untouched seed (the same figure as the 2026-11-02 PR 10 row); all 15 `price` fields whole
+    numbers (90-150). `GET /api/orders` customer, 20 orders: 11,832 B (PR 08: 11,732 B for a different cart mix); `GET /api/orders/:id` 600 B (PR 08:
+    595 B; the 5 B is order-number digits and cart contents, not the shape). Every order passed `unitPrice x quantity = lineTotal` and `sum(lineTotal) = total`.
+  - **`POST /api/orders` (HTTP, all 201):** 1 line p50 14.4 / p95 17.2 ms (second batch 14.0 / 19.3; PR 08 row 18.5 / 26.0, a different session, so
+    not like-for-like); 10 distinct lines p50 14.6 / p95 15.9 ms. Needed the 4 stock-tracked items raised to 1,000,000 locally so ten distinct items fit
+    (the seed has 11 items, 4 with a stock count).
+  - **`place_order` in the database (controlled A/B, 600 one-line and 300 ten-line calls per side, 4 interleaved rounds, rolled back, no HTTP):** PR 09
+    1 line p50 0.355 / p95 0.469 ms vs the PR 08 body (plus paise columns derived from rupees so it runs on this schema) 0.329 / 0.471 ms, +0.026 ms
+    (+8%); 10 lines 0.882 / 1.069 ms vs 0.816 / 1.047 ms, +0.066 ms (+8%). The extra is the `jsonb_agg` of the priced lines and the second pass over it,
+    under half a percent of the 14 ms request; both are well under the 5 ms noise floor of this baseline's regression rule.
+  - **Pricing read, `EXPLAIN (ANALYZE, BUFFERS)`:** `menu_items` joined to the sent lines, 11 rows: Hash Join over a Seq Scan, 1 buffer, 0.10 ms
+    (1 line) / 0.14 ms (10 lines), planning 0.07-0.13 ms; forced to the index it is `menu_items_pkey`, 16 buffers, 0.065 ms (the planner is right to
+    prefer the seq scan on one page). At the 500-item menu cap (506 rows, analysed, rolled back): still a Seq Scan feeding a Hash Join, 11 buffers,
+    0.22 ms execution for 10 lines (the planner assumes 1,000 rows from `jsonb_to_recordset`, so it never picks the index; harmless at 500 rows, revisit
+    only if the menu cap is raised well past that). No new index needed.
+  - **Sync trigger cost on a `menu_items` price UPDATE (committed, pgbench 1 client, 5 s cells, 4 rounds in alternating order):** sync on vs off with
+    audit on 1.383/1.387/1.329/1.397 ms vs 1.336/1.371/1.377/1.349 ms (+0.016 ms mean); with audit off 1.243/1.150/1.165/1.220 vs
+    1.164/1.137/1.166/1.202 ms (+0.027 ms mean): about +0.02 ms, ~1-2% of a ~1.3 ms statement, inside the round-to-round noise. `EXPLAIN ANALYZE` lists it at
+    0.09 ms on a single cold call (the existing `menu_items_audit` trigger 0.13 ms; audit costs about +0.17 ms per price UPDATE in the pgbench cells, not
+    new). It does not fire on `place_order`'s stock decrement (`UPDATE OF stock_quantity` has no trigger line, 0.081 ms) nor on any read; only an admin
+    price edit pays it.
+  - **Reads, 30 requests (PR 08 / PR 13 rows in brackets):** `GET /api/menu` warm p50 0.8 / p95 1.0 ms (1.0 / 3.1), cold after an order invalidated the
+    cache 7.7 / 9.2 ms (10 samples; run 1 8.1 / 11.4); `GET /api/store` 0.9 / 1.1 ms; `GET /api/orders` customer 9.6 / 10.2 ms (9.0 / 10.1; run 1
+    9.1 / 11.8), `GET /api/orders/:id` 6.5 / 7.1 ms (8.3 / 10.1); `GET /api/auth/me` 5.8 / 6.7 ms. Staff `GET /api/orders` with 132 orders and 422 lines:
+    14.7 / 16.8 ms, 137,242 B (run 1 with 6-line carts: 12.6 / 14.4 ms, 110,490 B); PR 08's staff row had 25 orders (9.3 / 11.7 ms, 14,662 B), so it is
+    not comparable: about 1 KB and 0.1 ms per order of this size. No read moved by 5 ms or 20%.
+  - Run 2's menu was 4,434 B because the stock raise lengthened `stockQuantity`; it is not a code effect. Raw output: `KhaNha-wt/.logs/p1-09-perf.out`.

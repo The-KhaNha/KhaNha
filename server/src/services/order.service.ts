@@ -8,6 +8,7 @@ import {
   idempotencyKeyReused,
   insufficientStock,
   notFound,
+  priceChanged,
   validationError,
 } from '../utils/errors';
 import { isUuid } from '../utils/ids';
@@ -38,12 +39,15 @@ const ACTIVE_ORDERS_HARD_MAX = 500;
 
 type MenuItem = Tables<'menu_items'>;
 
-/** One priced line, in the shape the place_order database function takes. */
+/**
+ * One checked line, in the shape the place_order database function takes. `unit_price_paise` is the price this request
+ * charged for: place_order stores its own read of menu_items and refuses the order (PRICE_CHANGED) if that differs.
+ */
 type OrderLine = {
   menu_item_id: string;
   name: string;
-  unit_price: number;
   quantity: number;
+  unit_price_paise: number;
 };
 
 /** What createOrder placed, and whether it was placed now or already existed under the same idempotency key. */
@@ -64,8 +68,8 @@ interface UpdatedOrder {
  * A repeated `idempotencyKey` returns the order that key already placed (the fast path below; place_order settles
  * the race of two simultaneous repeats), so a retry after a lost response never charges or reserves twice.
  *
- * place_order reserves the stock and writes the order in ONE transaction, so a refused order (sold out)
- * leaves no order rows and no stock decrements behind.
+ * place_order reserves the stock and writes the order in ONE transaction, so a refused order (sold out, or a price
+ * changed since the charge) leaves no order rows and no stock decrements behind.
  */
 export async function createOrder(
   user: AuthUser,
@@ -118,10 +122,9 @@ export async function createOrder(
   }
   const byId = new Map(menuItems.map((item) => [item.id, item]));
 
-  const lines = priceLines(input.items, byId);
-  const total = lines.reduce((sum, line) => sum + line.unit_price * line.quantity, 0);
-  // A real gateway would be charged here. With one, a sold-out refusal from place_order must refund the charge.
-  const paymentStatus = await simulatePayment(total);
+  const { lines, totalPaise } = priceLines(input.items, byId);
+  // A real gateway would be charged here. With one, a refusal from place_order (sold out, price changed) must refund it.
+  const paymentStatus = await simulatePayment(totalPaise);
 
   let orderId: string;
   try {
@@ -149,6 +152,10 @@ export async function createOrder(
         String(stock.name),
         Number(stock.available),
       );
+    // The price moved after this request charged for it: nothing was placed, and the customer sees the new price.
+    const changed = raisedByDatabase(err, 'PRICE_CHANGED');
+    if (changed)
+      throw priceChanged(String(changed.menuItemId), String(changed.name), Number(changed.price));
     throw err;
   } finally {
     // Placed or refused for stock, the cached menu's stock counts are out of date either way.
@@ -302,15 +309,16 @@ function statusesLeadingTo(target: OrderStatus): OrderStatus[] {
 }
 
 /**
- * Snapshots each requested item's current name and price. Every refusal names the item (or, when the
- * item is gone, identifies it by id) so the client can point at the exact cart line.
+ * Checks each requested item and prices the order in paise from the items just read, for the payment. Every refusal
+ * names the item (or, when the item is gone, identifies it by id) so the client can point at the exact cart line.
  * Items arrive already merged by the schema, so the quantity cap applies to the real total per item.
  */
 function priceLines(
   requested: CreateOrderInput['items'],
   byId: Map<string, MenuItem>,
-): OrderLine[] {
-  return requested.map(({ menuItemId, quantity }) => {
+): { lines: OrderLine[]; totalPaise: number } {
+  let totalPaise = 0;
+  const lines = requested.map(({ menuItemId, quantity }) => {
     const item = byId.get(menuItemId);
     if (!item) {
       throw new AppError(400, 'ITEM_NOT_FOUND', 'One of the items is no longer on the menu.', {
@@ -331,8 +339,15 @@ function priceLines(
         `You can order at most ${MAX_QUANTITY_PER_ITEM} of ${item.name}. Please reduce the quantity in your cart.`,
       );
     }
-    return { menu_item_id: menuItemId, name: item.name, unit_price: item.price, quantity };
+    totalPaise += item.price_paise * quantity;
+    return {
+      menu_item_id: menuItemId,
+      name: item.name,
+      quantity,
+      unit_price_paise: item.price_paise,
+    };
   });
+  return { lines, totalPaise };
 }
 
 async function lookupUserName(userId: string): Promise<string> {

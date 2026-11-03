@@ -10,21 +10,23 @@ import type {
   StoreDto,
   UserDto,
 } from '../types/api';
+import { paiseToRupees } from './money';
 import { supabaseAdmin } from './supabase';
 
 /**
  * Every order endpoint returns the order with its lines and a minimal store reference.
  * The store's name and each line's photo are snapshots taken when the order was placed (place_order), so a later menu
  * or store edit never rewrites a past order, and the read needs no join beyond its own lines.
+ * Amounts are read in paise and sent in rupees (utils/money.ts).
  * Callers add their filters; lines always come back in cart order.
  */
 export function selectOrders() {
   return supabaseAdmin
     .from('orders')
     .select(
-      `id, order_number, status, payment_status, total, customer_name, customer_phone, note,
+      `id, order_number, status, payment_status, total_paise, customer_name, customer_phone, note,
        estimated_ready_at, created_at, updated_at, store_id, store_name,
-       order_items (id, line_number, menu_item_id, name, unit_price, quantity, line_total, image_url)`,
+       order_items (id, line_number, menu_item_id, name, unit_price_paise, quantity, line_total_paise, image_url)`,
     )
     .order('line_number', { referencedTable: 'order_items' });
 }
@@ -87,7 +89,7 @@ export function toMenuItemDto(item: Tables<'menu_items'>): MenuItemDto {
     category: item.category,
     name: item.name,
     description: item.description,
-    price: item.price,
+    price: paiseToRupees(item.price_paise),
     imageUrl: item.image_url,
     isAvailable: isPurchasable(item),
     isPopular: item.is_popular,
@@ -101,9 +103,9 @@ function toOrderItemDto(item: OrderItemRow): OrderItemDto {
     id: item.id,
     menuItemId: item.menu_item_id,
     name: item.name,
-    unitPrice: item.unit_price,
+    unitPrice: paiseToRupees(item.unit_price_paise),
     quantity: item.quantity,
-    lineTotal: item.line_total,
+    lineTotal: paiseToRupees(item.line_total_paise),
     imageUrl: item.image_url,
   };
 }
@@ -114,7 +116,7 @@ export function toOrderDto(order: OrderWithDetails): OrderDto {
     orderNumber: order.order_number,
     status: order.status,
     paymentStatus: order.payment_status,
-    total: order.total,
+    total: paiseToRupees(order.total_paise),
     customerName: order.customer_name,
     customerPhone: order.customer_phone,
     note: order.note,

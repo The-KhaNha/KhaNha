@@ -39,7 +39,13 @@ it('an order reads the same after its item and store are edited (P1.5 snapshots)
 
   await supabaseAdmin
     .from('menu_items')
-    .update({ name: 'Renamed', price: 999, image_url: '/images/elsewhere.jpg', category: 'Moved' })
+    .update({
+      name: 'Renamed',
+      price: 999,
+      price_paise: 99900,
+      image_url: '/images/elsewhere.jpg',
+      category: 'Moved',
+    })
     .eq('id', item.id)
     .throwOnError();
   await supabaseAdmin
@@ -91,7 +97,13 @@ it('the customer list and the staff list read the snapshots too, even after the 
 
     await supabaseAdmin
       .from('menu_items')
-      .update({ name: 'Gone', price: 1, image_url: '/images/gone.jpg', is_available: false })
+      .update({
+        name: 'Gone',
+        price: 1,
+        price_paise: 100,
+        image_url: '/images/gone.jpg',
+        is_available: false,
+      })
       .eq('id', item.id)
       .throwOnError();
     await supabaseAdmin
