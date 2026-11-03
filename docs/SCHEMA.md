@@ -311,24 +311,24 @@ All functions set `search_path = ''` and use schema-qualified names. Each call i
 raises leaves nothing behind. Expected failures are raised with `message` = an API error code and `detail` = a JSON
 object (SQLSTATE `P0001`). How the API maps them is in [API.md](API.md#database-errors-p0001).
 
-| Function                     | Language | Security | Returns | Called by                             | `EXECUTE` granted to |
-| ---------------------------- | -------- | -------- | ------- | ------------------------------------- | -------------------- |
-| `set_updated_at()`           | plpgsql  | invoker  | trigger | `orders_set_updated_at`               | nobody               |
-| `handle_new_user()`          | plpgsql  | definer  | trigger | `on_auth_user_created`                | nobody               |
-| `handle_user_email_change()` | plpgsql  | definer  | trigger | `on_auth_user_email_changed`          | nobody               |
-| `place_order(...)`           | plpgsql  | invoker  | uuid    | `order.service.createOrder`           | `service_role`       |
-| `update_order_status(...)`   | plpgsql  | invoker  | boolean | `order.service.updateOrderStatus`     | `service_role`       |
-| `reset_demo_orders()`        | sql      | definer  | void    | `server/scripts/seed.ts`              | `service_role`       |
-| `emit_event(...)`            | plpgsql  | definer  | uuid    | `place_order`, `update_order_status`  | `service_role`       |
-| `queue_read(...)`            | plpgsql  | definer  | table   | the worker (P1 PR 03)                 | `service_role`       |
-| `queue_delete(...)`          | sql      | definer  | boolean | the worker                            | `service_role`       |
-| `queue_retry(...)`           | sql      | definer  | void    | the worker                            | `service_role`       |
-| `queue_dead_letter(...)`     | sql      | definer  | boolean | the worker                            | `service_role`       |
-| `queue_metrics(text)`        | sql      | definer  | table   | the worker's health report            | `service_role`       |
-| `purge_domain_events(...)`   | sql      | invoker  | integer | pg_cron `purge-domain-events`         | `service_role`       |
-| `audit_row_change()`         | plpgsql  | definer  | trigger | the five `*_audit` triggers           | nobody               |
-| `audit_log_append_only()`    | plpgsql  | invoker  | trigger | `audit_log_no_change`, `_no_truncate` | nobody               |
-| `menu_items_sync_price()`    | plpgsql  | invoker  | trigger | `menu_items_sync_price`               | nobody               |
+| Function                     | Language | Security | Returns | Called by                                                                               | `EXECUTE` granted to |
+| ---------------------------- | -------- | -------- | ------- | --------------------------------------------------------------------------------------- | -------------------- |
+| `set_updated_at()`           | plpgsql  | invoker  | trigger | `orders_set_updated_at`, `site_settings_set_updated_at`, `feature_flags_set_updated_at` | nobody               |
+| `handle_new_user()`          | plpgsql  | definer  | trigger | `on_auth_user_created`                                                                  | nobody               |
+| `handle_user_email_change()` | plpgsql  | definer  | trigger | `on_auth_user_email_changed`                                                            | nobody               |
+| `place_order(...)`           | plpgsql  | invoker  | uuid    | `order.service.createOrder`                                                             | `service_role`       |
+| `update_order_status(...)`   | plpgsql  | invoker  | boolean | `order.service.updateOrderStatus`                                                       | `service_role`       |
+| `reset_demo_orders()`        | sql      | definer  | void    | `server/scripts/seed.ts`                                                                | `service_role`       |
+| `emit_event(...)`            | plpgsql  | definer  | uuid    | `place_order`, `update_order_status`                                                    | `service_role`       |
+| `queue_read(...)`            | plpgsql  | definer  | table   | the worker (P1 PR 03)                                                                   | `service_role`       |
+| `queue_delete(...)`          | sql      | definer  | boolean | the worker                                                                              | `service_role`       |
+| `queue_retry(...)`           | sql      | definer  | void    | the worker                                                                              | `service_role`       |
+| `queue_dead_letter(...)`     | sql      | definer  | boolean | the worker                                                                              | `service_role`       |
+| `queue_metrics(text)`        | sql      | definer  | table   | the worker's health report                                                              | `service_role`       |
+| `purge_domain_events(...)`   | sql      | invoker  | integer | pg_cron `purge-domain-events`                                                           | `service_role`       |
+| `audit_row_change()`         | plpgsql  | definer  | trigger | the five `*_audit` triggers                                                             | nobody               |
+| `audit_log_append_only()`    | plpgsql  | invoker  | trigger | `audit_log_no_change`, `_no_truncate`                                                   | nobody               |
+| `menu_items_sync_price()`    | plpgsql  | invoker  | trigger | `menu_items_sync_price`                                                                 | nobody               |
 
 ### set_updated_at
 
