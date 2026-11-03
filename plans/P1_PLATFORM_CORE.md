@@ -443,7 +443,8 @@ untouched; the new API needs the migration first, as always.
 > `unit_price_paise` is not checked. **Sync trigger:** `menu_items_sync_price` (before insert or update of `price`,
 > `price_paise`; executable by nobody) derives whichever price column was not written and refuses both written and
 > disagreeing, so the deployed API's rupee-only writes keep working and the columns cannot drift. PR 16 drops the
-> trigger with the rupee column.
+> trigger with the rupee column. **Client:** on `PRICE_CHANGED` the checkout reloads the menu and takes the new prices into
+> the cart (`cartStore.syncPrices`), so the next Pay shows the amount it charges.
 
 [ADR-004](../docs/adr/004-rupees-and-paise.md) as amended (D8). `/before-write`: schema-guard, expected EXTEND
 (`_paise` columns beside the rupee ones, expand → migrate → contract).

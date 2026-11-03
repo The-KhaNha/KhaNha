@@ -51,10 +51,18 @@ export function CheckoutPage() {
   const clear = useCartStore((s) => s.clear);
   const fix = useCartStore((s) => s.fix);
   const setAvailability = useCartStore((s) => s.setAvailability);
+  const syncPrices = useCartStore((s) => s.syncPrices);
   const user = useAuthStore(selectUser);
   const navigate = useNavigate();
-  // Refreshes each line's stock limit from the live menu on arrival (prices are never touched).
-  useMenu();
+  // Refreshes each line's stock limit from the live menu on arrival. Prices are left alone, except on the load a
+  // PRICE_CHANGED refusal asks for: then the cart takes the new price, so the next Pay shows what it will charge.
+  const { menu, retry: reloadMenu } = useMenu();
+  const repriceOnLoad = useRef(false);
+  useEffect(() => {
+    if (!menu || !repriceOnLoad.current) return;
+    repriceOnLoad.current = false;
+    syncPrices(menu.categories.flatMap((category) => category.items));
+  }, [menu, syncPrices]);
 
   // The form lives in the session draft, so a refresh or Back mid-checkout keeps what was typed; the profile only
   // fills a field that was never touched.
@@ -144,6 +152,10 @@ export function CheckoutPage() {
       // The key already placed an order for a different cart (a Pay whose answer was lost, then the cart changed):
       // that order stands, and the next Pay is a new attempt with a new key for what is in the cart now.
       if (apiError.code === 'IDEMPOTENCY_KEY_REUSED') draft.dropKey();
+      if (apiError.code === 'PRICE_CHANGED') {
+        repriceOnLoad.current = true;
+        reloadMenu();
+      }
       // A rejected field (a phone the server will not take) is shown on that field, not in a banner above Pay.
       const apiField = apiError.details?.field;
       if (apiError.code === 'VALIDATION_ERROR' && apiField && apiField in FORM_FIELD) {

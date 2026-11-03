@@ -245,7 +245,8 @@ What the service checks, in this order:
    the quantity in your cart." or, when `available` is 0, "<name> just sold out." A refused order leaves no rows and
    no stock changes behind (see [SCHEMA.md](SCHEMA.md#place_order)). A line whose price changed after step 3 read it:
    409 `PRICE_CHANGED` "The price of <name> just changed to ₹<price>. Please review your order." (no `details`), and
-   nothing is placed. The client shows the message; Pay again charges the new price.
+   nothing is placed. The client shows the message, reloads the menu and takes the new price into the cart, so the
+   next Pay shows the amount it charges.
 
 A new order is `paymentStatus: "PAID"`, `status: "PLACED"`, `estimatedReadyAt = now() + store.prep_time_max_minutes`.
 
@@ -256,7 +257,7 @@ A new order is `paymentStatus: "PAID"`, `status: "PLACED"`, `estimatedReadyAt = 
 | 401    | `UNAUTHORIZED`                                                                                           |
 | 404    | `NOT_FOUND` (no store row)                                                                               |
 | 409    | `IDEMPOTENCY_KEY_REUSED` (the key already placed a different order; `details: { orderId, orderNumber }`) |
-| 409    | `PRICE_CHANGED` (a price changed between the charge and `place_order`; no `details`)                     |
+| 409    | `PRICE_CHANGED` (a price changed after the charge; no `details`; the client reloads the menu)            |
 | 413    | `PAYLOAD_TOO_LARGE`                                                                                      |
 | 429    | `RATE_LIMITED` (the per-user write limit, [Headers and limits](#headers-and-limits))                     |
 

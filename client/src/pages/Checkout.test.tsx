@@ -1,13 +1,15 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { CreateOrderInput } from '../types/api';
+import type { CreateOrderInput, MenuItem, MenuResponse } from '../types/api';
 
 vi.mock('../lib/supabase', () => ({
   getSupabase: () => Promise.reject(new Error('not in this test')),
   mayHaveSession: () => false,
 }));
-vi.mock('../features/menu/useMenu', () => ({ useMenu: () => ({}) }));
+// The real useMenu/useResource run; only the request is faked (pending unless a test answers it).
+const fetchMenu = vi.hoisted(() => vi.fn<() => Promise<MenuResponse>>(() => new Promise(() => {})));
+vi.mock('../services/menu', () => ({ fetchMenu }));
 const createOrder = vi.hoisted(() => vi.fn<(input: CreateOrderInput) => Promise<unknown>>());
 vi.mock('../services/orders', () => ({ createOrder }));
 
@@ -137,5 +139,71 @@ describe('CheckoutPage when the server rejects one field', () => {
 
     fireEvent.change(phone, { target: { value: '98765 43211' } });
     expect(screen.queryByText('Enter a valid phone number.')).not.toBeInTheDocument();
+  });
+});
+
+describe('CheckoutPage when a price changed before the order was placed', () => {
+  const menuAt = (price: number): MenuResponse => {
+    const espresso: MenuItem = {
+      id: 'i1',
+      category: 'Coffee',
+      name: 'Espresso',
+      description: '',
+      price,
+      imageUrl: '',
+      isAvailable: true,
+      isPopular: false,
+      sortOrder: 1,
+      stockQuantity: null,
+    };
+    return {
+      store: {
+        id: 's1',
+        name: 'Cafe',
+        tagline: '',
+        description: '',
+        imageUrl: null,
+        isOpen: true,
+        prepTimeMinMinutes: 5,
+        prepTimeMaxMinutes: 10,
+      },
+      popular: [],
+      categories: [{ name: 'Coffee', items: [espresso] }],
+    };
+  };
+
+  beforeEach(() => {
+    sessionStorage.clear();
+    localStorage.clear();
+    createOrder.mockReset();
+    fetchMenu.mockReset();
+    useCheckoutDraftStore.getState().reset();
+    useCheckoutDraftStore.getState().setField('name', 'Ravi');
+    useCartStore.setState({
+      lines: [
+        {
+          menuItemId: 'i1',
+          name: 'Espresso',
+          unitPrice: 90,
+          imageUrl: null,
+          quantity: 2,
+          maxQuantity: null,
+        },
+      ],
+    });
+  });
+
+  it('shows the server message, reloads the menu and shows the new price before the next Pay', async () => {
+    fetchMenu.mockResolvedValueOnce(menuAt(90)).mockResolvedValue(menuAt(100));
+    const message = 'The price of Espresso just changed to ₹100. Please review your order.';
+    createOrder.mockRejectedValueOnce(new ApiError(409, 'PRICE_CHANGED', message));
+    renderCheckout();
+    await waitFor(() => expect(fetchMenu).toHaveBeenCalledTimes(1));
+    fireEvent.click(await screen.findByRole('button', { name: /Pay ₹180/ }));
+
+    expect(await screen.findByText(message)).toBeInTheDocument();
+    await waitFor(() => expect(fetchMenu).toHaveBeenCalledTimes(2));
+    expect(await screen.findByRole('button', { name: /Pay ₹200/ })).toBeInTheDocument();
+    expect(useCartStore.getState().lines[0]?.unitPrice).toBe(100);
   });
 });
