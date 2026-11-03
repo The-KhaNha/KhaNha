@@ -15,13 +15,19 @@ let timer: ReturnType<typeof setTimeout> | undefined;
 let installed = false;
 const seen = new WeakMap<object, ClientErrorReport>();
 
-// Bound the scan, then scrub before cutting fields: truncation must not expose half a secret.
+// Bound the scan, then scrub before cutting fields: truncation must not expose half a secret. A JWT and an email only
+// start at the head of a run, which keeps a long run linear; the character before the head is captured and put back,
+// not matched by lookbehind, which Safari before 16.4 cannot compile (regexSupport.test.ts). A token after its name
+// may be URL-encoded (`refresh_token%3D…`), and an email's local part may hold `%` or `'`.
+const SECRET =
+  /[?#][^\s"')]*|\b[\w.-]{0,64}(?:password|token|email|phone|key|secret|signature|checksum|vpa|code|authorization|cookie)[\w.-]{0,64}["'\]]*\s*(?:[:=]|%3D)[^\r\n]*|(^|[^\w-])eyJ[\w-]+(?:\.[\w-]*){0,2}|sb_[a-z]+_[\w-]+|\bBearer\s+[\w.~+/=-]+|(^|[^\w.+%'-])[\w.+%'-]{1,64}(?:@|%40)[\w-]{1,63}(?:\.[\w-]{1,63}){1,8}|\+?\(?\d(?:[\s.()-]{0,2}\d){9,14}/gi;
 const scrub = (text: string) =>
   text
     .slice(0, 8000)
     .replace(
-      /[?#][^\s"')]*|\b[\w.-]{0,64}(?:password|token|email|phone|key|secret|signature|checksum|vpa|code|authorization|cookie)[\w.-]{0,64}["'\]]*\s*[:=][^\r\n]*|(?<![\w-])eyJ[\w-]+(?:\.[\w-]*){0,2}|sb_[a-z]+_[\w-]+|\bBearer\s+[\w.~+/=-]+|(?<![\w.+-])[\w.+-]{1,64}(?:@|%40)[\w-]{1,63}(?:\.[\w-]{1,63}){1,8}|\+?\(?\d(?:[\s.()-]{0,2}\d){9,14}/gi,
-      '[Redacted]',
+      SECRET,
+      (_match, jwtHead: string | undefined, emailHead: string | undefined) =>
+        `${jwtHead ?? emailHead ?? ''}[Redacted]`,
     );
 
 function flush() {

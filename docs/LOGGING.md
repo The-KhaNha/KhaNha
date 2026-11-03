@@ -138,10 +138,13 @@ they retain the connection-error fallback and the boundary's constant client log
 At most five reports are queued over a page load. Each is at most 4096 bytes of UTF-8 JSON, including escaping,
 with message at most 500 characters, optional stack at most 3500, and route at most 200. The route comes only from
 `location.pathname`. Before those field cuts, the client scans at most 8000 characters and replaces URL query
-strings and fragments, JWTs, `sb_…` keys, `Bearer` values, email addresses (also `%40`-encoded) and phone numbers
-with `[Redacted]`. A sensitive keyed value is removed through the end of its line, including spaces and semicolon
-cookie fragments. This deliberately over-redacts rather than leaving a bearer token behind after removing its
-header name. `lib/errorReporter.test.ts` checks every field in the server's `REDACT_PATHS` and complete header values.
+strings and fragments, JWTs, `sb_…` keys, `Bearer` values, email addresses (also `%40`-encoded, with `%` or `'` in
+the local part) and phone numbers with `[Redacted]`. A sensitive keyed value (`name=` or URL-encoded `name%3D`) is
+removed through the end of its line, including spaces and semicolon cookie fragments. This deliberately over-redacts
+rather than leaving a bearer token behind after removing its header name. `lib/errorReporter.test.ts` checks every
+field in the server's `REDACT_PATHS`, complete header values and the encoded shapes. The scrub uses no regex
+lookbehind: Safari before 16.4 cannot compile one, and the reporter would drop every report there
+(`lib/regexSupport.test.ts` fails on a lookbehind anywhere in client source).
 
 Reports are batched after 250 ms and flushed on `pagehide`. `services/clientErrors.ts` uses the normal `request()`
 transport with `auth: false` and `keepalive: true`, retaining `X-Client-Version` without loading auth. Sending never

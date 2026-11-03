@@ -543,6 +543,11 @@ Verification completed the same day on `0040f5d`, in a fresh macOS environment:
   1456 → 1432 ms, `/menu` LCP 1536 → 1552 ms, CLS 0 / 0.0001 unchanged, `/menu` INP 48 → 48 ms; all within
   `client/perf-budget.json` and within noise of the base
   ([`docs/PERF_BASELINE.md`](../docs/PERF_BASELINE.md#web-vitals-ab-2026-11-03-0040f5d-against-its-base-572a359)).
+- **Closing `/break` follow-ups in this PR:** the scrub had regex lookbehind, which Safari before 16.4 cannot compile, so
+  every report from those phones was dropped (now a captured head character, guarded by `lib/regexSupport.test.ts`
+  over all client source); URL-encoded tokens (`refresh_token%3D…`) and emails with `%` or `'` are scrubbed; the
+  report bounds live in `LIMITS.clientErrors` (CodeRabbit). A production build sends exactly one report per render
+  crash (the dev build's three come from React's development double render).
 - **Gate:** client typecheck, lint and 378 unit tests; Chromium and WebKit smokes, 68 passed with the 12 existing
   engine/font skips; `build:container`, `check:bundle` (89.8 KB initial) and `check:dist-secrets` passed.
 

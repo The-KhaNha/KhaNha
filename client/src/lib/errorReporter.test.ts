@@ -153,6 +153,35 @@ describe('browser error reporter', () => {
     window.history.replaceState({}, '', '/');
   });
 
+  // Each leftover is what a half-working scrub kept: a whole-string check would pass on a partial redaction.
+  it.each([
+    ['a URL-encoded refresh token', 'callback%23refresh_token%3Dbrk7q2xw9zle', 'brk7q2xw9zle'],
+    ['an encoded access token', 'next%26access_token%3Dat-secret-1', 'at-secret-1'],
+    ['an encoded email with an encoded plus', 'breaker%2Bx%40example.com', 'breaker'],
+    ['an email with an apostrophe', "o'brien.smith@example.com", "o'"],
+  ])('scrubs %s', (_label, secret, leftover) => {
+    reporter.installErrorReporter();
+    reporter.setSamplePercent(100);
+    reporter.reportError(new Error(`Failed: ${secret} done`), 'error');
+    flush();
+    expect(sent()).not.toContain(leftover);
+    expect(sent()).toContain('Failed: ');
+  });
+
+  it('stays linear on long runs of the characters an email or token may start with', () => {
+    reporter.setSamplePercent(100);
+    for (const run of [
+      'a%'.repeat(4000),
+      "o'".repeat(4000),
+      'eyJ'.repeat(2700),
+      'token%3D&'.repeat(900),
+    ]) {
+      const start = performance.now();
+      reporter.reportError(new Error(run), 'error');
+      expect(performance.now() - start).toBeLessThan(50);
+    }
+  });
+
   it.each(sensitivePaths)('scrubs the value under REDACT_PATHS field %s', (key) => {
     reporter.installErrorReporter();
     reporter.setSamplePercent(100);
