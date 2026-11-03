@@ -6,7 +6,7 @@ builds less than the roadmap describes (each with its reason and the phase that 
 its box here and in the roadmap.
 
 > **Status: in progress** (3 November 2026). PRs 01–11, 02b and 13–15 are merged into `feat/P1`; PR 12 is
-> implemented, with merge and the workflow-based security scan pending. PR 16 waits for the production release. Every
+> implemented and verified, in review. PR 16 waits for the production release. Every
 > [decision](#decisions) is answered, and ADR-001, 004, 005, 006, 008, 009 and 010 are accepted (001, 004, 006 and 009
 > with amendments). One agent builds P1 on the `feat/P1` feature branch, one PR at a time, in the order below.
 
@@ -534,36 +534,28 @@ cases, with existing font/engine skips); the final three reporter cases passed s
 Page, shell and chunk fallbacks passed the throttled phone/desktop visual gate, 320–1440 px, 200% text and 44 px
 controls. The local API accepted scrubbed render reports and logged route, stack and client version.
 Refactor, logging, test/docs, performance and independent code/security reviews found no remaining blockers.
-The workflow-based security scan could not run because this runtime has no Workflow tool, so the full post-change
-verification remains open. Production Web Vitals were not remeasured; measured bundle limits are recorded in
-[`docs/PERF_BASELINE.md`](../docs/PERF_BASELINE.md#browser-error-reporting-p1-pr-12-2026-11-03).
+Verification completed the same day on `0040f5d`, in a fresh macOS environment:
+
+- **Security scan** of `git diff origin/feat/P1...HEAD` (the `security-review` scan, which stands in for the
+  `claude-security` plugin that is not installed): no findings. Crash reports go out with `auth: false`, the client
+  and the server each scrub tokens, keys, emails and phones on their own, and no error text reaches the page.
+- **Web Vitals A/B**, production build, 360×640, Slow 4G, 4× CPU, median of 3, against the base `572a359`: `/` LCP
+  1456 → 1432 ms, `/menu` LCP 1536 → 1552 ms, CLS 0 / 0.0001 unchanged, `/menu` INP 48 → 48 ms; all within
+  `client/perf-budget.json` and within noise of the base
+  ([`docs/PERF_BASELINE.md`](../docs/PERF_BASELINE.md#web-vitals-ab-2026-11-03-0040f5d-against-its-base-572a359)).
+- **Gate:** client typecheck, lint and 378 unit tests; Chromium and WebKit smokes, 68 passed with the 12 existing
+  engine/font skips; `build:container`, `check:bundle` (89.8 KB initial) and `check:dist-secrets` passed.
 
 #### PR 12 handoff
 
-Branch: `feat/p1-12-error-reporter`. PR target: `feat/P1`. The implementation is complete; resume verification
-and review on this branch. The local worktree is `/tmp/khanha-p1-12`; the original checkout has separate tooling
-changes outside this PR. Read `CLAUDE.md`, the applicable area rules and `docs/CODEX.md` when present before work.
+Branch: `feat/p1-12-error-reporter`. PR target: `feat/P1`. Implementation and verification are complete; the PR is
+in review. No migration, server version bump or minimum-client-version bump is needed.
 
 Remaining work, in order:
 
-1. Run the required workflow-based security scan of this branch's committed changes against `origin/feat/P1`
-   in a session that provides the Workflow tool. The independent security review already passed, but it does not
-   replace that scan. Fix confirmed findings with regression guards, then rerun the affected checks. Keep the PR
-   in draft and leave the post-change verification mark unset until the required stages are complete.
-2. Complete the production-build performance comparison at 360×640, Slow 4G and 4× CPU: LCP, INP and CLS against
-   `client/perf-budget.json`, with the measurements recorded in the existing P12 section of `docs/PERF_BASELINE.md`.
-   Current measured figures are 92,134 B initial JavaScript gzip and 1,017 B for the reporter (1 KiB budget).
-   Earlier runtime Web Vitals remain unmeasured for this change; do not present those older numbers as new evidence.
-3. On source changes or a fresh environment, run in `client/`: `npm run typecheck && npm run lint && npm test`,
-   `npm run e2e:chromium`, `npm run e2e:webkit`, and `npm run build:container`. From the root, run
-   `npm run check:bundle && npm run check:dist-secrets`. Existing local browser skips concern missing fonts or
-   engine-specific performance APIs; check the CI results without weakening those assertions. The three reporter
-   cases also run alone with `npm run e2e:chromium -- e2e/error-reporting.spec.ts` (or `e2e:webkit`).
-4. After the remaining checks pass, refresh the graph, finish `/post-change`, and only then run
-   `node .claude/hooks/major-change-gate.js --mark`. Update this handoff with the evidence, mark the draft ready
-   within the review budget, and address review findings. The user merges into `feat/P1`; tick PR 12's Merged box
-   only after that merge is confirmed. No migration, server version bump or minimum-client-version bump is needed.
-5. After P12 merges, follow [Closing P1](#closing-p1): on the updated phase branch, validate both packages, run
+1. Address review findings. The user merges into `feat/P1`; tick PR 12's Merged box only after that merge is
+   confirmed.
+2. After P12 merges, follow [Closing P1](#closing-p1): on the updated phase branch, validate both packages, run
    Chromium e2e and `/break`, and resolve failures before the phase PR into `dev`. PR 16 remains blocked until the
    user confirms the P1 release is running in production. The separate pnpm migration follows the phase merge
    ([roadmap P1.8](ROADMAP.md#p18-tooling-pnpm-after-the-phase-merges)). Never apply production migrations here.
