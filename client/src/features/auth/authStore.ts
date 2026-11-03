@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { User } from '../../types/api';
 import { logger } from '../../lib/logger';
+import { safeJSONStorage } from '../../lib/safeStorage';
 import { getSupabase, mayHaveSession } from '../../lib/supabase';
 import { ApiError } from '../../services/api';
 import { fetchMe, register as registerRequest, signIn, signOut } from '../../services/auth';
@@ -119,6 +120,7 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'fp_auth',
+      storage: safeJSONStorage(),
       partialize: (state) => ({ user: state.user, token: state.token }),
     },
   ),

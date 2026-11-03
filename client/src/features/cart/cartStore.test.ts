@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { fillStorage } from '../../test/storage';
 import type { MenuItem } from '../../types/api';
 import {
   MAX_LINE_QUANTITY,
@@ -170,5 +171,28 @@ describe('selectors', () => {
 
   it('selectQuantityOf is 0 for a line that is not in the cart', () => {
     expect(selectQuantityOf('missing')(useCartStore.getState())).toBe(0);
+  });
+});
+
+// zustand's persist writes inside every set() and does not catch: a full quota once took /menu down on every load,
+// because useMenu's effect calls syncAvailability (even on an empty cart).
+describe('with browser storage full', () => {
+  let full: ReturnType<typeof fillStorage>;
+  beforeEach(() => {
+    full = fillStorage();
+  });
+  afterEach(() => full.mockRestore());
+
+  it('add and syncAvailability still work in memory', () => {
+    useCartStore.getState().add(menuItem({ id: 'a', stockQuantity: 3 }));
+    useCartStore.getState().syncAvailability([menuItem({ id: 'a', stockQuantity: 1 })]);
+    expect(selectLines(useCartStore.getState())).toMatchObject([
+      { menuItemId: 'a', quantity: 1, maxQuantity: 1 },
+    ]);
+    expect(full).toHaveBeenCalled();
+  });
+
+  it('syncAvailability on an empty cart does not throw', () => {
+    expect(() => useCartStore.getState().syncAvailability([menuItem()])).not.toThrow();
   });
 });

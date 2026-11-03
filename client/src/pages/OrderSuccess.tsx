@@ -15,6 +15,27 @@ export function OrderSuccessPage() {
   const passedOrder = (location.state as { order?: Order } | null)?.order ?? null;
   const { order, isLoading, error, retry } = useOrder(id, passedOrder);
 
+  // A typed, stale or someone else's id: nothing was placed, so no celebration, and a retry would only 404 again.
+  // Same words as the order page (pages/Order.tsx). An unreachable server or a 5xx below still says "placed".
+  if (!order && error?.status === 404) {
+    return (
+      <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center px-6 py-12 md:max-w-lg">
+        <ErrorState
+          title="Unable to load your order."
+          message="We couldn't find this order."
+          actions={
+            <>
+              <ButtonLink to="/orders" size="lg" fullWidth>
+                View your orders
+              </ButtonLink>
+              <HomeLink />
+            </>
+          }
+        />
+      </main>
+    );
+  }
+
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-center px-6 py-12 text-center md:max-w-lg">
       <div className="relative">
@@ -76,13 +97,19 @@ export function OrderSuccessPage() {
         <ButtonLink to={id ? `/orders/${id}` : '/orders'} size="lg" fullWidth>
           Track Order
         </ButtonLink>
-        <Link
-          to="/"
-          className="inline-flex h-11 items-center justify-center rounded-control text-body font-semibold text-muted transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
-        >
-          Back to home
-        </Link>
+        <HomeLink />
       </div>
     </main>
+  );
+}
+
+function HomeLink() {
+  return (
+    <Link
+      to="/"
+      className="inline-flex h-11 items-center justify-center rounded-control text-body font-semibold text-muted transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+    >
+      Back to home
+    </Link>
   );
 }

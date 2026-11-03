@@ -50,7 +50,7 @@ client/
     │   ├── menu/           useMenu, useStore, CategoryChips, ItemDetailSheet
     │   ├── version/        versionStore (the 426 "outdated" flag), OutdatedBanner
     │   └── orders/         orderStatus, useOrder, useOrders, OrderHero, StaffHeader, StaffFilters, StaffBoard, StaffOrderCard
-    ├── lib/                framework-free helpers and generic hooks (supabase, logger, useResource, format, uuid, sessionDraft, ...)
+    ├── lib/                framework-free helpers and generic hooks (supabase, logger, useResource, format, uuid, sessionDraft, safeStorage, ...)
     ├── pages/              one component per route
     ├── services/           the only modules that call the API
     ├── types/api.ts        the API contract types (mirror of server/src/types/api.ts)
@@ -128,7 +128,9 @@ Polling intervals and the `useResource` engine are drawn in
 ## Stores
 
 The auth and cart stores are zustand with the `persist` middleware (localStorage); the checkout draft persists to
-sessionStorage; the version store is in memory.
+sessionStorage; the version store is in memory. Every persisted store passes `storage: safeJSONStorage(...)`
+(`lib/safeStorage.ts`): zustand writes inside each `set()` without a catch, so on full storage an ordinary action (the
+menu's cart sync, a sign-in) threw; with it the store carries on in memory and only stops surviving a reload.
 
 | Store                   | File                                                 | localStorage key                          | Persisted                                 | Holds                                                                                                                                                                                                                                                                                                                                                              |
 | ----------------------- | ---------------------------------------------------- | ----------------------------------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |

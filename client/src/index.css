@@ -45,6 +45,11 @@
   line-gap-override: 0%;
 }
 
+/* A phone on its side (about 360px tall, less with large text): the pinned chrome gives way so the content keeps
+   room (e2e "on a phone on its side"). `short:` drops the menu's sticky chips and the floating cart bar and compacts
+   the bottom nav. */
+@custom-variant short (@media (max-height: 500px));
+
 /* "Paprika & Saffron" — one paprika accent, saffron gold for highlights, basil green for success,
    cool slate for cancelled. Warm butter-cream base so white cards and food photos read warmer. */
 @theme {

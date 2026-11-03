@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { createJSONStorage, persist } from 'zustand/middleware';
+import { persist } from 'zustand/middleware';
+import { safeJSONStorage } from '../../lib/safeStorage';
 import { randomUuid } from '../../lib/uuid';
 
 /** The checkout form as typed so far, plus the key that makes a retried "Pay" the same order. null = never typed. */
@@ -58,7 +59,7 @@ export const useCheckoutDraftStore = create<CheckoutDraftState>()(
     {
       name: 'fp_checkout',
       version: 1,
-      storage: createJSONStorage(() => sessionStorage),
+      storage: safeJSONStorage(() => sessionStorage),
       partialize: ({ name, phone, note, idempotencyKey }): CheckoutDraft => ({
         name,
         phone,

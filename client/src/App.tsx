@@ -149,8 +149,9 @@ function AppShell() {
         className={cn(
           'mx-auto w-full flex-1 px-4',
           widthClass,
+          // The cart bar hides on a short screen (CartBar), so only the bottom nav needs clearing there.
           showCartBar
-            ? 'pb-[calc(10rem+env(safe-area-inset-bottom))]'
+            ? 'pb-[calc(10rem+env(safe-area-inset-bottom))] short:pb-[calc(6rem+env(safe-area-inset-bottom))]'
             : config.bottomNav
               ? 'pb-[calc(6rem+env(safe-area-inset-bottom))]'
               : 'pb-8',

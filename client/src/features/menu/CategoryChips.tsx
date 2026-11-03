@@ -20,7 +20,7 @@ interface CategoryChipsProps {
 
 /**
  * Category bar: sticks under the TopBar for the whole menu, so switching category
- * never means scrolling back to the top.
+ * never means scrolling back to the top (except on a short screen, `short:`, where it scrolls away).
  *
  * NOTE: its parent must be taller than the bar (ideally the whole page column) or
  * `position: sticky` has no room to travel and the bar scrolls away. See MenuPage.
@@ -49,7 +49,9 @@ export function CategoryChips({
   return (
     <div
       className={cn(
-        'sticky top-14 z-30 -mx-4 mt-3 border-b bg-bg/92 backdrop-blur-md transition-colors duration-150',
+        // On a short screen (a phone on its side) it scrolls away with the page instead: pinned, it took a third of
+        // the height and, at large text, the bars together left no item on screen.
+        'sticky top-14 z-30 -mx-4 mt-3 border-b bg-bg/92 backdrop-blur-md transition-colors duration-150 short:static',
         scrolled ? 'border-line/60' : 'border-transparent',
       )}
     >
