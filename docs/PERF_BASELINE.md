@@ -291,6 +291,10 @@ no-cache` and `Vary: Authorization, Origin`; normal `GET` 304 revalidation on `/
   - **Scrub regex, direct microbench (tsx, parsing the schema in-process):** quadratic on a long run of characters that can start an email local part or a JWT. 5 reports at max length: 'a' x N 39 ms p50, `eyJ` x N 52 ms, '+' x N 43 ms, 'a.1-' x N 45 ms (max 60 ms); a 35,000-char run takes 830 ms, 350,000 chars 76 s (not reachable: zod `.max()` rejects before the transform). Not reproduced over HTTP (5.9 ms for the 'a' case), so the in-process figure is the pessimistic bound. Candidate fix: `(?<![\w.+-])[\w.+-]{1,64}@` for the email branch and `(?<![\w-])eyJ` for the JWT branch (0.03-0.07 ms on the same inputs).
     | 2026-11-02 | feat/p1-13-feature-flags @ 4333a4b (uncommitted) | Server-only run (P1 PR 13); client bundle unchanged (types only, not rebuilt). `evaluateFlag` 0.1-1.8 us/call (off/plain/roles ~0.1, percent with sha256 ~1.3-1.8; 10 000 calls, no DB), so isEnabled cost is the cached Map lookup plus that. Cached read `select key, enabled, rules from feature_flags`: Seq Scan, 0.09 ms exec (a handful of rows, pkey covers key lookups, no index needed). `PATCH /api/admin/flags/:key` (22 flips, audit + updated_at triggers, 2.2 ms in-DB): p50 9.1 ms / p95 10.1 ms. Existing routes vs baseline: store p50 1.1 ms, menu 1.0 ms (p95 3.1), me 8.4 ms, orders customer 8.2 ms, staff 9.0 ms: none slower. |
     | 2026-11-02 | feat/p1-15-idle-signout (uncommitted) | Server-only run for the idle sign-out check in `requireAuth` (`LOG_LEVEL=warn`, local API, curl, new session per fresh sample). Warm session, map hit: `GET /api/auth/me` p50 10.3 / p95 12.3 ms, `GET /api/orders` p50 10.6 / p95 13.3 ms. First request of a fresh session (one `touch_session` RPC): `auth/me` p50 15.6 / p95 18.6 ms, `orders` p50 16.6 / p95 19.9 ms, so the RPC costs about +5 to +6 ms once per session per 5 min per process (the second request of a fresh session is back to warm, 9.1 ms). Same-run unauthenticated controls: health/store/menu p50 1.3-1.4 ms. No A/B against the pre-change code (tree is uncommitted), so the map-hit overhead is not isolated; code inspection says one `Map.get` and an early-breaking sweep, microseconds. Eight concurrent first requests of one session each call the RPC (the map is set after it answers): 28-96 ms. `touch_session` statements: `auth.sessions` lookup is an Index Only Scan on `sessions_pkey` (0.02 ms), upsert via `session_activity_pkey` 0.43 ms, whole function 1.9 ms execution, planning ~0.6 ms. `purge_session_activity()` at 50k activity rows / 20k sessions: Hash Anti Join with two seq scans, 11.8 ms for a no-op run, 54 ms deleting 30k orphans, linear and nightly. |
+- **2026-11-03 (feat/p1-11-client-error-sample @ bb32a53, uncommitted)** · P1 PR 11, `site_settings.client_error_sample_percent` carried to `GET /api/config` (`clientErrors.samplePercent`), `GET/PATCH /api/admin/settings`, `fallbacks.json` and the admin form. No browser Web Vitals pass (a separate UI check covers the form). Local API on :8111, 30 requests after 2 warm-ups, WSL2.
+  - **Bundle:** `check:bundle` (build to a temp dir, `--mode development`): initial JS 91,282 B gzip (89.0 KB at level 9; was 91,256 B, +26 B, +0.03%), budget 170 KB; `fallbacks.json` is in the entry chunk, `supabaseClient` (58.8 KB) and all route chunks still lazy and outside the initial set. No new dependency.
+  - **`GET /api/config`:** p50 1.0 / p95 1.1 ms (was 1.3 / 1.5), 239 B (was 202 B, +37 B = the `clientErrors` object). **`GET /api/admin/settings`:** p50 4.1 / p95 5.2 ms, 261 B; the new key is `"clientErrorSamplePercent":100,` = +31 B (the 118 B in the round-3 row predates the later setting columns, so it is not a like-for-like byte count; latency 3 / 4 ms then, +1 ms, under the 5 ms noise floor). `PATCH /api/admin/settings` (20 flips, all 200) p50 11.2 / p95 13.7 ms, 260 B; the round-3 figure was 6 / 8 ms, but the table now has the audit and `updated_at` triggers (the P1 PR 13 flag PATCH, same triggers, was 9.1 / 10.1 ms), so the gap is not this change; an A/B on the base branch was not run.
+  - **Behaviour:** PATCH then `GET /api/config` returns the new `samplePercent` at once (37), so the read cache is invalidated; 101, -1 and 1.5 are 400; `config` and `admin/settings` revalidate with `If-None-Match` to 304, 0 B (`Cache-Control: no-cache`, `Vary: Authorization, Origin`). health 1.0 / 1.4, store 0.9 / 1.1, menu 0.9 / 1.0 ms (4,416 B): unchanged.
 
 ## CI numbers
 
@@ -341,6 +345,27 @@ one staff, sequential).
   re-run end to end, and the round-3 reads were taken on a different machine with 2 orders, so the HTTP p50s (6-8 ms
   then, 8-9 ms now with 10x the rows) are not a like-for-like comparison; the within-database EXPLAIN pair is the
   evidence that the read got cheaper. Snapshot sample verified through the API (`store.name`, `items[].imageUrl`).
+- **2026-11-03** · `feat/p1-14-client-flags-config` @ `bb32a53` + uncommitted changes (P1 PR 14: `GET /api/config` also reads
+  `getFlags()` through `cached('feature_flags', PUBLIC_READ_TTL_MS)` in a `Promise.all` with `getSettings()`, keeps the
+  client-visible flags and evaluates each with no caller). Server-only, no client change, so the bundle, Web Vitals and
+  polling intervals were not re-measured. Local API on :8114, WSL2, Node 24, 30 requests per warm sample after 2
+  warm-ups (20 per cold sample), `PUBLIC_READ_TTL_MS` default 10 s. **Warm** (both caches hit): 0 flag rows p50 1.01 /
+  p95 1.59 ms, 202 B; 1 hidden row (0 client-visible) 0.94 / 1.43 ms, 202 B; 20 client-visible flags 1.01 / 1.38 ms,
+  614 B (about 20 B per flag); baseline `/api/config` 1.3 / 1.5 ms, 202 B (2026-11-02), so no change (< 5 ms).
+  **Cold flags** (PATCH `/api/admin/flags/:key` flip, then the next GET; settings still warm): 0 client-visible 3.88 /
+  5.46 ms, 20 client-visible 3.93 / 4.75 ms (hidden-flag flip) and 4.95 / 5.58 ms (visible-flag flip), 614 B. **Cold
+  both** (`PUBLIC_READ_TTL_MS=0`, every request misses both): 0 rows 4.88 / 7.04 ms, 20 visible 4.74 / 7.35 ms. Cold
+  costs about 3.5-4 ms over warm (one PostgREST round trip) and is paid at most once per TTL per API instance or after
+  a flip; both-cold is not slower than flags-only cold, so the `Promise.all` fetches in parallel, not in series. The
+  flag count does not move the cold time (0 vs 20 rows within 0.2 ms). The cold-flags baseline did not exist (the
+  config route had one cached read), so there is no old cold number; the old code was not re-run. **Revalidation:**
+  `Cache-Control: no-cache`, `Vary: Authorization, Origin`, ETag identical on back-to-back GETs and after the 10 s
+  cache expiry (0 and 20 flags), `If-None-Match` answers 304 with 0 B; after a real flag change the old ETag gets 200
+  with the new 615 B body. **Caveat:** flipping a visible flag and flipping it back changes the ETag (the row moves in
+  the heap, `getFlags()` selects with no `ORDER BY`, so `features` key order changes; bodies were not diffed), costing
+  each client one extra 614 B download; harmless, but `.order('key')` in `getFlags()` would make the ETag depend on
+  content only. Run notes: the first visible-flag cold sample was discarded (10 of its 20 PATCHes hit the 30/min write
+  limiter, 429) and rerun in a fresh window (20 PATCH 200).
 - **2026-11-03 (feat/p1-09-paise-expand, uncommitted)** · server-only run for P1 PR 09 (money in paise, expand: `place_order` prices every line from
   `menu_items.price_paise` in one read and compares each sent `unit_price_paise`, a `BEFORE INSERT OR UPDATE OF price, price_paise` sync trigger on
   `menu_items`, serializers convert paise to rupees on every menu and order read). Client bundle, Web Vitals and polling intervals unchanged (no client
