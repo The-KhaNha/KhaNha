@@ -85,25 +85,25 @@ V0 has exactly one row, created by `npm run seed`.
 
 ### menu_items
 
-| Column        | Type    | Null | Default             | Constraints                                     |
-| ------------- | ------- | ---- | ------------------- | ----------------------------------------------- |
-| `id`          | uuid    | no   | `gen_random_uuid()` | primary key                                     |
-| `store_id`    | uuid    | no   |                     | references `stores (id)`                        |
-| `category`    | text    | no   |                     |                                                 |
-| `name`        | text    | no   |                     |                                                 |
-| `description` | text    | no   |                     |                                                 |
-| `price`       | integer | no   |                     | `check (price >= 0)`; whole rupees; until PR 16 |
-| `price_paise` | bigint  | no   |                     | `>= 0`, `% 100 = 0` (whole rupees); the price   |
+| Column           | Type    | Null | Default             | Constraints                                                                                                              |
+| ---------------- | ------- | ---- | ------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `id`             | uuid    | no   | `gen_random_uuid()` | primary key                                                                                                              |
+| `store_id`       | uuid    | no   |                     | references `stores (id)`                                                                                                 |
+| `category`       | text    | no   |                     |                                                                                                                          |
+| `name`           | text    | no   |                     |                                                                                                                          |
+| `description`    | text    | no   |                     |                                                                                                                          |
+| `price`          | integer | no   |                     | `check (price >= 0)`; whole rupees; until PR 16                                                                          |
+| `price_paise`    | bigint  | no   |                     | `>= 0`, `% 100 = 0` (whole rupees); the price in paise, kept in step with `price` by `menu_items_sync_price` until PR 16 |
+| `image_url`      | text    | no   |                     |                                                                                                                          |
+| `is_available`   | boolean | no   | `true`              |                                                                                                                          |
+| `is_popular`     | boolean | no   | `false`             |                                                                                                                          |
+| `sort_order`     | integer | no   | `0`                 |                                                                                                                          |
+| `stock_quantity` | integer | yes  |                     | `check (stock_quantity >= 0)`; `null` = not tracked                                                                      |
 
 Until PR 16 drops `price`, the `menu_items_sync_price` trigger keeps the two price columns in step: a write that sets
 only one (an insert with the other null, or an update that changes one) derives the other (`price_paise = price *
 100`, `price = price_paise / 100`); a write that changes both to values that disagree is refused. An update counts a
 column as written when its value changes.
-| `image_url` | text | no | | |
-| `is_available` | boolean | no | `true` | |
-| `is_popular` | boolean | no | `false` | |
-| `sort_order` | integer | no | `0` | |
-| `stock_quantity` | integer | yes | | `check (stock_quantity >= 0)`; `null` = not tracked |
 
 `stock_quantity` is decremented by `place_order` and restored when an order is cancelled.
 

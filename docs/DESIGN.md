@@ -120,6 +120,7 @@ Collected from the components' comments; the component named is where the rule i
 | In the cart, the stepper is the outlined variant so "Proceed to Checkout" stays the only paprika fill. | `CartItem`                       |
 | The `success` button variant is a transient confirmation ("Added", "Paid"), not a resting CTA.         | `Button`                         |
 | No red text on cream: errors use a paprika tint and an icon.                                           | `ErrorState`                     |
+| An error's retry sits in the card that is scrolled into view, never in a second card below it.         | `Checkout` (page)                |
 | Cancelled is cool slate, never red ("red never means cancelled in a red brand").                       | `orderStatus.ts`                 |
 | Status badge colour pairs meet WCAG AA.                                                                | `orderStatus.ts` (`badgeClass`)  |
 | Both halves of the stepper are at least 44px tap targets.                                              | `QuantityStepper`                |

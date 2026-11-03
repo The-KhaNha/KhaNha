@@ -400,3 +400,14 @@ one staff, sequential).
     14.7 / 16.8 ms, 137,242 B (run 1 with 6-line carts: 12.6 / 14.4 ms, 110,490 B); PR 08's staff row had 25 orders (9.3 / 11.7 ms, 14,662 B), so it is
     not comparable: about 1 KB and 0.1 ms per order of this size. No read moved by 5 ms or 20%.
   - Run 2's menu was 4,434 B because the stock raise lengthened `stockQuantity`; it is not a code effect. Raw output: `KhaNha-wt/.logs/p1-09-perf.out`.
+- **2026-11-03 (feat/p1-09b-reprice-retry)** · client-only run for the `Checkout.tsx` change (after a 409 `PRICE_CHANGED`, Pay
+  stays off with "Updating price…" until the one menu reload lands; if that reload fails, the error card gets one more sentence and a Try Again that
+  reloads the menu once per tap). No new dependency, route or request type. Bundle built from the tree and from `HEAD~1` the same way (no source
+  maps, `check-bundle.mjs`, gzip -9): initial JS 91,163 B vs 91,162 B (`--mode staging`; 91,146 vs 91,149 B in `--mode development`; 89.1 KB, budget
+  170 KB), `Checkout` chunk 3,441 B vs 3,334 B (+107 B, +3.2%, lazy, not in the initial set). Requests (real dev server, 360x640, Slow 4G, 4x CPU,
+  one run): `GET /api/menu` once per `PRICE_CHANGED`, once per Try Again tap (a double-click still sends one, the button leaves with the first press),
+  0 in 12 s idle; every menu GET sent `If-None-Match` and cost 300 B on the wire for a 4,416 B body (304); the dev server's 2 GETs on arrival are
+  StrictMode, the production build sends 1. Production build served by route interception (CPU 4x only; no network emulation, no HTTP cache), 5 runs
+  each, base vs change, through arrival, one reprice and (change only) two failed reloads: no long task over 50 ms in any phase, INP 24-48 ms (base) vs
+  32-48 ms (change), CLS at most 0.0003. `/menu`, `/`, `/cart`, `/orders/:id`, polling and API latency not re-measured (the diff cannot reach them).
+  No regression.

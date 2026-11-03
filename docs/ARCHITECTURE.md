@@ -595,7 +595,7 @@ flowchart TD
   Fix -->|"Fix cart"| Trim["fix(): trim to what is left, or remove when sold out"]
   Trim --> Retry["Pay again"]
   Fix -->|"Back to cart"| CartPage["Cart page, same flags"]
-  Kind -->|"PRICE_CHANGED"| Reprice["Show the message, reload the menu,<br/>cartStore.syncPrices(items): the cart shows the new price"]
+  Kind -->|"PRICE_CHANGED"| Reprice["Show the message, reload the menu,<br/>cartStore.syncPrices(items): the cart shows the new price.<br/>Pay is off until the load lands; if it fails, the same error card gets a Try Again that reloads the menu"]
   Reprice --> Retry
   Kind -->|"STORE_CLOSED, VALIDATION_ERROR, UNREACHABLE, INTERNAL"| Plain["Show the message, cart unchanged, Pay can be retried"]
   Kind -->|"401"| Session["Session cleared → redirected to sign in, cart kept"]
