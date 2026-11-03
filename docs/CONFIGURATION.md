@@ -66,18 +66,19 @@ Every other environment variable is in [DEPLOYMENT.md](DEPLOYMENT.md).
 Bounds both sides need, kept in one place per side and parity-tested (`server/test/unit/limits-parity.safe.test.ts`):
 `server/src/schemas/limits.ts` (`LIMITS`) and `client/src/config/fallbacks.json` (`validation`).
 
-| Constant                             | Value  | Enforced by                                                                     |
-| ------------------------------------ | ------ | ------------------------------------------------------------------------------- |
-| `nameMin`, `nameMax`                 | 2, 60  | `registerSchema`, `createOrderSchema.customerName`; the client's `validateName` |
-| `noteMax`                            | 200    | `createOrderSchema.note`; `validateNote`                                        |
-| `password.min`, `password.max`       | 6, 72  | `registerSchema` (bcrypt reads 72 bytes); `validatePassword`                    |
-| `phoneDigits.min`, `phoneDigits.max` | 10, 15 | `phoneField`; `validatePhone`                                                   |
+| Constant                             | Value  | Enforced by                                                                                                                                       |
+| ------------------------------------ | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `nameMin`, `nameMax`                 | 2, 60  | `registerSchema`, `createOrderSchema.customerName`; the client's `validateName` (UTF-16 units, visible characters toward the minimum, both sides) |
+| `noteMax`                            | 200    | `createOrderSchema.note`; `validateNote`                                                                                                          |
+| `password.min`, `password.max`       | 6, 72  | `registerSchema` (bcrypt reads 72 bytes); `validatePassword`                                                                                      |
+| `phoneDigits.min`, `phoneDigits.max` | 10, 15 | `phoneField`; `validatePhone`                                                                                                                     |
 
 Server-only platform constants (no client copy, so not in the parity test):
 
 | Constant                  | Value                                         | Enforced by                                                                                                                                                                                                                                                                                 |
 | ------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `JSON_BODY_LIMIT_BYTES`   | 100 kB                                        | `server/src/app.ts` (refused on the declared length) and `client_max_body_size 100k` in `client/nginx/default.conf.template`; keep the two equal                                                                                                                                            |
+| `MAX_BODY_DEPTH`          | 32                                            | `middleware/validate.ts`: how deep a request may nest arrays and objects before it is 400 (the deepest real body is three levels); past it, the walk that strips NUL bytes would overflow the stack                                                                                         |
 | refused-upload drain      | 1 MB or 2 s                                   | `server/src/app.ts` (`REFUSED_UPLOAD_DRAIN_BYTES`, `REFUSED_UPLOAD_DRAIN_MS`): how much of an upload refused for its size is read and thrown away before the 413, so the client gets the answer instead of a connection reset; past either bound the 413 goes out and the connection is cut |
 | `domain_events` retention | 30 days                                       | `purge_domain_events(p_keep default '30 days')` in `20261024181904_outbox.sql`, run nightly by pg_cron ([JOBS.md](JOBS.md#retention)); a new default is a new migration                                                                                                                     |
 | `SESSION_TOUCH_EVERY_MS`  | 5 min                                         | `middleware/auth.ts`: how often one API process records a session's use (`touch_session`), so one RPC per active session per 5 minutes per instance; a session gone idle can serve requests on a process for up to this long after its limit                                                |

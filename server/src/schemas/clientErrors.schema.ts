@@ -12,17 +12,21 @@ const REPORTS_MAX = 5;
 // form value it was handed. Over-redacting a client report costs nothing, so each shape is matched loosely:
 // - a JWT, even cut short: its header always encodes to `eyJ`, and the payload holds the email and role;
 // - a Supabase `sb_…` key, also inside a longer name (`x_sb_secret_…`), and a `Bearer` value;
-// - a token or code in a URL parameter (`#access_token=…&refresh_token=…`: the refresh token is no JWT);
-// - an email address, also URL-encoded (`%40`); it and the JWT only start at the head of a run (lookbehind), and its
-//   parts are bounded (RFC 5321), so a long run cannot make the scan quadratic;
+// - a token, code or password in a URL parameter (`#access_token=…&refresh_token=…`: the refresh token is no JWT), also
+//   with its `=` encoded (`refresh_token%3D…` inside an encoded `next=` URL). No `\b` before the name: in
+//   `%23refresh_token` the `3` is a word character, and catching `barcode=` too costs nothing;
+// - an email address, also URL-encoded (`%40`, `%2B`) or with an apostrophe (`o'brien@…`); it and the JWT only start at
+//   the head of a run (lookbehind), and its parts are bounded (RFC 5321), so a long run cannot make the scan quadratic.
+//   A `%` or `'` may sit inside the local part but still starts a new run: an encoded email at the end of an encoded
+//   URL follows far more than 64 joined characters, and only a start after a `%` reaches it;
 // - a phone number: 10 to 15 digits with spaces, dashes, dots or parentheses between them (an epoch timestamp too).
 const SECRET_SHAPED = new RegExp(
   [
     String.raw`(?<![\w-])eyJ[\w-]+(?:\.[\w-]*){0,2}`,
     String.raw`\bsb_[a-z]+_[\w-]+|sb_(?:secret|publishable)_[\w-]+`,
     String.raw`\bBearer\s+[\w.~+/=-]+`,
-    String.raw`\b(?:access_token|refresh_token|provider_token|provider_refresh_token|token|code)=[^&\s#"']+`,
-    String.raw`(?<![\w.+-])[\w.+-]{1,64}(?:@|%40)[\w-]{1,63}(?:\.[\w-]{1,63}){1,8}`,
+    String.raw`(?:access_token|refresh_token|provider_token|provider_refresh_token|token|code|password)(?:=|%3D)[^&\s#"']+`,
+    String.raw`(?<![\w.+-])[\w.+%'-]{1,64}(?:@|%40)[\w-]{1,63}(?:\.[\w-]{1,63}){1,8}`,
     String.raw`\+?\(?\d(?:[\s.()-]{0,2}\d){9,14}`,
   ].join('|'),
   'gi',

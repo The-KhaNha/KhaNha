@@ -12,11 +12,33 @@ export const PHONE_MIN_DIGITS = VALIDATION.phoneDigits.min;
 export const PHONE_MAX_DIGITS = VALIDATION.phoneDigits.max;
 export const NOTE_MAX_LENGTH = VALIDATION.noteMax;
 
+// Characters that draw nothing yet survive trim(): format characters (zero-width space, word joiner, the joiners),
+// the Braille blank and the Hangul fillers. The server's schemas/common.ts holds the same list, so a name the form
+// takes is one the API takes; lengths are UTF-16 units on both sides, as an input's maxLength counts them.
+const INVISIBLE = String.raw`\p{Cf}\u2800\u115F\u1160\u3164\uFFA0`;
+// Marks that draw nothing on their own but end visible text (U+FE0F turns U+2764 into the red heart emoji): never
+// trimmed, only left out of what counts as visible; an alternation, since a combining mark inside a character class
+// reads as joined to the character before it. Tag characters are \p{Cf} yet finish a subdivision flag, so they are not
+// trimmed either: a lookahead, not the `v` flag's set subtraction, which older Android WebViews cannot parse.
+const SILENT_MARKS = String.raw`\p{Variation_Selector}|\u034F|\u17B4|\u17B5`;
+const BLANK_CHARACTER = new RegExp(`^(?![\\u{E0020}-\\u{E007F}])[\\s${INVISIBLE}]$`, 'u');
+const DRAWS_NOTHING = new RegExp(`[\\s${INVISIBLE}]|${SILENT_MARKS}`, 'gu');
+
+/** Trimmed of blank and invisible characters at the ends; a joiner inside an emoji or a word stays. */
+function trimBlank(value: string): string {
+  const chars = Array.from(value);
+  let start = 0;
+  let end = chars.length;
+  while (start < end && BLANK_CHARACTER.test(chars[start] ?? '')) start++;
+  while (end > start && BLANK_CHARACTER.test(chars[end - 1] ?? '')) end--;
+  return chars.slice(start, end).join('');
+}
+
 export function validateName(value: string): string | undefined {
-  const trimmed = value.trim();
-  if (trimmed.length === 0) return 'Please enter your name.';
-  if (trimmed.length < NAME_MIN_LENGTH)
-    return `Your name needs at least ${NAME_MIN_LENGTH} characters.`;
+  const trimmed = trimBlank(value);
+  const visible = trimmed.replace(DRAWS_NOTHING, '').length;
+  if (visible === 0) return 'Please enter your name.';
+  if (visible < NAME_MIN_LENGTH) return `Your name needs at least ${NAME_MIN_LENGTH} characters.`;
   if (trimmed.length > NAME_MAX_LENGTH)
     return `Keep your name to ${NAME_MAX_LENGTH} characters or fewer.`;
   return undefined;
@@ -54,7 +76,7 @@ export function validatePhone(value: string): string | undefined {
 }
 
 export function validateNote(value: string): string | undefined {
-  if (value.trim().length > NOTE_MAX_LENGTH)
+  if (trimBlank(value).length > NOTE_MAX_LENGTH)
     return `Keep the note to ${NOTE_MAX_LENGTH} characters or fewer.`;
   return undefined;
 }

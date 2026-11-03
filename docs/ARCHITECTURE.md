@@ -950,7 +950,7 @@ flowchart TD
   U -->|"yes"| U1["400 BAD_REQUEST malformed URL"]
   U -->|"no"| P{"PostgrestError?"}
   P -->|"22001"| P1["400 One of the values is too long"]
-  P -->|"22021 / 22P05"| P2["400 Invalid characters in input"]
+  P -->|"22021 / 22P05 / PGRST102"| P2["400 Invalid characters in input"]
   P -->|"other"| I["500 INTERNAL, logged with stack"]
   P -->|"not a PostgrestError"| H{"body-parser error?"}
   H -->|"entity.too.large"| H1["413 PAYLOAD_TOO_LARGE"]

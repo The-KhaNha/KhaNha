@@ -1,3 +1,4 @@
+import { PostgrestError } from '@supabase/supabase-js';
 import type { Request, Response } from 'express';
 import { describe, expect, it } from 'vitest';
 import { errorHandler, loggedAtDebug } from '../../src/middleware/errorHandler';
@@ -223,6 +224,42 @@ describe('errorHandler mapping', () => {
     ],
   ])('passes %s details through untouched', (_label, err, details) => {
     expect(run(err).body).toEqual({ error: { code: err.code, message: err.message, details } });
+  });
+
+  // A lone UTF-16 surrogate in an RPC argument makes PostgREST refuse the JSON (PGRST102) before Postgres sees it. Each
+  // of these is a value the client sent, so it is a 400, never a 500 logged at error. PGRST102 is warn: validation
+  // should have refused the value first, so one reaching PostgREST may be a server bug and must not hide at info.
+  it.each([
+    [
+      'PGRST102 (an RPC argument PostgREST cannot read as JSON)',
+      'PGRST102',
+      'Invalid characters in input.',
+      { level: 'warn', fields: { status: 400, code: 'VALIDATION_ERROR', dbCode: 'PGRST102' } },
+    ],
+    [
+      '22021 (invalid byte sequence)',
+      '22021',
+      'Invalid characters in input.',
+      { level: 'info', fields: { status: 400, code: 'VALIDATION_ERROR' } },
+    ],
+    [
+      '22001 (value too long)',
+      '22001',
+      'One of the values is too long.',
+      { level: 'info', fields: { status: 400, code: 'VALIDATION_ERROR' } },
+    ],
+  ])('maps PostgREST %s to 400 VALIDATION_ERROR', (_label, code, message, logLine) => {
+    const err = new PostgrestError({
+      message: 'Empty or invalid json',
+      details: 'the raw body: x\ud800y',
+      hint: '',
+      code,
+    });
+    const { status, body, logged } = run(err, { id: 'u1' });
+    expect(status).toBe(400);
+    expect(body).toEqual({ error: { code: 'VALIDATION_ERROR', message } });
+    // Exactly these fields: nothing of the error's details (the value the client sent) reaches the log.
+    expect(logged).toEqual([logLine]);
   });
 
   it('does not treat an ordinary TypeError as a transport failure', () => {

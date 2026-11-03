@@ -35,6 +35,57 @@ describe('validateName', () => {
   });
 });
 
+// The server's typed-text rule (server/src/schemas/common.ts): invisible characters do not fill a name, and lengths
+// are UTF-16 units, as maxLength counts them. A form that disagreed would let the API refuse or store what it should not.
+describe('validateName and validateNote: invisible characters and emoji', () => {
+  it.each([
+    ['zero-width spaces', '\u200b\u200b\u200b'],
+    ['a Braille blank and a Hangul filler', '\u2800\u3164'],
+    ['Hangul fillers', '\u115f\u1160\uffa0'],
+    ['a word joiner between spaces', ' \u2060 '],
+    ['emoji variation selectors and a combining grapheme joiner', '\ufe0f\u034f\ufe0e'],
+    ['an ideographic variation selector', '\u{e0100}\u{e01ef}'],
+    ['Khmer inherent vowels and Mongolian variation selectors', '\u17b4\u17b5\u180b\u180c\u180d'],
+    ['variation selectors around spaces', '\ufe0f  \ufe0f'],
+    ['tag characters', '\u{e0067}\u{e0062}\u{e007f}'],
+  ])('treats a name of %s as missing', (_label, name) => {
+    expect(validateName(name)).toBe('Please enter your name.');
+  });
+
+  // The server keeps a subdivision flag's tags and a trailing variation selector, so the form must count them the same.
+  it.each([
+    ['a Scotland flag', 'Ann \ud83c\udff4\u{e0067}\u{e0062}\u{e0073}\u{e0063}\u{e0074}\u{e007f}'],
+    ['a red heart', 'Ann \u2764\ufe0f'],
+  ])('keeps %s at the end of a name or note: it is counted, not trimmed', (_label, text) => {
+    expect(validateName(text)).toBeUndefined();
+    // One unit short of the limit only once the trailing characters are counted.
+    const padded = `${'a'.repeat(NAME_MAX_LENGTH - text.length + 1)}${text}`;
+    expect(validateName(padded)).toBe(`Keep your name to ${NAME_MAX_LENGTH} characters or fewer.`);
+    const note = `${'a'.repeat(NOTE_MAX_LENGTH - text.length + 1)}${text}`;
+    expect(validateNote(note)).toBeDefined();
+  });
+
+  it('counts only visible characters toward the minimum', () => {
+    expect(validateName('A\u200b')).toBe('Your name needs at least 2 characters.');
+    expect(validateName('A\ufe0f')).toBe('Your name needs at least 2 characters.');
+    expect(validateName('\u200bAnn\u200b')).toBeUndefined();
+    expect(validateName('ক\u200cষ')).toBeUndefined();
+  });
+
+  it.each([
+    ['30 emoji (60 units)', '🍔'.repeat(30), true],
+    ['31 emoji (62 units)', '🍔'.repeat(31), false],
+  ])('limits a name of %s -> ok=%s', (_label, name, ok) => {
+    expect(validateName(name) === undefined).toBe(ok);
+  });
+
+  it('limits a note by UTF-16 units and ignores invisible padding at its ends', () => {
+    expect(validateNote('🍔'.repeat(100))).toBeUndefined();
+    expect(validateNote('🍔'.repeat(101))).toBeDefined();
+    expect(validateNote(`\u200b${'a'.repeat(NOTE_MAX_LENGTH)}\u200b`)).toBeUndefined();
+  });
+});
+
 describe('validateEmail', () => {
   it('requires a value', () => {
     expect(validateEmail('')).toBeDefined();
