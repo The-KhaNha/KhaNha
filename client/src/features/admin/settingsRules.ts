@@ -64,6 +64,13 @@ export const SETTING_FIELDS: Record<SettingKey, SettingField> = {
     hint: 'How often the kitchen board checks for new orders',
     ...VALIDATION.pollMs,
   },
+  clientErrorSamplePercent: {
+    kind: 'integer',
+    label: 'Error reporting (%)',
+    hint: 'Share of page loads that send their app errors to the server (0 turns reporting off)',
+    min: 0,
+    max: 100,
+  },
   minClientVersion: {
     kind: 'semver',
     label: 'Minimum app version',

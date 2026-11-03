@@ -145,6 +145,7 @@ async function seedDemo(): Promise<void> {
       order_poll_ms: 4000,
       orders_poll_ms: 8000,
       staff_board_poll_ms: 4000,
+      client_error_sample_percent: 100,
       min_client_version: '0.0.0',
       updated_by: null,
     })

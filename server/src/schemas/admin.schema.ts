@@ -20,6 +20,7 @@ export const updateSettingsSchema = z
     orderPollMs: pollMs('Order page refresh').optional(),
     ordersPollMs: pollMs('Order list refresh').optional(),
     staffBoardPollMs: pollMs('Staff board refresh').optional(),
+    clientErrorSamplePercent: integer('Error reporting sample', 0, 100).optional(),
     minClientVersion: z
       .string('Minimum client version must be text.')
       .regex(/^\d+\.\d+\.\d+$/, 'Minimum client version must look like 1.2.3.')

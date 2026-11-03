@@ -26,6 +26,14 @@ describe('useConfig', () => {
     await waitFor(() => expect(result.current.polling.orderMs).toBe(6000));
   });
 
+  it('fills a key an older API (or an older persisted copy) does not send from the fallbacks', async () => {
+    const { clientErrors: _missing, ...older } = { ...CONFIG_FALLBACK, serverVersion: '0.1.0' };
+    fetchConfig.mockResolvedValue(older);
+    const { result } = renderHook(() => useConfig());
+    await waitFor(() => expect(result.current.serverVersion).toBe('0.1.0'));
+    expect(result.current.clientErrors).toEqual(CONFIG_FALLBACK.clientErrors);
+  });
+
   it('keeps the fallbacks when the API cannot be reached', async () => {
     fetchConfig.mockRejectedValue(new Error('offline'));
     const { result } = renderHook(() => useConfig());

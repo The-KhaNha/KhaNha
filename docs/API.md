@@ -95,7 +95,8 @@ site settings (no cache key of its own, so an admin's `PATCH /admin/settings` re
   "payment": null,
   "limits": { "maxLinesPerOrder": 30 },
   "polling": { "orderMs": 4000, "ordersMs": 8000, "staffBoardMs": 4000 },
-  "session": { "idleDays": 7 }
+  "session": { "idleDays": 7 },
+  "clientErrors": { "samplePercent": 100 }
 }
 ```
 
@@ -105,6 +106,9 @@ that is not `client_visible` never appears. If the flags cannot be read, `featur
 200 (a feature the client cannot confirm stays off). `payment` stays null until P5. The client's defaults for this shape are
 `client/src/config/fallbacks.json`; `server/test/api/config.test.ts` fails when they differ from a freshly seeded
 database.
+
+`clientErrors.samplePercent` is `site_settings.client_error_sample_percent` (0–100): the share of page loads that send
+their errors to [`POST /client-errors`](#post-client-errors).
 
 ### GET /ready
 
@@ -351,6 +355,7 @@ Body (`server/src/schemas/admin.schema.ts`), every field optional but at least o
 | `staffOrderListLimit`                             | number | whole number, 1–500                                                                                  |
 | `maxLinesPerOrder`                                | number | whole number, 1–100 ("Items per order must be …")                                                    |
 | `orderPollMs`, `ordersPollMs`, `staffBoardPollMs` | number | whole number, 2000–60000 ("Order page refresh / Order list refresh / Staff board refresh must be …") |
+| `clientErrorSamplePercent`                        | number | whole number, 0–100 ("Error reporting sample must be …")                                             |
 | `minClientVersion`                                | string | `^\d+\.\d+\.\d+$` ("Minimum client version must look like 1.2.3.")                                   |
 
 - An out-of-range or non-integer value is 400 `VALIDATION_ERROR` ("Customer order history limit must be at least
@@ -461,6 +466,7 @@ camelCase shapes and every timestamp into ISO 8601 (`new Date(ts).toISOString()`
 | `orderPollMs`               | number            | 2000–60000, default 4000; an open order's page poll interval (ms)                          |
 | `ordersPollMs`              | number            | 2000–60000, default 8000; the customer's order list poll interval (ms)                     |
 | `staffBoardPollMs`          | number            | 2000–60000, default 4000; the staff board poll interval (ms)                               |
+| `clientErrorSamplePercent`  | number            | 0–100, default 100; the share of page loads that report their errors                       |
 | `minClientVersion`          | string            | default `0.0.0`; clients below it get 426 `CLIENT_OUTDATED` ([gate](#client-version-gate)) |
 | `updatedAt`                 | string (ISO 8601) | set whenever a setting is saved                                                            |
 
