@@ -47,8 +47,10 @@
 
 /* A phone on its side (about 360px tall, less with large text): the pinned chrome gives way so the content keeps
    room (e2e "on a phone on its side"). `short:` drops the menu's sticky chips and the floating cart bar and compacts
-   the bottom nav. */
-@custom-variant short (@media (max-height: 500px));
+   the bottom nav. Landscape only: an on-screen keyboard shrinks an upright phone's layout viewport below 500px in
+   browsers that resize it (Firefox Android, Chrome before 108, in-app WebViews), and the bottom nav flipped to its
+   compact row on every focus in a form (e2e "keyboard open"). */
+@custom-variant short (@media (max-height: 500px) and (orientation: landscape));
 
 /* "Paprika & Saffron" — one paprika accent, saffron gold for highlights, basil green for success,
    cool slate for cancelled. Warm butter-cream base so white cards and food photos read warmer. */

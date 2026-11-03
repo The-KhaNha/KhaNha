@@ -1,6 +1,8 @@
+import { useEffect, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { Check, Clock } from 'lucide-react';
 import type { Order } from '../types/api';
+import { documentTitle } from '../appShell';
 import { ButtonLink } from '../components/Button';
 import { ErrorState } from '../components/ErrorState';
 import { DrawnCheck } from '../components/icons/DrawnCheck';
@@ -14,13 +16,30 @@ export function OrderSuccessPage() {
   const location = useLocation();
   const passedOrder = (location.state as { order?: Order } | null)?.order ?? null;
   const { order, isLoading, error, retry } = useOrder(id, passedOrder);
-
   // A typed, stale or someone else's id: nothing was placed, so no celebration, and a retry would only 404 again.
+  const notFound = !order && error?.status === 404;
+  // Celebrate only once an order is known to exist (passed in from checkout, or loaded), or the server could not say
+  // (unreachable or a 5xx right after checkout keeps "placed, but couldn't load"). Latched so a retry, which clears
+  // the error while it loads, does not drop back to the loading state and replay the whole celebration.
+  const [celebrating, setCelebrating] = useState(false);
+  if (!celebrating && !notFound && (order || error)) setCelebrating(true);
+
+  // The route's title is neutral (appShell.ts); the tab names the not-found state for what it is.
+  useEffect(() => {
+    if (!notFound) return;
+    const previous = document.title;
+    document.title = documentTitle('Order not found');
+    return () => {
+      document.title = previous;
+    };
+  }, [notFound]);
+
   // Same words as the order page (pages/Order.tsx). An unreachable server or a 5xx below still says "placed".
-  if (!order && error?.status === 404) {
+  if (notFound) {
     return (
       <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center px-6 py-12 md:max-w-lg">
         <ErrorState
+          headingLevel={1}
           title="Unable to load your order."
           message="We couldn't find this order."
           actions={
@@ -32,6 +51,21 @@ export function OrderSuccessPage() {
             </>
           }
         />
+      </main>
+    );
+  }
+
+  // Nothing passed in and nothing loaded yet: a bogus link would otherwise show "Order placed!" until its 404 lands.
+  if (!celebrating) {
+    return (
+      <main
+        aria-busy="true"
+        className="mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-center gap-3 px-6 py-12 md:max-w-lg"
+      >
+        <Skeleton className="h-28 w-28" round />
+        <Skeleton className="mt-8 h-9 w-48" />
+        <Skeleton className="h-16 w-44" />
+        <Skeleton className="h-4 w-28" />
       </main>
     );
   }

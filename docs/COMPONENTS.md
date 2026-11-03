@@ -104,7 +104,7 @@ and the title `line-clamp-2`: at large text a long title takes a second line ins
 `type TopBarTone = 'default' | 'brand'`. Rendered by `App.tsx` from the route's shell config, not by pages.
 
 **`BottomNav`** (`BottomNav.tsx`). Fixed bottom nav with Home (`/`), Orders (`/orders`), Profile (`/profile`). No
-props. Rendered by `App.tsx`. On a short screen (`short:`, max-height 500px: a phone on its side) each tab puts its
+props. Rendered by `App.tsx`. On a short screen (`short:`, max-height 500px in landscape: a phone on its side; an upright phone with its keyboard open keeps the stack) each tab puts its
 label beside the icon in a 48px row instead of a 64px stack.
 
 **`Card`** (`Card.tsx`). White card with a line border and warm shadow, `rounded-card`.
@@ -218,16 +218,17 @@ width and height), `round?: boolean = false`. `aria-hidden`.
 
 **`ErrorState`** (`ErrorState.tsx`). Failure block with `role="alert"`. While the build is outdated (a 426, `useVersionStore`), its button is "Refresh" (reloads the page) instead of the retry, which could only fail again, and it shows even where no `onRetry` was given; custom `actions` are kept.
 
-| Prop          | Type                                 | Notes                                      |
-| ------------- | ------------------------------------ | ------------------------------------------ |
-| `title`       | `string`                             |                                            |
-| `message`     | `string` = `'Something went wrong.'` | pass `error.message`; it is safe to show   |
-| `onRetry`     | `() => void`                         | renders a secondary "Try Again" button     |
-| `retryLabel`  | `string` = `'Try Again'`             |                                            |
-| `retrying`    | `boolean` = `false`                  | spinner on the retry button                |
-| `unreachable` | `boolean` = `false`                  | Wi-Fi-off icon; pass `error.isUnreachable` |
-| `compact`     | `boolean` = `false`                  | card-sized, for a section inside a page    |
-| `actions`     | `ReactNode`                          | replaces the retry button                  |
+| Prop           | Type                                 | Notes                                                                                                                      |
+| -------------- | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| `title`        | `string`                             |                                                                                                                            |
+| `message`      | `string` = `'Something went wrong.'` | pass `error.message`; it is safe to show                                                                                   |
+| `onRetry`      | `() => void`                         | renders a secondary "Try Again" button                                                                                     |
+| `retryLabel`   | `string` = `'Try Again'`             |                                                                                                                            |
+| `retrying`     | `boolean` = `false`                  | spinner on the retry button                                                                                                |
+| `unreachable`  | `boolean` = `false`                  | Wi-Fi-off icon; pass `error.isUnreachable`                                                                                 |
+| `compact`      | `boolean` = `false`                  | card-sized, for a section inside a page                                                                                    |
+| `actions`      | `ReactNode`                          | replaces the retry button                                                                                                  |
+| `headingLevel` | `1 \| 2` = `2`                       | `1` when the failure is the whole page (a full-screen page such as `OrderSuccess`'s not-found state), so it has its `<h1>` |
 
 ### Icons
 

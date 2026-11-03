@@ -17,6 +17,8 @@ interface ErrorStateProps {
   compact?: boolean;
   /** Custom buttons rendered instead of the single retry button. */
   actions?: ReactNode;
+  /** 1 when the failure is the whole page (a full-screen page has no TopBar title), so the page keeps its one <h1>. */
+  headingLevel?: 1 | 2;
   className?: string;
 }
 
@@ -30,11 +32,13 @@ export function ErrorState({
   unreachable = false,
   compact = false,
   actions,
+  headingLevel = 2,
   className,
 }: ErrorStateProps) {
   // This build is too old (426): retrying would only fail again, so the one useful action is loading the new build.
   const outdated = useVersionStore((s) => s.outdated);
   const Icon = unreachable ? WifiOff : CircleAlert;
+  const Heading = headingLevel === 1 ? 'h1' : 'h2';
   return (
     <div
       role="alert"
@@ -52,7 +56,9 @@ export function ErrorState({
       >
         <Icon className={compact ? 'h-6 w-6' : 'h-9 w-9'} strokeWidth={1.75} aria-hidden />
       </div>
-      <h2 className={cn('mt-5 font-extrabold', compact ? 'text-lg' : 'text-xl')}>{title}</h2>
+      <Heading className={cn('mt-5 font-extrabold', compact ? 'text-lg' : 'text-xl')}>
+        {title}
+      </Heading>
       <p className="mt-2 max-w-xs text-body leading-relaxed text-muted">{message}</p>
       {actions && (
         <div className="mt-6 flex w-full max-w-xs flex-col items-stretch gap-2">{actions}</div>

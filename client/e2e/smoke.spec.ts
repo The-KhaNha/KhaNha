@@ -503,6 +503,17 @@ test('/menu on a phone on its side at 200% text: an item can still be added', as
     .toBeGreaterThan(0);
 });
 
+// An on-screen keyboard shrinks the layout viewport of an upright phone to about 360×480 in browsers that resize it
+// (Firefox Android, Chrome before 108, in-app WebViews): `short:` once fired there too, so focusing a checkout field
+// flipped the bottom nav to its compact row and back on blur. It is for a phone on its side only.
+test('an upright phone with its keyboard open keeps the stacked bottom nav', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 480 });
+  await page.goto('/');
+  const tab = page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Home' });
+  await expect(tab).toBeVisible();
+  await expect(tab).toHaveCSS('flex-direction', 'column');
+});
+
 // A slow network delivers the web font after the content has painted in the fallback. The fallback faces in index.css
 // are metric-matched, so the swap must not move anything (the CLS budget in perf-budget.json, CLAUDE.md §2b). Chromium only: WebKit has no
 // layout-shift entries.

@@ -15,8 +15,9 @@ function reportFailure(name: string, operation: 'read' | 'write' | 'remove', err
  * The `storage` for every zustand `persist` store (lib/safeStorage.test.ts fails for one without it). persist writes
  * inside each set(), synchronously and without a catch, so a full quota (QuotaExceededError: older iOS private mode,
  * a full disk, some WebViews) threw out of ordinary actions, a menu load's cart sync or a sign-in, and took the page
- * down. Here a failed read, write or removal is swallowed: the state stays right in memory and only stops surviving a
- * reload. Storage that is blocked outright (the getter throws) still leaves persist with no storage, as zustand does.
+ * down. Here a failed read, write or removal is swallowed: the state stays right in memory and stops surviving a
+ * reload. For most stores that only costs convenience; for checkout's idempotency key it reopens a double order after
+ * a reload mid-payment (the trade-off is spelled out in features/checkout/checkoutDraftStore.ts). Storage that is blocked outright (the getter throws) still leaves persist with no storage, as zustand does.
  */
 export function safeJSONStorage<S>(
   getStorage: () => Storage = () => localStorage,

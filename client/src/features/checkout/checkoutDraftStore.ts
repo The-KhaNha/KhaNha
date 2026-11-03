@@ -11,6 +11,11 @@ interface CheckoutDraft {
   /**
    * One per checkout attempt: sent with POST /api/orders and reused on every retry (a timeout, a refresh while
    * "Processing payment…"), so the server answers with the order it already placed instead of a second one.
+   *
+   * Only as safe as sessionStorage: when its writes fail (full quota, some WebViews; lib/safeStorage.ts swallows the
+   * error) the key lives in memory alone, so a reload while "Processing payment…" forgets it, and Pay again sends a
+   * new key. If the first request had reached the server, that places a second order. Accepted: before, the failed
+   * write threw out of ensureKey() and checkout could not place an order at all.
    */
   idempotencyKey: string | null;
 }

@@ -10,8 +10,7 @@ import { RequireRole } from './features/auth/RequireRole';
 import { CartBar } from './features/cart/CartBar';
 import { selectCount, useCartStore } from './features/cart/cartStore';
 import { OutdatedBanner } from './features/version/OutdatedBanner';
-import { APP_TITLE } from './config/app';
-import { getShellConfig } from './appShell';
+import { documentTitle, getShellConfig } from './appShell';
 import { cn } from './lib/cn';
 import { CartPage } from './pages/Cart';
 import { HomePage } from './pages/Home';
@@ -52,7 +51,7 @@ function AppShell() {
   // focus moves to the new page too, so the next Tab reaches its first control instead of carrying on from where the
   // old page's link was. The live region below says the page's name, which a title change alone never announces.
   useEffect(() => {
-    document.title = config.title === APP_TITLE ? APP_TITLE : `${config.title} · ${APP_TITLE}`;
+    document.title = documentTitle(config.title);
     window.scrollTo(0, 0);
     if (firstPage.current) {
       firstPage.current = false;
