@@ -341,3 +341,24 @@ one staff, sequential).
   re-run end to end, and the round-3 reads were taken on a different machine with 2 orders, so the HTTP p50s (6-8 ms
   then, 8-9 ms now with 10x the rows) are not a like-for-like comparison; the within-database EXPLAIN pair is the
   evidence that the read got cheaper. Snapshot sample verified through the API (`store.name`, `items[].imageUrl`).
+- **2026-11-03** · `feat/p1-14-client-flags-config` @ `bb32a53` + uncommitted changes (P1 PR 14: `GET /api/config` also reads
+  `getFlags()` through `cached('feature_flags', PUBLIC_READ_TTL_MS)` in a `Promise.all` with `getSettings()`, keeps the
+  client-visible flags and evaluates each with no caller). Server-only, no client change, so the bundle, Web Vitals and
+  polling intervals were not re-measured. Local API on :8114, WSL2, Node 24, 30 requests per warm sample after 2
+  warm-ups (20 per cold sample), `PUBLIC_READ_TTL_MS` default 10 s. **Warm** (both caches hit): 0 flag rows p50 1.01 /
+  p95 1.59 ms, 202 B; 1 hidden row (0 client-visible) 0.94 / 1.43 ms, 202 B; 20 client-visible flags 1.01 / 1.38 ms,
+  614 B (about 20 B per flag); baseline `/api/config` 1.3 / 1.5 ms, 202 B (2026-11-02), so no change (< 5 ms).
+  **Cold flags** (PATCH `/api/admin/flags/:key` flip, then the next GET; settings still warm): 0 client-visible 3.88 /
+  5.46 ms, 20 client-visible 3.93 / 4.75 ms (hidden-flag flip) and 4.95 / 5.58 ms (visible-flag flip), 614 B. **Cold
+  both** (`PUBLIC_READ_TTL_MS=0`, every request misses both): 0 rows 4.88 / 7.04 ms, 20 visible 4.74 / 7.35 ms. Cold
+  costs about 3.5-4 ms over warm (one PostgREST round trip) and is paid at most once per TTL per API instance or after
+  a flip; both-cold is not slower than flags-only cold, so the `Promise.all` fetches in parallel, not in series. The
+  flag count does not move the cold time (0 vs 20 rows within 0.2 ms). The cold-flags baseline did not exist (the
+  config route had one cached read), so there is no old cold number; the old code was not re-run. **Revalidation:**
+  `Cache-Control: no-cache`, `Vary: Authorization, Origin`, ETag identical on back-to-back GETs and after the 10 s
+  cache expiry (0 and 20 flags), `If-None-Match` answers 304 with 0 B; after a real flag change the old ETag gets 200
+  with the new 615 B body. **Caveat:** flipping a visible flag and flipping it back changes the ETag (the row moves in
+  the heap, `getFlags()` selects with no `ORDER BY`, so `features` key order changes; bodies were not diffed), costing
+  each client one extra 614 B download; harmless, but `.order('key')` in `getFlags()` would make the ETag depend on
+  content only. Run notes: the first visible-flag cold sample was discarded (10 of its 20 PATCHes hit the 30/min write
+  limiter, 429) and rerun in a fresh window (20 PATCH 200).

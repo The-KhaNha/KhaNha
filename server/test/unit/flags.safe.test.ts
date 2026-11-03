@@ -4,7 +4,12 @@ import { evaluateFlag, toFlag, type Flag } from '../../src/services/flags.servic
 
 const STORE = randomUUID();
 const OTHER_STORE = randomUUID();
-const flag = (rules: Flag['rules'], enabled = true): Flag => ({ key: 'test_flag', enabled, rules });
+const flag = (rules: Flag['rules'], enabled = true): Flag => ({
+  key: 'test_flag',
+  enabled,
+  clientVisible: false,
+  rules,
+});
 
 describe('evaluateFlag', () => {
   it('is off when disabled, whatever the rules', () => {
@@ -78,15 +83,26 @@ describe('toFlag', () => {
     ['an empty list', { roles: [] }],
     ['not an object', 'everyone'],
   ])('a malformed rule (%s) is off', (_label, rules) => {
-    const parsed = toFlag({ key: 'test_flag', enabled: true, rules });
+    const parsed = toFlag({ key: 'test_flag', enabled: true, client_visible: false, rules });
     expect(evaluateFlag(parsed, { userId: randomUUID(), role: 'CUSTOMER', storeId: STORE })).toBe(
       false,
     );
   });
 
+  it('a malformed rule still keeps client_visible', () => {
+    expect(
+      toFlag({ key: 'test_flag', enabled: true, client_visible: true, rules: 'everyone' }),
+    ).toMatchObject({ enabled: false, clientVisible: true });
+  });
+
   it('a well-formed rule keeps the flag as stored', () => {
-    expect(toFlag({ key: 'test_flag', enabled: true, rules: { roles: ['STAFF'] } })).toEqual(
-      flag({ roles: ['STAFF'] }),
-    );
+    expect(
+      toFlag({
+        key: 'test_flag',
+        enabled: true,
+        client_visible: false,
+        rules: { roles: ['STAFF'] },
+      }),
+    ).toEqual(flag({ roles: ['STAFF'] }));
   });
 });

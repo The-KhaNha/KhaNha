@@ -573,7 +573,12 @@ Split seam if over 750 lines: the admin PATCH and its matrix move to their own P
 
 ### PR 14 — Client-visible flags in `/api/config` (P1.7)
 
-- [ ] Merged
+- [x] Merged
+
+As built: `Flag` gains `clientVisible` (`getFlags()` selects `client_visible`), and `features[key]` is
+`evaluateFlag(flag, {})`: a caller-less evaluation, which is `enabled` for an untargeted flag and `false` for a targeted
+one. The flags read fails closed inside `config.service.ts` (`features: {}`, still 200), with one `warn` per outage per
+process ([LOGGING.md](../docs/LOGGING.md)), not one per app start.
 
 Carried from PR 13's review: `isEnabled` and `getFlags` throw when the flags read fails. The first caller (this PR's
 `getConfig()`) must fail closed (no flags, never a 500 on `/api/config`), with its test.

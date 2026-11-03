@@ -14,6 +14,7 @@ type FlagRow = Tables<'feature_flags'>;
 export interface Flag {
   key: string;
   enabled: boolean;
+  clientVisible: boolean;
   rules: FlagRules;
 }
 
@@ -25,11 +26,12 @@ export interface FlagContext {
 }
 
 /** Parses a row's rules. A hand-edited rule that does not parse turns the flag off rather than on for everyone. */
-export function toFlag(row: Pick<FlagRow, 'key' | 'enabled' | 'rules'>): Flag {
+export function toFlag(row: Pick<FlagRow, 'key' | 'enabled' | 'client_visible' | 'rules'>): Flag {
   const rules = flagRulesSchema.safeParse(row.rules);
-  if (rules.success) return { key: row.key, enabled: row.enabled, rules: rules.data };
-  logger.warn({ flag: row.key }, 'Feature flag rules malformed, flag off');
-  return { key: row.key, enabled: false, rules: {} };
+  const { key, client_visible: clientVisible } = row;
+  if (rules.success) return { key, enabled: row.enabled, clientVisible, rules: rules.data };
+  logger.warn({ flag: key }, 'Feature flag rules malformed, flag off');
+  return { key, enabled: false, clientVisible, rules: {} };
 }
 
 /** 0–99, the same for one user and flag every time, and independent between flags. */
@@ -53,7 +55,9 @@ export function getFlags(): Promise<Map<string, Flag>> {
   return cached('feature_flags', PUBLIC_READ_TTL_MS, async () => {
     const { data } = await supabaseAdmin
       .from('feature_flags')
-      .select('key, enabled, rules')
+      .select('key, enabled, client_visible, rules')
+      // A stable order keeps /api/config's body, and so its ETag, the same for the same flags.
+      .order('key')
       .throwOnError();
     return new Map(data.map((row) => [row.key, toFlag(row)]));
   });
