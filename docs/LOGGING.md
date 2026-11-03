@@ -127,9 +127,9 @@ given.
 `POST /api/client-errors` ([API.md](API.md#post-client-errors)) writes one `warn` `Client error` line per report with
 `{ kind, message, stack, route, at }`, plus the `clientVersion` every request line carries. Never `error`: a browser
 cannot be allowed to page anyone. The body schema replaces anything shaped like a JWT, an `sb_…` key, a `Bearer`
-value, a token or code in a URL parameter, an email address or a phone number (each matched loosely: a cut-short JWT, `%40`, a bracketed phone) in `message`, `stack` and `route` (cut to its path) with `[Redacted]` before the line is written (redaction below covers keys, not
+value, a token, code or password in a URL parameter, an email address or a phone number (each matched loosely: a cut-short JWT, an encoded `%3D` or `%40`, an apostrophe in an address, a bracketed phone) in `message`, `stack` and `route` (cut to its path) with `[Redacted]` before the line is written (redaction below covers keys, not
 strings), behind the client's own scrub; `server/test/api/client-errors.safe.test.ts` fails if a token-shaped string
-reaches the log, and the same for an email or phone; `test/unit/client-errors-scrub.safe.test.ts` keeps the scrub linear on crafted input. `at` is the client's clock, as sent. At most 5 reports per request and `RATE_LIMIT_CLIENT_ERRORS_MAX` requests per address per window.
+reaches the log, and the same for an email or phone; `test/unit/client-errors-scrub.safe.test.ts` fails for each encoded or unusual shape and keeps the scrub linear on crafted input. `at` is the client's clock, as sent. At most 5 reports per request and `RATE_LIMIT_CLIENT_ERRORS_MAX` requests per address per window.
 
 ## Never logged
 

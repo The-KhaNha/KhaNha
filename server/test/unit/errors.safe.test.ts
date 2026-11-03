@@ -1,3 +1,4 @@
+import { PostgrestError } from '@supabase/supabase-js';
 import type { Request, Response } from 'express';
 import { describe, expect, it } from 'vitest';
 import { errorHandler, loggedAtDebug } from '../../src/middleware/errorHandler';
@@ -223,6 +224,29 @@ describe('errorHandler mapping', () => {
     ],
   ])('passes %s details through untouched', (_label, err, details) => {
     expect(run(err).body).toEqual({ error: { code: err.code, message: err.message, details } });
+  });
+
+  // A lone UTF-16 surrogate in an RPC argument makes PostgREST refuse the JSON (PGRST102) before Postgres sees it. Each
+  // of these is a value the client sent, so it is a 400, never a 500 logged at error.
+  it.each([
+    [
+      'PGRST102 (an RPC argument PostgREST cannot read as JSON)',
+      'PGRST102',
+      'Invalid characters in input.',
+    ],
+    ['22021 (invalid byte sequence)', '22021', 'Invalid characters in input.'],
+    ['22001 (value too long)', '22001', 'One of the values is too long.'],
+  ])('maps PostgREST %s to 400 VALIDATION_ERROR, logged at info', (_label, code, message) => {
+    const err = new PostgrestError({
+      message: 'Empty or invalid json',
+      details: '',
+      hint: '',
+      code,
+    });
+    const { status, body, logged } = run(err, { id: 'u1' });
+    expect(status).toBe(400);
+    expect(body).toEqual({ error: { code: 'VALIDATION_ERROR', message } });
+    expect(logged).toEqual([expect.objectContaining({ level: 'info' })]);
   });
 
   it('does not treat an ordinary TypeError as a transport failure', () => {

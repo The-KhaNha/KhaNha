@@ -143,6 +143,21 @@ describe('POST /api/client-errors', () => {
     expect(clientErrorLines()).toHaveLength(0);
   });
 
+  // 10 KB nested 5,000 deep overflowed the stack in validate.ts's NUL-byte strip: a 500 logged at error, unauthenticated.
+  it('refuses a body nested 5,000 deep with 400 VALIDATION_ERROR, logging nothing at error', async () => {
+    app.lines.length = 0;
+    const res = await request(app.server)
+      .post('/api/client-errors')
+      .set('X-Client-Version', '9.1.0')
+      .set('Content-Type', 'application/json')
+      .send(`{"reports":${'['.repeat(5000)}${']'.repeat(5000)}}`);
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      error: { code: 'VALIDATION_ERROR', message: 'The request body is nested too deeply.' },
+    });
+    expect(app.lines.filter((line) => Number(line.level) >= 50)).toEqual([]);
+  });
+
   it('takes reports from an outdated client, which every gated route refuses', async () => {
     const gated = await request(app.server)
       .post('/api/auth/register')

@@ -35,6 +35,38 @@ describe('validateName', () => {
   });
 });
 
+// The server's typed-text rule (server/src/schemas/common.ts): invisible characters do not fill a name, and lengths
+// are UTF-16 units, as maxLength counts them. A form that disagreed would let the API refuse or store what it should not.
+describe('validateName and validateNote: invisible characters and emoji', () => {
+  it.each([
+    ['zero-width spaces', '\u200b\u200b\u200b'],
+    ['a Braille blank and a Hangul filler', '\u2800\u3164'],
+    ['Hangul fillers', '\u115f\u1160\uffa0'],
+    ['a word joiner between spaces', ' \u2060 '],
+  ])('treats a name of %s as missing', (_label, name) => {
+    expect(validateName(name)).toBe('Please enter your name.');
+  });
+
+  it('counts only visible characters toward the minimum', () => {
+    expect(validateName('A\u200b')).toBe('Your name needs at least 2 characters.');
+    expect(validateName('\u200bAnn\u200b')).toBeUndefined();
+    expect(validateName('ক\u200cষ')).toBeUndefined();
+  });
+
+  it.each([
+    ['30 emoji (60 units)', '🍔'.repeat(30), true],
+    ['31 emoji (62 units)', '🍔'.repeat(31), false],
+  ])('limits a name of %s -> ok=%s', (_label, name, ok) => {
+    expect(validateName(name) === undefined).toBe(ok);
+  });
+
+  it('limits a note by UTF-16 units and ignores invisible padding at its ends', () => {
+    expect(validateNote('🍔'.repeat(100))).toBeUndefined();
+    expect(validateNote('🍔'.repeat(101))).toBeDefined();
+    expect(validateNote(`\u200b${'a'.repeat(NOTE_MAX_LENGTH)}\u200b`)).toBeUndefined();
+  });
+});
+
 describe('validateEmail', () => {
   it('requires a value', () => {
     expect(validateEmail('')).toBeDefined();

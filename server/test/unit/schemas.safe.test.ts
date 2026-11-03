@@ -194,3 +194,99 @@ describe('updateOrderStatusSchema / listOrdersQuerySchema', () => {
     expect(listOrdersQuerySchema.safeParse({}).success).toBe(true);
   });
 });
+
+// Typed text (a name, a note) is checked as the browser counts it, so the API never refuses what a form accepted and
+// never stores what a form would refuse (client/src/features/auth/validation.ts mirrors these rules).
+describe('typed text: characters and length', () => {
+  const register = { email: 'ann@example.test', password: 'pw123456' };
+  const firstMessage = (result: { error?: { issues: { message: string }[] } }) =>
+    result.error?.issues[0]?.message;
+
+  // A lone surrogate reached place_order as JSON PostgREST could not read: a 500 after the payment ran.
+  it.each([
+    ['customerName', { customerName: 'x\ud800y' }],
+    ['customerName (low surrogate)', { customerName: 'x\udfff' }],
+    ['note', { note: 'x\ud800y' }],
+  ])('refuses a lone surrogate in an order %s', (_label, fields) => {
+    const result = createOrderSchema.safeParse({ ...validOrder, ...fields });
+    expect(result.success).toBe(false);
+    expect(firstMessage(result)).toBe('Invalid characters in input.');
+  });
+
+  it.each([
+    ['name', { name: 'Br\ud800ker', password: 'pw123456' }],
+    ['password', { name: 'Ann', password: 'pw12\udc003456' }],
+  ])('refuses a lone surrogate in a register %s (it was stored as U+FFFD)', (_label, fields) => {
+    const result = registerSchema.safeParse({ ...register, ...fields });
+    expect(result.success).toBe(false);
+    expect(firstMessage(result)).toBe('Invalid characters in input.');
+  });
+
+  it('keeps a whole surrogate pair: an emoji is well formed', () => {
+    expect(createOrderSchema.safeParse({ ...validOrder, customerName: 'Ann 🍔' }).success).toBe(
+      true,
+    );
+  });
+
+  // trim() leaves format characters, the Braille blank and the Hangul fillers, so a name of them looked filled in.
+  const invisibleOnly = [
+    ['zero-width spaces', '\u200b\u200b\u200b'],
+    ['a Braille blank and a Hangul filler', '\u2800\u3164'],
+    ['Hangul choseong/jungseong fillers and halfwidth filler', '\u115f\u1160\uffa0'],
+    ['a word joiner between spaces', ' \u2060 '],
+  ];
+
+  it.each(invisibleOnly)('refuses a register name of %s', (_label, name) => {
+    const result = registerSchema.safeParse({ ...register, name });
+    expect(result.success).toBe(false);
+    expect(firstMessage(result)).toBe('Name must be at least 2 characters.');
+  });
+
+  it.each(invisibleOnly)(
+    'treats an order customerName of %s as not sent',
+    (_label, customerName) => {
+      const result = createOrderSchema.safeParse({
+        ...validOrder,
+        customerName,
+        note: customerName,
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.customerName).toBeUndefined();
+        expect(result.data.note).toBeUndefined();
+      }
+    },
+  );
+
+  it('counts only visible characters toward the minimum: one letter and a zero-width space is too short', () => {
+    expect(registerSchema.safeParse({ ...register, name: 'A\u200b' }).success).toBe(false);
+  });
+
+  it('trims invisibles at the ends but keeps a joiner inside a name or an emoji sequence', () => {
+    const family = '👨\u200d👩\u200d👧';
+    const result = registerSchema.safeParse({ ...register, name: `\u200b Ann ${family}\u200b ` });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.name).toBe(`Ann ${family}`);
+    // A zero-width non-joiner shapes Indic and Persian script: it stays where it was typed.
+    const zwnj = registerSchema.safeParse({ ...register, name: 'ক\u200cষ' });
+    expect(zwnj.success && zwnj.data.name).toBe('ক\u200cষ');
+  });
+
+  // zod's max() counts code points; the form's maxLength counts UTF-16 units, so 31 burgers (62 units) got through.
+  it.each([
+    ['customerName of 30 emoji (60 units)', { customerName: '🍔'.repeat(30) }, true],
+    ['customerName of 31 emoji (62 units)', { customerName: '🍔'.repeat(31) }, false],
+    ['note of 100 emoji (200 units)', { note: '🍔'.repeat(100) }, true],
+    ['note of 101 emoji (202 units)', { note: '🍔'.repeat(101) }, false],
+  ])('limits an order %s by UTF-16 units -> ok=%s', (_label, fields, ok) => {
+    expect(createOrderSchema.safeParse({ ...validOrder, ...fields }).success).toBe(ok);
+  });
+
+  it.each([
+    ['30 emoji (60 units)', '🍔'.repeat(30), true],
+    ['31 emoji (62 units)', '🍔'.repeat(31), false],
+    ['one emoji (2 units, the minimum)', '🍔', true],
+  ])('limits a register name of %s by UTF-16 units -> ok=%s', (_label, name, ok) => {
+    expect(registerSchema.safeParse({ ...register, name }).success).toBe(ok);
+  });
+});

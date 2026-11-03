@@ -87,13 +87,17 @@ function describeError(err: unknown): ErrorDescription {
   return describeHttpError(err) ?? INTERNAL;
 }
 
-/** Postgres errors (SQLSTATE codes) that a client can cause despite validation; everything else is a real 500. */
+/**
+ * Postgres errors (SQLSTATE codes) and PostgREST ones (PGRST…) that a client can cause despite validation; everything
+ * else is a real 500.
+ */
 function describeDatabaseError(err: PostgrestError): ErrorDescription {
   switch (err.code) {
     case '22001': // value too long for the column
       return { status: 400, code: 'VALIDATION_ERROR', message: 'One of the values is too long.' };
     case '22021': // invalid byte sequence, e.g. a NUL byte that slipped past validation
     case '22P05': // untranslatable character, the same for JSON arguments
+    case 'PGRST102': // PostgREST could not read an RPC's arguments as JSON: a lone UTF-16 surrogate let through
       return { status: 400, code: 'VALIDATION_ERROR', message: 'Invalid characters in input.' };
     default:
       return INTERNAL;

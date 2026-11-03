@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { describeIssue, validate } from '../../src/middleware/validate';
+import { MAX_BODY_DEPTH, describeIssue, validate } from '../../src/middleware/validate';
 
 function issueFor(schema: z.ZodTypeAny, value: unknown): z.ZodIssue {
   const result = schema.safeParse(value);
@@ -85,6 +85,33 @@ describe('validate middleware', () => {
     expect(thrown).toBeUndefined();
     expect(req.body).toEqual({ note: 'abc' });
     expect(next).toHaveBeenCalledOnce();
+  });
+
+  // A 10 KB body nested 5,000 deep overflowed the stack in the NUL-byte strip: an unauthenticated 500.
+  it.each([
+    ['arrays', (inner: unknown) => [inner]],
+    ['objects', (inner: unknown) => ({ a: inner })],
+  ])(
+    'refuses a body of %s nested 5,000 deep with 400, before it reaches the schema',
+    (_l, wrap) => {
+      let body: unknown = 'x';
+      for (let i = 0; i < 5000; i++) body = wrap(body);
+      const { thrown, next } = run(z.unknown(), { reports: body });
+      expect(thrown).toMatchObject({
+        status: 400,
+        code: 'VALIDATION_ERROR',
+        message: 'The request body is nested too deeply.',
+      });
+      expect(next).not.toHaveBeenCalled();
+    },
+  );
+
+  it('still strips NUL bytes at the deepest level it accepts', () => {
+    let body: unknown = 'a\0b';
+    for (let i = 0; i < MAX_BODY_DEPTH; i++) body = [body];
+    const { req, thrown } = run(z.unknown(), body);
+    expect(thrown).toBeUndefined();
+    expect(JSON.stringify(req.body)).toContain('"ab"');
   });
 
   it('validates a query source and replaces req.query with the parsed value', () => {
