@@ -23,5 +23,6 @@ export async function getConfig(): Promise<ConfigDto> {
       staffBoardMs: settings.staff_board_poll_ms,
     },
     session: { idleDays: env.SESSION_IDLE_DAYS },
+    clientErrors: { samplePercent: settings.client_error_sample_percent },
   };
 }

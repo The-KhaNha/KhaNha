@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useResource } from '../../lib/useResource';
 import { fetchConfig } from '../../services/config';
 import type { Config } from '../../types/api';
@@ -10,5 +11,7 @@ import { CONFIG_FALLBACK } from './fallbacks';
  */
 export function useConfig(): Config {
   const { data } = useResource(fetchConfig, { key: 'config', persist: true });
-  return data ?? CONFIG_FALLBACK;
+  // A copy persisted before a field existed, or an API deployed behind this client, lacks the newer keys: the
+  // fallbacks fill them, so a reader never meets undefined. Memoised, so the object stays the same between renders.
+  return useMemo(() => (data ? { ...CONFIG_FALLBACK, ...data } : CONFIG_FALLBACK), [data]);
 }

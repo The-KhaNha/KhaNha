@@ -29,6 +29,7 @@ const saved: SiteSettings = {
   orderPollMs: 4000,
   ordersPollMs: 8000,
   staffBoardPollMs: 4000,
+  clientErrorSamplePercent: 100,
   minClientVersion: '0.0.0',
   updatedAt: '2026-09-27T00:00:00Z',
 };

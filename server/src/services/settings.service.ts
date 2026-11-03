@@ -15,6 +15,7 @@ const COLUMN: { [K in keyof UpdateSettingsInput]-?: keyof SettingsUpdate } = {
   orderPollMs: 'order_poll_ms',
   ordersPollMs: 'orders_poll_ms',
   staffBoardPollMs: 'staff_board_poll_ms',
+  clientErrorSamplePercent: 'client_error_sample_percent',
   minClientVersion: 'min_client_version',
 };
 

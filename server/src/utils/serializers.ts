@@ -55,6 +55,7 @@ export function toSiteSettingsDto(settings: Tables<'site_settings'>): SiteSettin
     orderPollMs: settings.order_poll_ms,
     ordersPollMs: settings.orders_poll_ms,
     staffBoardPollMs: settings.staff_board_poll_ms,
+    clientErrorSamplePercent: settings.client_error_sample_percent,
     minClientVersion: settings.min_client_version,
     updatedAt: settings.updated_at,
   };

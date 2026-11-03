@@ -439,6 +439,7 @@ export type Database = {
       };
       site_settings: {
         Row: {
+          client_error_sample_percent: number;
           customer_order_history_limit: number;
           id: boolean;
           max_lines_per_order: number;
@@ -451,6 +452,7 @@ export type Database = {
           updated_by: string | null;
         };
         Insert: {
+          client_error_sample_percent?: number;
           customer_order_history_limit?: number;
           id?: boolean;
           max_lines_per_order?: number;
@@ -463,6 +465,7 @@ export type Database = {
           updated_by?: string | null;
         };
         Update: {
+          client_error_sample_percent?: number;
           customer_order_history_limit?: number;
           id?: boolean;
           max_lines_per_order?: number;
