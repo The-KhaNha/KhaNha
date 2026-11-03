@@ -1,4 +1,8 @@
+import fallbacks from '../config/fallbacks.json';
 import { sendClientErrors, type ClientErrorReport } from '../services/clientErrors';
+
+// The server's bounds (LIMITS.clientErrors, parity-tested): a report past them would fail the whole batch, silently.
+const { reportsMax, messageMax, stackMax, routeMax } = fallbacks.validation.clientErrors;
 
 export const CHUNK_FAILURE =
   /chunk.{0,80}(?:load|fail)|(?:fetch|loading) dynamically imported module|importing a module script failed/i;
@@ -48,14 +52,14 @@ export function reportError(error: unknown, kind: ClientErrorReport['kind']) {
       if (kind === 'render') previous.kind = kind;
       return;
     }
-    if (count >= 5 || (percent !== undefined && sample * 100 >= percent)) return;
+    if (count >= reportsMax || (percent !== undefined && sample * 100 >= percent)) return;
     const message = (error instanceof Error ? error.message : String(error)).slice(0, 8000);
     if (CHUNK_FAILURE.test(message)) return;
     const report: ClientErrorReport = {
       kind,
-      message: scrub(message).slice(0, 500),
-      stack: error instanceof Error ? scrub(error.stack ?? '').slice(0, 3500) : undefined,
-      route: scrub(window.location.pathname).slice(0, 200),
+      message: scrub(message).slice(0, messageMax),
+      stack: error instanceof Error ? scrub(error.stack ?? '').slice(0, stackMax) : undefined,
+      route: scrub(window.location.pathname).slice(0, routeMax),
       at: new Date().toISOString(),
     };
     // JSON escaping and multibyte characters count too; five reports remain below keepalive's 64 KB limit.
