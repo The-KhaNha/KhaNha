@@ -84,7 +84,8 @@ database outage never restarts a healthy container.
 Code: `server/src/services/config.service.ts`. Public (no token), registered before the [client version
 gate](#client-version-gate) so an outdated client can still read the minimum it must reach. Derived from the cached
 site settings (no cache key of its own, so an admin's `PATCH /admin/settings` reaches it at once through
-`invalidate('site_settings')`) plus `SESSION_IDLE_DAYS`. `ConfigDto`:
+`invalidate('site_settings')`), the cached feature flags (a flip reaches it through `invalidate('feature_flags')`) and
+`SESSION_IDLE_DAYS`. `ConfigDto`:
 
 ```json
 {
@@ -99,7 +100,10 @@ site settings (no cache key of its own, so an admin's `PATCH /admin/settings` re
 }
 ```
 
-`features` stays empty until P1.7 and `payment` null until P5. The client's defaults for this shape are
+`features` holds every `client_visible` [feature flag](CONFIGURATION.md#feature-flags) by key: an untargeted flag as
+its `enabled`, a targeted one (`storeIds`, `roles` or `percent`) as `false`, since it needs to know the caller; a flag
+that is not `client_visible` never appears. If the flags cannot be read, `features` is `{}` and the response is still
+200 (a feature the client cannot confirm stays off). `payment` stays null until P5. The client's defaults for this shape are
 `client/src/config/fallbacks.json`; `server/test/api/config.test.ts` fails when they differ from a freshly seeded
 database.
 
@@ -712,12 +716,12 @@ share one database round-trip instead of repeating it:
 | `invalidate(key?)`            | drops one key, or every key with no argument                                                                                                                                                                                                                                                                          |
 | `PUBLIC_READ_TTL_MS`          | the TTL used by the reads below: env `PUBLIC_READ_TTL_MS`, default 10000 ms (0 turns the cache off)                                                                                                                                                                                                                   |
 
-| Cached endpoint                                                 | Key               | Loader                                                                                             | Invalidated by                                                                                                                                                        |
-| --------------------------------------------------------------- | ----------------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/menu`                                                 | `'menu'`          | `menu.service.getMenu` → `loadMenu`                                                                | `order.service.createOrder` (in a `finally`, so a placed order and a stock-refused one both invalidate it) and `updateOrderStatus` when the new status is `CANCELLED` |
-| `GET /api/store`                                                | `'store'`         | `store.service.getCachedStore` → `getStore`                                                        | nothing today; a future store-editing endpoint must call `invalidate('store')`                                                                                        |
-| `GET /api/orders`, `GET /api/admin/settings`, `GET /api/config` | `'site_settings'` | `settings.service.getSettings`                                                                     | `settings.service.updateSettings` (`PATCH /api/admin/settings`), at once                                                                                              |
-| every `flags.service.isEnabled` call (no route reads it yet)    | `'feature_flags'` | `flags.service.getFlags` (every flag, rules parsed; evaluated per caller, never cached per caller) | `flags.service.setFlag` (`PATCH /api/admin/flags/:key`), at once                                                                                                      |
+| Cached endpoint                                                      | Key               | Loader                                                                                             | Invalidated by                                                                                                                                                        |
+| -------------------------------------------------------------------- | ----------------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/menu`                                                      | `'menu'`          | `menu.service.getMenu` → `loadMenu`                                                                | `order.service.createOrder` (in a `finally`, so a placed order and a stock-refused one both invalidate it) and `updateOrderStatus` when the new status is `CANCELLED` |
+| `GET /api/store`                                                     | `'store'`         | `store.service.getCachedStore` → `getStore`                                                        | nothing today; a future store-editing endpoint must call `invalidate('store')`                                                                                        |
+| `GET /api/orders`, `GET /api/admin/settings`, `GET /api/config`      | `'site_settings'` | `settings.service.getSettings`                                                                     | `settings.service.updateSettings` (`PATCH /api/admin/settings`), at once                                                                                              |
+| `GET /api/config` (`features`), every `flags.service.isEnabled` call | `'feature_flags'` | `flags.service.getFlags` (every flag, rules parsed; evaluated per caller, never cached per caller) | `flags.service.setFlag` (`PATCH /api/admin/flags/:key`), at once                                                                                                      |
 
 `createOrder`'s own `is_open` check calls the uncached `getStore()` directly, never `getCachedStore()` — a write
 path never trusts a stale read of the data it is about to act on. Nothing user-specific (orders, profiles) is ever

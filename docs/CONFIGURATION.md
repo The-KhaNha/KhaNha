@@ -40,7 +40,8 @@ Not a limit but a switch: whether a feature is on, and for whom. One `feature_fl
 planned ones are in the roadmap's P1.7). Evaluated on the server by `flags.service.isEnabled(key, { userId, role,
 storeId })`: `enabled`, then the store list, then the role list, then a stable percentage of signed-in users. An
 unknown key is off, so code can ship before its flag's row. Read through `getFlags()` (cached as `feature_flags`,
-invalidated by the flip). Flipped through [`PATCH /api/admin/flags/:key`](API.md#patch-adminflagskey), audited with
+invalidated by the flip). A `client_visible` flag also reaches the client through `GET /api/config`'s `features`
+([API.md](API.md#get-config)), as `false` while it has targeting rules. A flag the client cannot read (the table unreachable) is `false` there too, so a client-visible flag must be named so that `false` is the safe value: `menu_v2_enabled`, never `ordering_paused`. Flipped through [`PATCH /api/admin/flags/:key`](API.md#patch-adminflagskey), audited with
 the admin's name; there is no screen until P7.4.
 
 ## Deployment settings
