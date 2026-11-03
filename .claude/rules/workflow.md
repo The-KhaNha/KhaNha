@@ -169,8 +169,8 @@ relationships.
 
 ## 21. Branches, PR size, versions and releases
 
-**Branches.** Feature branches → PR into `dev` (`ci-ok` green before merging, by rule: GitHub Free enforces nothing;
-`dev` deploys staging) → a release PR into `main`
+**Branches.** Feature branches → PR into `dev` (`ci-ok` green before merging, enforced by the `ci-ok required`
+ruleset on `main`, `dev` and each listed `feat/P<n>`, ADR-011; `dev` deploys staging) → a release PR into `main`
 (production, merged by the user) → a back-merge PR into `dev`. Hotfixes branch off `main` as `hotfix/*`, carry their
 own intent, get their own release run and are back-merged the same way. Migrations are immutable once merged into
 `dev`. Agents that compare against "the base" use the PR's base branch: `origin/dev` for features, `origin/main` for
@@ -180,7 +180,8 @@ hotfixes, `origin/feat/P<n>` for a phase's PRs.
 builds its PRs in order). Its PRs come from `feat/p<n>-<NN>-<slug>` branches (git cannot hold
 `feat/P1` and `feat/P1/…` side by side) and go into `feat/P<n>`, with the same size limit, CI (`ci.yml` and `security.yml`
 match `feat/**` for PRs; `ci.yml` also runs on pushes to `feat/P<n>`) and CodeRabbit review (`.coderabbit.yaml`
-matches `feat/.*`). Migrations are immutable once
+matches `^feat/`). When a phase branch is cut, add it by its exact name to the `ci-ok required` ruleset (Settings →
+Rules); a `feat/*` pattern would also catch the work branches and refuse their pushes. Migrations are immutable once
 merged into the phase branch. When the phase is done, `feat/P<n>` goes into `dev` as one PR, merged by the user.
 
 **PR size (STRICTLY ENFORCED).** Keep every PR reviewable: at most **38 changed files or 750 changed lines** against
@@ -194,6 +195,24 @@ reviewed in its own PRs.
 - Then **stop**: start no other work, and do not poll CI or the PR. The user says when it is merged (or what to fix);
   only then branch fresh off the updated base for the next step.
 - `.claude/hooks/major-change-gate.js` reminds once per branch when it passes the limit (`--status` prints the size).
+
+**CodeRabbit budget.** The repository is public, so CodeRabbit reviews it on the free open-source plan: **1–10 PR
+reviews an hour per PR author, rising with the repository's stars** (about 1 an hour while it has few), 25 chat
+messages an hour, 100–300 files a review, all in rolling windows ([plans](https://docs.coderabbit.ai/management/plans),
+[rate limits](https://docs.coderabbit.ai/management/rate-limits), checked 2026-11-03). Every PR one account opens
+draws on the same allowance. A review is spent by opening a PR or marking a draft ready, by each `@coderabbitai review`
+or `full review`, and by reopening a PR. `.coderabbit.yaml` turns off the review of later pushes and skips release and
+back-merge PRs, so a push costs nothing.
+
+- Open a PR once, complete (the flow above). With several ready at once, open the first, open the rest as drafts
+  (`gh pr create --draft`), and mark the next one ready (`gh pr ready <n>`) once the previous review has posted, or an
+  hour later. `@coderabbitai rate limit` on an open PR says whether a review is available without spending one.
+- After a `coderabbit-fixer` round, push once. Comment `@coderabbitai review` only when the round changed behaviour,
+  not for nitpicks.
+- A "rate limited" comment means that review did not run: wait for the time it gives, then comment
+  `@coderabbitai review` once. Never push again, or close and reopen, to trigger it.
+- Mention `@coderabbitai` only to ask it something: each mention spends a chat message.
+- A phase branch's PR into `dev` bundles reviewed work: put `@coderabbitai ignore` in its description.
 
 **Versions.** `client/package.json` and `server/package.json` keep independent semver lines (0.x until the pilot
 launch). A change that touches `client/src`, `server/src`, `server/scripts`, `server/supabase/migrations` or a

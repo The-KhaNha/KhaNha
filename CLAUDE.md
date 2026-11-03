@@ -147,8 +147,8 @@ running and seeded; in `client/` also the e2e smoke; what each runs: `docs/TESTI
 **Every fix ships with its guard.** A bug fix is done only when the check that would have caught it exists and you
 have seen it fail without the fix: a unit or API test, an e2e smoke case, a `scripts/ci/` check or CI step, or a
 numbered item in `ui-verifier` / `app-breaker`. Guard the class of bug, not the one line, at the cheapest layer that
-catches it. CI runs the same gate on every PR (`docs/TESTING.md` "Continuous integration"); nothing enforces it on
-GitHub Free, so never merge with `ci-ok` red or pending.
+catches it. CI runs the same gate on every PR (`docs/TESTING.md` "Continuous integration"), and a ruleset blocks the merge
+until `ci-ok` is green.
 
 ## 14. CRUD and lifecycle verification
 
@@ -217,7 +217,8 @@ Read. Run `graphify update .` after modifying code. Details: `.claude/rules/work
 Feature branches → PR into `dev` (staging) → a release PR into `main` (production, merged by the user) → a
 back-merge into `dev`. A phase may have its own `feat/P<n>` branch that its PRs target. Every PR stays within the
 size limit and one theme; when a branch reaches the limit or its theme is done, verify, commit, push, open the PR
-and **stop** until the user says it is merged. A change to source records its version bump (`npm run change`) before
+and **stop** until the user says it is merged. CodeRabbit's hourly review budget, shared by every PR you open, paces
+when PRs are opened, marked ready and re-reviewed. A change to source records its version bump (`npm run change`) before
 it is finished; docs, CI and tooling changes are labelled `no-release`. Never merge into `main` and never tag. The
-branch model, phase branches, the PR-size numbers, bump levels and the release process: `.claude/rules/workflow.md`
-§21.
+branch model, phase branches, the PR-size numbers, the CodeRabbit budget, bump levels and the release process:
+`.claude/rules/workflow.md` §21.

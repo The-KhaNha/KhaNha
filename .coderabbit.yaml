@@ -1,10 +1,27 @@
 # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
-# CodeRabbit reviews PRs into the default branch (main) by default. Feature PRs go into dev, and a phase's PRs into its
-# feature branch feat/P<n> (CLAUDE.md §21), so review those too; the entries are regular expressions. Its comments are
-# applied by the coderabbit-fixer agent (CLAUDE.md §17).
+# The repository is public, so CodeRabbit runs on its open-source plan: a small hourly review budget per PR author,
+# which every PR one person opens shares (.claude/rules/workflow.md §21 "CodeRabbit budget"). These settings spend it
+# on a PR's first review only. The review rules are CLAUDE.md and .claude/rules/*.md, which CodeRabbit reads by default
+# and scopes by their `paths:` frontmatter, so nothing here repeats them. Its comments are applied by the
+# coderabbit-fixer agent (CLAUDE.md §17).
 reviews:
   auto_review:
     enabled: true
+    # Reviewed besides the default branch (main): feature PRs go into dev, and a phase's PRs into its feature branch
+    # feat/P<n> (CLAUDE.md §21). The entries are unanchored regular expressions.
     base_branches:
-      - dev
-      - feat/.*
+      - ^dev$
+      - ^feat/
+    # A push after the first review is not reviewed on its own; ask with `@coderabbitai review` when it should be.
+    auto_incremental_review: false
+    # release.yml's release and back-merge PRs bundle work already reviewed in its own PRs.
+    ignore_title_keywords:
+      - 'release:'
+      - back-merge
+  # Generated, never edited by hand (the PR-size count skips them too).
+  path_filters:
+    - '!**/package-lock.json'
+    - '!server/src/types/database.ts'
+chat:
+  # coderabbit-fixer replies on every thread it handles; an automatic answer to each would spend the chat budget.
+  auto_reply: false

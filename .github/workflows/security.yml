@@ -77,4 +77,5 @@ jobs:
         run: |
           curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
             | tar -xz -C "$RUNNER_TEMP" gitleaks
-      - run: '"$RUNNER_TEMP/gitleaks" detect --source . --redact --verbose'
+      # Every branch, not only the one checked out: the repository is public, so a secret on any branch is published.
+      - run: '"$RUNNER_TEMP/gitleaks" detect --source . --redact --verbose --log-opts="--all"'
