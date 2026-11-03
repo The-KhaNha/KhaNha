@@ -4,7 +4,13 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { supabaseAdmin } from '../../src/utils/supabase';
 import { api } from '../setup/api';
-import { createTestUser, deleteTestUser, localSql, type TestUser } from '../setup/helpers';
+import {
+  createTestUser,
+  deleteTestUser,
+  localSql,
+  resetDemoData,
+  type TestUser,
+} from '../setup/helpers';
 import { resolveTestTarget } from '../setup/target';
 
 let customer: TestUser;
@@ -12,12 +18,16 @@ let item: { id: string; store_id: string; name: string; price_paise: number };
 let orderId: string;
 
 beforeAll(async () => {
+  // The seeded menu and an open store, whatever an earlier suite left behind (a closed store or an unavailable item
+  // turns the POST /orders cases below into a 400).
+  resetDemoData();
   customer = await createTestUser('CUSTOMER');
-  // An item without a stock count, so the order moves no stock.
+  // An available item without a stock count, so the order moves no stock.
   ({ data: item } = await supabaseAdmin
     .from('menu_items')
     .select('id, store_id, name, price_paise')
     .is('stock_quantity', null)
+    .eq('is_available', true)
     .order('id')
     .limit(1)
     .single()
@@ -132,11 +142,14 @@ describe('a price that changed after the API charged for it', () => {
         .post('/api/orders')
         .set('Authorization', `Bearer ${customer.token}`)
         .send({ idempotencyKey: randomUUID(), items: [{ menuItemId: item.id, quantity: 1 }] });
-      expect(res.status).toBe(409);
-      expect(res.body).toEqual({
-        error: {
-          code: 'PRICE_CHANGED',
-          message: `The price of ${item.name} just changed to ₹${item.price_paise / 100}. Please review your order.`,
+      // Status and body together, so a failure shows which error came back instead of a bare status.
+      expect({ status: res.status, body: res.body }).toEqual({
+        status: 409,
+        body: {
+          error: {
+            code: 'PRICE_CHANGED',
+            message: `The price of ${item.name} just changed to ₹${item.price_paise / 100}. Please review your order.`,
+          },
         },
       });
     } finally {
