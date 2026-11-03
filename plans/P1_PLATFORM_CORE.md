@@ -426,7 +426,24 @@ untouched; the new API needs the migration first, as always.
 
 ### PR 09 — Money in paise: expand (ADR-004)
 
-- [ ] Merged
+- [x] Merged
+
+> **As built:** `place_order` reads every line's `menu_items` row once (into a jsonb array) and takes the total and
+> the lines from that one read, so an item without a stock count (not locked by the stock loop) cannot change price
+> between the two. The API no longer sends a price in `p_lines`. Tests that write `orders` or `menu_items` directly
+> (`admin`, `caching-gaps`, `menu-cap`, `order-snapshots`) now write the paise columns too; `audit.test.ts` checks that a
+> `price_paise`-only edit is audited. The class guard also scans `server/scripts`. `docs/ARCHITECTURE.md` (the
+> checkout diagrams and the ER diagram) is updated with the owning docs.
+>
+> Two additions, approved during review. **Expected price check:** the API charged from its own read and
+> `place_order` stored from a later one, so a price change in between charged one amount and stored another. The API
+> now sends each line's charged price as `unit_price_paise`; `place_order` compares it with the same read it stores
+> from and raises `PRICE_CHANGED` (`{ menuItemId, name, price }`, rolling back the stock), which the API answers 409
+> `PRICE_CHANGED`, no `details`, the message naming the item and its new price. A deployed-API call without
+> `unit_price_paise` is not checked. **Sync trigger:** `menu_items_sync_price` (before insert or update of `price`,
+> `price_paise`; executable by nobody) derives whichever price column was not written and refuses both written and
+> disagreeing, so the deployed API's rupee-only writes keep working and the columns cannot drift. PR 16 drops the
+> trigger with the rupee column.
 
 [ADR-004](../docs/adr/004-rupees-and-paise.md) as amended (D8). `/before-write`: schema-guard, expected EXTEND
 (`_paise` columns beside the rupee ones, expand → migrate → contract).
@@ -659,7 +676,7 @@ the release containing it runs in production (the user confirms): until then the
 columns.
 
 Migration `<ts>_money_paise_contract.sql`: `create or replace place_order` without the rupee writes; the audit trigger
-stops watching `price`; drop `menu_items.price`, `orders.total`, `order_items.unit_price` and
+stops watching `price`; drop the `menu_items_sync_price` trigger and its function (PR 09) before the column; drop `menu_items.price`, `orders.total`, `order_items.unit_price` and
 `order_items.line_total`; `npm run db:types`. The seed stops writing them. The whole-rupee checks stay until a paise
 API field replaces each rupee field (ADR-004).
 
@@ -728,8 +745,9 @@ it and cuts the release as usual (`release.yml`).
   migration's pattern); `create or replace` with the same signature keeps them. PRs 05, 08, 09 and 16 all touch
   `place_order`: each body starts from the previously merged body, never from an older copy.
 - **The paise expand window.** Between PR 09's migration and the new API reaching every environment, the old API
-  still passes rupee prices in `p_lines`; `place_order` ignores them and prices from `menu_items.price_paise`. PR 16
-  must not run before production runs PR 09's API.
+  still passes rupee prices in `p_lines` (no `unit_price_paise`, so no price check) and writes `menu_items.price`
+  alone; `place_order` ignores those prices and prices from `menu_items.price_paise`, and `menu_items_sync_price`
+  keeps the two columns in step. PR 16 must not run before production runs PR 09's API.
 - **Visibility timeout shorter than a slow handler** means a second delivery while the first still runs. Handlers are
   idempotent anyway; set each timeout to at least twice its slowest expected run.
 - **pg_cron on Supabase:** at most 8 concurrent jobs of at most 10 minutes; schedules are UTC; a paused staging

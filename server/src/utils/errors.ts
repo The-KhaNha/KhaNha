@@ -12,6 +12,7 @@ export type ErrorCode =
   | 'EMAIL_TAKEN'
   | 'INVALID_STATUS_TRANSITION'
   | 'IDEMPOTENCY_KEY_REUSED'
+  | 'PRICE_CHANGED'
   | 'CLIENT_OUTDATED'
   | 'RATE_LIMITED'
   | 'UPSTREAM_UNAVAILABLE'
@@ -178,4 +179,17 @@ export const insufficientStock = (menuItemId: string, name: string, available: n
       ? `${name} just sold out.`
       : `Only ${available} ${name} left. Reduce the quantity in your cart.`,
     { menuItemId, name, available },
+  );
+
+/**
+ * An item's price changed between the API's read (the amount charged) and place_order's, which refuses to store any
+ * other price. No `details`: the message names the item and its new price, and the cart reprices on the next menu read.
+ */
+export const priceChanged = (menuItemId: string, name: string, price: number): AppError =>
+  new AppError(
+    409,
+    'PRICE_CHANGED',
+    `The price of ${name} just changed to ₹${price}. Please review your order.`,
+    undefined,
+    { menuItemId },
   );

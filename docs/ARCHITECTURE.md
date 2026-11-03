@@ -538,13 +538,16 @@ sequenceDiagram
   else quantity > 10
     Svc-->>CO: 400 VALIDATION_ERROR "You can order at most 10 of ..."
   end
-  Svc->>Svc: total = Σ unit_price × quantity (prices from the database)
-  Svc->>Pay: simulatePayment(total)
+  Svc->>Svc: totalPaise = Σ price_paise × quantity (prices from the database)
+  Svc->>Pay: simulatePayment(totalPaise)
   Pay-->>Svc: PAID
-  Svc->>DB: rpc place_order(user, store, name, PAID, lines, phone, note), one transaction (6.2)
+  Svc->>DB: rpc place_order(user, store, name, PAID, lines + charged unit_price_paise, phone, note), one transaction (6.2)
   alt not enough stock
     DB-->>Svc: raise INSUFFICIENT_STOCK { menuItemId, name, available }
     Svc-->>CO: 400 INSUFFICIENT_STOCK "Only 1 Cheese Toast left..." or "... just sold out."
+  else a price changed since the charge
+    DB-->>Svc: raise PRICE_CHANGED { menuItemId, name, price }
+    Svc-->>CO: 409 PRICE_CHANGED "The price of Cheese Toast just changed to ₹60..."
   else placed
     DB-->>Svc: order id
     Svc->>DB: select order + order_items by line_number (store name and photos are order-time snapshots, no joins)
@@ -572,8 +575,11 @@ flowchart TD
   Why -->|"yes: not stock-tracked"| Next
   Why -->|"no: too few left, or item gone"| Raise["RAISE 'INSUFFICIENT_STOCK'<br/>detail = { menuItemId, name, available }<br/>→ whole transaction rolled back"]
   Next -->|"yes"| Loop
-  Next -->|"no"| InsOrder["INSERT orders: store_name snapshot,<br/>total = Σ unit_price × quantity,<br/>status PLACED, payment status,<br/>estimated_ready_at = now() + store.prep_time_max_minutes,<br/>order_number from identity (starts at 1001)"]
-  InsOrder --> InsItems["INSERT order_items with line_number = cart position,<br/>snapshot name + unit_price + image_url + category,<br/>line_total"]
+  Next -->|"no"| Read["read each line's menu_items row once (its price_paise, never p_lines')"]
+  Read --> Same{"Every sent unit_price_paise<br/>equals that price_paise?"}
+  Same -->|"no"| RaisePrice["RAISE 'PRICE_CHANGED'<br/>detail = { menuItemId, name, price }<br/>→ whole transaction rolled back"]
+  Same -->|"yes, or none sent"| InsOrder["INSERT orders: store_name snapshot,<br/>total_paise = Σ price_paise × quantity,<br/>status PLACED, payment status,<br/>estimated_ready_at = now() + store.prep_time_max_minutes,<br/>order_number from identity (starts at 1001)"]
+  InsOrder --> InsItems["INSERT order_items with line_number = cart position,<br/>snapshot name + unit_price_paise + image_url + category,<br/>line_total_paise (rupee columns too, until PR 16)"]
   InsItems --> Ret(["RETURN order id"])
 ```
 
@@ -589,7 +595,7 @@ flowchart TD
   Fix -->|"Fix cart"| Trim["fix(): trim to what is left, or remove when sold out"]
   Trim --> Retry["Pay again"]
   Fix -->|"Back to cart"| CartPage["Cart page, same flags"]
-  Kind -->|"STORE_CLOSED, VALIDATION_ERROR, UNREACHABLE, INTERNAL"| Plain["Show the message, cart unchanged, Pay can be retried"]
+  Kind -->|"STORE_CLOSED, PRICE_CHANGED, VALIDATION_ERROR, UNREACHABLE, INTERNAL"| Plain["Show the message, cart unchanged, Pay can be retried"]
   Kind -->|"401"| Session["Session cleared → redirected to sign in, cart kept"]
 ```
 
@@ -1014,7 +1020,8 @@ erDiagram
     text category
     text name
     text description
-    int price "whole rupees, at least 0"
+    int price "whole rupees, until PR 16"
+    bigint price_paise "whole rupees in paise, at least 0"
     text image_url
     boolean is_available
     boolean is_popular
@@ -1030,7 +1037,8 @@ erDiagram
     text customer_name
     text customer_phone
     text note
-    int total "computed in place_order"
+    int total "until PR 16"
+    bigint total_paise "computed in place_order"
     payment_status payment_status "PENDING or PAID"
     order_status status "PLACED to COLLECTED or CANCELLED"
     timestamptz estimated_ready_at
@@ -1043,9 +1051,11 @@ erDiagram
     int line_number "cart order, unique per order"
     uuid menu_item_id FK
     text name "snapshot"
-    int unit_price "snapshot"
+    int unit_price "until PR 16"
+    bigint unit_price_paise "snapshot"
     int quantity "at least 1"
-    int line_total
+    int line_total "until PR 16"
+    bigint line_total_paise
     text image_url "snapshot"
     text category "snapshot, not sent"
   }

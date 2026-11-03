@@ -6,7 +6,7 @@ import type { PaymentStatus } from '../types/enums';
  * This is the one seam for real payments later (create intent, confirm, verify):
  * order.service only depends on the PaymentStatus this function resolves to.
  */
-export async function simulatePayment(amountInRupees: number): Promise<PaymentStatus> {
-  if (amountInRupees <= 0) throw new Error('Payment amount must be positive.');
+export async function simulatePayment(amountPaise: number): Promise<PaymentStatus> {
+  if (amountPaise <= 0) throw new Error('Payment amount must be positive.');
   return 'PAID';
 }
