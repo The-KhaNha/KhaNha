@@ -36,7 +36,7 @@ a new file (see [DEPLOYMENT.md](DEPLOYMENT.md#schema-changes)).
 | `20261102110929_session_activity.sql`              | adds `session_activity`, `touch_session` and `purge_session_activity` (the server-side idle sign-out, ADR-011) and the nightly `purge-session-activity` schedule                                                                                                                                                                                                                                                                                                                                                                  |
 | `20261102183749_client_error_sample_percent.sql`   | adds `site_settings.client_error_sample_percent` (the share of page loads that report their errors, [CONFIGURATION.md](CONFIGURATION.md))                                                                                                                                                                                                                                                                                                                                                                                         |
 | `20261102183832_money_paise.sql`                   | adds `menu_items.price_paise`, `orders.total_paise`, `order_items.unit_price_paise` and `line_total_paise` (`bigint`, backfilled ×100 without touching `orders.updated_at`, `not null`, `>= 0`, whole rupees); `place_order` (same signature) prices every line from `menu_items.price_paise`, refuses a line whose `unit_price_paise` is no longer the price (`PRICE_CHANGED`) and writes both units; `menu_items_audit` also watches `price_paise`; `menu_items_sync_price` keeps `price` and `price_paise` in step until PR 16 |
-| `20261103172932_reserved_stock_on_order_items.sql` | adds `order_items.reserved_quantity` (`check (reserved_quantity in (0, quantity))`), set to `quantity` for orders still `PLACED`, `PREPARING` or `READY`; `place_order` (same signature) records what each line reserved; `update_order_status` (same signature) gives back the sum of `reserved_quantity`, not of `quantity`                                                                                                                                                                                                     |
+| `20261103172932_reserved_stock_on_order_items.sql` | adds `order_items.reserved_quantity` (`check (reserved_quantity in (0, quantity))`), set to `quantity` for orders still `PLACED`, `PREPARING` or `READY`; `place_order` (same signature) records what each line reserved, by line number; `update_order_status` (same signature) gives back the sum of `reserved_quantity`, not of `quantity`                                                                                                                                                                                     |
 | `20261103173300_profile_name_bounds.sql`           | adds `profile_name(text, text)` and `profile_phone(text)`; `handle_new_user` (same signature) passes the Auth metadata through them; cleans legacy rows, then adds the checks `profiles_name_length` and `profiles_phone_format`                                                                                                                                                                                                                                                                                                  |
 
 ## Enums
@@ -356,12 +356,15 @@ copied as it came. Direct sign-up with the publishable key is off (see
 
 ### profile_name and profile_phone
 
-Immutable SQL helpers (`search_path = ''`, `EXECUTE` revoked from `public`, `anon` and `authenticated`) that hold the
+Immutable helpers (`search_path = ''`, `EXECUTE` revoked from `public`, `anon` and `authenticated`) that hold the
 API's rules once, for the trigger and for the clean-up in `20261103173300_profile_name_bounds.sql`.
 
-- `profile_name(p_name, p_email)`: removes control characters from the name and trims it. A result shorter than 2
-  characters falls back to the email's local part, then to `'Customer'`. Cut to 60 (`LIMITS.nameMax`). The floor
-  here is 1, not the API's 2: a one-letter local part is still a name.
+- `profile_name(p_name, p_email)` (plpgsql): removes control characters from the name and trims it. A result shorter
+  than 2 falls back to the email's local part, then to `'Customer'`; then it is cut to 60 (`LIMITS.nameMax`) and
+  trimmed again. Lengths are UTF-16 units, as the API and the forms count them (an emoji is 2), and the cut never
+  leaves half of a surrogate pair. The floor here is 1, not the API's 2: a one-letter local part is still a name.
+  `profiles_name_length` counts the same units inline (a check calling a function would need `EXECUTE` for every
+  role that writes `profiles`).
 - `profile_phone(p_phone)`: removes spaces, dashes and brackets; returns the result when it is an optional `+` and 10
   to 15 digits (`phoneField`, `LIMITS.phoneDigits`), otherwise `null`.
 

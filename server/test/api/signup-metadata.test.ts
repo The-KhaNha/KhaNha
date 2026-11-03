@@ -32,7 +32,13 @@ async function accountWith(metadata: Record<string, unknown>) {
 }
 
 afterAll(async () => {
-  for (const id of created) await supabaseAdmin.auth.admin.deleteUser(id);
+  // Orders hold their customer (no cascade), so they go first; a failed delete must fail the run, not leak rows.
+  if (created.length)
+    await supabaseAdmin.from('orders').delete().in('user_id', created).throwOnError();
+  for (const id of created) {
+    const { error } = await supabaseAdmin.auth.admin.deleteUser(id);
+    if (error) throw error;
+  }
 });
 
 describe('profiles made from Auth metadata keep the API bounds', () => {
@@ -40,6 +46,12 @@ describe('profiles made from Auth metadata keep the API bounds', () => {
     const { profile } = await accountWith({ name: 'N'.repeat(9000), phone: 'javascript:alert(1)' });
     expect(profile.name).toBe('N'.repeat(LIMITS.nameMax));
     expect(profile.phone).toBeNull();
+  });
+
+  it('counts UTF-16 units, as the API does, and never cuts a surrogate pair in half', async () => {
+    const { profile } = await accountWith({ name: 'a' + '\u{1F600}'.repeat(59) });
+    expect(profile.name).toBe('a' + '\u{1F600}'.repeat(29));
+    expect(profile.name.length).toBeLessThanOrEqual(LIMITS.nameMax);
   });
 
   it('falls back to the email local part for a blank or too-short name', async () => {

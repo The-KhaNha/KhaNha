@@ -40,9 +40,10 @@ declare
   v_priced jsonb;
   v_total_paise bigint;
   v_changed record;
-  -- Items whose stock this order took: decided in the stock loop, where tracked rows are locked. Reading
-  -- stock_quantity again later would count an item tracked between the two reads as reserved.
-  v_reserved uuid[] := '{}';
+  -- Lines whose stock this order took, by line number: decided in the stock loop, where tracked rows are locked.
+  -- Reading stock_quantity again later would count an item tracked between the two reads as reserved, and so would
+  -- keying by item when two lines name the same one (only a direct call; the API merges them).
+  v_reserved bigint[] := '{}';
 begin
   perform set_config('app.actor', coalesce(p_actor::text, ''), true);
   perform set_config('app.request_id', coalesce(p_request_id, ''), true);
@@ -60,8 +61,11 @@ begin
   end if;
 
   for v_line in
-    select * from jsonb_to_recordset(p_lines) as l(menu_item_id uuid, name text, quantity integer)
-    order by menu_item_id
+    select *
+      from rows from (
+        jsonb_to_recordset(p_lines) as (menu_item_id uuid, name text, quantity integer)
+      ) with ordinality as l(menu_item_id, name, quantity, line_number)
+     order by menu_item_id
   loop
     update public.menu_items
        set stock_quantity = stock_quantity - v_line.quantity
@@ -69,7 +73,7 @@ begin
        and stock_quantity >= v_line.quantity;
 
     if found then
-      v_reserved := v_reserved || v_line.menu_item_id;
+      v_reserved := v_reserved || v_line.line_number;
     else
       select stock_quantity into v_left from public.menu_items where id = v_line.menu_item_id;
       -- Found with a null stock: the item is not stock-tracked, so there is nothing to reserve.
@@ -94,7 +98,7 @@ begin
            'expected_paise', l.unit_price_paise,
            'image_url', m.image_url,
            'category', m.category,
-           'reserved_quantity', case when m.id = any (v_reserved) then l.quantity else 0 end
+           'reserved_quantity', case when l.line_number = any (v_reserved) then l.quantity else 0 end
          )),
          sum(m.price_paise * l.quantity)
     into v_priced, v_total_paise

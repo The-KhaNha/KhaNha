@@ -6,27 +6,30 @@
 
 -- The API's name rule (LIMITS.nameMin 2, nameMax 60 in server/src/schemas/limits.ts): control characters dropped and
 -- the ends trimmed; shorter than 2 falls back to the email's local part, as an account made without a name does; cut
--- to 60. The floor here is 1, not 2: a one-letter local part is still a name, and padding one would invent data.
+-- to 60 and trimmed again. Lengths are UTF-16 units, as the API and the forms count them (an emoji is 2), so a name the
+-- profile holds is always one the checkout form accepts back; the cut never leaves half of a surrogate pair. The floor
+-- here is 1, not 2: a one-letter local part is still a name, and padding one would invent data.
 create function public.profile_name(p_name text, p_email text)
 returns text
-language sql
+language plpgsql
 immutable
 set search_path = ''
 as $$
-  select left(
-    coalesce(
-      nullif(
-        case
-          when char_length(btrim(regexp_replace(coalesce(p_name, ''), '[[:cntrl:]]', '', 'g'))) >= 2
-            then btrim(regexp_replace(p_name, '[[:cntrl:]]', '', 'g'))
-        end,
-        ''
-      ),
-      nullif(btrim(split_part(coalesce(p_email, ''), '@', 1)), ''),
-      'Customer'
-    ),
-    60
-  );
+declare
+  v_name text := btrim(regexp_replace(coalesce(p_name, ''), '[[:cntrl:]]', '', 'g'));
+begin
+  if char_length(v_name) + char_length(regexp_replace(v_name, '[^\U00010000-\U0010FFFF]', '', 'g')) < 2 then
+    v_name := btrim(split_part(coalesce(p_email, ''), '@', 1));
+  end if;
+  if v_name = '' then
+    v_name := 'Customer';
+  end if;
+  v_name := left(v_name, 60);
+  while char_length(v_name) + char_length(regexp_replace(v_name, '[^\U00010000-\U0010FFFF]', '', 'g')) > 60 loop
+    v_name := left(v_name, -1);
+  end loop;
+  return btrim(v_name);
+end;
 $$;
 
 -- The API's phone rule (phoneField in server/src/schemas/common.ts): spaces, dashes and brackets removed, then an
@@ -71,12 +74,15 @@ revoke execute on function public.handle_new_user() from public, anon, authentic
 -- a later write to such a profile (an email change, a role change) cannot fail on a value it did not touch.
 update public.profiles
    set name = public.profile_name(name, email)
- where char_length(name) not between 1 and 60;
+ where char_length(name) + char_length(regexp_replace(name, '[^\U00010000-\U0010FFFF]', '', 'g')) not between 1 and 60;
 
 update public.profiles
    set phone = public.profile_phone(phone)
  where phone is not null and phone !~ '^\+?[0-9]{10,15}$';
 
 alter table public.profiles
-  add constraint profiles_name_length check (char_length(name) between 1 and 60),
+  -- UTF-16 units, inline: a check that called a function would need EXECUTE for every role that writes profiles.
+  add constraint profiles_name_length check (
+    char_length(name) + char_length(regexp_replace(name, '[^\U00010000-\U0010FFFF]', '', 'g')) between 1 and 60
+  ),
   add constraint profiles_phone_format check (phone is null or phone ~ '^\+?[0-9]{10,15}$');
