@@ -1,8 +1,8 @@
 name: ci
 
-# `ci-ok` sums up every job. GitHub Free has no required checks for a private repository (docs/adr/011-free-tiers.md),
-# so it is advisory: merge only when it is green. Heavy jobs run only when their files changed (the `changes` job), to
-# fit the 2,000 Actions minutes a month; a skipped job counts as passed. The workflow itself has no `paths:` filter, so
+# `ci-ok` sums up every job, and the `ci-ok required` ruleset blocks a merge into main, dev or a phase branch until it is
+# green (docs/adr/011-free-tiers.md). Heavy jobs run only when their files changed (the `changes` job), which keeps a
+# PR's run short; a skipped job counts as passed. The workflow itself has no `paths:` filter, so
 # every PR still reports `ci-ok`.
 # Branches by environment: main is production (release PRs), dev is staging, feat/** is development. Every PR into
 # one of them is gated. Pushes run on main, dev and the phase feature branches (feat/P<n>, CLAUDE.md §21), where two PRs
@@ -183,8 +183,9 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          # The PR's own commits are scanned for secrets below.
-          fetch-depth: ${{ github.event_name == 'pull_request' && 0 || 1 }}
+          # The PR's own commits are scanned for secrets below, against origin/<base>. Not `pull_request && 0 || 1`:
+          # 0 is falsy in an expression, so that always gave 1, and the scan found no base and checked nothing.
+          fetch-depth: 0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: .node-version
@@ -203,11 +204,17 @@ jobs:
         run: |
           curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
             | tar -xz -C "$RUNNER_TEMP" gitleaks
-          "$RUNNER_TEMP/gitleaks" detect --source . --redact --verbose --log-opts="origin/${BASE_REF}..HEAD"
+          # gitleaks logs a git error, scans 0 commits and still exits 0, so check the range first: a scan of nothing
+          # must fail, not pass.
+          commits=$(git rev-list --count "origin/${BASE_REF}..HEAD")
+          [ "$commits" -gt 0 ] || { echo "::error::No commits in origin/${BASE_REF}..HEAD to scan for secrets."; exit 1; }
+          # git log -p prints no patch for a merge: --diff-merges makes a secret added only in a merge's conflict
+          # resolution visible (scripts/ci/gitleaks-merge-diffs.test.mjs).
+          "$RUNNER_TEMP/gitleaks" detect --source . --redact --verbose --log-opts="--diff-merges=first-parent origin/${BASE_REF}..HEAD"
 
   # Static analysis on every change. Semgrep's rules for this stack cover the code, the Dockerfiles and these workflows;
-  # Trivy checks the Dockerfiles' configuration (secrets are gitleaks' job, in `repo`). Not CodeQL: code scanning on a
-  # private repository needs a paid GitHub plan (ADR-011).
+  # Trivy checks the Dockerfiles' configuration (secrets are gitleaks' job, in `repo`). Not CodeQL, which needed a paid
+  # plan while the repository was private and is not set up yet (ADR-011).
   static-analysis:
     runs-on: ubuntu-latest
     env:

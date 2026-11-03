@@ -166,10 +166,10 @@ seen failing with the fix reverted. The guards added with the break-test fixes:
 (development: a phase feature branch, CLAUDE.md §21), and on every push to `main`, `dev` and the phase branches
 (`feat/P<n>`). The push run on a phase branch catches two PRs that were each green alone but break together once both
 are merged; a push to a work branch gets no run of its own, since its PR run covers it. Its aggregate
-job `ci-ok` sums them up. On GitHub Free a private repository has no rulesets, so it is advisory: merge only when it
-is green ([ADR-011](adr/011-free-tiers.md)). It fails when any job failed or was cancelled, and counts
+job `ci-ok` sums them up, and the `ci-ok required` ruleset blocks a merge into `main`, `dev` or a listed phase branch
+until it is green ([ADR-011](adr/011-free-tiers.md)). It fails when any job failed or was cancelled, and counts
 skipped jobs as passed. The workflow has no `paths:` filter, so every PR reports `ci-ok`; inside it the `changes` job
-(`dorny/paths-filter`) skips what a PR does not touch, to fit GitHub Free's 2,000 Actions minutes a month:
+(`dorny/paths-filter`) skips what a PR does not touch, which keeps a PR's run short:
 
 | Changed                                         | Jobs that run (besides `changes`, `repo`, `version-intent` on PRs, `ci-ok`) |
 | ----------------------------------------------- | --------------------------------------------------------------------------- |
@@ -190,7 +190,7 @@ Roughly: a docs-only PR costs 4–5 billed minutes a push, a client change about
 | `migrations` (PR only)     | `scripts/ci/check-migrations.mjs`: the PR may only add migrations, each with a 14-digit prefix newer than the base's newest; added files already on `main` (hotfix back-merges) are skipped                                                                                                                                                                                    | `node scripts/ci/check-migrations.mjs --base origin/dev`                                                                                                                      |
 | `changes`                  | which parts changed (`client`, `server`, `images`), for the jobs below                                                                                                                                                                                                                                                                                                         | –                                                                                                                                                                             |
 | `version-intent` (PR only) | `scripts/version/check.mjs`: a PR that changes package source adds a `.changes/*.md` intent (the `no-release` label skips it); a `release/*` PR into `main` has no intents left and versions above the latest tags                                                                                                                                                             | `npm run change:check`                                                                                                                                                        |
-| `repo`                     | root `npm ci`, `format:check` (`scripts/**`, `.github/**`, `plans/**`), `npm test` (`node --test` over `scripts/**/*.test.mjs`), `check:durations`, and on PRs gitleaks over the PR's own commits (`--log-opts origin/<base>..HEAD`)                                                                                                                                           | `npm run format:check && npm test` at the root                                                                                                                                |
+| `repo`                     | root `npm ci`, `format:check` (`scripts/**`, `.github/**`, `plans/**`), `npm test` (`node --test` over `scripts/**/*.test.mjs`), `check:durations`, and on PRs gitleaks over the PR's own commits (`--log-opts="--diff-merges=first-parent origin/<base>..HEAD"`, full checkout; an empty range fails the step instead of passing as "no leaks")                               | `npm run format:check && npm test` at the root                                                                                                                                |
 | `static-analysis`          | every PR and push: Semgrep CE (pinned `SEMGREP_VERSION`, `--error`) with the `javascript`, `typescript`, `react`, `nodejs`, `expressjs`, `owasp-top-ten`, `dockerfile`, `github-actions` and `secrets` rule packs, over the code, the Dockerfiles and the workflows; then `trivy config` (Dockerfile misconfiguration), the Trivy binary checked against its release checksums | `docker run --rm -v "$PWD":/src -w /src semgrep/semgrep:1.183.0 semgrep scan --metrics=off --error --config p/javascript …` (the packs above); `trivy config --exit-code 1 .` |
 | `images`                   | hadolint on both Dockerfiles; buildx builds of `fp-api` and `fp-web` (GitHub Actions cache, `GIT_COMMIT` = the SHA); smoke: `/api/health` with dummy Supabase env (and the commit in it), `/healthz` and `/runtime-env.js`, `X-Frame-Options` + `nosniff` on both, and nginx answering a 200 kB body with the JSON 413; size budgets 300 MB API, 50 MB web (printed to 0.1 MB) | `docker compose up --build web api`, or the `docker build` / `docker run` lines in DEPLOYMENT.md                                                                              |
 | `ci-ok`                    | aggregates the jobs above                                                                                                                                                                                                                                                                                                                                                      | –                                                                                                                                                                             |
@@ -234,20 +234,30 @@ clean console, every `/api` call mocked). Failure screenshots are uploaded as `w
 ### Security checks (`security.yml`)
 
 Runs weekly (Monday 03:00 UTC), on demand, and on PRs into `main`, `dev` or a `feat/**` branch that change a `package.json`,
-a lockfile, an `.npmrc`, a Dockerfile, `client/nginx/` or `.gitleaks.toml`, where it gates the PR like any other check.
-A new advisory in an unchanged dependency does not block unrelated PRs: the weekly run fails and Dependabot raises
-the alert. A PR's own commits are scanned for secrets by `ci.yml`'s `repo` job on every PR, and its code by
-`static-analysis`.
+a lockfile, an `.npmrc`, a Dockerfile, `client/nginx/` or `.gitleaks.toml`. These results are advisory, not
+merge-blocking: the `ci-ok required` ruleset requires only `ci-ok`, which does not depend on this workflow, so a red
+`audit` or `images` on a PR leaves `ci-ok` green and the PR mergeable. Read them before merging and do not merge on red
+(CLAUDE.md §13). A new advisory in an unchanged dependency does not touch unrelated PRs: the weekly run fails and
+Dependabot raises the alert. What does block a merge, through `ci-ok`, is a PR's own commits scanned for secrets by
+`ci.yml`'s `repo` job on every PR, and its code by `static-analysis`.
 
-| Job       | Runs                                                                                                                                                                                                   | Reproduce locally                                                                                            |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
-| `audit`   | `npm audit --audit-level=moderate` in the root, `client/` and `server/`: every dependency, dev tooling included (a compromised build tool reaches the bundle and CI's secrets)                         | the same command in each package                                                                             |
-| `images`  | builds `fp-api` and `fp-web` and runs `trivy image --scanners vuln --ignore-unfixed --exit-code 1` on each: OS packages and Node modules as they would ship (a CVE with no fix yet cannot be acted on) | `docker build -t fp-api:scan server && docker build -t fp-web:scan client`, then the same `trivy image` line |
-| `secrets` | the gitleaks binary over the full history, `--redact`, with `.gitleaks.toml`                                                                                                                           | `docker run --rm -v "$PWD":/repo -w /repo zricethezav/gitleaks:v8.30.1 detect --source . --redact`           |
+| Job       | Runs                                                                                                                                                                                                   | Reproduce locally                                                                                                                                |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `audit`   | `npm audit --audit-level=moderate` in the root, `client/` and `server/`: every dependency, dev tooling included (a compromised build tool reaches the bundle and CI's secrets)                         | the same command in each package                                                                                                                 |
+| `images`  | builds `fp-api` and `fp-web` and runs `trivy image --scanners vuln --ignore-unfixed --exit-code 1` on each: OS packages and Node modules as they would ship (a CVE with no fix yet cannot be acted on) | `docker build -t fp-api:scan server && docker build -t fp-web:scan client`, then the same `trivy image` line                                     |
+| `secrets` | the gitleaks binary over every branch's full history (`--log-opts="--diff-merges=first-parent --all"`: the repository is public), `--redact`, with `.gitleaks.toml`                                    | `docker run --rm -v "$PWD":/repo -w /repo zricethezav/gitleaks:v8.30.1 detect --source . --redact --log-opts="--diff-merges=first-parent --all"` |
 
-`.gitleaks.toml` extends the default rules and allowlists by value only: Supabase publishable keys and the CLI's fixed
-local secret in `server/.env.example`. A real key anywhere else, `.env.example` included, still fails. CodeQL is not run: it
-needs GitHub Code Security, which a private repository on GitHub Free does not have (ADR-011).
+Both gitleaks scans pass `--diff-merges=first-parent`: gitleaks reads `git log -p`, which prints no patch for a merge
+commit, so a secret added only in a merge's conflict resolution would never be scanned. `-m` would report it once per
+parent, and on a PR (checked out as a merge of the base and the PR) would rescan what the base gained since the fork; the
+first-parent diff reports it once and covers only the PR's own changes. `scripts/ci/gitleaks-merge-diffs.test.mjs` fails
+when a workflow's gitleaks call drops the option.
+
+`.gitleaks.toml` extends the default rules and allowlists by value only: Supabase publishable keys, the CLI's fixed
+local secret in `server/.env.example`, and two fakes the scrubber test feeds in (`server/test/api/client-errors.safe.test.ts`).
+A real key anywhere else, `.env.example` included, still fails. Scheduled runs use `main`'s copy of a workflow, so the
+weekly run starts once the first release brings this file to `main`. CodeQL is not run: it
+needed GitHub Code Security while the repository was private, and is not set up yet (ADR-011).
 
 ### Break testing (`/break`)
 

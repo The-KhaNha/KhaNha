@@ -27,7 +27,7 @@ and later phases link to the ADRs they depend on.
 | [008] | Semantic versioning from change intents                            | Accepted          | [P0.3][p0.3]                 |
 | [009] | Rate limiting per user in the API, in the database and at the edge | Accepted, amended | [P1.6][p1.6], [P9.3][p9.3]   |
 | [010] | Live updates through polling plus Web Push                         | Accepted          | [P6.3][p6.3], [P10.3][p10.3] |
-| [011] | Supabase Free and GitHub Free                                      | Accepted          | all (constraints)            |
+| [011] | Supabase Free and GitHub Free                                      | Accepted, amended | all (constraints)            |
 
 [p0.3]: ../../plans/ROADMAP.md#p03-semantic-versioning-with-change-intents
 [p0.6]: ../../plans/ROADMAP.md#p06-docker-images-and-local-compose
