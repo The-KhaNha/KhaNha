@@ -1,5 +1,36 @@
 import { act, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const { crashShell, reportingConfig, reportError, setSamplePercent } = vi.hoisted(() => ({
+  crashShell: { enabled: false },
+  reportingConfig: { ready: true, samplePercent: 100 },
+  reportError: vi.fn(),
+  setSamplePercent: vi.fn(),
+}));
+vi.mock('./lib/errorReporter', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./lib/errorReporter')>()),
+  reportError,
+  setSamplePercent,
+}));
+vi.mock('./features/config/useConfig', async () => {
+  const { CONFIG_FALLBACK } = await import('./features/config/fallbacks');
+  return {
+    useConfig: () => ({
+      ...CONFIG_FALLBACK,
+      serverVersion: reportingConfig.ready ? '0.0.0' : 'unknown',
+      clientErrors: { samplePercent: reportingConfig.samplePercent },
+    }),
+  };
+});
+vi.mock('./components/TopBar', async (importOriginal) => {
+  const { TopBar } = await importOriginal<typeof import('./components/TopBar')>();
+  return {
+    TopBar: (props: Parameters<typeof TopBar>[0]) => {
+      if (crashShell.enabled) throw new Error('Shell crashed');
+      return <TopBar {...props} />;
+    },
+  };
+});
 
 vi.mock('./lib/supabase', () => ({
   getSupabase: () => new Promise(() => {}),
@@ -18,8 +49,40 @@ function go(path: string) {
 
 describe('App shell on navigation', () => {
   beforeEach(() => {
+    reportingConfig.ready = true;
+    reportingConfig.samplePercent = 100;
     window.scrollTo = vi.fn() as typeof window.scrollTo;
     window.history.pushState({}, '', '/nowhere');
+  });
+
+  it('does not enable startup reporting from fallback config before a delayed zero-percent setting arrives', () => {
+    reportingConfig.ready = false;
+    setSamplePercent.mockClear();
+    const { rerender } = render(<App />);
+    expect(setSamplePercent).not.toHaveBeenCalled();
+    reportingConfig.ready = true;
+    reportingConfig.samplePercent = 0;
+    rerender(<App />);
+    expect(setSamplePercent).toHaveBeenCalledExactlyOnceWith(0);
+  });
+
+  it('catches a shell crash and still configures reporting', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const preventError = (event: ErrorEvent) => event.preventDefault();
+    window.addEventListener('error', preventError);
+    crashShell.enabled = true;
+    reportError.mockClear();
+    setSamplePercent.mockClear();
+    try {
+      render(<App />);
+      expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Reload' })).toBeInTheDocument();
+      expect(reportError).toHaveBeenCalledExactlyOnceWith(expect.any(Error), 'render');
+      expect(setSamplePercent).toHaveBeenCalledWith(100);
+    } finally {
+      crashShell.enabled = false;
+      window.removeEventListener('error', preventError);
+    }
   });
 
   it('titles the tab after the page, announces it, and moves focus only after the first page', async () => {
@@ -41,6 +104,8 @@ describe('App shell on navigation', () => {
     expect(document.title).toBe('Food Pickup');
   });
 });
+
+afterEach(() => vi.restoreAllMocks());
 
 describe('shell by route', () => {
   it('the customer tabs show on customer screens and never on the operator ones', () => {

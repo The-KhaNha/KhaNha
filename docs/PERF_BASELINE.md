@@ -411,3 +411,48 @@ one staff, sequential).
   each, base vs change, through arrival, one reprice and (change only) two failed reloads: no long task over 50 ms in any phase, INP 24-48 ms (base) vs
   32-48 ms (change), CLS at most 0.0003. `/menu`, `/`, `/cart`, `/orders/:id`, polling and API latency not re-measured (the diff cannot reach them).
   No regression.
+
+## Browser error reporting (P1 PR 12, 2026-11-03)
+
+Scoped comparison at `572a359 + uncommitted changes`, Node v24.21.0, Linux. Reused the final minified
+`build:container` output; gzip figures use level 9 and the Vite manifest's static import graph. No dependencies,
+images, server queries or polling intervals changed.
+
+| Metric                                          | Budget                | Previous recorded value          | This run                        | Result                                                    |
+| ----------------------------------------------- | --------------------- | -------------------------------- | ------------------------------- | --------------------------------------------------------- |
+| Initial JavaScript                              | 170 KiB               | 91,163 B (PR 09b, staging build) | 92,134 B (90.0 KiB)             | within budget; +971 B (+1.1%) against that recorded build |
+| Reporter module alone, minified and gzipped     | 1 KiB (PR 12 plan)    | absent                           | 1,017 B                         | within budget                                             |
+| `supabaseClient` lazy chunk                     | outside initial graph | outside initial graph            | 58,810 B                        | remains lazy                                              |
+| Checkout / staff / login / register lazy chunks | outside initial graph | outside initial graph            | 3,425 / 4,199 / 1,362 / 1,294 B | remain lazy                                               |
+
+The earlier bundle was built in staging mode and this output in container mode, so the +1.1% is a comparison with
+the recorded size, not a controlled attribution of every byte to PR 12. No measured bundle regression crosses the
+20% threshold or its absolute budget.
+
+The reporter scans at most 8,000 characters per field and accepts at most five reports per page load. A direct
+Node microbenchmark of five crafted 8,000-character inputs (30 samples per input) measured the slowest case, a
+long dotted run, at p50 2.53 ms / p95 2.71 ms; the other cases' p95 was at most 0.17 ms. These are unthrottled
+microbenchmarks, not browser INP measurements. Each serialized report is capped at 4,096 UTF-8 bytes including JSON
+escaping: five reports plus their envelope stay below 21 KiB, within the browser's 64 KiB keepalive allowance.
+Reports batch on a 250 ms debounce or `pagehide`, are never retried or persisted, and cannot load the auth chunk.
+
+The final reporter shares the bounded chunk-failure classifier with `PageBoundary` and excludes chunk failures
+from its global error/rejection path. Classification sees at most 8,000 characters, with at most 80 characters
+between `chunk` and `load`/`fail`; repeated `chunk ` input measured p50 0.43 ms / p95 0.57 ms (30 samples). The
+unbounded intermediate pattern was quadratic (32,000 characters took 116.7 ms); the final implementation and its
+long-input regression guard remove that issue. Cap and sampling checks run before message normalization.
+
+`App` uses the existing public persisted config hook and its in-flight-coalesced `fetchConfig`; no new polling
+loop or serialized request waterfall is introduced. With no loaded or cached server config, reports remain
+buffered rather than using the fallback's 100% setting. Existing settings/flags read caches and invalidation are
+unchanged. The change adds no database round trip to the reporting endpoint.
+
+The responsive verification covered page crashes, shell crashes, chunk-load failures and the normal state at
+320/360/390/412/768/1024/1280/1440 px, including the 390 px Slow 4G / 4× CPU pass, 200% text and 44 px controls.
+The local API accepted render reports with 204 and logged scrubbed route, stack and client version. These are
+functional and layout checks; production LCP/INP/CLS, per-route transfer totals, polling cost and API latency were
+not remeasured in this scoped run. Their earlier baseline numbers are preserved; no conclusion about a runtime
+Web Vitals regression is drawn from bundle size alone.
+
+No remaining HIGH or MEDIUM performance finding in the measured scope. A fresh production Web Vitals comparison remains
+unmeasured.

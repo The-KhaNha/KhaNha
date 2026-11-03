@@ -4,7 +4,10 @@ import App from './App';
 import { prefetchMenu } from './services/menu';
 import { prefetchStore } from './services/store';
 import { getSupabase, mayHaveSession } from './lib/supabase';
+import { installErrorReporter } from './lib/errorReporter';
 import './index.css';
+
+installErrorReporter();
 
 // The webfont was preloaded without blocking the first paint (index.html); applying it here, not in an inline onload,
 // keeps the CSP free of 'unsafe-inline' scripts. A dynamically applied stylesheet never blocks rendering.

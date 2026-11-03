@@ -36,6 +36,7 @@ interface RequestOptions {
   /** Attach the bearer token when one exists. Defaults to true. */
   auth?: boolean;
   signal?: AbortSignal;
+  keepalive?: boolean;
 }
 
 function isErrorEnvelope(value: unknown): value is ApiErrorEnvelope {
@@ -65,7 +66,7 @@ async function currentAccessToken(): Promise<string | undefined> {
 }
 
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { method = 'GET', body, auth = true, signal } = options;
+  const { method = 'GET', body, auth = true, signal, keepalive } = options;
   // supabase-js hands out the current access token, refreshing it first when it has expired. Public requests
   // (auth: false) never load it.
   const token = auth ? await currentAccessToken() : undefined;
@@ -94,6 +95,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: controller.signal,
+      keepalive,
     });
     payload = await response.json().catch(() => null);
     if (controller.signal.aborted) throw controller.signal.reason;

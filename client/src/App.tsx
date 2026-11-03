@@ -13,6 +13,8 @@ import { OutdatedBanner } from './features/version/OutdatedBanner';
 import { APP_TITLE } from './config/app';
 import { getShellConfig } from './appShell';
 import { cn } from './lib/cn';
+import { setSamplePercent } from './lib/errorReporter';
+import { useConfig } from './features/config/useConfig';
 import { CartPage } from './pages/Cart';
 import { HomePage } from './pages/Home';
 import { MenuPage } from './pages/Menu';
@@ -165,14 +167,24 @@ function AppShell() {
 }
 
 export default function App() {
+  const {
+    clientErrors: { samplePercent },
+    serverVersion,
+  } = useConfig();
+  useEffect(() => {
+    // Buffer startup crashes until the server's setting is known; the fallback must not bypass a 0% sample.
+    if (serverVersion !== 'unknown') setSamplePercent(samplePercent);
+  }, [samplePercent, serverVersion]);
   useEffect(() => {
     void useAuthStore.getState().hydrate();
   }, []);
 
   return (
-    <BrowserRouter>
-      <OutdatedBanner />
-      <AppShell />
-    </BrowserRouter>
+    <PageBoundary scope="app">
+      <BrowserRouter>
+        <OutdatedBanner />
+        <AppShell />
+      </BrowserRouter>
+    </PageBoundary>
   );
 }
