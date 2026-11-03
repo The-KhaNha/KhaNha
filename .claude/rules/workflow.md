@@ -205,8 +205,8 @@ or `full review`, and by reopening a PR. `.coderabbit.yaml` turns off the review
 back-merge PRs, so a push costs nothing.
 
 - Open a PR once, complete (the flow above). With several ready at once, open the first, open the rest as drafts
-  (`gh pr create --draft`), and mark the next one ready (`gh pr ready <n>`) once the previous review has posted, or an
-  hour later. `@coderabbitai rate limit` on an open PR says whether a review is available without spending one.
+  (`gh pr create --draft`), and mark the next one ready (`gh pr ready <n>`) only when a review is free again: a posted
+  review does not free one, time does. `@coderabbitai rate limit` on an open PR says when, without spending a review.
 - After a `coderabbit-fixer` round, push once. Comment `@coderabbitai review` only when the round changed behaviour,
   not for nitpicks.
 - A "rate limited" comment means that review did not run: wait for the time it gives, then comment
