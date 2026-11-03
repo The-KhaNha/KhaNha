@@ -8,8 +8,14 @@ export const INVALID_CHARACTERS = 'Invalid characters in input.';
 // joiners, bidi marks), the Braille blank and the Hangul fillers. A name made of them looks filled in to the API and
 // empty to the staff member calling it out. The client's features/auth/validation.ts holds the same list.
 const INVISIBLE = String.raw`\p{Cf}\u2800\u115F\u1160\u3164\uFFA0`;
-const BLANK_CHARACTER = new RegExp(`[\\s${INVISIBLE}]`, 'u');
-const INVISIBLE_CHARACTERS = new RegExp(`[${INVISIBLE}]`, 'gu');
+// Marks that draw nothing on their own but end visible text: variation selectors (U+FE0F turns U+2764 into the red
+// heart emoji), the combining grapheme joiner and the Khmer inherent vowels. Never trimmed, only left out of what
+// counts as visible. An alternation, not a character class: a combining mark inside a class reads as joined to the
+// character before it.
+const SILENT_MARKS = String.raw`\p{Variation_Selector}|\u034F|\u17B4|\u17B5`;
+// Tag characters are \p{Cf}, yet they finish a subdivision flag (U+1F3F4 and tags make Scotland's): never trimmed.
+const BLANK_CHARACTER = new RegExp(`^(?![\\u{E0020}-\\u{E007F}])[\\s${INVISIBLE}]$`, 'u');
+const DRAWS_NOTHING = new RegExp(`[\\s${INVISIBLE}]|${SILENT_MARKS}`, 'gu');
 
 /**
  * `value` without blank or invisible characters at either end. Inside it they stay: a zero-width joiner builds an emoji
@@ -25,9 +31,11 @@ export function trimBlank(value: string): string {
   return chars.slice(start, end).join('');
 }
 
-/** The length a minimum is checked against: invisible characters cannot make a one-letter name long enough. */
-export const visibleLength = (value: string): number =>
-  value.replace(INVISIBLE_CHARACTERS, '').length;
+/**
+ * The length a minimum is checked against: blank, invisible and silent characters cannot make a one-letter name long
+ * enough, and a value with none of anything else is as empty as "".
+ */
+export const visibleLength = (value: string): number => value.replace(DRAWS_NOTHING, '').length;
 
 /**
  * No lone UTF-16 surrogate. JSON.stringify writes one as `\ud800`, which PostgREST refuses as invalid JSON (a 500
@@ -47,9 +55,9 @@ export const typedText = (max: number, tooLong: string) =>
     .transform(trimBlank)
     .refine((value) => value.length <= max, tooLong);
 
-// A value of only blank or invisible characters is as empty as "".
+// A value of only blank, invisible or silent characters is as empty as "".
 const blankToUndefined = (value: unknown): unknown =>
-  typeof value === 'string' && trimBlank(value) === '' ? undefined : value;
+  typeof value === 'string' && visibleLength(value) === 0 ? undefined : value;
 
 /** Optional field where a blank string counts as "not provided" (forms send "" for untouched inputs). */
 export const optionalField = <T extends z.ZodType>(schema: T) =>

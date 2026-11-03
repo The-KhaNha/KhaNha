@@ -579,10 +579,12 @@ From `server/src/schemas/common.ts` and `server/src/middleware/validate.ts`:
 - **Typed text** (`typedText`: `name`, `customerName`, `note`): a lone UTF-16 surrogate is 400 `VALIDATION_ERROR`
   "Invalid characters in input." (as it is in `password`); blank and invisible characters (format characters such as
   the zero-width space, the Braille blank, the Hangul fillers) are trimmed from both ends, and stay inside the value
-  (a joiner builds an emoji sequence); a minimum counts visible characters only; lengths are UTF-16 units, as a form's
-  `maxLength` counts them (31 emoji are 62 units, over a limit of 60).
-- **Optional fields** (`optionalField`): a blank string, or one of only whitespace or invisible characters, counts as
-  not sent.
+  (a joiner builds an emoji sequence); tag characters and variation selectors are never trimmed, since they end a
+  subdivision flag or a red heart ("❤️"); a minimum counts visible characters only, leaving out whitespace, invisible
+  characters and marks that draw nothing on their own (variation selectors, the combining grapheme joiner); lengths
+  are UTF-16 units, as a form's `maxLength` counts them (31 emoji are 62 units, over a limit of 60).
+- **Optional fields** (`optionalField`): a blank string, or one with no visible character (only whitespace, invisible
+  characters or variation selectors), counts as not sent.
 - **Phone numbers** (`phone`, `customerPhone`): spaces, dashes and parentheses are stripped, then the value must match
   `^\+?\d{10,15}$` ("Enter a valid phone number."). The normalised value is stored.
 - **Validation messages** name the field: a missing field gives "<Field label> is required.", a wrong type gives

@@ -23,6 +23,8 @@ describe('clientErrorsSchema scrub', () => {
     ['a long run of percent escapes with no @', '%2B'.repeat(1166)],
     ['a long run of apostrophes and letters with no @', "o'".repeat(1750)],
     ['a long run of encoded token names with no value', 'token%3D&'.repeat(388)],
+    ['a long run of percent signs and letters with no @', '%a'.repeat(1750)],
+    ['a long run of letters after apostrophes with no @', "'a".repeat(1750)],
   ])('parses a worst-case batch (%s) in linear time', (_label, text) => {
     let best = Number.POSITIVE_INFINITY;
     for (let i = 0; i < 3; i++) {
@@ -49,6 +51,22 @@ describe('clientErrorsSchema scrub: encoded and unusual shapes', () => {
     ['an encoded password parameter', 'password%3Dhunter2hunter2', 'hunter2hunter2'],
     ['an encoded +-address', 'user breaker%2Bx%40example.com failed', 'breaker'],
     ['an apostrophe in the local part', "user o'brien.smith@example.com failed", "o'"],
+    // A match may start inside a `%`- or `'`-joined run: the run before an encoded email can be far over 64 characters.
+    [
+      'an encoded email deep in an encoded redirect URL',
+      'Failed to fetch https://x.supabase.co/auth/v1/verify?type=signup&redirect_to=https%3A%2F%2Fapp.example.com%2Fauth%2Fcallback%3Femail%3Djohn.doe%40example.com',
+      'john.doe',
+    ],
+    [
+      'an encoded email deep in an encoded URL, with no email parameter',
+      'next%3Dhttps%3A%2F%2Fapp.example.com%2Fauth%2Fcallback%2Fjohn.doe%40example.com',
+      'john.doe',
+    ],
+    [
+      'an email after an apostrophe that ends a long word',
+      `${'a'.repeat(65)}'john@example.com`,
+      'john@',
+    ],
   ])('redacts %s', (_label, text, leak) => {
     const [parsed] = clientErrorsSchema.parse(batch(text)).reports;
     expect(JSON.stringify(parsed)).not.toContain(leak);

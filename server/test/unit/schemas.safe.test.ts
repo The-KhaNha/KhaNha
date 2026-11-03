@@ -234,6 +234,13 @@ describe('typed text: characters and length', () => {
     ['a Braille blank and a Hangul filler', '\u2800\u3164'],
     ['Hangul choseong/jungseong fillers and halfwidth filler', '\u115f\u1160\uffa0'],
     ['a word joiner between spaces', ' \u2060 '],
+    // Marks that draw nothing on their own: they are kept at the ends (trimming U+FE0F would break "\u2764\ufe0f"), so they are
+    // counted as invisible instead.
+    ['emoji variation selectors and a combining grapheme joiner', '\ufe0f\u034f\ufe0e'],
+    ['an ideographic variation selector', '\u{e0100}\u{e01ef}'],
+    ['Khmer inherent vowels and Mongolian variation selectors', '\u17b4\u17b5\u180b\u180c\u180d'],
+    ['variation selectors around spaces', '\ufe0f  \ufe0f'],
+    ['tag characters', '\u{e0067}\u{e0062}\u{e007f}'],
   ];
 
   it.each(invisibleOnly)('refuses a register name of %s', (_label, name) => {
@@ -260,6 +267,19 @@ describe('typed text: characters and length', () => {
 
   it('counts only visible characters toward the minimum: one letter and a zero-width space is too short', () => {
     expect(registerSchema.safeParse({ ...register, name: 'A\u200b' }).success).toBe(false);
+    expect(registerSchema.safeParse({ ...register, name: 'A\ufe0f' }).success).toBe(false);
+  });
+
+  // A subdivision flag ends in tag characters (\p{Cf}) and a red heart in a variation selector: neither is padding.
+  it.each([
+    ['a Scotland flag', 'Ann \ud83c\udff4\u{e0067}\u{e0062}\u{e0073}\u{e0063}\u{e0074}\u{e007f}'],
+    ['a red heart', 'Ann \u2764\ufe0f'],
+    ['a keycap', 'Table 1\ufe0f\u20e3'],
+  ])('keeps %s at the end of a name or note intact', (_label, text) => {
+    const registered = registerSchema.safeParse({ ...register, name: text });
+    expect(registered.success && registered.data.name).toBe(text);
+    const ordered = createOrderSchema.safeParse({ ...validOrder, customerName: text, note: text });
+    expect(ordered.success && [ordered.data.customerName, ordered.data.note]).toEqual([text, text]);
   });
 
   it('trims invisibles at the ends but keeps a joiner inside a name or an emoji sequence', () => {

@@ -17,6 +17,10 @@ interface ErrorDescription {
   code: ErrorCode;
   message: string;
   details?: ErrorDetails;
+  /** A level other than the status's usual one (AppError.logLevel, or a database error worth a second look). */
+  logLevel?: 'debug' | 'warn';
+  /** Constant fields added to the log line; never the value the client sent. */
+  logFields?: Record<string, string>;
 }
 
 const UPSTREAM_UNAVAILABLE: ErrorDescription = {
@@ -48,23 +52,20 @@ export const notFoundHandler: RequestHandler = (req, res) => {
 // Express only treats a 4-argument function as an error handler, so `_next` must stay.
 export const errorHandler: ErrorRequestHandler = (thrown: unknown, req, res, _next) => {
   const err = asDatabaseUnavailable(thrown) ?? thrown;
-  const { status, code, message, details } = describeError(err);
+  const { status, code, message, details, logLevel, logFields } = describeError(err);
   if (err instanceof IntegrationError) res.set('Retry-After', RETRY_AFTER_SECONDS);
   // The one place a failed request is logged. Only 5xx carries the error and its stack; a 4xx is an expected
   // client error, and 401/403/429 are warn because a burst of them is worth noticing. A repeat 429 in its window
-  // is debug (AppError.logLevel): the first one already said so.
+  // is debug (AppError.logLevel): the first one already said so. A PGRST102 400 is warn (describeDatabaseError).
   // A 426 is debug: a stale tab keeps asking until it reloads, and each ask is expected.
   if (status >= 500) {
     const route = req.route ? `${req.baseUrl}${String(req.route.path)}` : req.path;
     const invariant = err instanceof InvariantError || undefined;
     req.log.error({ err, route, status, code, userId: req.user?.id, invariant }, 'Request failed');
   } else {
-    const fields = { status, code, ...(err instanceof AppError && err.logFields) };
+    const fields = { status, code, ...logFields };
     const level =
-      status === 426
-        ? 'debug'
-        : (err instanceof AppError && err.logLevel) ||
-          ([401, 403, 429].includes(status) ? 'warn' : 'info');
+      status === 426 ? 'debug' : logLevel || ([401, 403, 429].includes(status) ? 'warn' : 'info');
     if (level === 'debug') loggedAtDebug.add(res);
     req.log[level](fields, message);
   }
@@ -97,8 +98,17 @@ function describeDatabaseError(err: PostgrestError): ErrorDescription {
       return { status: 400, code: 'VALIDATION_ERROR', message: 'One of the values is too long.' };
     case '22021': // invalid byte sequence, e.g. a NUL byte that slipped past validation
     case '22P05': // untranslatable character, the same for JSON arguments
-    case 'PGRST102': // PostgREST could not read an RPC's arguments as JSON: a lone UTF-16 surrogate let through
       return { status: 400, code: 'VALIDATION_ERROR', message: 'Invalid characters in input.' };
+    case 'PGRST102':
+      // PostgREST could not read an RPC's arguments as JSON: a lone UTF-16 surrogate let through. Validation refuses
+      // those, so this is also what a server bug building a bad RPC payload looks like: warn, so it is not lost at info.
+      return {
+        status: 400,
+        code: 'VALIDATION_ERROR',
+        message: 'Invalid characters in input.',
+        logLevel: 'warn',
+        logFields: { dbCode: err.code },
+      };
     default:
       return INTERNAL;
   }
