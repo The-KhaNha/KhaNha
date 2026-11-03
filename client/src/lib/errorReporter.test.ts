@@ -159,6 +159,11 @@ describe('browser error reporter', () => {
     ['an encoded access token', 'next%26access_token%3Dat-secret-1', 'at-secret-1'],
     ['an encoded email with an encoded plus', 'breaker%2Bx%40example.com', 'breaker'],
     ['an email with an apostrophe', "o'brien.smith@example.com", "o'"],
+    [
+      'an encoded email far into an encoded URL',
+      'next%3Dhttps%3A%2F%2Fapp.example.com%2Fauth%2Fcallback%2Fjohn.doe%40example.com',
+      'john.doe',
+    ],
   ])('scrubs %s', (_label, secret, leftover) => {
     reporter.installErrorReporter();
     reporter.setSamplePercent(100);
