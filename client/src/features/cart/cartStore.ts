@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { safeJSONStorage } from '../../lib/safeStorage';
 import type { MenuItem } from '../../types/api';
 import { availableQuantity, lineLimit } from './cartRules';
 
@@ -188,6 +189,7 @@ export const useCartStore = create<CartState>()(
     {
       name: 'fp_cart',
       version: 1,
+      storage: safeJSONStorage(),
       partialize: (state): PersistedCart => ({ lines: state.lines }),
       // Carts saved before stock limits existed have no maxQuantity: treat them as unlimited until a menu load says otherwise.
       migrate: (persisted) => {

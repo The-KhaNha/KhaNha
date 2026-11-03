@@ -70,7 +70,8 @@ const SHELL_BY_ROUTE: { pattern: string; config: ShellConfig }[] = [
     pattern: '/orders',
     config: { ...column, title: 'Your orders', topBar: { title: 'Your orders', backTo: '/' } },
   },
-  { pattern: '/orders/:id/success', config: { ...fullScreen, title: 'Order placed' } },
+  // Announced on arrival, before the page knows the order exists (a stale or typed link 404s): never "Order placed".
+  { pattern: '/orders/:id/success', config: { ...fullScreen, title: 'Order confirmation' } },
   {
     pattern: '/orders/:id',
     config: {
@@ -105,6 +106,11 @@ const NOT_FOUND_SHELL: ShellConfig = {
   topBar: { title: 'Not found', backTo: '/' },
   cartButton: false,
 };
+
+/** The tab title for a page's name. Also used by a page whose state outgrows its route's title (OrderSuccess). */
+export function documentTitle(title: string): string {
+  return title === APP_TITLE ? APP_TITLE : `${title} · ${APP_TITLE}`;
+}
 
 export function getShellConfig(pathname: string): ShellConfig {
   for (const { pattern, config } of SHELL_BY_ROUTE) {

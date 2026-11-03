@@ -120,6 +120,62 @@ test('menu → add to cart → cart works on WebKit', async ({ page }) => {
   expect(problems).toEqual([]);
 });
 
+// Storage that is there but full (older iOS private mode, a full quota, some WebViews): every write throws. zustand's
+// persist writes inside each set() without a catch, which once showed the error page on every /menu load and
+// "Something went wrong." for a correct password.
+test('storage full: /menu renders and sign-in works', async ({ page }) => {
+  const problems = watchConsole(page);
+  await page.addInitScript(() => {
+    Storage.prototype.setItem = () => {
+      throw new DOMException('The quota has been exceeded.', 'QuotaExceededError');
+    };
+  });
+  const user: User = {
+    id: 'u1',
+    name: 'Anishka',
+    email: 'anishka@example.com',
+    phone: null,
+    role: 'CUSTOMER',
+    createdAt: new Date().toISOString(),
+  };
+  await page.route('**/api/auth/me', (route) => route.fulfill({ json: { user } }));
+  const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*' };
+  await page.route('**/auth/v1/token**', (route) =>
+    route.request().method() === 'OPTIONS'
+      ? route.fulfill({ status: 204, headers: cors })
+      : route.fulfill({
+          headers: cors,
+          json: {
+            access_token: 'e2e',
+            refresh_token: 'e2e',
+            token_type: 'bearer',
+            expires_in: 3600,
+            expires_at: Math.floor(Date.now() / 1000) + 3600,
+            user: {
+              id: user.id,
+              aud: 'authenticated',
+              email: user.email,
+              app_metadata: {},
+              user_metadata: {},
+            },
+          },
+        }),
+  );
+
+  await page.goto('/menu');
+  await expect(page.getByRole('heading', { name: store.name })).toBeVisible();
+  await page.getByRole('button', { name: 'Add to cart' }).first().click();
+  await expect(page.getByLabel('Cart, 1 item')).toBeVisible();
+
+  await page.goto('/login');
+  await page.getByLabel('Email', { exact: true }).fill(user.email);
+  await page.getByLabel('Password', { exact: true }).fill('test1234');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByText('Something went wrong')).toHaveCount(0);
+  expect(problems).toEqual([]);
+});
+
 /**
  * Anything past the right edge of the configured screen. Measured against the viewport Playwright set, not
  * `innerWidth`: mobile browsers widen the layout viewport to fit an overflowing page, which would hide the bug.
@@ -413,6 +469,50 @@ for (const { path, role, status } of LAYOUT_ROUTES) {
     await fitsScreen(page, 'at 200% text');
   });
 }
+
+// A phone on its side with its largest text: the sticky top bar, the category chips, the cart bar and the bottom nav
+// once covered all 360px of height at 640×360 and 200% text, leaving no item that could be tapped at any scroll.
+test('/menu on a phone on its side at 200% text: an item can still be added', async ({ page }) => {
+  await page.addInitScript((line) => {
+    localStorage.setItem('fp_cart', JSON.stringify({ state: { lines: [line] }, version: 1 }));
+  }, CART_LINE);
+  await page.setViewportSize({ width: 640, height: 360 });
+  await page.goto('/menu');
+  await expect(page.getByRole('heading', { name: store.name })).toBeVisible();
+  await page.evaluate(() => {
+    document.documentElement.style.fontSize = '200%';
+  });
+  // A hit test needs only the layout: wait for the fonts, not for the entrance animations settle() waits out (that
+  // wait timed out under a loaded parallel run).
+  await page.evaluate(() => document.fonts.ready);
+
+  // Polled: the cards may still be rendering or entering on a loaded runner. Each button is scrolled to the middle of
+  // the screen and counts only if a tap at its centre lands on it rather than on a bar.
+  const reachable = () =>
+    page.getByRole('button', { name: 'Add to cart' }).evaluateAll(
+      (buttons) =>
+        buttons.filter((el) => {
+          el.scrollIntoView({ block: 'center' });
+          const box = el.getBoundingClientRect();
+          const top = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+          return top !== null && el.contains(top);
+        }).length,
+    );
+  await expect
+    .poll(reachable, { message: 'Add to cart buttons not covered by the bars' })
+    .toBeGreaterThan(0);
+});
+
+// An on-screen keyboard shrinks the layout viewport of an upright phone to about 360×480 in browsers that resize it
+// (Firefox Android, Chrome before 108, in-app WebViews): `short:` once fired there too, so focusing a checkout field
+// flipped the bottom nav to its compact row and back on blur. It is for a phone on its side only.
+test('an upright phone with its keyboard open keeps the stacked bottom nav', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 480 });
+  await page.goto('/');
+  const tab = page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Home' });
+  await expect(tab).toBeVisible();
+  await expect(tab).toHaveCSS('flex-direction', 'column');
+});
 
 // A slow network delivers the web font after the content has painted in the fallback. The fallback faces in index.css
 // are metric-matched, so the swap must not move anything (the CLS budget in perf-budget.json, CLAUDE.md §2b). Chromium only: WebKit has no
