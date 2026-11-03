@@ -14,10 +14,13 @@ reviews:
       - ^feat/
     # A push after the first review is not reviewed on its own; ask with `@coderabbitai review` when it should be.
     auto_incremental_review: false
-    # release.yml's release and back-merge PRs bundle work already reviewed in its own PRs.
+    # release.yml's release and back-merge PRs bundle work already reviewed in its own PRs. Keywords match as
+    # case-insensitive substrings anywhere in the title, so each one spells out the automated title ("release: client 1.2.0",
+    # "Back-merge main (abc1234) into dev") and a hand-written "fix: prevent back-merge conflicts" is still reviewed.
     ignore_title_keywords:
-      - 'release:'
-      - back-merge
+      - 'release: client '
+      - 'release: server '
+      - 'Back-merge main ('
   # Generated, never edited by hand (the PR-size count skips them too).
   path_filters:
     - '!**/package-lock.json'

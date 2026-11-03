@@ -208,7 +208,9 @@ jobs:
           # must fail, not pass.
           commits=$(git rev-list --count "origin/${BASE_REF}..HEAD")
           [ "$commits" -gt 0 ] || { echo "::error::No commits in origin/${BASE_REF}..HEAD to scan for secrets."; exit 1; }
-          "$RUNNER_TEMP/gitleaks" detect --source . --redact --verbose --log-opts="origin/${BASE_REF}..HEAD"
+          # git log -p prints no patch for a merge: --diff-merges makes a secret added only in a merge's conflict
+          # resolution visible (scripts/ci/gitleaks-merge-diffs.test.mjs).
+          "$RUNNER_TEMP/gitleaks" detect --source . --redact --verbose --log-opts="--diff-merges=first-parent origin/${BASE_REF}..HEAD"
 
   # Static analysis on every change. Semgrep's rules for this stack cover the code, the Dockerfiles and these workflows;
   # Trivy checks the Dockerfiles' configuration (secrets are gitleaks' job, in `repo`). Not CodeQL, which needed a paid

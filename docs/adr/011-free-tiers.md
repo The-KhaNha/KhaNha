@@ -53,10 +53,12 @@ Use Supabase Free and GitHub Free. Everything the project builds must work withi
 
 ## Consequences
 
-- Nothing technically stops a merge with a red `ci-ok`, so the merge discipline is a rule, not a setting. CLAUDE.md
-  §13 and §21 and `docs/TESTING.md` say so.
-- CI minutes are a budget. A docs-only PR costs a few minutes; a server change costs the most (the Supabase stack in
-  `server-tests`). Watch Settings → Billing → Actions monthly.
+- The `ci-ok required` ruleset blocks a merge into `main`, `dev` or a listed `feat/P<n>` while `ci-ok` is red, so
+  merge discipline is a setting as well as a rule. A new phase branch is added to the ruleset when it is cut.
+  `docs/TESTING.md` describes the gate.
+- Actions minutes are unlimited on standard runners while the repository is public, so they are no longer a monthly
+  budget. A PR's run is still kept short by running heavy jobs only when their files changed (`ci.yml` `changes`
+  job). Should the repository go private again, the 2,000-minute monthly limit and the missing ruleset return.
 - **Session length is weaker on hosted projects.** Without the Pro inactivity timeout, a stolen refresh token keeps
   working until the user signs out, because the client-side cap cannot bind an attacker. A server-side check (record
   each user's last activity and refuse requests after `SESSION_IDLE_DAYS`) closes the gap. It is a follow-up for P1
