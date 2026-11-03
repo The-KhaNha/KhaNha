@@ -1,3 +1,4 @@
+import { LIMITS } from '../schemas/limits';
 import { MAX_QUANTITY_PER_ITEM, type CreateOrderInput } from '../schemas/order.schema';
 import type { AuthUser, RequestContext } from '../types/auth';
 import type { Tables } from '../types/database';
@@ -357,5 +358,6 @@ async function lookupUserName(userId: string): Promise<string> {
     .eq('id', userId)
     .single()
     .throwOnError();
-  return profile.name;
+  // A profile made before handle_new_user bounded the name may hold a longer one; the order still gets a valid name.
+  return profile.name.slice(0, LIMITS.nameMax);
 }

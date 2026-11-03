@@ -171,8 +171,10 @@ enable_refresh_token_rotation = true
 # Allows refresh tokens to be reused after expiry, up to the specified interval in seconds.
 # Requires enable_refresh_token_rotation = true.
 refresh_token_reuse_interval = 10
-# Allow/disallow new user signups to your project.
-enable_signup = true
+# Accounts are made only through POST /api/auth/register (auth.admin.createUser, unaffected by this): a direct
+# signup with the bundled publishable key would skip the API's checks. Hosted projects: Authentication > Sign In /
+# Providers > "Allow new users to sign up" off (docs/DEPLOYMENT.md).
+enable_signup = false
 # Allow/disallow anonymous sign-ins to your project.
 enable_anonymous_sign_ins = false
 # Allow/disallow testing manual linking of accounts
@@ -216,7 +218,7 @@ web3 = 30
 # secret = ""
 
 [auth.email]
-# Allow/disallow new user signups via email to your project.
+# Stays true: here it switches the email provider itself, sign-in included. [auth] enable_signup above closes sign-up.
 enable_signup = true
 # If enabled, a user will be required to confirm any email change on both the old, and new email
 # addresses. If disabled, only the new email is required to confirm.
