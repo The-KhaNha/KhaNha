@@ -59,6 +59,8 @@ export interface SiteSettingsDto {
   orderPollMs: number;
   ordersPollMs: number;
   staffBoardPollMs: number;
+  /** The share of page loads (0–100) whose errors the client reports to POST /api/client-errors. */
+  clientErrorSamplePercent: number;
   /** The oldest client version served; older clients get 426 CLIENT_OUTDATED. */
   minClientVersion: string;
   updatedAt: string;
@@ -104,6 +106,8 @@ export interface ConfigDto {
   /** Poll intervals in ms: one order's page, the customer's order list, the staff board. */
   polling: { orderMs: number; ordersMs: number; staffBoardMs: number };
   session: { idleDays: number };
+  /** The share of page loads (0–100) that report their errors to POST /api/client-errors. */
+  clientErrors: { samplePercent: number };
 }
 
 /** One audit_log row (GET /api/admin/audit): who changed what, when. */

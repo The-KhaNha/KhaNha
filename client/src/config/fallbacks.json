@@ -13,6 +13,9 @@
   "session": {
     "idleDays": 7
   },
+  "clientErrors": {
+    "samplePercent": 100
+  },
   "validation": {
     "nameMin": 2,
     "nameMax": 60,

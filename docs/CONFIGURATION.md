@@ -19,15 +19,16 @@ update). Edited from the registry in `client/src/features/admin/settingsRules.ts
 same in three places: the `site_settings` check constraints ([SCHEMA.md](SCHEMA.md#site_settings)),
 `updateSettingsSchema` (`server/src/schemas/admin.schema.ts`) and `SETTING_FIELDS`.
 
-| Key (API)                   | Column                         | Type    | Default | Bounds     | Read by                                                                                              |
-| --------------------------- | ------------------------------ | ------- | ------- | ---------- | ---------------------------------------------------------------------------------------------------- |
-| `customerOrderHistoryLimit` | `customer_order_history_limit` | integer | 20      | 1–200      | `GET /api/orders` for a customer                                                                     |
-| `staffOrderListLimit`       | `staff_order_list_limit`       | integer | 100     | 1–500      | `GET /api/orders` for staff: finished orders kept on the board (active ones always show)             |
-| `maxLinesPerOrder`          | `max_lines_per_order`          | integer | 30      | 1–100      | `POST /api/orders` (`createOrder`, lines counted before merging; up to 10 s late on other instances) |
-| `orderPollMs`               | `order_poll_ms`                | integer | 4000    | 2000–60000 | the order page's poll (`useOrder`, via `GET /api/config`)                                            |
-| `ordersPollMs`              | `orders_poll_ms`               | integer | 8000    | 2000–60000 | the customer's order list poll (`useOrders`)                                                         |
-| `staffBoardPollMs`          | `staff_board_poll_ms`          | integer | 4000    | 2000–60000 | the staff board's poll (`useOrders({ audience: 'staff' })`)                                          |
-| `minClientVersion`          | `min_client_version`           | semver  | `0.0.0` | `x.y.z`    | `clientVersionGate` ([API.md](API.md#client-version-gate))                                           |
+| Key (API)                   | Column                         | Type    | Default | Bounds     | Read by                                                                                                                          |
+| --------------------------- | ------------------------------ | ------- | ------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `customerOrderHistoryLimit` | `customer_order_history_limit` | integer | 20      | 1–200      | `GET /api/orders` for a customer                                                                                                 |
+| `staffOrderListLimit`       | `staff_order_list_limit`       | integer | 100     | 1–500      | `GET /api/orders` for staff: finished orders kept on the board (active ones always show)                                         |
+| `maxLinesPerOrder`          | `max_lines_per_order`          | integer | 30      | 1–100      | `POST /api/orders` (`createOrder`, lines counted before merging; up to 10 s late on other instances)                             |
+| `orderPollMs`               | `order_poll_ms`                | integer | 4000    | 2000–60000 | the order page's poll (`useOrder`, via `GET /api/config`)                                                                        |
+| `ordersPollMs`              | `orders_poll_ms`               | integer | 8000    | 2000–60000 | the customer's order list poll (`useOrders`)                                                                                     |
+| `staffBoardPollMs`          | `staff_board_poll_ms`          | integer | 4000    | 2000–60000 | the staff board's poll (`useOrders({ audience: 'staff' })`)                                                                      |
+| `clientErrorSamplePercent`  | `client_error_sample_percent`  | integer | 100     | 0–100      | `GET /api/config` `clientErrors.samplePercent`: the share of page loads that report their errors (the client reporter, P1 PR 12) |
+| `minClientVersion`          | `min_client_version`           | semver  | `0.0.0` | `x.y.z`    | `clientVersionGate` ([API.md](API.md#client-version-gate))                                                                       |
 
 The client reads them through `GET /api/config` (`useConfig()`, persisted) and falls back to
 `client/src/config/fallbacks.json` until it loads or when it cannot.

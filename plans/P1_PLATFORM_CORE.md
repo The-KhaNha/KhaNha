@@ -492,7 +492,7 @@ Docs: `docs/API.md`; `docs/LOGGING.md` ("Client error reports") and CLAUDE.md §
 
 ### PR 11 — `client_error_sample_percent` through to `/api/config` (P1.6)
 
-- [ ] Merged
+- [x] Merged
 
 The P0.4 pattern (P0 PRs 13 and 14): migration column `client_error_sample_percent integer not null default 100
 check (… between 0 and 100)`; `npm run db:types`; `settings.service.ts` `COLUMN`, `updateSettingsSchema`,

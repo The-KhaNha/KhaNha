@@ -47,6 +47,27 @@ describe('GET /api/config', () => {
     expect(res.body.polling.orderMs).toBe(6000);
   });
 
+  it('carries the client error sample percent from site settings', async () => {
+    await supabaseAdmin
+      .from('site_settings')
+      .update({ client_error_sample_percent: 25 })
+      .eq('id', true)
+      .throwOnError();
+    invalidate('site_settings');
+    try {
+      const res = await api().get('/api/config');
+      expect(res.body.clientErrors).toEqual({ samplePercent: 25 });
+    } finally {
+      // Back to the seeded default, so a fallbacks comparison after this one still holds.
+      await supabaseAdmin
+        .from('site_settings')
+        .update({ client_error_sample_percent: 100 })
+        .eq('id', true)
+        .throwOnError();
+      invalidate('site_settings');
+    }
+  });
+
   it('is revalidated, never given a max-age', async () => {
     const res = await api().get('/api/config');
     expect(res.headers['cache-control']).toBe('no-cache');
