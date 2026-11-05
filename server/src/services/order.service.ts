@@ -1,3 +1,4 @@
+import { LIMITS } from '../schemas/limits';
 import { MAX_QUANTITY_PER_ITEM, type CreateOrderInput } from '../schemas/order.schema';
 import type { AuthUser, RequestContext } from '../types/auth';
 import type { Tables } from '../types/database';
@@ -357,5 +358,8 @@ async function lookupUserName(userId: string): Promise<string> {
     .eq('id', userId)
     .single()
     .throwOnError();
-  return profile.name;
+  // A profile made before handle_new_user bounded the name may hold a longer one; the order still gets a valid name,
+  // and the cut never leaves half of a surrogate pair (a lone surrogate is not valid JSON for the RPC).
+  const name = profile.name.slice(0, LIMITS.nameMax);
+  return /[\uD800-\uDBFF]$/.test(name) ? name.slice(0, -1) : name;
 }

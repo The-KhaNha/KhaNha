@@ -244,7 +244,7 @@ sequenceDiagram
   end
 ```
 
-The account is created already confirmed and no email is sent, so the customer can order straight away. Direct sign-ups with the publishable key (`supabase.auth.signUp`) also get a CUSTOMER profile from the same trigger, but they skip the API's validation. That is why [DEPLOYMENT.md](DEPLOYMENT.md#production-first-time-setup) recommends turning off public sign-ups on hosted projects.
+The account is created already confirmed and no email is sent, so the customer can order straight away. Direct sign-ups with the publishable key (`supabase.auth.signUp`) would skip the API's validation, so public sign-ups are off (locally in `server/supabase/config.toml`, and a required step on hosted projects, [DEPLOYMENT.md](DEPLOYMENT.md#production-first-time-setup)). The trigger also keeps the profile's name and phone inside the API's bounds for any account, however it was made ([SCHEMA.md](SCHEMA.md#profile_name-and-profile_phone)).
 
 ### 3.3 Sign-in
 
@@ -836,7 +836,7 @@ sequenceDiagram
   Note over S1,DB: Cancelling (from PLACED or PREPARING) runs in the same transaction:
   S1->>API: PATCH status CANCELLED
   API->>DB: update_order_status(..., CANCELLED, from PLACED, PREPARING)
-  DB->>DB: UPDATE menu_items SET stock += SUM(order_items.quantity)<br/>WHERE stock_quantity IS NOT NULL (untracked items untouched)
+  DB->>DB: UPDATE menu_items SET stock += SUM(order_items.reserved_quantity)<br/>WHERE stock_quantity IS NOT NULL (untracked items untouched)
   DB-->>API: committed with its order.cancelled event, stock restored exactly once
   API-->>S1: 200 { order CANCELLED }
 ```
@@ -1060,6 +1060,7 @@ erDiagram
     bigint line_total_paise
     text image_url "snapshot"
     text category "snapshot, not sent"
+    int reserved_quantity "0 or quantity: what place_order took"
   }
 ```
 
