@@ -295,6 +295,10 @@ no-cache` and `Vary: Authorization, Origin`; normal `GET` 304 revalidation on `/
   - **Bundle:** `check:bundle` (build to a temp dir, `--mode development`): initial JS 91,282 B gzip (89.0 KB at level 9; was 91,256 B, +26 B, +0.03%), budget 170 KB; `fallbacks.json` is in the entry chunk, `supabaseClient` (58.8 KB) and all route chunks still lazy and outside the initial set. No new dependency.
   - **`GET /api/config`:** p50 1.0 / p95 1.1 ms (was 1.3 / 1.5), 239 B (was 202 B, +37 B = the `clientErrors` object). **`GET /api/admin/settings`:** p50 4.1 / p95 5.2 ms, 261 B; the new key is `"clientErrorSamplePercent":100,` = +31 B (the 118 B in the round-3 row predates the later setting columns, so it is not a like-for-like byte count; latency 3 / 4 ms then, +1 ms, under the 5 ms noise floor). `PATCH /api/admin/settings` (20 flips, all 200) p50 11.2 / p95 13.7 ms, 260 B; the round-3 figure was 6 / 8 ms, but the table now has the audit and `updated_at` triggers (the P1 PR 13 flag PATCH, same triggers, was 9.1 / 10.1 ms), so the gap is not this change; an A/B on the base branch was not run.
   - **Behaviour:** PATCH then `GET /api/config` returns the new `samplePercent` at once (37), so the read cache is invalidated; 101, -1 and 1.5 are 400; `config` and `admin/settings` revalidate with `If-None-Match` to 304, 0 B (`Cache-Control: no-cache`, `Vary: Authorization, Origin`). health 1.0 / 1.4, store 0.9 / 1.1, menu 0.9 / 1.0 ms (4,416 B): unchanged.
+- **2026-11-03 (feat/p1-12-error-reporter @ 0040f5d)** · P1 PR 12, the browser error reporter and the app-scope
+  `PageBoundary`. Base/head A/B on one machine (macOS arm64): initial JS 91,123 → 91,985 B gzip; `/` LCP 1456 →
+  1432 ms, `/menu` LCP 1536 → 1552 ms, CLS 0 / 0.0001 both, `/menu` INP 48 → 48 ms. Details:
+  [Browser error reporting](#web-vitals-ab-2026-11-03-0040f5d-against-its-base-572a359).
 
 ## CI numbers
 
@@ -411,3 +415,66 @@ one staff, sequential).
   each, base vs change, through arrival, one reprice and (change only) two failed reloads: no long task over 50 ms in any phase, INP 24-48 ms (base) vs
   32-48 ms (change), CLS at most 0.0003. `/menu`, `/`, `/cart`, `/orders/:id`, polling and API latency not re-measured (the diff cannot reach them).
   No regression.
+
+## Browser error reporting (P1 PR 12, 2026-11-03)
+
+Scoped comparison at `572a359 + uncommitted changes`, Node v24.21.0, Linux. Reused the final minified
+`build:container` output; gzip figures use level 9 and the Vite manifest's static import graph. No dependencies,
+images, server queries or polling intervals changed.
+
+| Metric                                          | Budget                | Previous recorded value          | This run                        | Result                                                    |
+| ----------------------------------------------- | --------------------- | -------------------------------- | ------------------------------- | --------------------------------------------------------- |
+| Initial JavaScript                              | 170 KiB               | 91,163 B (PR 09b, staging build) | 92,134 B (90.0 KiB)             | within budget; +971 B (+1.1%) against that recorded build |
+| Reporter module alone, minified and gzipped     | 1 KiB (PR 12 plan)    | absent                           | 1,017 B                         | within budget                                             |
+| `supabaseClient` lazy chunk                     | outside initial graph | outside initial graph            | 58,810 B                        | remains lazy                                              |
+| Checkout / staff / login / register lazy chunks | outside initial graph | outside initial graph            | 3,425 / 4,199 / 1,362 / 1,294 B | remain lazy                                               |
+
+The earlier bundle was built in staging mode and this output in container mode, so the +1.1% is a comparison with
+the recorded size, not a controlled attribution of every byte to PR 12. No measured bundle regression crosses the
+20% threshold or its absolute budget.
+
+The reporter scans at most 8,000 characters per field and accepts at most five reports per page load. A direct
+Node microbenchmark of five crafted 8,000-character inputs (30 samples per input) measured the slowest case, a
+long dotted run, at p50 2.53 ms / p95 2.71 ms; the other cases' p95 was at most 0.17 ms. These are unthrottled
+microbenchmarks, not browser INP measurements. Each serialized report is capped at 4,096 UTF-8 bytes including JSON
+escaping: five reports plus their envelope stay below 21 KiB, within the browser's 64 KiB keepalive allowance.
+Reports batch on a 250 ms debounce or `pagehide`, are never retried or persisted, and cannot load the auth chunk.
+
+The final reporter shares the bounded chunk-failure classifier with `PageBoundary` and excludes chunk failures
+from its global error/rejection path. Classification sees at most 8,000 characters, with at most 80 characters
+between `chunk` and `load`/`fail`; repeated `chunk ` input measured p50 0.43 ms / p95 0.57 ms (30 samples). The
+unbounded intermediate pattern was quadratic (32,000 characters took 116.7 ms); the final implementation and its
+long-input regression guard remove that issue. Cap and sampling checks run before message normalization.
+
+`App` uses the existing public persisted config hook and its in-flight-coalesced `fetchConfig`; no new polling
+loop or serialized request waterfall is introduced. With no loaded or cached server config, reports remain
+buffered rather than using the fallback's 100% setting. Existing settings/flags read caches and invalidation are
+unchanged. The change adds no database round trip to the reporting endpoint.
+
+The responsive verification covered page crashes, shell crashes, chunk-load failures and the normal state at
+320/360/390/412/768/1024/1280/1440 px, including the 390 px Slow 4G / 4× CPU pass, 200% text and 44 px controls.
+The local API accepted render reports with 204 and logged scrubbed route, stack and client version. These are
+functional and layout checks. Per-route transfer totals, polling cost and API latency were not remeasured (no
+request, poll or query changed).
+
+### Web Vitals A/B (2026-11-03, `0040f5d` against its base `572a359`)
+
+Both commits built with `vite build --mode development` and served with `vite preview` (proxying `/api` to a local
+API on seeded local Supabase), measured in one interleaved session: Chromium headless shell 153, macOS arm64, cold
+cache, 360×640, DPR 1, Slow 4G (150 ms, 1.6 Mbps / 750 kbps), 4× CPU, three runs per route, median. INP is the worst
+interaction (Add, then Escape) on `/menu`. The machine differs from the 2026-09-29 entry (Linux with Arimo), so the
+controlled comparison is base against head here, not against that entry.
+
+| Metric                       | Budget  | Base `572a359`           | PR 12 `0040f5d`          | Result       |
+| ---------------------------- | ------- | ------------------------ | ------------------------ | ------------ |
+| Initial JavaScript (gzip -9) | 170 KiB | 91,123 B                 | 91,985 B                 | +862 B       |
+| `/` LCP (runs)               | 3000 ms | 1456 ms (1456/1456/1432) | 1432 ms (1436/1432/1368) | within noise |
+| `/menu` LCP (runs)           | 3000 ms | 1536 ms (1536/1536/1532) | 1552 ms (1536/1552/1568) | within noise |
+| CLS `/` / `/menu`            | 0.15    | 0 / 0.0001               | 0 / 0.0001               | unchanged    |
+| `/menu` INP (runs)           | 300 ms  | 48 ms (64/48/48)         | 48 ms (48/48/48)         | unchanged    |
+| Long tasks over 50 ms        | –       | one of 68 ms on `/`      | none                     | –            |
+
+The LCP element on both routes is `cafe-cover-400.jpg` in both builds. The reporter and the app-scope boundary add
+no measurable cost to first paint or to the first interaction.
+
+No remaining HIGH or MEDIUM performance finding.

@@ -1,12 +1,14 @@
 import { z } from 'zod';
+import { LIMITS } from './limits';
 
-// Bounds sized so five reports stay well under the 64 KB a `keepalive` request may carry in flight.
-const MESSAGE_MAX = 500;
-const STACK_MAX = 3500;
-const ROUTE_MAX = 200;
+const {
+  reportsMax: REPORTS_MAX,
+  messageMax: MESSAGE_MAX,
+  stackMax: STACK_MAX,
+  routeMax: ROUTE_MAX,
+} = LIMITS.clientErrors;
 // What a route may be before its query string and hash are dropped: an auth callback's hash carries a JWT of ~1 KB.
 const ROUTE_INPUT_MAX = 4000;
-const REPORTS_MAX = 5;
 
 // REDACT_PATHS blanks log fields by key, never inside a string, and an error message can quote a header, a URL or a
 // form value it was handed. Over-redacting a client report costs nothing, so each shape is matched loosely:
