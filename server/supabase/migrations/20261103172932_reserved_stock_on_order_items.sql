@@ -4,16 +4,20 @@
 
 -- All or nothing per line: place_order takes a line's whole quantity or none of it.
 alter table public.order_items
-  add column reserved_quantity integer not null default 0,
+  add column reserved_quantity integer,
   add constraint order_items_reserved_quantity_check check (reserved_quantity in (0, quantity));
 
 -- Orders still open before this migration took their stock under the old rule, so a cancel keeps returning it (as
 -- before). Collected orders cannot be cancelled, and cancelled ones were already returned: 0.
 update public.order_items oi
-   set reserved_quantity = oi.quantity
+   set reserved_quantity = case when o.status in ('PLACED', 'PREPARING', 'READY') then oi.quantity else 0 end
   from public.orders o
- where o.id = oi.order_id
-   and o.status in ('PLACED', 'PREPARING', 'READY');
+ where o.id = oi.order_id;
+
+-- No default: a place_order from before this migration, still running when it commits, inserts its lines without the
+-- column; that insert fails and rolls back its stock decrement, rather than keeping a 0 that a cancel would never return.
+alter table public.order_items
+  alter column reserved_quantity set not null;
 
 -- PR 09's body and signature (so the grants stay), recording each line's reservation.
 create or replace function public.place_order(

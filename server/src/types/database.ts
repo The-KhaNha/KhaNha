@@ -291,7 +291,7 @@ export type Database = {
           name: string;
           order_id: string;
           quantity: number;
-          reserved_quantity?: number;
+          reserved_quantity: number;
           unit_price: number;
           unit_price_paise: number;
         };
