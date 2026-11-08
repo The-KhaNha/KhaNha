@@ -18,11 +18,15 @@ export function OrderSuccessPage() {
   const { order, isLoading, error, retry } = useOrder(id, passedOrder);
   // A typed, stale or someone else's id: nothing was placed, so no celebration, and a retry would only 404 again.
   const notFound = !order && error?.status === 404;
-  // Celebrate only once an order is known to exist (passed in from checkout, or loaded), or the server could not say
-  // (unreachable or a 5xx right after checkout keeps "placed, but couldn't load"). Latched so a retry, which clears
+  // Celebrate only once an order is known to exist (passed in from checkout, or loaded), or checkout handed one over
+  // and the server could not say (unreachable or a 5xx right after checkout keeps "placed, but couldn't load"). A
+  // fetch error on a direct link proves nothing, so it gets a neutral retry instead. Latched so a retry, which clears
   // the error while it loads, does not drop back to the loading state and replay the whole celebration.
   const [celebrating, setCelebrating] = useState(false);
-  if (!celebrating && !notFound && (order || error)) setCelebrating(true);
+  if (!celebrating && !notFound && (order || (error && passedOrder))) {
+    setCelebrating(true);
+  }
+  const unverified = !celebrating && !notFound && !order && error;
 
   // The route's title is neutral (appShell.ts); the tab names the not-found state for what it is.
   useEffect(() => {
@@ -50,6 +54,20 @@ export function OrderSuccessPage() {
               <HomeLink />
             </>
           }
+        />
+      </main>
+    );
+  }
+
+  if (unverified) {
+    return (
+      <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center px-6 py-12 md:max-w-lg">
+        <ErrorState
+          headingLevel={1}
+          title="Unable to load your order."
+          message={error.message}
+          onRetry={retry}
+          unreachable={error.isUnreachable}
         />
       </main>
     );

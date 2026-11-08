@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import type { Order } from '../types/api';
@@ -25,20 +25,25 @@ const state = vi.hoisted(() => ({
   order: null as Order | null,
   error: null as ApiError | null,
   isLoading: false,
+  retry: vi.fn(),
 }));
 vi.mock('../features/orders/useOrder', () => ({
   useOrder: () => ({
     order: state.order,
     isLoading: state.isLoading,
     error: state.error,
-    retry: () => {},
+    retry: state.retry,
   }),
 }));
 const { OrderSuccessPage } = await import('./OrderSuccess');
 
-function page() {
+function page(passed: Order | null = null) {
   return (
-    <MemoryRouter initialEntries={['/orders/o1/success']}>
+    <MemoryRouter
+      initialEntries={[
+        { pathname: '/orders/o1/success', state: passed ? { order: passed } : null },
+      ]}
+    >
       <Routes>
         <Route path="/orders/:id/success" element={<OrderSuccessPage />} />
       </Routes>
@@ -46,11 +51,16 @@ function page() {
   );
 }
 
-function renderAt(order: Order | null, error: ApiError | null, isLoading = false) {
+function renderAt(
+  order: Order | null,
+  error: ApiError | null,
+  isLoading = false,
+  passed: Order | null = null,
+) {
   state.order = order;
   state.error = error;
   state.isLoading = isLoading;
-  return render(page());
+  return render(page(passed));
 }
 
 describe('OrderSuccessPage', () => {
@@ -98,19 +108,49 @@ describe('OrderSuccessPage', () => {
   // A retry after "placed, but couldn't load" clears the error while it loads: the page must not drop back to the
   // neutral loading state and replay the whole celebration when the order arrives.
   it('keeps celebrating while a retry after an unreachable server loads', () => {
-    const { rerender } = renderAt(null, new ApiError(0, 'UNREACHABLE', 'Check your connection.'));
+    const { rerender } = renderAt(
+      null,
+      new ApiError(0, 'UNREACHABLE', 'Check your connection.'),
+      false,
+      placed,
+    );
     state.error = null;
     state.isLoading = true;
-    rerender(page());
+    rerender(page(placed));
     expect(screen.getByRole('heading', { name: 'Order placed!' })).toBeInTheDocument();
   });
 
-  it('keeps "placed, but couldn\'t load" with a retry when the server is unreachable', () => {
-    renderAt(null, new ApiError(0, 'UNREACHABLE', 'Check your connection.'));
+  it('keeps "placed, but couldn\'t load" with a retry when the server is unreachable after checkout', () => {
+    renderAt(null, new ApiError(0, 'UNREACHABLE', 'Check your connection.'), false, placed);
     expect(screen.getByRole('heading', { name: 'Order placed!' })).toBeInTheDocument();
     expect(
       screen.getByText("Your order was placed, but we couldn't load its details."),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Try Again' })).toBeInTheDocument();
   });
+
+  it('still celebrates a checkout handoff when the refetch fails with a 5xx', () => {
+    renderAt(placed, new ApiError(500, 'INTERNAL', 'Server error.'), false, placed);
+    expect(screen.getByRole('heading', { name: 'Order placed!' })).toBeInTheDocument();
+  });
+
+  // A typed or stale link whose fetch fails (network or 5xx) is no evidence checkout succeeded: a neutral, retryable
+  // error, never "Order placed!".
+  it.each([
+    ['a 5xx', new ApiError(500, 'INTERNAL', 'Server error.')],
+    ['a network error', new ApiError(0, 'UNREACHABLE', 'Check your connection.')],
+  ])(
+    'does not celebrate a direct link when the fetch fails with %s, and offers a retry',
+    (_n, err) => {
+      state.retry.mockClear();
+      renderAt(null, err);
+      expect(screen.queryByText('Order placed!')).not.toBeInTheDocument();
+      expect(screen.queryByText(/was placed/)).not.toBeInTheDocument();
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
+        'Unable to load your order.',
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Try Again' }));
+      expect(state.retry).toHaveBeenCalledOnce();
+    },
+  );
 });
