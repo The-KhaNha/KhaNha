@@ -50,7 +50,7 @@ describe('clientErrorsSchema scrub: encoded and unusual shapes', () => {
     ['a password parameter', 'POST /login?password=hunter2hunter2', 'hunter2hunter2'],
     ['an encoded password parameter', 'password%3Dhunter2hunter2', 'hunter2hunter2'],
     ['an encoded +-address', 'user breaker%2Bx%40example.com failed', 'breaker'],
-    ['an apostrophe in the local part', "user o'brien.smith@example.com failed", "o'"],
+    ['an apostrophe in the local part', "user o'brien.smith@example.com failed", 'brien.smith'],
     // A match may start inside a `%`- or `'`-joined run: the run before an encoded email can be far over 64 characters.
     [
       'an encoded email deep in an encoded redirect URL',

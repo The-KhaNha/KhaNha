@@ -14,7 +14,8 @@ export const NOTE_MAX_LENGTH = VALIDATION.noteMax;
 
 // Characters that draw nothing yet survive trim(): format characters (zero-width space, word joiner, the joiners),
 // the Braille blank and the Hangul fillers. The server's schemas/common.ts holds the same list, so a name the form
-// takes is one the API takes; lengths are UTF-16 units on both sides, as an input's maxLength counts them.
+// takes is one the API takes; lengths are UTF-16 units on both sides, as an input's maxLength counts them. The server
+// suite runs this block against its own (server/test/unit/blank-parity.safe.test.ts), from INVISIBLE to validateName.
 const INVISIBLE = String.raw`\p{Cf}\u2800\u115F\u1160\u3164\uFFA0`;
 // Marks that draw nothing on their own but end visible text (U+FE0F turns U+2764 into the red heart emoji): never
 // trimmed, only left out of what counts as visible; an alternation, since a combining mark inside a character class
