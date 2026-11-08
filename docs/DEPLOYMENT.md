@@ -261,9 +261,12 @@ Run by the user, once.
    editor: `update public.profiles set role = 'STAFF' where email = '…';` for staff, or
    `update public.profiles set role = 'ADMIN' where email = '…';` for the site-wide developer/operator role (the
    `/admin` dashboard — see [PERMISSIONS.md#roles](PERMISSIONS.md#roles)).
-7. Recommended in the dashboard (Authentication → Sign In / Providers): turn off **Allow new users to sign up**.
-   Accounts are created by the API's `/auth/register` with the secret key, which still works; this closes direct
-   sign-ups with the publishable key.
+7. Required in the dashboard (Authentication → Sign In / Providers): turn off **Allow new users to sign up**.
+   Accounts are created by the API's `/auth/register` with the secret key, which still works. Left on, anyone can
+   sign up directly with the publishable key (it ships in the bundle) and skip the API's checks on name, phone and
+   password; local Supabase has it off already (`enable_signup = false`). The `handle_new_user` trigger bounds the
+   profile either way ([SCHEMA.md](SCHEMA.md#profile_name-and-profile_phone)), but the setting is what keeps
+   unchecked accounts out.
 8. Recommended in the dashboard (Authentication → Sessions): set the same idle-session limit as local
    (see [Hosted session timeout](#hosted-session-timeout) below).
 

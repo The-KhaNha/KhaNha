@@ -1,6 +1,8 @@
+import { useEffect, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { Check, Clock } from 'lucide-react';
 import type { Order } from '../types/api';
+import { documentTitle } from '../appShell';
 import { ButtonLink } from '../components/Button';
 import { ErrorState } from '../components/ErrorState';
 import { DrawnCheck } from '../components/icons/DrawnCheck';
@@ -14,6 +16,77 @@ export function OrderSuccessPage() {
   const location = useLocation();
   const passedOrder = (location.state as { order?: Order } | null)?.order ?? null;
   const { order, isLoading, error, retry } = useOrder(id, passedOrder);
+  // A typed, stale or someone else's id: nothing was placed, so no celebration, and a retry would only 404 again.
+  const notFound = !order && error?.status === 404;
+  // Celebrate only once an order is known to exist (passed in from checkout, or loaded), or checkout handed one over
+  // and the server could not say (unreachable or a 5xx right after checkout keeps "placed, but couldn't load"). A
+  // fetch error on a direct link proves nothing, so it gets a neutral retry instead. Latched so a retry, which clears
+  // the error while it loads, does not drop back to the loading state and replay the whole celebration.
+  const [celebrating, setCelebrating] = useState(false);
+  if (!celebrating && !notFound && (order || (error && passedOrder))) {
+    setCelebrating(true);
+  }
+  const unverified = !celebrating && !notFound && !order && error;
+
+  // The route's title is neutral (appShell.ts); the tab names the not-found state for what it is.
+  useEffect(() => {
+    if (!notFound) return;
+    const previous = document.title;
+    document.title = documentTitle('Order not found');
+    return () => {
+      document.title = previous;
+    };
+  }, [notFound]);
+
+  // Same words as the order page (pages/Order.tsx). An unreachable server or a 5xx below still says "placed".
+  if (notFound) {
+    return (
+      <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center px-6 py-12 md:max-w-lg">
+        <ErrorState
+          headingLevel={1}
+          title="Unable to load your order."
+          message="We couldn't find this order."
+          actions={
+            <>
+              <ButtonLink to="/orders" size="lg" fullWidth>
+                View your orders
+              </ButtonLink>
+              <HomeLink />
+            </>
+          }
+        />
+      </main>
+    );
+  }
+
+  if (unverified) {
+    return (
+      <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center px-6 py-12 md:max-w-lg">
+        <ErrorState
+          headingLevel={1}
+          title="Unable to load your order."
+          message={error.message}
+          onRetry={retry}
+          unreachable={error.isUnreachable}
+        />
+      </main>
+    );
+  }
+
+  // Nothing passed in and nothing loaded yet: a bogus link would otherwise show "Order placed!" until its 404 lands.
+  if (!celebrating) {
+    return (
+      <main
+        aria-busy="true"
+        className="mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-center gap-3 px-6 py-12 md:max-w-lg"
+      >
+        <Skeleton className="h-28 w-28" round />
+        <Skeleton className="mt-8 h-9 w-48" />
+        <Skeleton className="h-16 w-44" />
+        <Skeleton className="h-4 w-28" />
+      </main>
+    );
+  }
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-center px-6 py-12 text-center md:max-w-lg">
@@ -76,13 +149,19 @@ export function OrderSuccessPage() {
         <ButtonLink to={id ? `/orders/${id}` : '/orders'} size="lg" fullWidth>
           Track Order
         </ButtonLink>
-        <Link
-          to="/"
-          className="inline-flex h-11 items-center justify-center rounded-control text-body font-semibold text-muted transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
-        >
-          Back to home
-        </Link>
+        <HomeLink />
       </div>
     </main>
+  );
+}
+
+function HomeLink() {
+  return (
+    <Link
+      to="/"
+      className="inline-flex h-11 items-center justify-center rounded-control text-body font-semibold text-muted transition-colors hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+    >
+      Back to home
+    </Link>
   );
 }

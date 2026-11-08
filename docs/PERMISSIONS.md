@@ -201,10 +201,15 @@ flowchart LR
 
 - `POST /api/auth/register` creates accounts with the secret key (`auth.admin.createUser`, already confirmed). It
   applies the zod rules in `server/src/schemas/auth.schema.ts`.
-- Direct sign-ups with the publishable key (`supabase.auth.signUp`) skip those rules but still get a `CUSTOMER`
-  profile from the trigger. Local Supabase allows them (`enable_signup = true` in `server/supabase/config.toml`). On
-  hosted projects the recommendation is to turn off "Allow new users to sign up" (see
-  [DEPLOYMENT.md](DEPLOYMENT.md#production-first-time-setup)); `/auth/register` keeps working.
+- Direct sign-ups with the publishable key (`supabase.auth.signUp`) would skip those rules, so they are off: local
+  Supabase has `[auth] enable_signup = false` in `server/supabase/config.toml` (`[auth.email] enable_signup` stays
+  `true`: it switches the email provider itself, sign-in included), and a hosted
+  project must turn off "Allow new users to sign up" (a required step, see
+  [DEPLOYMENT.md](DEPLOYMENT.md#production-first-time-setup)). `/auth/register` keeps working:
+  `auth.admin.createUser` is not a sign-up.
+- Whichever way an account is made, the trigger bounds its profile: `handle_new_user` passes the metadata through
+  `profile_name` and `profile_phone`, and `profiles` checks the result
+  ([SCHEMA.md](SCHEMA.md#profile_name-and-profile_phone)).
 
 ## Secrets
 

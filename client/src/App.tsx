@@ -10,9 +10,10 @@ import { RequireRole } from './features/auth/RequireRole';
 import { CartBar } from './features/cart/CartBar';
 import { selectCount, useCartStore } from './features/cart/cartStore';
 import { OutdatedBanner } from './features/version/OutdatedBanner';
-import { APP_TITLE } from './config/app';
-import { getShellConfig } from './appShell';
+import { documentTitle, getShellConfig } from './appShell';
 import { cn } from './lib/cn';
+import { setSamplePercent } from './lib/errorReporter';
+import { useConfig } from './features/config/useConfig';
 import { CartPage } from './pages/Cart';
 import { HomePage } from './pages/Home';
 import { MenuPage } from './pages/Menu';
@@ -52,7 +53,7 @@ function AppShell() {
   // focus moves to the new page too, so the next Tab reaches its first control instead of carrying on from where the
   // old page's link was. The live region below says the page's name, which a title change alone never announces.
   useEffect(() => {
-    document.title = config.title === APP_TITLE ? APP_TITLE : `${config.title} · ${APP_TITLE}`;
+    document.title = documentTitle(config.title);
     window.scrollTo(0, 0);
     if (firstPage.current) {
       firstPage.current = false;
@@ -149,8 +150,9 @@ function AppShell() {
         className={cn(
           'mx-auto w-full flex-1 px-4',
           widthClass,
+          // The cart bar hides on a short screen (CartBar), so only the bottom nav needs clearing there.
           showCartBar
-            ? 'pb-[calc(10rem+env(safe-area-inset-bottom))]'
+            ? 'pb-[calc(10rem+env(safe-area-inset-bottom))] short:pb-[calc(6rem+env(safe-area-inset-bottom))]'
             : config.bottomNav
               ? 'pb-[calc(6rem+env(safe-area-inset-bottom))]'
               : 'pb-8',
@@ -165,14 +167,24 @@ function AppShell() {
 }
 
 export default function App() {
+  const {
+    clientErrors: { samplePercent },
+    serverVersion,
+  } = useConfig();
+  useEffect(() => {
+    // Buffer startup crashes until the server's setting is known; the fallback must not bypass a 0% sample.
+    if (serverVersion !== 'unknown') setSamplePercent(samplePercent);
+  }, [samplePercent, serverVersion]);
   useEffect(() => {
     void useAuthStore.getState().hydrate();
   }, []);
 
   return (
-    <BrowserRouter>
-      <OutdatedBanner />
-      <AppShell />
-    </BrowserRouter>
+    <PageBoundary scope="app">
+      <BrowserRouter>
+        <OutdatedBanner />
+        <AppShell />
+      </BrowserRouter>
+    </PageBoundary>
   );
 }

@@ -125,6 +125,33 @@ given.
 
 ## Client error reports
 
+`lib/errorReporter.ts` listens for browser `error` and `unhandledrejection` events; `PageBoundary` reports caught
+render bugs with kind `render` (component behavior: [COMPONENTS.md](COMPONENTS.md#layout-and-navigation)). The
+reporter draws one random sample per page load and compares it with `useConfig().clientErrors.samplePercent`,
+passed by `App` only after loaded or cached server configuration is available (`serverVersion !== 'unknown'`).
+Errors before that first server sampling value are buffered, so the fallback percentage cannot bypass a configured
+zero. With no cached configuration and a configuration outage, those reports stay unsent. A zero percentage
+discards them; later configuration updates reuse the same random draw. The same error object is reported once,
+with a pending browser report promoted to `render` when the boundary catches it.
+Chunk-import failures are excluded by the shared `CHUNK_FAILURE` matcher in both the boundary and global handlers;
+they retain the connection-error fallback and the boundary's constant client log message.
+
+At most five reports are queued over a page load. Each is at most 4096 bytes of UTF-8 JSON, including escaping,
+with message at most 500 characters, optional stack at most 3500, and route at most 200. The route comes only from
+`location.pathname`. Before those field cuts, the client scans at most 8000 characters and replaces URL query
+strings and fragments, JWTs, `sb_…` keys, `Bearer` values, email addresses (also `%40`-encoded, with `%` or `'` in
+the local part) and phone numbers with `[Redacted]`. A sensitive keyed value (`name=` or URL-encoded `name%3D`) is
+removed through the end of its line, including spaces and semicolon cookie fragments. This deliberately over-redacts
+rather than leaving a bearer token behind after removing its header name. `lib/errorReporter.test.ts` checks every
+field in the server's `REDACT_PATHS`, complete header values and the encoded shapes. The scrub uses no regex
+lookbehind: Safari before 16.4 cannot compile one, and the reporter would drop every report there
+(`lib/regexSupport.test.ts` fails on a lookbehind anywhere in client source).
+
+Reports are batched after 250 ms and flushed on `pagehide`. `services/clientErrors.ts` uses the normal `request()`
+transport with `auth: false` and `keepalive: true`, retaining `X-Client-Version` without loading auth. Sending never
+throws or retries and does not report its own failure. Startup installation and the app boundary are described in
+[FRONTEND_STRUCTURE.md](FRONTEND_STRUCTURE.md#lazy-routes).
+
 `POST /api/client-errors` ([API.md](API.md#post-client-errors)) writes one `warn` `Client error` line per report with
 `{ kind, message, stack, route, at }`, plus the `clientVersion` every request line carries. Never `error`: a browser
 cannot be allowed to page anyone. The body schema replaces anything shaped like a JWT, an `sb_…` key, a `Bearer`
@@ -145,4 +172,5 @@ The server redacts these paths to `[Redacted]` (`REDACT_PATHS` in `server/src/ut
   `headers.authorization` (an outbound call's headers), each at the top level and one level down
 
 Redaction only covers object keys. Never put a token, password, email or phone number into a message string, and
-never log a whole request body. On the client there is no redaction at all: never pass tokens or PII to `logger`.
+never log a whole request body. The client `logger` does no redaction: never pass tokens or PII to it. The browser
+error reporter's separate scrub does not make arbitrary console logging safe.
