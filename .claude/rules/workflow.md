@@ -207,6 +207,13 @@ draws on the same allowance. A review is spent by opening a PR or marking a draf
 or `full review`, and by reopening a PR. `.coderabbit.yaml` turns off the review of later pushes and skips release and
 back-merge PRs, so a push costs nothing.
 
+**CodeRabbit approval.** `.coderabbit.yaml` also rates each PR's merge risk (`merge_risk_instructions`) and approves
+it when its threads are resolved, its checks pass and the risk is `low` or below. A PR that touches a migration, a
+workflow, or the auth or rate-limit middleware is never auto-approved. Approval needs the latest commit reviewed, so
+after fix pushes it waits for an `@coderabbitai review`. The approval is a signal only: the ruleset requires `ci-ok`,
+not reviews, and the user still merges. The security-risk rating needs CodeRabbit's Advanced plan, so no limit is set
+on it; `security_risk_instructions` are in place for when the plan changes.
+
 - Open a PR once, complete (the flow above). With several ready at once, open the first, open the rest as drafts
   (`gh pr create --draft`), and mark the next one ready (`gh pr ready <n>`) only when a review is free again: a posted
   review does not free one, time does. `@coderabbitai rate limit` on an open PR says when, without spending a review.
