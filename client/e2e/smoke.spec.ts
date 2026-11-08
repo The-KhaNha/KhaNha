@@ -512,6 +512,21 @@ test('an upright phone with its keyboard open keeps the stacked bottom nav', asy
   const tab = page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Home' });
   await expect(tab).toBeVisible();
   await expect(tab).toHaveCSS('flex-direction', 'column');
+  // The keyboard can leave the layout viewport shorter than it is wide: still an upright phone (CSS calls that landscape).
+  await page.setViewportSize({ width: 360, height: 300 });
+  await expect(tab).toHaveCSS('flex-direction', 'column');
+});
+
+// Text scaled below 100% shrinks rem: the compact row must still be a 44px tap target (CLAUDE.md §2b).
+test('a phone on its side with small text keeps 44px bottom nav tabs', async ({ page }) => {
+  await page.setViewportSize({ width: 640, height: 360 });
+  await page.goto('/');
+  await page.evaluate(() => {
+    document.documentElement.style.fontSize = '81.25%';
+  });
+  const tab = page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Home' });
+  await expect(tab).toHaveCSS('flex-direction', 'row');
+  expect((await tab.boundingBox())?.height).toBeGreaterThanOrEqual(44);
 });
 
 // A slow network delivers the web font after the content has painted in the fallback. The fallback faces in index.css

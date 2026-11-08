@@ -104,7 +104,7 @@ and the title `line-clamp-2`: at large text a long title takes a second line ins
 `type TopBarTone = 'default' | 'brand'`. Rendered by `App.tsx` from the route's shell config, not by pages.
 
 **`BottomNav`** (`BottomNav.tsx`). Fixed bottom nav with Home (`/`), Orders (`/orders`), Profile (`/profile`). No
-props. Rendered by `App.tsx`. On a short screen (`short:`, max-height 500px in landscape: a phone on its side; an upright phone with its keyboard open keeps the stack) each tab puts its
+props. Rendered by `App.tsx`. On a short screen (`short:`, max-height 500px, min-width 540px, landscape: a phone on its side; an upright phone with its keyboard open keeps the stack) each tab puts its
 label beside the icon in a 48px row instead of a 64px stack.
 
 **`Card`** (`Card.tsx`). White card with a line border and warm shadow, `rounded-card`.

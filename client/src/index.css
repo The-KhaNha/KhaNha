@@ -49,8 +49,10 @@
    room (e2e "on a phone on its side"). `short:` drops the menu's sticky chips and the floating cart bar and compacts
    the bottom nav. Landscape only: an on-screen keyboard shrinks an upright phone's layout viewport below 500px in
    browsers that resize it (Firefox Android, Chrome before 108, in-app WebViews), and the bottom nav flipped to its
-   compact row on every focus in a form (e2e "keyboard open"). */
-@custom-variant short (@media (max-height: 500px) and (orientation: landscape));
+   compact row on every focus in a form (e2e "keyboard open"). `orientation` only compares the viewport's width and
+   height, so a keyboard that shrinks a 360px-wide phone to 360×300 reads as landscape: the min-width is what tells the
+   two apart (upright phones are under about 430px wide, rotated ones 568px or more). */
+@custom-variant short (@media (max-height: 500px) and (min-width: 540px) and (orientation: landscape));
 
 /* "Paprika & Saffron" — one paprika accent, saffron gold for highlights, basil green for success,
    cool slate for cancelled. Warm butter-cream base so white cards and food photos read warmer. */
