@@ -472,36 +472,44 @@ for (const { path, role, status } of LAYOUT_ROUTES) {
 
 // A phone on its side with its largest text: the sticky top bar, the category chips, the cart bar and the bottom nav
 // once covered all 360px of height at 640×360 and 200% text, leaving no item that could be tapped at any scroll.
-test('/menu on a phone on its side at 200% text: an item can still be added', async ({ page }) => {
-  await page.addInitScript((line) => {
-    localStorage.setItem('fp_cart', JSON.stringify({ state: { lines: [line] }, version: 1 }));
-  }, CART_LINE);
-  await page.setViewportSize({ width: 640, height: 360 });
-  await page.goto('/menu');
-  await expect(page.getByRole('heading', { name: store.name })).toBeVisible();
-  await page.evaluate(() => {
-    document.documentElement.style.fontSize = '200%';
-  });
-  // A hit test needs only the layout: wait for the fonts, not for the entrance animations settle() waits out (that
-  // wait timed out under a loaded parallel run).
-  await page.evaluate(() => document.fonts.ready);
+for (const { name, width, height } of [
+  { name: 'a phone on its side', width: 640, height: 360 },
+  { name: 'a narrow landscape window', width: 500, height: 300 },
+]) {
+  test(`/menu on ${name} at 200% text: an item can still be added`, async ({ page }) => {
+    await page.addInitScript((line) => {
+      localStorage.setItem('fp_cart', JSON.stringify({ state: { lines: [line] }, version: 1 }));
+    }, CART_LINE);
+    await page.setViewportSize({ width, height });
+    await page.goto('/menu');
+    await expect(page.getByRole('heading', { name: store.name })).toBeVisible();
+    await page.evaluate(() => {
+      document.documentElement.style.fontSize = '200%';
+    });
+    // A hit test needs only the layout: wait for the fonts, not for the entrance animations settle() waits out (that
+    // wait timed out under a loaded parallel run).
+    await page.evaluate(() => document.fonts.ready);
 
-  // Polled: the cards may still be rendering or entering on a loaded runner. Each button is scrolled to the middle of
-  // the screen and counts only if a tap at its centre lands on it rather than on a bar.
-  const reachable = () =>
-    page.getByRole('button', { name: 'Add to cart' }).evaluateAll(
-      (buttons) =>
-        buttons.filter((el) => {
-          el.scrollIntoView({ block: 'center' });
-          const box = el.getBoundingClientRect();
-          const top = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
-          return top !== null && el.contains(top);
-        }).length,
-    );
-  await expect
-    .poll(reachable, { message: 'Add to cart buttons not covered by the bars' })
-    .toBeGreaterThan(0);
-});
+    // Polled: the cards may still be rendering or entering on a loaded runner. Each button is scrolled to the middle of
+    // the screen and counts only if a tap at its centre lands on it rather than on a bar.
+    const reachable = () =>
+      page.getByRole('button', { name: 'Add to cart' }).evaluateAll(
+        (buttons) =>
+          buttons.filter((el) => {
+            el.scrollIntoView({ block: 'center' });
+            const box = el.getBoundingClientRect();
+            const top = document.elementFromPoint(
+              box.left + box.width / 2,
+              box.top + box.height / 2,
+            );
+            return top !== null && el.contains(top);
+          }).length,
+      );
+    await expect
+      .poll(reachable, { message: 'Add to cart buttons not covered by the bars' })
+      .toBeGreaterThan(0);
+  });
+}
 
 // An on-screen keyboard shrinks the layout viewport of an upright phone to about 360×480 in browsers that resize it
 // (Firefox Android, Chrome before 108, in-app WebViews): `short:` once fired there too, so focusing a checkout field
@@ -514,6 +522,9 @@ test('an upright phone with its keyboard open keeps the stacked bottom nav', asy
   await expect(tab).toHaveCSS('flex-direction', 'column');
   // The keyboard can leave the layout viewport shorter than it is wide: still an upright phone (CSS calls that landscape).
   await page.setViewportSize({ width: 360, height: 300 });
+  await expect(tab).toHaveCSS('flex-direction', 'column');
+  // The widest upright phones (about 440px) with the keyboard open: the lower edge of the `short:` min-width.
+  await page.setViewportSize({ width: 440, height: 300 });
   await expect(tab).toHaveCSS('flex-direction', 'column');
 });
 
