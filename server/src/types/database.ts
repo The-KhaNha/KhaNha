@@ -276,6 +276,7 @@ export type Database = {
           name: string;
           order_id: string;
           quantity: number;
+          reserved_quantity: number;
           unit_price: number;
           unit_price_paise: number;
         };
@@ -290,6 +291,7 @@ export type Database = {
           name: string;
           order_id: string;
           quantity: number;
+          reserved_quantity: number;
           unit_price: number;
           unit_price_paise: number;
         };
@@ -304,6 +306,7 @@ export type Database = {
           name?: string;
           order_id?: string;
           quantity?: number;
+          reserved_quantity?: number;
           unit_price?: number;
           unit_price_paise?: number;
         };
@@ -564,6 +567,11 @@ export type Database = {
         };
         Returns: string;
       };
+      profile_name: {
+        Args: { p_email: string; p_name: string };
+        Returns: string;
+      };
+      profile_phone: { Args: { p_phone: string }; Returns: string };
       purge_domain_events: {
         Args: { p_keep?: string; p_now?: string };
         Returns: number;

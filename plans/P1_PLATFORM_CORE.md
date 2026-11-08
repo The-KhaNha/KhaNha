@@ -5,7 +5,8 @@ file says in which order, in which pull requests, with which files, tests, docs 
 builds less than the roadmap describes (each with its reason and the phase that picks it up). When a PR merges, tick
 its box here and in the roadmap.
 
-> **Status: in progress** (1 November 2026). PRs 02 and 02b are merged into `feat/P1`; next is PR 01. Every
+> **Status: in progress** (3 November 2026). PRs 01–11, 02b and 13–15 are merged into `feat/P1`; PR 12 is
+> implemented and verified, in review. PR 16 waits for the production release. Every
 > [decision](#decisions) is answered, and ADR-001, 004, 005, 006, 008, 009 and 010 are accepted (001, 004, 006 and 009
 > with amendments). One agent builds P1 on the `feat/P1` feature branch, one PR at a time, in the order below.
 
@@ -68,7 +69,7 @@ P0 already shipped parts of P1. The plan builds on them instead of rebuilding th
 | 15  | Server-side idle sign-out                                                  | ADR-011    | 02                                              | 9 / 380              |
 | 16  | Money in paise: contract                                                   | ADR-004    | P1 merged into `dev` and released to production | 7 / 220              |
 
-The PRs are built in the table's order: 01, then 03 to 15 (02 and 02b are merged). PR 16 is not part of `feat/P1`: it
+The table gives the dependency order; PR 12 is the remaining implementation PR. PR 16 is not part of `feat/P1`: it
 goes into `dev` once the release containing P1 runs in production.
 
 Why this order: the 429 contract first because it is small and every later 429 (P5, P6, P7 buckets) inherits it; the
@@ -526,6 +527,48 @@ Docs: `docs/SCHEMA.md`, `docs/API.md`, `docs/CONFIGURATION.md`. Intent: `--serve
 ### PR 12 — The error reporter, and render errors told apart from chunk failures (P1.6)
 
 - [ ] Merged
+
+Implementation completed on `feat/p1-12-error-reporter` (3 November 2026). Client typecheck, lint, 378 unit tests,
+the container build, bundle and dist-secret checks passed. Full Chromium and WebKit smokes passed (35 and 27
+cases, with existing font/engine skips); the final three reporter cases passed separately in both engines.
+Page, shell and chunk fallbacks passed the throttled phone/desktop visual gate, 320–1440 px, 200% text and 44 px
+controls. The local API accepted scrubbed render reports and logged route, stack and client version.
+Refactor, logging, test/docs, performance and independent code/security reviews found no remaining blockers.
+Verification completed the same day on `0040f5d`, in a fresh macOS environment:
+
+- **Security scan** of `git diff origin/feat/P1...HEAD` (the `security-review` scan, which stands in for the
+  `claude-security` plugin that is not installed): no findings. Crash reports go out with `auth: false`, the client
+  and the server each scrub tokens, keys, emails and phones on their own, and no error text reaches the page.
+- **Web Vitals A/B**, production build, 360×640, Slow 4G, 4× CPU, median of 3, against the base `572a359`: `/` LCP
+  1456 → 1432 ms, `/menu` LCP 1536 → 1552 ms, CLS 0 / 0.0001 unchanged, `/menu` INP 48 → 48 ms; all within
+  `client/perf-budget.json` and within noise of the base
+  ([`docs/PERF_BASELINE.md`](../docs/PERF_BASELINE.md#web-vitals-ab-2026-11-03-0040f5d-against-its-base-572a359)).
+- **Closing `/break` follow-ups in this PR:** the scrub had regex lookbehind, which Safari before 16.4 cannot compile, so
+  every report from those phones was dropped (now a captured head character, guarded by `lib/regexSupport.test.ts`
+  over all client source); URL-encoded tokens (`refresh_token%3D…`) and emails with `%` or `'` are scrubbed; the
+  report bounds live in `LIMITS.clientErrors` (CodeRabbit). A production build sends exactly one report per render
+  crash (the dev build's three come from React's development double render).
+- **Gate:** client typecheck, lint and 378 unit tests; Chromium and WebKit smokes, 68 passed with the 12 existing
+  engine/font skips; `build:container`, `check:bundle` (89.8 KB initial) and `check:dist-secrets` passed.
+
+#### PR 12 handoff
+
+Branch: `feat/p1-12-error-reporter`. PR target: `feat/P1`. Implementation and verification are complete; the PR is
+in review. No migration, server version bump or minimum-client-version bump is needed.
+
+Remaining work, in order:
+
+1. Address review findings. The user merges into `feat/P1`; tick PR 12's Merged box only after that merge is
+   confirmed.
+2. After P12 merges, follow [Closing P1](#closing-p1): on the updated phase branch, validate both packages, run
+   Chromium e2e and `/break`, and resolve failures before the phase PR into `dev`. PR 16 remains blocked until the
+   user confirms the P1 release is running in production. The separate pnpm migration follows the phase merge
+   ([roadmap P1.8](ROADMAP.md#p18-tooling-pnpm-after-the-phase-merges)). Never apply production migrations here.
+
+Preserve the regression guards for complete Authorization/Cookie redaction, delayed zero-percent sampling,
+chunk failures excluded from the global handler, and bounded classification of oversized error messages. Those
+four bugs were reproduced before their fixes. The temporary fault injection, screenshots, traces and local test
+servers have been removed or stopped; no deliberate branch-intent flags were found.
 
 `/before-write`: reuse-scout, expected **EXTEND `PageBoundary`** rather than the roadmap's new `AppErrorBoundary`
 (CLAUDE.md §5). The file list assumes EXTEND.

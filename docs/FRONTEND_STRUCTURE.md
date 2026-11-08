@@ -33,8 +33,8 @@ client/
 │                           installable app icons; rendered from icon.svg by scripts/make-icons.mjs
 ├── public/robots.txt       menu and home crawlable; carts, orders, accounts, staff and admin disallowed
 └── src/
-    ├── main.tsx            applies the preloaded webfont, prefetches the landing data, starts supabase-js when signed in, createRoot
-    ├── App.tsx             routes, route guards, the shell (top bar, main, cart bar, bottom nav)
+    ├── main.tsx            installs browser error reporting, applies the preloaded webfont, prefetches landing data, starts supabase-js when signed in, createRoot
+    ├── App.tsx             routes, route guards, the shell, app error boundary and reporting sample from useConfig
     ├── appShell.ts         SHELL_BY_ROUTE + getShellConfig: which chrome and title each route gets
     ├── index.css           Tailwind import, design tokens (@theme), keyframes, utilities, reduced-motion rules
     ├── vite-env.d.ts       typed import.meta.env
@@ -159,15 +159,16 @@ menu's cart sync, a sign-in) threw; with it the store carries on in memory and o
 
 Only these modules call `request()` from `services/api.ts`. Components and hooks call the service functions.
 
-| File                 | Functions                                                                                | Endpoints                                                                    |
-| -------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `services/api.ts`    | `request<T>(path, { method, body, auth, signal })`, `ApiError`                           | base `/api`; attaches the bearer token when `auth` (default true)            |
-| `services/auth.ts`   | `signIn`, `signOut` (supabase-js), `register`, `fetchMe`                                 | `POST /auth/register`, `GET /auth/me`                                        |
-| `services/store.ts`  | `fetchStore`, `prefetchStore`                                                            | `GET /store`                                                                 |
-| `services/config.ts` | `fetchConfig`                                                                            | `GET /config` without a token; concurrent callers share one request          |
-| `services/menu.ts`   | `fetchMenu`, `prefetchMenu`                                                              | `GET /menu`                                                                  |
-| `services/orders.ts` | `createOrder`, `fetchOrders(status?)`, `fetchOrder(id)`, `updateOrderStatus(id, status)` | `POST /orders`, `GET /orders`, `GET /orders/:id`, `PATCH /orders/:id/status` |
-| `services/admin.ts`  | `fetchSiteSettings()`, `updateSiteSettings(changes)`                                     | `GET /admin/settings`, `PATCH /admin/settings`                               |
+| File                       | Functions                                                                                | Endpoints                                                                                                                                                                                 |
+| -------------------------- | ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `services/api.ts`          | `request<T>(path, { method, body, auth, signal, keepalive })`, `ApiError`                | base `/api`; attaches the bearer token when `auth` (default true); forwards `keepalive` to `fetch`                                                                                        |
+| `services/auth.ts`         | `signIn`, `signOut` (supabase-js), `register`, `fetchMe`                                 | `POST /auth/register`, `GET /auth/me`                                                                                                                                                     |
+| `services/store.ts`        | `fetchStore`, `prefetchStore`                                                            | `GET /store`                                                                                                                                                                              |
+| `services/config.ts`       | `fetchConfig`                                                                            | `GET /config` without a token; concurrent callers share one request                                                                                                                       |
+| `services/clientErrors.ts` | `sendClientErrors(reports)`, `ClientErrorReport`                                         | `POST /client-errors` without auth, with `keepalive` and `X-Client-Version`; failures are swallowed with no retry; see [LOGGING.md#client-error-reports](LOGGING.md#client-error-reports) |
+| `services/menu.ts`         | `fetchMenu`, `prefetchMenu`                                                              | `GET /menu`                                                                                                                                                                               |
+| `services/orders.ts`       | `createOrder`, `fetchOrders(status?)`, `fetchOrder(id)`, `updateOrderStatus(id, status)` | `POST /orders`, `GET /orders`, `GET /orders/:id`, `PATCH /orders/:id/status`                                                                                                              |
+| `services/admin.ts`        | `fetchSiteSettings()`, `updateSiteSettings(changes)`                                     | `GET /admin/settings`, `PATCH /admin/settings`                                                                                                                                            |
 
 `request()`:
 
@@ -260,11 +261,18 @@ first request does not wait for it after the page's own lazy chunk (e2e "supabas
 ### Lazy routes
 
 The screens a customer does not need to browse the menu and fill a cart are code-split in `App.tsx`: `CheckoutPage`,
-`OrderSuccessPage`, `LoginPage`, `RegisterPage` and `StaffDashboardPage` are `lazy()` imports (see the [route
-table](#routes)). `components/PageBoundary.tsx` wraps the whole `<Routes>` list: a `Skeleton` (padded, not
-margined, so the page does not move) while a chunk
-downloads (`Suspense`), and if the download itself fails (offline, or a stale deploy whose old chunk was removed) an
-`ErrorState` with a reload button instead of a blank screen (`getDerivedStateFromError`).
+`OrderSuccessPage`, `LoginPage`, `RegisterPage`, `AdminPage` and `StaffDashboardPage` are `lazy()` imports (see the
+[route table](#routes)). `PageBoundary` in page scope wraps the whole `<Routes>` list and owns its loading skeleton;
+an outer app scope wraps the router and shell without adding another skeleton. The boundary distinguishes a failed
+chunk download from a render bug, so a lost connection and a crash get different fallback copy and reports (props
+and fallback behavior: [COMPONENTS.md](COMPONENTS.md#layout-and-navigation)).
+
+`main.tsx` installs `lib/errorReporter.ts` before startup work and rendering. `App` passes
+`useConfig().clientErrors.samplePercent` to `setSamplePercent` once loaded or cached server configuration replaces
+the `serverVersion: 'unknown'` fallback. The effect is outside the app boundary, so reporting still gets configured
+when the shell crashes on its first render. Startup errors wait for that first server sampling value.
+The reporter sends through `services/clientErrors.ts`; its limits and privacy rules live in
+[LOGGING.md](LOGGING.md#client-error-reports).
 
 ## Tests
 

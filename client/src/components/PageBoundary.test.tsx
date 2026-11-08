@@ -1,6 +1,23 @@
+import { Suspense } from 'react';
 import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PageBoundary } from './PageBoundary';
+
+const reportError = vi.hoisted(() => vi.fn());
+vi.mock('../lib/errorReporter', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/errorReporter')>()),
+  reportError,
+}));
+const preventError = (event: ErrorEvent) => event.preventDefault();
+beforeEach(() => {
+  vi.spyOn(console, 'error').mockImplementation(() => {});
+  window.addEventListener('error', preventError);
+  reportError.mockClear();
+});
+afterEach(() => {
+  vi.restoreAllMocks();
+  window.removeEventListener('error', preventError);
+});
 
 function Thrower(): never {
   throw new Error('chunk load failed');
@@ -30,7 +47,55 @@ describe('PageBoundary', () => {
     expect(screen.getByRole('alert')).toBeInTheDocument();
     expect(screen.getByText("This page didn't load")).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument();
+    expect(reportError).not.toHaveBeenCalled();
     window.removeEventListener('error', onWindowError);
     consoleError.mockRestore();
+  });
+
+  it('reports a render bug once and offers Reload with accurate copy', () => {
+    const error = new Error('Cannot read properties of undefined');
+    function Crash(): never {
+      throw error;
+    }
+    render(
+      <PageBoundary>
+        <Crash />
+      </PageBoundary>,
+    );
+    expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+    expect(screen.queryByText(/couldn't reach the server/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reload' })).toBeInTheDocument();
+    expect(reportError).toHaveBeenCalledExactlyOnceWith(error, 'render');
+  });
+
+  it.each([
+    'Failed to fetch dynamically imported module: /assets/page.js',
+    'Importing a module script failed.',
+    'error loading dynamically imported module',
+  ])('keeps chunk failures unreachable (%s)', (message) => {
+    function Crash(): never {
+      throw new TypeError(message);
+    }
+    render(
+      <PageBoundary>
+        <Crash />
+      </PageBoundary>,
+    );
+    expect(screen.getByText("This page didn't load")).toBeInTheDocument();
+    expect(reportError).not.toHaveBeenCalled();
+  });
+
+  it('app scope leaves suspense to the page and has no skeleton', () => {
+    function Pending(): never {
+      throw new Promise(() => {});
+    }
+    render(
+      <Suspense fallback={<p>Outer fallback</p>}>
+        <PageBoundary scope="app">
+          <Pending />
+        </PageBoundary>
+      </Suspense>,
+    );
+    expect(screen.getByText('Outer fallback')).toBeInTheDocument();
   });
 });

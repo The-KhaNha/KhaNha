@@ -596,6 +596,39 @@ describe('business rules', () => {
         .throwOnError();
       expect(data.stock_quantity).toBeNull();
     });
+
+    // A cancel gives back only what its order took: an item that was untracked when ordered and is tracked (here:
+    // sold out) by the time the order is cancelled must not gain stock it never lost.
+    it('does not restock an item that was untracked when the order was placed', async () => {
+      const item = menuItem('Cold Coffee');
+      try {
+        const placed = await placeOrder(customer1, {
+          items: [{ menuItemId: item.id, quantity: 2 }],
+        });
+        expect(placed.status).toBe(201);
+        await supabaseAdmin
+          .from('menu_items')
+          .update({ stock_quantity: 0 })
+          .eq('id', item.id)
+          .throwOnError();
+
+        const cancelled = await patchStatus(placed.body.order.id as string, 'CANCELLED');
+        expect(cancelled.status).toBe(200);
+        const { data } = await supabaseAdmin
+          .from('menu_items')
+          .select('stock_quantity')
+          .eq('id', item.id)
+          .single()
+          .throwOnError();
+        expect(data.stock_quantity).toBe(0);
+      } finally {
+        await supabaseAdmin
+          .from('menu_items')
+          .update({ stock_quantity: null })
+          .eq('id', item.id)
+          .throwOnError();
+      }
+    });
   });
 });
 

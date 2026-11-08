@@ -66,12 +66,13 @@ Every other environment variable is in [DEPLOYMENT.md](DEPLOYMENT.md).
 Bounds both sides need, kept in one place per side and parity-tested (`server/test/unit/limits-parity.safe.test.ts`):
 `server/src/schemas/limits.ts` (`LIMITS`) and `client/src/config/fallbacks.json` (`validation`).
 
-| Constant                             | Value  | Enforced by                                                                     |
-| ------------------------------------ | ------ | ------------------------------------------------------------------------------- |
-| `nameMin`, `nameMax`                 | 2, 60  | `registerSchema`, `createOrderSchema.customerName`; the client's `validateName` |
-| `noteMax`                            | 200    | `createOrderSchema.note`; `validateNote`                                        |
-| `password.min`, `password.max`       | 6, 72  | `registerSchema` (bcrypt reads 72 bytes); `validatePassword`                    |
-| `phoneDigits.min`, `phoneDigits.max` | 10, 15 | `phoneField`; `validatePhone`                                                   |
+| Constant                                                        | Value             | Enforced by                                                                                                                                     |
+| --------------------------------------------------------------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `nameMin`, `nameMax`                                            | 2, 60             | `registerSchema`, `createOrderSchema.customerName`; the client's `validateName`                                                                 |
+| `noteMax`                                                       | 200               | `createOrderSchema.note`; `validateNote`                                                                                                        |
+| `password.min`, `password.max`                                  | 6, 72             | `registerSchema` (bcrypt reads 72 bytes); `validatePassword`                                                                                    |
+| `phoneDigits.min`, `phoneDigits.max`                            | 10, 15            | `phoneField`; `validatePhone`                                                                                                                   |
+| `clientErrors.reportsMax`, `messageMax`, `stackMax`, `routeMax` | 5, 500, 3500, 200 | `clientErrorsSchema` (`POST /api/client-errors`); the browser reporter (`lib/errorReporter.ts`) cuts to them, so a report never fails the batch |
 
 Server-only platform constants (no client copy, so not in the parity test):
 

@@ -12,4 +12,7 @@ export const LIMITS = {
   // The poll-interval site settings, in ms: faster than 2 s costs customers data, slower than a minute makes a status
   // change feel lost.
   pollMs: { min: 2000, max: 60000 },
+  // POST /api/client-errors: sized so five reports stay well under the 64 KB a `keepalive` request may carry in
+  // flight. The browser reporter cuts to the same bounds, so a tightened bound here must reach it too.
+  clientErrors: { reportsMax: 5, messageMax: 500, stackMax: 3500, routeMax: 200 },
 } as const;
