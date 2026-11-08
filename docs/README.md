@@ -29,3 +29,6 @@ update the owning doc **in the same change**; a change that skips its doc is inc
 
 One owner per topic; other docs link to it instead of copying. `docs-writer` applies this map after a major
 change (`/post-change`).
+
+Runtime compatibility, skill discovery, role adapters, plugin prompt setup and hook translation are owned by
+[CODEX.md](CODEX.md). The source workflow rules remain in `.claude/rules/workflow.md`.

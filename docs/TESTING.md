@@ -162,6 +162,10 @@ seen failing with the fix reverted. The guards added with the break-test fixes:
 
 ## Continuous integration
 
+The root `npm test` also runs `scripts/codex/compat.test.mjs`: skill/role discovery parity, destructive-git denials,
+patch-based reuse reminders, prompt and advisory Stop output, and local plugin scope/resource resolution. The tests
+use temporary fixtures and never start application services. Runtime setup and hook trust are in [CODEX.md](CODEX.md).
+
 `.github/workflows/ci.yml` runs on every pull request into `main` (production), `dev` (staging) or a `feat/**` branch
 (development: a phase feature branch, CLAUDE.md §21), and on every push to `main`, `dev` and the phase branches
 (`feat/P<n>`). The push run on a phase branch catches two PRs that were each green alone but break together once both

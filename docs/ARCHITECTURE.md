@@ -8,6 +8,10 @@ How Food Pickup works end to end: which piece talks to which, and what happens, 
 
 ## Docs map
 
+Repository tooling also includes `.agents/` (skill discovery entry files) and `.codex/` (runtime configuration, hooks and
+role adapters). Both reuse the canonical `.claude/` resources; setup and runtime behavior are owned by
+[CODEX.md](CODEX.md).
+
 This file owns the system overview, the cross-cutting flows and the diagrams. Everything else has one owner:
 
 | Topic                                                           | Doc                                                           |

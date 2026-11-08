@@ -17,3 +17,8 @@ release.json
 
 # Per-machine Claude Code overrides; the shared hooks and plugins live in .claude/settings.json
 .claude/settings.local.json
+
+# Local adapters reference installed plugin paths; project adapters are portable and committed.
+.agents/skills/local-*/
+.codex/agents/local-*.toml
+.codex/local-plugins.json

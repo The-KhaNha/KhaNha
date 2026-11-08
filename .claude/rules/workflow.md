@@ -5,12 +5,15 @@ paths:
   - ".changes/**"
   - "scripts/**"
   - "**/package.json"
+  - ".agents/**"
+  - ".codex/**"
+  - "**/AGENTS.md"
 ---
 
 # Workflow rules (agents, hooks, CI, releases)
 
-Loaded with any file under `.claude/`, `.github/`, `.changes/`, `scripts/` or a `package.json`. Section numbers match
-`CLAUDE.md`.
+Loaded with any file under `.claude/`, `.github/`, `.changes/`, `scripts/`, `.agents/` or `.codex/`, a `package.json`
+or an `AGENTS.md`. Section numbers match `CLAUDE.md`.
 
 ## 16. Plugin usage
 
