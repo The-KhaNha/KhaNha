@@ -30,6 +30,10 @@ Which doc to update for a given change: [docs/README.md](docs/README.md).
 
 ## Prerequisites
 
+Repository workflow setup for Codex: [docs/CODEX.md](docs/CODEX.md). Run `node scripts/codex/sync.mjs` to refresh
+project skill entry files and role adapters, and `node scripts/codex/sync.mjs --plugins` to expose locally installed plugin
+prompts. The existing shared instructions and tooling remain authoritative.
+
 - **Node 24.15 or later 24.x** with any installer (`.nvmrc` / `.node-version` pin it; `npm ci` refuses other majors with `EBADENGINE`)
 - **Docker** (Docker Desktop, OrbStack or Colima) for the local Supabase stack. Not needed if you develop against staging.
 
@@ -163,6 +167,8 @@ Also worth showing: **Order Again** adds a past order to the cart (and says what
 
 ```
 food-pickup/
+├── .agents/       project skill entry files and ignored local plugin wrappers (docs/CODEX.md)
+├── .codex/        runtime configuration, lifecycle hooks and role adapters (docs/CODEX.md)
 ├── client/        React 18 + Vite web app (docs/FRONTEND_STRUCTURE.md)
 ├── server/        Express 5 API, Supabase migrations, seed and db-push scripts (docs/BACKEND_STRUCTURE.md)
 ├── docs/          the documentation set (see Docs below)

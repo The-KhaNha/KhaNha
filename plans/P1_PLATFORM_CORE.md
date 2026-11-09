@@ -22,7 +22,7 @@ that arrived after P0 and the phase feature branch:
   estimate, written when docs still counted; one that grows past the limit splits at the seam its section names.
 - **One agent, one PR at a time,** in the [build order](#build-order). Each PR branches as `feat/p1-<NN>-<slug>` from a
   fresh `origin/feat/P1`, is finished (gate, `/post-change`, intent, owning docs, its box ticked here), opened into
-  `feat/P1` as "P1 PR <NN> — <title>", and then the agent stops until the user says it merged.
+  `feat/P1` as `P1 PR <NN> — <title>`, and then the agent stops until the user says it merged.
 - **Migrations and staging.** A new migration must be newer than the newest on `feat/P1`. Staging takes migrations from
   `feat/P1` only while P1 is open (`npm run db:push:staging` needs `supabase login` and the database password): staging
   already holds `feat/P1`'s migrations, so a push from `dev` would be refused. When `dev` moves (Dependabot, a hotfix

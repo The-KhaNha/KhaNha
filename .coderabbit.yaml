@@ -21,6 +21,57 @@ reviews:
       - 'release: client '
       - 'release: server '
       - 'Back-merge main ('
+  # Approval is a signal only: the ruleset requires `ci-ok`, not reviews, and the user still merges. Approval needs the
+  # latest commit reviewed, so after fix pushes it waits for an `@coderabbitai review` (one review from the budget).
+  auto_approvals:
+    enabled: true
+    max_merge_risk: low
+    # No max_security_risk: security risk ratings need the Advanced plan, and a limit with no rating withholds every
+    # approval. security_risk_instructions below take effect if the plan changes.
+    overrides:
+      # Append-only once pushed, the guards every request passes through, the hooks that stop a destructive command and
+      # the CI checks that catch leaked secrets or rewritten migrations: always a human's call.
+      - enabled: false
+        paths:
+          - 'server/supabase/migrations/**'
+          - '.github/workflows/**'
+          - 'server/src/middleware/auth.ts'
+          - 'server/src/middleware/rateLimit.ts'
+          - '.claude/hooks/**'
+          - '.claude/settings.json'
+          - '.codex/hooks.json'
+          - '.codex/config.toml'
+          - 'scripts/codex/hooks.mjs'
+          - 'scripts/ci/check-dist-secrets*'
+          - 'scripts/ci/gitleaks-*'
+          - 'scripts/ci/check-migrations*'
+  merge_risk_instructions: |
+    Live production pickup-ordering app with real concurrent customers; the deployed client lags the API.
+    Critical: a migration that drops, renames or rewrites data, or changes place_order or another order-transition
+    function (stock is settled inside that transaction); removing or renaming a DTO field or error code the client
+    reads without a min_client_version bump.
+    High: any new file in server/supabase/migrations/ (append-only once pushed); money (prices, totals, paise
+    columns); server/src/middleware/ (auth, sessions, rate limits, error handler, security headers); serializers and
+    the client DTO copies; .github/workflows/, Dockerfiles, nginx and compose; caching headers or the read cache (a
+    stale copy of stock, price or order status misleads customers); the agent safety hooks that block destructive git
+    (.claude/hooks/, .claude/settings.json, .codex/hooks.json, .codex/config.toml, scripts/codex/hooks.mjs); the CI
+    security checks and their tests (scripts/ci/check-dist-secrets*, scripts/ci/gitleaks-*,
+    scripts/ci/check-migrations*: weakening one lets a leaked secret or a rewritten migration pass CI).
+    Moderate: other server routes, controllers and services; client services, stores, useResource and *Rules.ts;
+    the order board and checkout pages.
+    Low: presentational client components with tests; tests only; other scripts and tooling under .claude/, .codex/ and
+    scripts/ (not the safety hooks or CI security checks above).
+    Minimal: Markdown only (docs/, plans/, README) and .changes/ entries.
+  security_risk_instructions: |
+    The Express API is internet-facing behind nginx; the React client is public. Supabase is used for auth (the
+    client holds only the publishable key) and Postgres; the API alone holds the sb_secret key, so every
+    supabaseAdmin query must scope by the signed-in user. Tokens are checked against Supabase JWKS in
+    server/src/middleware/auth.ts, which also enforces server-side idle sign-out. Roles: CUSTOMER, STAFF (order
+    board), ADMIN (site settings, audit log, feature flags; no staff powers). Another user's resource answers 404,
+    never 403. POST /api/client-errors accepts unauthenticated reports and scrubs secrets and emails. Rate limits
+    live in server/src/middleware/rateLimit.ts. Order status, stock and prices are decided in SQL functions, never
+    trusted from the client. Changes to auth, role checks, user scoping, RLS or grants in migrations, the secret
+    scrubbers, CSP or security headers, and upload handling are high risk.
   # Generated, never edited by hand (the PR-size count skips them too).
   path_filters:
     - '!**/package-lock.json'

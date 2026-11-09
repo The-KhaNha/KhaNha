@@ -5,12 +5,15 @@ paths:
   - ".changes/**"
   - "scripts/**"
   - "**/package.json"
+  - ".agents/**"
+  - ".codex/**"
+  - "**/AGENTS.md"
 ---
 
 # Workflow rules (agents, hooks, CI, releases)
 
-Loaded with any file under `.claude/`, `.github/`, `.changes/`, `scripts/` or a `package.json`. Section numbers match
-`CLAUDE.md`.
+Loaded with any file under `.claude/`, `.github/`, `.changes/`, `scripts/`, `.agents/` or `.codex/`, a `package.json`
+or an `AGENTS.md`. Section numbers match `CLAUDE.md`.
 
 ## 16. Plugin usage
 
@@ -203,6 +206,16 @@ messages an hour, 100–300 files a review, all in rolling windows ([plans](http
 draws on the same allowance. A review is spent by opening a PR or marking a draft ready, by each `@coderabbitai review`
 or `full review`, and by reopening a PR. `.coderabbit.yaml` turns off the review of later pushes and skips release and
 back-merge PRs, so a push costs nothing.
+
+**CodeRabbit approval.** `.coderabbit.yaml` also rates each PR's merge risk (`merge_risk_instructions`) and approves
+it when its threads are resolved, its checks pass and the risk is `low` or below. A PR that touches a migration, a
+workflow, the auth or rate-limit middleware, an agent safety hook (`.claude/hooks/`, `.claude/settings.json`,
+`.codex/hooks.json`, `.codex/config.toml`, `scripts/codex/hooks.mjs`) or a CI security check
+(`scripts/ci/check-dist-secrets*`, `scripts/ci/gitleaks-*`, `scripts/ci/check-migrations*`) is never auto-approved.
+Approval needs the latest commit reviewed, so after fix pushes it waits for an `@coderabbitai review`. The approval
+is a signal only: the ruleset requires `ci-ok`, not reviews, and the user still merges. The security-risk rating needs
+CodeRabbit's Advanced plan, so no limit is set on it; `security_risk_instructions` are in place for when the plan
+changes.
 
 - Open a PR once, complete (the flow above). With several ready at once, open the first, open the rest as drafts
   (`gh pr create --draft`), and mark the next one ready (`gh pr ready <n>`) only when a review is free again: a posted
