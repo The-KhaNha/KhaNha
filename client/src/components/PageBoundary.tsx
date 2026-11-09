@@ -1,12 +1,15 @@
 import { Component, Suspense, type ReactNode } from 'react';
 import { logger } from '../lib/logger';
 import { CHUNK_FAILURE, reportError } from '../lib/errorReporter';
+import { clearPersistedCache } from '../lib/useResource';
 import { ErrorState } from './ErrorState';
 import { Skeleton } from './Skeleton';
 
 interface PageBoundaryProps {
   children: ReactNode;
   scope?: 'page' | 'app';
+  /** Renders nothing on failure (still logged and reported): for a boundary around a component that renders nothing. */
+  silent?: boolean;
 }
 
 /**
@@ -25,14 +28,23 @@ export class PageBoundary extends Component<
     return { failed: true, chunk };
   }
 
-  // Once per failed navigation, so a burst after a deploy (old chunk names gone) shows up.
+  // Once per failed navigation, so a burst after a deploy (old chunk names gone) shows up. A render crash may come
+  // from a malformed response that useResource persisted: drop the cache so Reload starts clean. A chunk failure is
+  // the network, and the cache is what still renders offline, so it stays.
   componentDidCatch(error: unknown) {
-    if (this.state.chunk) logger.error('Page chunk failed to load');
-    else reportError(error, 'render');
+    if (this.state.chunk) {
+      logger.error('Page chunk failed to load');
+      return;
+    }
+    // The scope only: the message and stack may carry user data, and reportError scrubs them on its own path.
+    logger.error('Page render failed', { scope: this.props.scope ?? 'page' });
+    clearPersistedCache();
+    reportError(error, 'render');
   }
 
   render() {
     if (this.state.failed) {
+      if (this.props.silent) return null;
       return (
         <ErrorState
           unreachable={this.state.chunk}

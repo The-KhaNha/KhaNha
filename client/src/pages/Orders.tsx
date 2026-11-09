@@ -44,6 +44,7 @@ export function OrdersPage() {
         message={error.message}
         onRetry={retry}
         unreachable={error.isUnreachable}
+        code={error.code}
       />
     );
   }

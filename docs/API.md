@@ -654,7 +654,7 @@ shape carries a `kind`, and the client narrows on it.
 | 500    | `INTERNAL`                  | anything else ("Something went wrong. Please try again."), logged with its stack                                                                                                                                                                                                                                                                                                                                                   |
 | 503    | `UPSTREAM_UNAVAILABLE`      | any route when the database or Supabase Auth cannot be reached (an `IntegrationError`): "The service is temporarily unavailable. Please try again in a moment.", with `Retry-After: 5`; logged once at `error` with the cause chain                                                                                                                                                                                                |
 
-The client also creates codes the server never sends: `INVALID_CREDENTIALS` for a failed Supabase sign-in, together with `UNREACHABLE` and `UNKNOWN` (and `RATE_LIMITED` for Supabase Auth's own 429, the same code the API uses)
+The client also creates codes the server never sends: `INVALID_CREDENTIALS` for a failed Supabase sign-in, together with `UNREACHABLE`, `UNKNOWN` and `CLIENT_RELOAD_REQUIRED` (the sign-in code failed to load; only a page reload helps, see [FRONTEND_STRUCTURE.md](FRONTEND_STRUCTURE.md#services)) (and `RATE_LIMITED` for Supabase Auth's own 429, the same code the API uses)
 (`client/src/services/auth.ts`, `client/src/services/api.ts`, `client/src/lib/useResource.ts`). The client treats
 `ApiError.code` as a plain string.
 

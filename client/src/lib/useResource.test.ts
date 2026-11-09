@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../services/api', () => ({ ApiError: class ApiError extends Error {} }));
 
-const { useResource } = await import('./useResource');
+const { clearPersistedCache, useResource } = await import('./useResource');
 
 const CACHE = 'fp_cache:v1:menu';
 
@@ -184,5 +184,19 @@ describe('useResource after 426 CLIENT_OUTDATED', () => {
     await sleep(40);
     expect(calls).toBe(after);
     expect(result.current.data).toEqual({ n: 1 });
+  });
+});
+
+describe('clearPersistedCache', () => {
+  afterEach(() => localStorage.clear());
+
+  it('drops every persisted response and nothing else', () => {
+    localStorage.setItem(CACHE, '{}');
+    localStorage.setItem('fp_cache:v1:config', '{}');
+    localStorage.setItem('fp_cart', '{"lines":[]}');
+    clearPersistedCache();
+    expect(localStorage.getItem(CACHE)).toBeNull();
+    expect(localStorage.getItem('fp_cache:v1:config')).toBeNull();
+    expect(localStorage.getItem('fp_cart')).toBe('{"lines":[]}');
   });
 });

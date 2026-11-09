@@ -9,7 +9,10 @@ vi.mock('../../services/auth', () => ({
   signOut: vi.fn(),
   register: vi.fn(),
 }));
-vi.mock('../../services/api', () => ({ ApiError: class ApiError extends Error {} }));
+vi.mock('../../services/api', () => ({
+  ApiError: class ApiError extends Error {},
+  loadSupabase: () => getSupabase(),
+}));
 
 const { useAuthStore } = await import('./authStore');
 

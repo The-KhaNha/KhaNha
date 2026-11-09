@@ -166,7 +166,12 @@ function AppShell() {
   );
 }
 
-export default function App() {
+/**
+ * In its own silent app boundary: a config that crashes the read is logged and reported but renders nothing (it has no
+ * UI of its own, and the shell below still works), and a shell crash cannot take the reporting setting down with it.
+ * If it crashes, setSamplePercent never runs and reports stay buffered, unsent: the safe side of a 0% sample.
+ */
+function ClientErrorSampling() {
   const {
     clientErrors: { samplePercent },
     serverVersion,
@@ -175,16 +180,25 @@ export default function App() {
     // Buffer startup crashes until the server's setting is known; the fallback must not bypass a 0% sample.
     if (serverVersion !== 'unknown') setSamplePercent(samplePercent);
   }, [samplePercent, serverVersion]);
+  return null;
+}
+
+export default function App() {
   useEffect(() => {
     void useAuthStore.getState().hydrate();
   }, []);
 
   return (
-    <PageBoundary scope="app">
-      <BrowserRouter>
-        <OutdatedBanner />
-        <AppShell />
-      </BrowserRouter>
-    </PageBoundary>
+    <>
+      <PageBoundary scope="app" silent>
+        <ClientErrorSampling />
+      </PageBoundary>
+      <PageBoundary scope="app">
+        <BrowserRouter>
+          <OutdatedBanner />
+          <AppShell />
+        </BrowserRouter>
+      </PageBoundary>
+    </>
   );
 }

@@ -77,8 +77,9 @@ Demo logins: customer `anishka@example.com / test1234`, staff `staff@campuscafe.
 6. Delete every screenshot, close the browser (`browser_close`), stop the servers you started, and report.
 
 ## Static checks
-- **S1: no `fetch(` outside `client/src/services/api.ts`.**
-  `grep -rn "fetch(" client/src --include='*.ts' --include='*.tsx' | grep -v 'services/api.ts' | grep -v '\.test\.'`
+- **S1: no `fetch(` outside `client/src/services/api.ts`** (and `lib/deviceClockFetch.ts`, the fetch supabase-js
+  is given for its own auth calls, never `/api`).
+  `grep -rn "fetch(" client/src --include='*.ts' --include='*.tsx' | grep -v 'services/api.ts' | grep -v 'lib/deviceClockFetch.ts' | grep -v '\.test\.'`
 - **S2: no `/api` strings outside `client/src/services/`.**
   `grep -rnE "['\"\`]/api" client/src | grep -v 'client/src/services/'`
 - **S3: no inline `<svg>`.** Icons are `lucide-react` named imports; a genuinely custom one belongs in `client/src/components/icons/` (the folder does not exist yet).
@@ -164,9 +165,9 @@ Resize to 360×640 first. Throttling is per CDP session; apply it again after `b
   viewport when scrolled to, the bottom nav still usable, no text clipped by a fixed-height box. Then, at 100% text,
   resize to 320×640 (WCAG 1.4.10 reflow: 320 CSS px, a 1280px screen at 400% zoom) and check the same. Narrower than
   320 (180×320, a 360px phone at 200% browser zoom) is beyond WCAG and not a finding. Reset the font size afterwards.
-  The CI smoke (`client/e2e/smoke.spec.ts`) asserts both passes on every route it covers; L11 adds the routes it does
+  The CI e2e (`client/e2e/layout.spec.ts`) asserts both passes on every route it covers; L11 adds the routes it does
   not (checkout, admin, the live data).
-- **L12: WebKit.** `cd client && npm run e2e:webkit` runs `client/e2e/smoke.spec.ts` (home, menu, add to cart, cart
+- **L12: WebKit.** `cd client && npm run e2e:webkit` runs every `client/e2e/*.spec.ts` (home, menu, add to cart, cart
   at 360px, no overflow, clean console) on Safari's engine with every `/api` call mocked. A failure is a blocker;
   if WebKit is not installed (`npm run e2e:install`, no sudo needed on most hosts) and cannot be, report it under
   "Not verified" with the launcher error, never as passed.

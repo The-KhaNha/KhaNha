@@ -99,7 +99,7 @@ Mandates:
 ## 8. Frontend data fetching (STRICTLY ENFORCED)
 
 - Only `client/src/services/*.ts` call `request()` from `services/api.ts`. No `fetch(` and no `'/api'` strings
-  anywhere else.
+  anywhere else (one exception: `lib/deviceClockFetch.ts`, the fetch supabase-js is given for its own auth calls).
 - GETs use `lib/useResource.ts` through a `features/*/use*.ts` hook.
 - After a mutation, call `reload()` / `mutate()` on **every** resource the mutation affects. A missing one is a
   stale-UI bug.

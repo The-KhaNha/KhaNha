@@ -61,6 +61,21 @@ function writeCache(key: string, data: unknown): void {
   }
 }
 
+/**
+ * Drops every persisted response. PageBoundary calls it when a render crashes: a malformed response that was cached
+ * would otherwise crash every later visit before the fresh fetch could replace it, and Reload could never recover.
+ */
+export function clearPersistedCache(): void {
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i -= 1) {
+      const key = localStorage.key(i);
+      if (key?.startsWith(CACHE_PREFIX)) localStorage.removeItem(key);
+    }
+  } catch {
+    // Storage blocked: nothing was persisted either.
+  }
+}
+
 function toApiError(err: unknown): ApiError {
   if (err instanceof ApiError) return err;
   return new ApiError(0, 'UNKNOWN', 'Something went wrong.');

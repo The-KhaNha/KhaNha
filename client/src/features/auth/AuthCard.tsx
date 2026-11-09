@@ -25,7 +25,7 @@ export function AuthCard({
   backTo = '/',
 }: AuthCardProps) {
   // Sign-in needs supabase-js, which the app does not load up front: fetch it while the form is being filled in. A
-  // failure here is retried when the form is sent.
+  // failure here is kept (lib/supabase.ts), and sending the form then asks for a reload.
   useEffect(() => {
     getSupabase().catch(() => {});
   }, []);

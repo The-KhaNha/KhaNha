@@ -275,6 +275,9 @@ describe('expectedUnitPrice edge matrix (which refusal wins, bounds, replay)', (
     ({ data: other } = await supabaseAdmin
       .from('menu_items')
       .select('id, name, price_paise')
+      // Unlimited, like `item`: ids are random per seed, so a stock-counted pick that other files drew down failed
+      // the quantity-2 line in CI only (INSUFFICIENT_STOCK, a 400).
+      .is('stock_quantity', null)
       .eq('is_available', true)
       .neq('id', item.id)
       .eq('store_id', item.store_id)

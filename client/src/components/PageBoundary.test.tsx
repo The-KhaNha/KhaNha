@@ -1,6 +1,7 @@
 import { Suspense } from 'react';
 import { render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { logger } from '../lib/logger';
 import { PageBoundary } from './PageBoundary';
 
 const reportError = vi.hoisted(() => vi.fn());
@@ -97,5 +98,55 @@ describe('PageBoundary', () => {
       </Suspense>,
     );
     expect(screen.getByText('Outer fallback')).toBeInTheDocument();
+  });
+
+  // A malformed response that useResource persisted would crash every later visit before the fresh fetch replaced it.
+  it('drops the persisted cache on a render crash so Reload recovers, and keeps it for a chunk failure', () => {
+    function Crash({ message }: { message: string }): never {
+      throw new TypeError(message);
+    }
+    localStorage.setItem('fp_cache:v1:menu', '{"categories":null}');
+    const chunk = render(
+      <PageBoundary>
+        <Crash message="Failed to fetch dynamically imported module: /assets/page.js" />
+      </PageBoundary>,
+    );
+    expect(localStorage.getItem('fp_cache:v1:menu')).not.toBeNull();
+    chunk.unmount();
+    render(
+      <PageBoundary>
+        <Crash message="Cannot read properties of null (reading 'map')" />
+      </PageBoundary>,
+    );
+    expect(localStorage.getItem('fp_cache:v1:menu')).toBeNull();
+    localStorage.clear();
+  });
+
+  // A render crash left no trace in the console at warn level; the message and stack stay out (they may hold PII).
+  it('logs a render crash with its scope only', () => {
+    const logError = vi.spyOn(logger, 'error').mockImplementation(() => {});
+    function Crash(): never {
+      throw new Error('Cannot read properties of undefined (reading anishka@example.com)');
+    }
+    render(
+      <PageBoundary scope="app">
+        <Crash />
+      </PageBoundary>,
+    );
+    expect(logError).toHaveBeenCalledExactlyOnceWith('Page render failed', { scope: 'app' });
+  });
+
+  it('silent renders nothing on a crash but still reports it', () => {
+    const error = new Error('Cannot read properties of null');
+    function Crash(): never {
+      throw error;
+    }
+    const { container } = render(
+      <PageBoundary scope="app" silent>
+        <Crash />
+      </PageBoundary>,
+    );
+    expect(container).toBeEmptyDOMElement();
+    expect(reportError).toHaveBeenCalledExactlyOnceWith(error, 'render');
   });
 });

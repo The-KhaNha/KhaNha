@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
-// The WebKit smoke (e2e/smoke.spec.ts): Safari's engine, which the Playwright MCP passes (Chromium) never exercise.
-// The spec mocks every /api call, so only the Vite dev server is needed; a server already on the port is reused.
+// The e2e specs (every e2e/*.spec.ts) on WebKit: Safari's engine, which the Playwright MCP passes (Chromium) never exercise.
+// The specs mock every /api call, so only the Vite dev server is needed; a server already on the port is reused.
 const PORT = Number(process.env.VITE_DEV_PORT ?? 5173);
 
 export default defineConfig({
