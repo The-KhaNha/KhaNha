@@ -321,12 +321,17 @@ jobs:
       ]
     runs-on: ubuntu-latest
     steps:
-      # Skipped jobs (PR-only jobs on a push) count as success.
+      # Skipped jobs (PR-only jobs on a push) count as success. Anything else fails, including a job GitHub
+      # abandoned without a runner: a run once went green with nothing tested (scripts/ci/ci-ok.test.mjs).
       - name: All jobs passed or were skipped
         env:
           RESULTS: ${{ join(needs.*.result, ' ') }}
         run: |
           echo "results: $RESULTS"
+          [ -n "$RESULTS" ] || exit 1
           for r in $RESULTS; do
-            if [ "$r" = failure ] || [ "$r" = cancelled ]; then exit 1; fi
+            case "$r" in
+              success | skipped) ;;
+              *) echo "a job ended $r"; exit 1 ;;
+            esac
           done
