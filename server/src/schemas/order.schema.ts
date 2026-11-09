@@ -17,25 +17,43 @@ const orderItemInput = z.object({
     .number()
     .int('Quantity must be a whole number.')
     .min(1, 'Quantity must be at least 1.'),
+  // The whole-rupee price the customer was shown (a cart keeps the price it was added at). Never charged: a price that
+  // differs from the menu's refuses the order (PRICE_CHANGED). Optional, so the deployed client that sends none keeps
+  // working. int() also bounds it to a safe integer.
+  expectedUnitPrice: z
+    .number()
+    .int('expectedUnitPrice must be a whole number of rupees.')
+    .positive('expectedUnitPrice must be positive.')
+    .optional(),
 });
 
 type OrderItemInput = z.infer<typeof orderItemInput>;
+
+/** One merged line. Every price sent for the item is kept, so a duplicate line cannot hide a stale one. */
+interface MergedOrderItem {
+  menuItemId: string;
+  quantity: number;
+  expectedUnitPrices: number[];
+}
 
 /**
  * The same item listed twice becomes one line with the quantities summed, so the
  * per-item cap (enforced in order.service, where the item's name is known) applies to the total.
  */
-function mergeDuplicateItems(items: OrderItemInput[]): OrderItemInput[] {
-  const merged = new Map<string, number>();
-  for (const { menuItemId, quantity } of items) {
-    merged.set(menuItemId, (merged.get(menuItemId) ?? 0) + quantity);
+function mergeDuplicateItems(items: OrderItemInput[]): MergedOrderItem[] {
+  const merged = new Map<string, MergedOrderItem>();
+  for (const { menuItemId, quantity, expectedUnitPrice } of items) {
+    const line = merged.get(menuItemId) ?? { menuItemId, quantity: 0, expectedUnitPrices: [] };
+    line.quantity += quantity;
+    if (expectedUnitPrice !== undefined) line.expectedUnitPrices.push(expectedUnitPrice);
+    merged.set(menuItemId, line);
   }
-  return [...merged].map(([menuItemId, quantity]) => ({ menuItemId, quantity }));
+  return [...merged.values()];
 }
 
 /**
  * Unknown keys (price, unitPrice, total, ...) are stripped by z.object, so the
- * client can never influence what is charged. Prices come from the database only.
+ * client can never influence what is charged. Prices come from the database only; expectedUnitPrice can only refuse.
  */
 export const createOrderSchema = z
   .object({

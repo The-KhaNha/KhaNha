@@ -210,25 +210,29 @@ Code: `requireAuth` → `writeLimiter` → `validate(createOrderSchema)` → `or
 
 Body (`server/src/schemas/order.schema.ts`):
 
-| Field                | Type   | Rules                                                                                                              |
-| -------------------- | ------ | ------------------------------------------------------------------------------------------------------------------ |
-| `items`              | array  | required, 1–30 entries (counted before duplicates are merged)                                                      |
-| `items[].menuItemId` | string | required, at least 1 character                                                                                     |
-| `items[].quantity`   | number | required, whole number, at least 1                                                                                 |
-| `customerName`       | string | optional, typed text, at most 60 characters; blank (also invisible-only) or missing falls back to the profile name |
-| `customerPhone`      | string | optional; see [phone numbers](#shared-field-rules)                                                                 |
-| `note`               | string | optional, typed text, at most 200 characters                                                                       |
-| `idempotencyKey`     | string | optional, a UUID; one per checkout attempt, resent unchanged on every retry of that attempt                        |
+| Field                       | Type   | Rules                                                                                                              |
+| --------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------ |
+| `items`                     | array  | required, 1–30 entries (counted before duplicates are merged)                                                      |
+| `items[].menuItemId`        | string | required, at least 1 character                                                                                     |
+| `items[].quantity`          | number | required, whole number, at least 1                                                                                 |
+| `items[].expectedUnitPrice` | number | optional, whole rupees, at least 1: the price the customer was shown for this line; never charged, only compared   |
+| `customerName`              | string | optional, typed text, at most 60 characters; blank (also invisible-only) or missing falls back to the profile name |
+| `customerPhone`             | string | optional; see [phone numbers](#shared-field-rules)                                                                 |
+| `note`                      | string | optional, typed text, at most 200 characters                                                                       |
+| `idempotencyKey`            | string | optional, a UUID; one per checkout attempt, resent unchanged on every retry of that attempt                        |
 
 - Entries with the same `menuItemId` are merged into one line with the quantities summed (`mergeDuplicateItems`).
-- Unknown keys (`price`, `unitPrice`, `total`, …) are dropped by `z.object`. Prices come from the database only.
+- Unknown keys (`price`, `unitPrice`, `total`, …) are dropped by `z.object`. Prices come from the database only;
+  `expectedUnitPrice` can only refuse an order, never change what is charged. Merged duplicates keep every
+  `expectedUnitPrice` sent, and each one is compared.
 - **Idempotency:** a request whose `idempotencyKey` already placed an order for this user is answered with that
   order again (201, the same body), without touching stock or payment: the service checks first, and `place_order`
   settles two simultaneous repeats under an advisory lock ([SCHEMA.md](SCHEMA.md#place_order)). The key is per
   user (two users may send the same value), never echoed back, and a request without one always places a new
   order (the deployed V0 client sends none). The client (`features/checkout/checkoutDraftStore.ts`) keeps one key
   per checkout attempt in `sessionStorage`, so a refresh during "Processing payment…" cannot create a second order.
-- **A repeated key must carry the same order:** the same merged items and quantities, name, phone and note. A
+- **A repeated key must carry the same order:** the same merged items and quantities, name, phone and note
+  (`expectedUnitPrice` is not compared: a replay answers the order placed, at the price it was placed at). A
   different request under a key that already placed an order (the cart changed after a Pay whose answer was lost) is
   409 `IDEMPOTENCY_KEY_REUSED` with `details: { orderId, orderNumber }`, never a silent replay, so the customer is
   never told they paid for items the kitchen will not see. The client then links to that order, keeps the cart, and
@@ -244,30 +248,36 @@ What the service checks, in this order:
    - `is_available` is true, else 400 `ITEM_UNAVAILABLE` "<name> is currently unavailable. Please remove it from your
      cart." with `details: { menuItemId, name, available: 0 }`;
    - the merged quantity is at most 10 (`MAX_QUANTITY_PER_ITEM`, a fixed constant — not a `site_settings` value), else
-     400 `VALIDATION_ERROR` "You can order at most 10 of <name>. Please reduce the quantity in your cart."
+     400 `VALIDATION_ERROR` "You can order at most 10 of <name>. Please reduce the quantity in your cart.";
+   - every `expectedUnitPrice` sent for the item equals its current price, else 409 `PRICE_CHANGED` (the message in
+     step 4) before any charge. A cart keeps the price an item was added at (`client/src/features/cart/cartStore.ts`),
+     so this is how a cart older than a price change is caught. The client sends each line's shown `unitPrice`.
 3. The total in paise, `Σ menu_items.price_paise × quantity`, then `simulatePayment(totalPaise)` returns `PAID`
-   (`server/src/services/payment.service.ts`). `place_order` prices the stored order itself from `menu_items`, never
-   from its arguments; the API sends each line's charged price only for `place_order` to compare.
+   (`server/src/services/payment.service.ts`; a total of 0 or less is 400 `BAD_REQUEST` "The order total must be
+   more than ₹0.", unreachable while `menu_items.price_paise > 0`). `place_order` prices the stored order itself from
+   `menu_items`, never from its arguments; the API sends each line's charged price only for `place_order` to compare.
 4. `place_order` reserves stock and writes the order in one transaction. Not enough stock: 400
    `INSUFFICIENT_STOCK` with `details: { menuItemId, name, available }` and the message "Only <n> <name> left. Reduce
    the quantity in your cart." or, when `available` is 0, "<name> just sold out." A refused order leaves no rows and
-   no stock changes behind (see [SCHEMA.md](SCHEMA.md#place_order)). A line whose price changed after step 3 read it:
-   409 `PRICE_CHANGED` "The price of <name> just changed to ₹<price>. Please review your order." (no `details`), and
+   no stock changes behind (see [SCHEMA.md](SCHEMA.md#place_order)). `place_order` checks steps 1 and 2 again under
+   its own locks, so a store closed or an item switched off between step 1 and the order is the same 400
+   `STORE_CLOSED` or `ITEM_UNAVAILABLE` (same message and details) with nothing placed. A line whose price changed
+   after step 3 read it: 409 `PRICE_CHANGED` "The price of <name> just changed to ₹<price>. Please review your order." (no `details`), and
    nothing is placed. The client shows the message, reloads the menu and takes the new price into the cart, so the
    next Pay shows the amount it charges.
 
 A new order is `paymentStatus: "PAID"`, `status: "PLACED"`, `estimatedReadyAt = now() + store.prep_time_max_minutes`.
 
-| Status | Code                                                                                                     |
-| ------ | -------------------------------------------------------------------------------------------------------- |
-| 201    | `{ order: OrderDto }`                                                                                    |
-| 400    | `VALIDATION_ERROR`, `ITEM_NOT_FOUND`, `ITEM_UNAVAILABLE`, `INSUFFICIENT_STOCK`, `STORE_CLOSED`           |
-| 401    | `UNAUTHORIZED`                                                                                           |
-| 404    | `NOT_FOUND` (no store row)                                                                               |
-| 409    | `IDEMPOTENCY_KEY_REUSED` (the key already placed a different order; `details: { orderId, orderNumber }`) |
-| 409    | `PRICE_CHANGED` (a price changed after the charge; no `details`; the client reloads the menu)            |
-| 413    | `PAYLOAD_TOO_LARGE`                                                                                      |
-| 429    | `RATE_LIMITED` (the per-user write limit, [Headers and limits](#headers-and-limits))                     |
+| Status | Code                                                                                                                          |
+| ------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| 201    | `{ order: OrderDto }`                                                                                                         |
+| 400    | `VALIDATION_ERROR`, `ITEM_NOT_FOUND`, `ITEM_UNAVAILABLE`, `INSUFFICIENT_STOCK`, `STORE_CLOSED`, `BAD_REQUEST` (a ₹0 total)    |
+| 401    | `UNAUTHORIZED`                                                                                                                |
+| 404    | `NOT_FOUND` (no store row)                                                                                                    |
+| 409    | `IDEMPOTENCY_KEY_REUSED` (the key already placed a different order; `details: { orderId, orderNumber }`)                      |
+| 409    | `PRICE_CHANGED` (a stale `expectedUnitPrice`, or a price changed after the charge; no `details`; the client reloads the menu) |
+| 413    | `PAYLOAD_TOO_LARGE`                                                                                                           |
+| 429    | `RATE_LIMITED` (the per-user write limit, [Headers and limits](#headers-and-limits))                                          |
 
 ### GET /orders
 
@@ -626,11 +636,11 @@ shape carries a `kind`, and the client narrows on it.
 | Status | Code                        | Raised by                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | ------ | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 400    | `VALIDATION_ERROR`          | zod schemas; the 10-per-item cap; the `site_settings` bounds (`GET`/`PATCH /admin/settings`); malformed JSON ("Malformed request body."); Postgres `22001` ("One of the values is too long."), `22021` / `22P05` and PostgREST `PGRST102` ("Invalid characters in input."); a body nested too deeply; Supabase Auth `email_address_invalid` / `weak_password`                                                                      |
-| 400    | `BAD_REQUEST`               | bad percent-encoding in the URL ("The request URL is malformed."); any other 4xx from body-parser ("The request could not be processed.")                                                                                                                                                                                                                                                                                          |
+| 400    | `BAD_REQUEST`               | bad percent-encoding in the URL ("The request URL is malformed."); any other 4xx from body-parser ("The request could not be processed."); `simulatePayment` for a total of 0 or less ("The order total must be more than ₹0.")                                                                                                                                                                                                    |
 | 400    | `ITEM_NOT_FOUND`            | `POST /orders`                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| 400    | `ITEM_UNAVAILABLE`          | `POST /orders`                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| 400    | `ITEM_UNAVAILABLE`          | `POST /orders` (the API's check, or `place_order`'s)                                                                                                                                                                                                                                                                                                                                                                               |
 | 400    | `INSUFFICIENT_STOCK`        | `POST /orders` (from `place_order`)                                                                                                                                                                                                                                                                                                                                                                                                |
-| 400    | `STORE_CLOSED`              | `POST /orders`                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| 400    | `STORE_CLOSED`              | `POST /orders` (the API's check, or `place_order`'s)                                                                                                                                                                                                                                                                                                                                                                               |
 | 401    | `UNAUTHORIZED`              | `requireAuth`                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | 403    | `FORBIDDEN`                 | `requireStaff`, `requireAdmin`                                                                                                                                                                                                                                                                                                                                                                                                     |
 | 429    | `RATE_LIMITED`              | `middleware/rateLimit.ts`: more requests than the window allows from one account (writes) or one address (all of `/api`, `POST /auth/register`); "Too many requests. Please wait a minute and try again." with `Retry-After`, `RateLimit-Policy` and `RateLimit` headers and `details: { kind: 'rateLimit', retryAfterSeconds }` (`RateLimitDetails`). Logged at `warn` for the first refusal per key per window, `debug` after it |
@@ -639,7 +649,7 @@ shape carries a `kind`, and the client narrows on it.
 | 409    | `EMAIL_TAKEN`               | `POST /auth/register`                                                                                                                                                                                                                                                                                                                                                                                                              |
 | 409    | `INVALID_STATUS_TRANSITION` | `PATCH /orders/:id/status` (from `update_order_status`)                                                                                                                                                                                                                                                                                                                                                                            |
 | 409    | `IDEMPOTENCY_KEY_REUSED`    | `POST /orders`: the `idempotencyKey` already placed an order that differs from this request. "Your earlier order #<n> already went through. Pay again to order what is in your cart now." with `details: { orderId, orderNumber }` (`ReplayedOrderDetails`)                                                                                                                                                                        |
-| 409    | `PRICE_CHANGED`             | `POST /orders` (from `place_order`): an item's price changed after the API charged for it. "The price of <name> just changed to ₹<price>. Please review your order.", no `details`; nothing is placed                                                                                                                                                                                                                              |
+| 409    | `PRICE_CHANGED`             | `POST /orders`: an `expectedUnitPrice` is not the item's current price, or (from `place_order`) an item's price changed after the API charged for it. "The price of <name> just changed to ₹<price>. Please review your order.", no `details`; nothing is placed                                                                                                                                                                   |
 | 413    | `PAYLOAD_TOO_LARGE`         | JSON body over 100 kB (`JSON_BODY_LIMIT_BYTES`), refused on the declared `Content-Length` before auth runs: the rest of the upload is read and thrown away (at most 1 MB or 2 s), then 413 with `Connection: close`; a chunked body when it passes the limit ("The request body is too large.")                                                                                                                                    |
 | 500    | `INTERNAL`                  | anything else ("Something went wrong. Please try again."), logged with its stack                                                                                                                                                                                                                                                                                                                                                   |
 | 503    | `UPSTREAM_UNAVAILABLE`      | any route when the database or Supabase Auth cannot be reached (an `IntegrationError`): "The service is temporarily unavailable. Please try again in a moment.", with `Retry-After: 5`; logged once at `error` with the cause chain                                                                                                                                                                                                |
@@ -658,6 +668,8 @@ SQLSTATE `P0001` and that message. `order.service.ts` maps them:
 | --------------------- | --------------------------- | --------------------------------- | ---------------------------------- |
 | `place_order`         | `INSUFFICIENT_STOCK`        | `{ menuItemId, name, available }` | 400 `INSUFFICIENT_STOCK` + details |
 | `place_order`         | `PRICE_CHANGED`             | `{ menuItemId, name, price }`     | 409 `PRICE_CHANGED`, no details    |
+| `place_order`         | `ITEM_UNAVAILABLE`          | `{ menuItemId, name, available }` | 400 `ITEM_UNAVAILABLE` + details   |
+| `place_order`         | `STORE_CLOSED`              | `{ storeId }`                     | 400 `STORE_CLOSED`, no details     |
 | `update_order_status` | `NOT_FOUND`                 | none                              | 404 `NOT_FOUND` "Order not found." |
 | `update_order_status` | `INVALID_STATUS_TRANSITION` | `{ orderNumber, status }`         | 409 `INVALID_STATUS_TRANSITION`    |
 

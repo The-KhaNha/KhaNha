@@ -8,11 +8,14 @@ import {
   AppError,
   idempotencyKeyReused,
   insufficientStock,
+  itemUnavailable,
   notFound,
   priceChanged,
+  storeClosed,
   validationError,
 } from '../utils/errors';
 import { isUuid } from '../utils/ids';
+import { paiseToRupees } from '../utils/money';
 import { selectOrders, type OrderWithDetails } from '../utils/serializers';
 import { raisedByDatabase, supabaseAdmin } from '../utils/supabase';
 import { simulatePayment } from './payment.service';
@@ -65,7 +68,8 @@ interface UpdatedOrder {
 
 /**
  * Places a paid order. Prices are read from the database, never from the request:
- * store must be open -> validate items -> price lines -> total -> simulated payment -> place_order.
+ * store must be open -> validate items -> price lines (and match any price the customer saw) -> total ->
+ * simulated payment -> place_order, which checks the store, availability and prices again under its own locks.
  * A repeated `idempotencyKey` returns the order that key already placed (the fast path below; place_order settles
  * the race of two simultaneous repeats), so a retry after a lost response never charges or reserves twice.
  *
@@ -114,13 +118,7 @@ export async function createOrder(
   if (input.lineCount > maxLines)
     throw validationError(`An order can have at most ${maxLines} items.`);
 
-  if (!store.is_open) {
-    throw new AppError(
-      400,
-      'STORE_CLOSED',
-      `${store.name} is closed right now. Please come back when it opens.`,
-    );
-  }
+  if (!store.is_open) throw storeClosed(store.name);
   const byId = new Map(menuItems.map((item) => [item.id, item]));
 
   const { lines, totalPaise } = priceLines(input.items, byId);
@@ -157,6 +155,11 @@ export async function createOrder(
     const changed = raisedByDatabase(err, 'PRICE_CHANGED');
     if (changed)
       throw priceChanged(String(changed.menuItemId), String(changed.name), Number(changed.price));
+    // Switched off or closed after the checks above: the same refusals those checks give.
+    const unavailable = raisedByDatabase(err, 'ITEM_UNAVAILABLE');
+    if (unavailable)
+      throw itemUnavailable(String(unavailable.menuItemId), String(unavailable.name));
+    if (raisedByDatabase(err, 'STORE_CLOSED')) throw storeClosed(store.name);
     throw err;
   } finally {
     // Placed or refused for stock, the cached menu's stock counts are out of date either way.
@@ -319,7 +322,7 @@ function priceLines(
   byId: Map<string, MenuItem>,
 ): { lines: OrderLine[]; totalPaise: number } {
   let totalPaise = 0;
-  const lines = requested.map(({ menuItemId, quantity }) => {
+  const lines = requested.map(({ menuItemId, quantity, expectedUnitPrices }) => {
     const item = byId.get(menuItemId);
     if (!item) {
       throw new AppError(400, 'ITEM_NOT_FOUND', 'One of the items is no longer on the menu.', {
@@ -327,18 +330,18 @@ function priceLines(
         available: 0,
       });
     }
-    if (!item.is_available) {
-      throw new AppError(
-        400,
-        'ITEM_UNAVAILABLE',
-        `${item.name} is currently unavailable. Please remove it from your cart.`,
-        { menuItemId, name: item.name, available: 0 },
-      );
-    }
+    if (!item.is_available) throw itemUnavailable(menuItemId, item.name);
     if (quantity > MAX_QUANTITY_PER_ITEM) {
       throw validationError(
         `You can order at most ${MAX_QUANTITY_PER_ITEM} of ${item.name}. Please reduce the quantity in your cart.`,
       );
+    }
+    // The customer saw another price (a cart kept from before a price change): refused before any charge.
+    const price = paiseToRupees(item.price_paise);
+    if (expectedUnitPrices.some((expected) => expected !== price)) {
+      // The checkout reloads the menu after this refusal: a cached menu would show the old price and be refused again.
+      invalidate('menu');
+      throw priceChanged(menuItemId, item.name, price);
     }
     totalPaise += item.price_paise * quantity;
     return {

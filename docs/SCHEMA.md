@@ -38,6 +38,7 @@ a new file (see [DEPLOYMENT.md](DEPLOYMENT.md#schema-changes)).
 | `20261103172932_reserved_stock_on_order_items.sql` | adds `order_items.reserved_quantity` (`check (reserved_quantity in (0, quantity))`), set to `quantity` for orders still `PLACED`, `PREPARING` or `READY`; `place_order` (same signature) records what each line reserved, by line number; `update_order_status` (same signature) gives back the sum of `reserved_quantity`, not of `quantity`                                                                                                                                                                                     |
 | `20261103173300_profile_name_bounds.sql`           | adds `profile_name(text, text)` and `profile_phone(text)`; `handle_new_user` (same signature) passes the Auth metadata through them; cleans legacy rows, then adds the checks `profiles_name_length` and `profiles_phone_format`                                                                                                                                                                                                                                                                                                  |
 | `20261109094725_money_paise_contract.sql`          | drops `menu_items.price`, `orders.total`, `order_items.unit_price` and `line_total`, and the `menu_items_sync_price` trigger and function first; `place_order` (same signature) stops writing the rupee columns; `menu_items_audit` watches `price_paise` and no longer `price`                                                                                                                                                                                                                                                   |
+| `20261109122051_order_integrity.sql`               | `place_order` (same signature, grants kept) reads `stores.is_open` `for share` before stock (`STORE_CLOSED`) and refuses an item with `is_available = false` in its pricing read (`ITEM_UNAVAILABLE`); `menu_items_price_paise_check` becomes `price_paise > 0`                                                                                                                                                                                                                                                                   |
 
 ## Enums
 
@@ -89,19 +90,19 @@ V0 has exactly one row, created by `npm run seed`.
 
 ### menu_items
 
-| Column           | Type    | Null | Default             | Constraints                                            |
-| ---------------- | ------- | ---- | ------------------- | ------------------------------------------------------ |
-| `id`             | uuid    | no   | `gen_random_uuid()` | primary key                                            |
-| `store_id`       | uuid    | no   |                     | references `stores (id)`                               |
-| `category`       | text    | no   |                     |                                                        |
-| `name`           | text    | no   |                     |                                                        |
-| `description`    | text    | no   |                     |                                                        |
-| `price_paise`    | bigint  | no   |                     | `>= 0`, `% 100 = 0` (whole rupees); the price in paise |
-| `image_url`      | text    | no   |                     |                                                        |
-| `is_available`   | boolean | no   | `true`              |                                                        |
-| `is_popular`     | boolean | no   | `false`             |                                                        |
-| `sort_order`     | integer | no   | `0`                 |                                                        |
-| `stock_quantity` | integer | yes  |                     | `check (stock_quantity >= 0)`; `null` = not tracked    |
+| Column           | Type    | Null | Default             | Constraints                                                                            |
+| ---------------- | ------- | ---- | ------------------- | -------------------------------------------------------------------------------------- |
+| `id`             | uuid    | no   | `gen_random_uuid()` | primary key                                                                            |
+| `store_id`       | uuid    | no   |                     | references `stores (id)`                                                               |
+| `category`       | text    | no   |                     |                                                                                        |
+| `name`           | text    | no   |                     |                                                                                        |
+| `description`    | text    | no   |                     |                                                                                        |
+| `price_paise`    | bigint  | no   |                     | `> 0` (`menu_items_price_paise_check`), `% 100 = 0` (whole rupees); the price in paise |
+| `image_url`      | text    | no   |                     |                                                                                        |
+| `is_available`   | boolean | no   | `true`              |                                                                                        |
+| `is_popular`     | boolean | no   | `false`             |                                                                                        |
+| `sort_order`     | integer | no   | `0`                 |                                                                                        |
+| `stock_quantity` | integer | yes  |                     | `check (stock_quantity >= 0)`; `null` = not tracked                                    |
 
 `stock_quantity` is decremented by `place_order` and restored when an order is cancelled, by what the order's lines
 reserved (`order_items.reserved_quantity`), not by what they ordered.
@@ -392,16 +393,22 @@ It first sets `app.actor` and
 0. With a `p_idempotency_key`: takes `pg_advisory_xact_lock` on a hash of `(user_id, key)` (held until the
    transaction ends, so two simultaneous repeats run one after the other), then returns the id of the order this
    user already placed under that key, if any, without touching stock. The partial unique index is the backstop.
-1. Loops over `p_lines` ordered by `menu_item_id`, so concurrent orders lock rows in the same order. For each line it
-   runs `update menu_items set stock_quantity = stock_quantity - quantity where id = … and stock_quantity >= quantity`.
-2. When no row was updated, it reads the item's `stock_quantity`:
+1. Reads `stores.is_open` for `p_store_id` with `for share` (closing the store waits for this order, or this order
+   sees it closed); a closed or missing store raises `STORE_CLOSED` with detail `{ storeId }`. The API checked this
+   before charging; this settles a store closed in between.
+   Then loops over `p_lines` ordered by `menu_item_id`, so concurrent orders lock rows in the same order. For each
+   line it runs `update menu_items set stock_quantity = stock_quantity - quantity where id = … and stock_quantity >= quantity`.
+2. When no row was updated, it reads the item's `stock_quantity` and `is_available`:
+   - row found with `is_available = false`: raises `ITEM_UNAVAILABLE` with detail `{ menuItemId, name, available: 0 }`
+     (switched off is reported before too little stock, as the API's checks do);
    - row found with `null` stock: the item is not tracked, nothing to reserve;
    - otherwise (too few left, or the item does not exist): raises `INSUFFICIENT_STOCK` with detail
      `{ menuItemId, name, available }`, where `available` is the stock left (0 when the item is missing).
 3. Reads every line's `menu_items` row once (price, name, photo, category), so the total and the lines come from the
-   same versions even if a price changes meanwhile. If any line's `unit_price_paise` is missing or differs from that
-   read's `price_paise`, raises `PRICE_CHANGED` with detail `{ menuItemId, name, price }` (the first such line in cart order;
-   `price` is the current price in rupees), which rolls back the stock reserved in step 1. Otherwise inserts the
+   same versions even if a price changes meanwhile. If any line's item has `is_available = false` (switched off after
+   the API's check), raises `ITEM_UNAVAILABLE` with detail `{ menuItemId, name, available: 0 }` (the first in cart
+   order). If any line's `unit_price_paise` is missing or differs from that read's `price_paise`, raises
+   `PRICE_CHANGED` with detail `{ menuItemId, name, price }` (the first such line in cart order; `price` is the current price in rupees), which rolls back the stock reserved in step 1. Otherwise inserts the
    `orders` row: `total_paise = sum(price_paise * quantity)`, `status = 'PLACED'`,
    `payment_status = p_payment_status`, `estimated_ready_at = now() + stores.prep_time_max_minutes` minutes,
    `idempotency_key = p_idempotency_key`, and the snapshot `store_name = stores.name`.
@@ -420,6 +427,12 @@ winner's row lock, then re-checks and finds too little stock.
 | -------------------- | --------------------------------- |
 | `INSUFFICIENT_STOCK` | `{ menuItemId, name, available }` |
 | `PRICE_CHANGED`      | `{ menuItemId, name, price }`     |
+| `ITEM_UNAVAILABLE`   | `{ menuItemId, name, available }` |
+| `STORE_CLOSED`       | `{ storeId }`                     |
+
+When several apply, the first in this order wins: `STORE_CLOSED`, `ITEM_UNAVAILABLE`, `INSUFFICIENT_STOCK`,
+`PRICE_CHANGED` (the order of the steps above; within the step 2 loop, lines are checked in `menu_item_id` order, so
+an earlier line short of stock is reported before a later line switched off).
 
 ### update_order_status
 

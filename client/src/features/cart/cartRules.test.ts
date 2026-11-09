@@ -7,6 +7,7 @@ import {
   isItemErrorCode,
   isLowStock,
   limitCaption,
+  orderItems,
   lineLimit,
   lineProblem,
   problemLabel,
@@ -178,5 +179,28 @@ describe('isItemErrorCode', () => {
   it('is false for anything else', () => {
     expect(isItemErrorCode('VALIDATION_ERROR')).toBe(false);
     expect(isItemErrorCode('STORE_CLOSED')).toBe(false);
+  });
+});
+
+describe('orderItems', () => {
+  const line = (unitPrice: number): CartLine => ({
+    menuItemId: 'm1',
+    name: 'Cheese Toast',
+    unitPrice,
+    imageUrl: null,
+    quantity: 2,
+    maxQuantity: null,
+  });
+
+  it('sends the price on screen as expectedUnitPrice', () => {
+    expect(orderItems([line(120)])).toEqual([
+      { menuItemId: 'm1', quantity: 2, expectedUnitPrice: 120 },
+    ]);
+  });
+
+  it('omits a price the server would reject (0, fractional, negative) instead of failing every retry', () => {
+    for (const bad of [0, 49.5, -10, Number.NaN]) {
+      expect(orderItems([line(bad)])).toEqual([{ menuItemId: 'm1', quantity: 2 }]);
+    }
   });
 });

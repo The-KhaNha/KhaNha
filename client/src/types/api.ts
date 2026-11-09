@@ -121,7 +121,8 @@ export interface SiteSettings {
 }
 
 export interface CreateOrderInput {
-  items: { menuItemId: string; quantity: number }[];
+  /** `expectedUnitPrice`: the rupee price the cart shows; a different current price is 409 PRICE_CHANGED. */
+  items: { menuItemId: string; quantity: number; expectedUnitPrice?: number }[];
   customerName: string;
   customerPhone?: string;
   note?: string;

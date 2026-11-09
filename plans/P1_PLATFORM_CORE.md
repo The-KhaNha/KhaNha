@@ -718,7 +718,7 @@ ADR-011's Links to this PR (the decision itself is not rewritten). Intent: `--se
 
 ### PR 16 — Money in paise: contract (ADR-004)
 
-- [ ] Merged
+- [x] Merged
 
 Branch `feat/p1-16-paise-contract`, PR target `feat/P1`, before the phase PR into `dev` (user decision of 9 November 2026: nothing reaches production until P8, so no deployed API
 still reads the rupee columns when this migration runs anywhere).

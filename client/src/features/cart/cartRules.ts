@@ -1,4 +1,4 @@
-import type { MenuItem } from '../../types/api';
+import type { CreateOrderInput, MenuItem } from '../../types/api';
 import type { CartLine } from './cartStore';
 
 /** Mirrors the server's per-line cap (server/src/schemas/order.schema.ts). */
@@ -80,4 +80,17 @@ const ITEM_ERROR_CODES: readonly string[] = [
 
 export function isItemErrorCode(code: string): boolean {
   return ITEM_ERROR_CODES.includes(code);
+}
+
+/**
+ * The order's items: each line carries the price on screen, so a price moved since it was added is refused (409
+ * PRICE_CHANGED) instead of charged. A line whose price the server could never accept (0 or fractional, kept in an
+ * old persisted cart) sends none, so it is charged the database price as before, rather than a 400 on every retry.
+ */
+export function orderItems(lines: CartLine[]): CreateOrderInput['items'] {
+  return lines.map(({ menuItemId, quantity, unitPrice }) => ({
+    menuItemId,
+    quantity,
+    ...(Number.isInteger(unitPrice) && unitPrice > 0 ? { expectedUnitPrice: unitPrice } : {}),
+  }));
 }

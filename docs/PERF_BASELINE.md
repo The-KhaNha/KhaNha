@@ -311,6 +311,18 @@ no-cache` and `Vary: Authorization, Origin`; normal `GET` 304 revalidation on `/
   p95 0.48-0.59 ms, against PR 09's 0.355 / 0.469 ms: unchanged, the dropped rupee writes are not measurable. Queries: `selectOrders()` keeps its explicit column
   list, no N+1, no new `select *` on a polled path; no index touched. No regression.
 
+- **2026-11-09 (feat/p1-20-order-integrity @ 3f7ade8, uncommitted)** · P1 PR 20, server plus one optional client field: `place_order` now reads `stores.is_open FOR SHARE`
+  before the stock loop and carries `is_available` through its existing `menu_items` read; `priceLines` compares `expectedUnitPrice` in memory. No bundle/Web Vitals/polling run.
+  `place_order` in the database (300 one-line calls per round, rolled back, 3 rounds, interleaved with the PR 16 body re-created in a rolled-back transaction): PR 16 body
+  p50 0.399-0.419 / p95 0.51-0.68 ms, PR 20 body p50 0.406-0.427 / p95 0.53-0.62 ms, about +0.01 ms (+2-3%, inside noise; PR 16's own row read 0.34-0.37 ms on a quieter
+  machine, so only the same-session pair is comparable). Contention (pgbench, 10 clients x 200 rolled-back orders, same item and store, begin/place_order/rollback): PR 16
+  body 3,573 / 3,239 tps, PR 20 body 3,481 / 3,162 tps (-2.5%); 1 client 546 vs 509 tps (-7%, 0.14 ms per transaction): concurrency scales the same, the share lock does not serialize
+  orders. A store row write (admin/SQL) waits for an open place_order transaction and the reverse (measured 1.15 s against a 1.5 s artificial hold); in real use the hold is the
+  ~0.4 ms transaction. The API never writes `stores`, and `update_order_status` does not touch it, so the staff PATCH path is unaffected. `POST /api/orders` over HTTP (1 line,
+  10 x 201 after 2 warm-ups, per variant): without the field p50 15.2 / p95 20.2 ms, with `expectedUnitPrice` 13.5 / 19.5 ms (PR 16: 19.5 / 26.3 ms; session noise); a stale price is a 409 in 8 ms.
+  Queries: `priceLines` adds no query (pure in-memory loop over the `menu_items` already read); `createOrder` still does getStore, menu_items, `place_order`, `selectOrders`.
+  The 24 test orders were deleted afterwards (0 orders in the DB, as before). No regression.
+
 ## CI numbers
 
 Lighthouse CI (`.github/workflows/perf.yml`, config `client/lighthouserc.json`) runs `/` and `/menu` on the compose

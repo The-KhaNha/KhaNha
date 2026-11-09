@@ -113,14 +113,17 @@ describe('createOrderSchema', () => {
     const result = createOrderSchema.safeParse({
       ...validOrder,
       items: [
-        { menuItemId: 'item-1', quantity: 10 },
-        { menuItemId: 'item-1', quantity: 11 },
+        { menuItemId: 'item-1', quantity: 10, expectedUnitPrice: 120 },
+        { menuItemId: 'item-1', quantity: 11, expectedUnitPrice: 100 },
       ],
     });
     expect(result.success).toBe(true);
     if (result.success) {
-      // 21 > MAX_QUANTITY_PER_ITEM (10): the merged line is what order.service later refuses.
-      expect(result.data.items).toEqual([{ menuItemId: 'item-1', quantity: 21 }]);
+      // 21 > MAX_QUANTITY_PER_ITEM (10): the merged line is what order.service later refuses. Every shown price is
+      // kept, so a stale one on a duplicate line is still compared.
+      expect(result.data.items).toEqual([
+        { menuItemId: 'item-1', quantity: 21, expectedUnitPrices: [120, 100] },
+      ]);
       // The lines limit counts what was sent, before the merge.
       expect(result.data.lineCount).toBe(2);
     }
