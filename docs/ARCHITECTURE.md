@@ -516,7 +516,7 @@ sequenceDiagram
   end
   U->>CO: Pay (name, optional phone, optional note)
   CO->>CO: validate name, phone, note
-  CO->>API: POST /api/orders { items: [{menuItemId, quantity}], customerName, customerPhone, note }
+  CO->>API: POST /api/orders { items: [{menuItemId, quantity, expectedUnitPrice}], customerName, customerPhone, note, idempotencyKey }
   API->>API: requireAuth (3.4)
   API->>API: validate(createOrderSchema)<br/>1-30 lines, quantity ≥ 1 whole number,<br/>duplicate items merged, unknown keys such as price dropped
   API->>Svc: createOrder(user, input)
