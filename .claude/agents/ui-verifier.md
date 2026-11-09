@@ -77,8 +77,9 @@ Demo logins: customer `anishka@example.com / test1234`, staff `staff@campuscafe.
 6. Delete every screenshot, close the browser (`browser_close`), stop the servers you started, and report.
 
 ## Static checks
-- **S1: no `fetch(` outside `client/src/services/api.ts`.**
-  `grep -rn "fetch(" client/src --include='*.ts' --include='*.tsx' | grep -v 'services/api.ts' | grep -v '\.test\.'`
+- **S1: no `fetch(` outside `client/src/services/api.ts`** (and `lib/deviceClockFetch.ts`, the fetch supabase-js
+  is given for its own auth calls, never `/api`).
+  `grep -rn "fetch(" client/src --include='*.ts' --include='*.tsx' | grep -v 'services/api.ts' | grep -v 'lib/deviceClockFetch.ts' | grep -v '\.test\.'`
 - **S2: no `/api` strings outside `client/src/services/`.**
   `grep -rnE "['\"\`]/api" client/src | grep -v 'client/src/services/'`
 - **S3: no inline `<svg>`.** Icons are `lucide-react` named imports; a genuinely custom one belongs in `client/src/components/icons/` (the folder does not exist yet).
