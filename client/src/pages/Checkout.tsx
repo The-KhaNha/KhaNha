@@ -22,6 +22,7 @@ import {
   describeProblems,
   isItemErrorCode,
   lineProblem,
+  orderItems,
   problemLabel,
 } from '../features/cart/cartRules';
 import { selectLines, selectTotal, useCartStore, type CartLine } from '../features/cart/cartStore';
@@ -136,7 +137,9 @@ export function CheckoutPage() {
       const trimmedNote = note.trim();
       // The same key on every retry of this attempt: a lost response can never turn into a second order.
       const order = await createOrder({
-        items: lines.map((line) => ({ menuItemId: line.menuItemId, quantity: line.quantity })),
+        // The price on screen goes with each line (orderItems): a price moved since it was added is refused
+        // (PRICE_CHANGED) instead of charged, and the cart reprices below.
+        items: orderItems(lines),
         customerName: name.trim(),
         ...(trimmedPhone ? { customerPhone: trimmedPhone } : {}),
         ...(trimmedNote ? { note: trimmedNote } : {}),
