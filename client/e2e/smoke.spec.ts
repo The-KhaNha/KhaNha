@@ -848,6 +848,45 @@ for (const form of FORMS) {
   }
 }
 
+// A cart kept from before a price change shows the old price. Pay sends that price, so the server refuses the order
+// (PRICE_CHANGED) instead of charging the new one, and the cart shows the new price before the next Pay.
+test('a stale persisted cart: Pay sends the price it shows, and a refusal shows the new price', async ({
+  page,
+}) => {
+  await signIn(page, 'CUSTOMER');
+  await page.addInitScript(
+    (line) => {
+      localStorage.setItem('fp_cart', JSON.stringify({ state: { lines: [line] }, version: 1 }));
+    },
+    { ...CART_LINE, unitPrice: 100 },
+  );
+  const bodies: unknown[] = [];
+  await page.route('**/api/orders', (route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    bodies.push(route.request().postDataJSON());
+    return route.fulfill({
+      status: 409,
+      json: {
+        error: {
+          code: 'PRICE_CHANGED',
+          message: 'The price of Cold Coffee just changed to ₹120. Please review your order.',
+        },
+      },
+    });
+  });
+  await page.goto('/checkout');
+  await page.getByLabel('Phone', { exact: true }).fill('98765 43210');
+  await page.getByRole('button', { name: /^Pay ₹200/ }).click();
+
+  await expect(page.getByText('The price of Cold Coffee just changed to ₹120.')).toBeVisible();
+  expect(bodies).toEqual([
+    expect.objectContaining({
+      items: [{ menuItemId: 'i1', quantity: 2, expectedUnitPrice: 100 }],
+    }),
+  ]);
+  await expect(page.getByRole('button', { name: /^Pay ₹240/ })).toBeEnabled();
+});
+
 test('the page is described, installable and crawl-safe', async ({ page, request }) => {
   await page.goto('/');
   await expect(page.locator('meta[name="description"]')).toHaveAttribute('content', /campus café/);

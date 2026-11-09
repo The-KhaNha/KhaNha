@@ -295,6 +295,7 @@ on the order success screen. Props: `className?`. Every other icon is a named im
 | `describeProblems(lines)`                   | one sentence per flagged line, joined                                                                      |
 | `limitCaption(maxQuantity)`                 | `"Only N available"` below the cap, else `"Max 10 per order"`                                              |
 | `isItemErrorCode(code)`                     | true for `INSUFFICIENT_STOCK`, `ITEM_UNAVAILABLE`, `ITEM_NOT_FOUND`                                        |
+| `orderItems(lines)`                         | `POST /orders` items; `expectedUnitPrice` only for a positive integer price (an old cart line sends none)  |
 
 **`cartStore.ts`**: `useCartStore` (persisted as `fp_cart`). `CartLine { menuItemId, name, unitPrice, imageUrl,
 quantity, maxQuantity }`, where `maxQuantity` is `null` (no limit) or the units the shop can sell (0 = sold out or

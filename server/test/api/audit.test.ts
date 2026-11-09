@@ -110,6 +110,8 @@ describe('site settings', () => {
 
 describe('orders', () => {
   it('placing writes none; each staff transition writes one row with the staff actor; a repeat writes none', async () => {
+    // Other files' availability edits leave rows for the muffin (append-only), so only rows added here count.
+    const muffinRowsBefore = (await auditForEntity('menu_item', tracked)).length;
     const placedBy = randomUUID();
     const placed = await api()
       .post('/api/orders')
@@ -154,7 +156,7 @@ describe('orders', () => {
     expect(await auditForRequest(cancel)).toMatchObject([
       { entity_type: 'order', changes: { status: ['PREPARING', 'CANCELLED'] } },
     ]);
-    expect(await auditForEntity('menu_item', tracked)).toEqual([]);
+    expect(await auditForEntity('menu_item', tracked)).toHaveLength(muffinRowsBefore);
   });
 });
 

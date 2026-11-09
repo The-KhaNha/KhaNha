@@ -120,11 +120,13 @@ it('the customer list and the staff list read the snapshots too, even after the 
 });
 
 it("stores the menu item's own name, never the name a caller sends in p_lines", async () => {
-  // Any item without a stock count: the tests above rename Cold Coffee, so it is not looked up by name.
+  // Any available item without a stock count: the tests above rename Cold Coffee, so it is not looked up by name.
+  // place_order refuses an unavailable item, and the seed has some.
   const { data: item } = await supabaseAdmin
     .from('menu_items')
     .select('id, store_id, name, price_paise')
     .is('stock_quantity', null)
+    .eq('is_available', true)
     .order('id')
     .limit(1)
     .single()

@@ -181,9 +181,31 @@ export const insufficientStock = (menuItemId: string, name: string, available: n
     { menuItemId, name, available },
   );
 
+/** An item switched off, by the API's check or by place_order's when it was switched off in between. */
+export const itemUnavailable = (menuItemId: string, name: string): AppError =>
+  new AppError(
+    400,
+    'ITEM_UNAVAILABLE',
+    `${name} is currently unavailable. Please remove it from your cart.`,
+    {
+      menuItemId,
+      name,
+      available: 0,
+    },
+  );
+
+/** The store is closed, by the API's check or by place_order's when it closed in between. */
+export const storeClosed = (storeName: string): AppError =>
+  new AppError(
+    400,
+    'STORE_CLOSED',
+    `${storeName} is closed right now. Please come back when it opens.`,
+  );
+
 /**
- * An item's price changed between the API's read (the amount charged) and place_order's, which refuses to store any
- * other price. No `details`: the message names the item and its new price, and the cart reprices on the next menu read.
+ * An item's price is not the one the customer saw (a cart line's `expectedUnitPrice`), or it changed between the API's
+ * read (the amount charged) and place_order's, which refuses to store any other price. No `details`: the message
+ * names the item and its new price, and the cart reprices on the next menu read.
  */
 export const priceChanged = (menuItemId: string, name: string, price: number): AppError =>
   new AppError(

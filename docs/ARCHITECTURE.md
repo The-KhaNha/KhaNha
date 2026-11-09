@@ -470,7 +470,7 @@ flowchart TD
   One -->|"no"| Minus["quantity - 1"]
 ```
 
-Count and total are always derived (`selectCount`, `selectTotal`) and never stored. The prices shown are the ones captured when the item was added. The server re-prices every line from the database at checkout.
+Count and total are always derived (`selectCount`, `selectTotal`) and never stored. The prices shown are the ones captured when the item was added. Checkout sends each line's shown price as `expectedUnitPrice`; the server re-prices every line from the database and refuses the order (409 `PRICE_CHANGED`) when a shown price is no longer the menu's, so a cart older than a price change is never charged a price it did not show.
 
 ### 5.2 A cart line going stale
 
@@ -516,7 +516,7 @@ sequenceDiagram
   end
   U->>CO: Pay (name, optional phone, optional note)
   CO->>CO: validate name, phone, note
-  CO->>API: POST /api/orders { items: [{menuItemId, quantity}], customerName, customerPhone, note }
+  CO->>API: POST /api/orders { items: [{menuItemId, quantity, expectedUnitPrice}], customerName, customerPhone, note, idempotencyKey }
   API->>API: requireAuth (3.4)
   API->>API: validate(createOrderSchema)<br/>1-30 lines, quantity ≥ 1 whole number,<br/>duplicate items merged, unknown keys such as price dropped
   API->>Svc: createOrder(user, input)
@@ -541,6 +541,8 @@ sequenceDiagram
     Svc-->>CO: 400 ITEM_UNAVAILABLE { menuItemId, name, available 0 }
   else quantity > 10
     Svc-->>CO: 400 VALIDATION_ERROR "You can order at most 10 of ..."
+  else expectedUnitPrice ≠ the current price (a cart older than a price change)
+    Svc-->>CO: 409 PRICE_CHANGED (nothing charged)
   end
   Svc->>Svc: totalPaise = Σ price_paise × quantity (prices from the database)
   Svc->>Pay: simulatePayment(totalPaise)
@@ -570,7 +572,9 @@ One function call is one Postgres transaction. Any `raise` rolls back every stoc
 
 ```mermaid
 flowchart TD
-  Start(["place_order(p_user_id, p_store_id, p_customer_name,<br/>p_payment_status, p_lines, p_customer_phone, p_note)"]) --> Loop["For each line, ordered by menu_item_id<br/>(same lock order for concurrent orders, avoiding deadlocks)"]
+  Start(["place_order(p_user_id, p_store_id, p_customer_name,<br/>p_payment_status, p_lines, p_customer_phone, p_note)"]) --> Open{"stores.is_open, read FOR SHARE?"}
+  Open -->|"no"| RaiseClosed["RAISE 'STORE_CLOSED'<br/>detail = { storeId }"]
+  Open -->|"yes"| Loop["For each line, ordered by menu_item_id<br/>(same lock order for concurrent orders, avoiding deadlocks)"]
   Loop --> Dec["UPDATE menu_items SET stock_quantity = stock_quantity - qty<br/>WHERE id = line AND stock_quantity ≥ qty"]
   Dec --> Found{"Row updated?"}
   Found -->|"yes"| Next{"More lines?"}
@@ -580,7 +584,9 @@ flowchart TD
   Why -->|"no: too few left, or item gone"| Raise["RAISE 'INSUFFICIENT_STOCK'<br/>detail = { menuItemId, name, available }<br/>→ whole transaction rolled back"]
   Next -->|"yes"| Loop
   Next -->|"no"| Read["read each line's menu_items row once (its price_paise, never p_lines')"]
-  Read --> Same{"Every line sent a unit_price_paise<br/>equal to that price_paise?"}
+  Read --> Avail{"Every line's item is_available?"}
+  Avail -->|"no: switched off after the API's check"| RaiseOff["RAISE 'ITEM_UNAVAILABLE'<br/>detail = { menuItemId, name, available: 0 }<br/>→ whole transaction rolled back"]
+  Avail -->|"yes"| Same{"Every line sent a unit_price_paise<br/>equal to that price_paise?"}
   Same -->|"no, or one missing"| RaisePrice["RAISE 'PRICE_CHANGED'<br/>detail = { menuItemId, name, price }<br/>→ whole transaction rolled back"]
   Same -->|"yes"| InsOrder["INSERT orders: store_name snapshot,<br/>total_paise = Σ price_paise × quantity,<br/>status PLACED, payment status,<br/>estimated_ready_at = now() + store.prep_time_max_minutes,<br/>order_number from identity (starts at 1001)"]
   InsOrder --> InsItems["INSERT order_items with line_number = cart position,<br/>snapshot name + unit_price_paise + image_url + category,<br/>line_total_paise"]
@@ -1026,7 +1032,7 @@ erDiagram
     text category
     text name
     text description
-    bigint price_paise "whole rupees in paise, at least 0"
+    bigint price_paise "whole rupees in paise, more than 0"
     text image_url
     boolean is_available
     boolean is_popular
