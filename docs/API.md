@@ -149,7 +149,7 @@ ones worth seeing. `clientErrorLimiter` counts requests per address (`RATE_LIMIT
 | `at`      | ISO 8601 date-time with `Z` or an offset: when it happened                                                                      |
 
 Both objects are strict: an unknown field is 400 `VALIDATION_ERROR`, as is a sixth report or a bound exceeded.
-Anything shaped like a JWT (also one cut short), an `sb_…` key, a `Bearer` value, a token, code or password in a URL parameter (`refresh_token=…`, also with the `=` encoded as `%3D`), an email address (also `%40`- or `%2B`-encoded, or with an apostrophe) or a phone number (10 to 15 digits, with spaces, dashes, dots or parentheses) in `message`, `stack` or `route` becomes `[Redacted]` before it is
+Anything shaped like a JWT (also one cut short), an `sb_…` key, a `Bearer` value, a token, code or password in a URL parameter (`refresh_token=…`, also with the `=` encoded as `%3D`), an email address (also `%40`- or `%2B`-encoded, or with an apostrophe) or a phone number (10 to 15 digits, with up to three spaces, dashes, dots, slashes or parentheses between each two) in `message`, `stack` or `route` becomes `[Redacted]` before it is
 logged. Answers 204 with no body; each report is one `warn` `Client error` log line ([LOGGING.md](LOGGING.md#client-error-reports)).
 Five reports at their bounds fit a `keepalive` request's 64 KB.
 

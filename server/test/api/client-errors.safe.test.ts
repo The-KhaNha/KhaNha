@@ -273,3 +273,69 @@ describe('clientErrorLimiter', () => {
     }
   });
 });
+
+// A query string can carry PII or a token; every line a request writes (the access line, a refused request's line)
+// must carry its path only. Logged after the response ends, so the test waits for the line to appear.
+describe('request logs', () => {
+  it.each([
+    ['an accepted request', 'post', '/api/client-errors', 204],
+    ['a refused request', 'post', '/api/client-errors', 400],
+    ['an unknown route', 'get', '/api/no-such-route', 404],
+  ] as const)('log %s with its path and no query', async (_label, method, path, status) => {
+    app.lines.length = 0;
+    const query = '?email=a@b.co&token=abc123secret&phone=9876543210#frag';
+    const res = await request(app.server)
+      [method](`${path}${query}`)
+      .set('X-Client-Version', '9.1.0')
+      .send(status === 400 ? {} : { reports: [report()] });
+    expect(res.status).toBe(status);
+    await vi.waitFor(() => expect(app.lines.some((line) => line.req)).toBe(true));
+    const written = JSON.stringify(app.lines);
+    for (const leak of ['?', 'a@b.co', 'abc123secret', '9876543210', 'frag']) {
+      expect(written).not.toContain(leak);
+    }
+    expect(app.lines.find((line) => line.req)).toMatchObject({ req: { url: path } });
+  });
+});
+
+// pathOnly drops the query and cuts the url; everything else the standard serializer writes must survive, with the
+// headers still redacted by REDACT_PATHS.
+describe('request log serializer', () => {
+  const accessLine = async () => {
+    await vi.waitFor(() => expect(app.lines.some((line) => line.req)).toBe(true));
+    return app.lines.find((line) => line.req)?.req as Record<string, unknown>;
+  };
+
+  it('keeps method, id, headers and remote address, and redacts authorization and cookie', async () => {
+    app.lines.length = 0;
+    await request(app.server)
+      .get('/api/no-such-route?token=abc123secret')
+      .set('Authorization', 'Bearer not-a-real-token')
+      .set('Cookie', 'sid=cookie-secret')
+      .set('X-Client-Version', '9.1.0');
+    const req = await accessLine();
+    expect(req).toMatchObject({
+      method: 'GET',
+      url: '/api/no-such-route',
+      remoteAddress: '127.0.0.1',
+    });
+    expect(req.id).toBeDefined();
+    expect(req).not.toHaveProperty('query');
+    expect(req.headers).toMatchObject({
+      authorization: '[Redacted]',
+      cookie: '[Redacted]',
+      'x-client-version': '9.1.0',
+    });
+    expect(JSON.stringify(req)).not.toMatch(/not-a-real-token|cookie-secret|abc123secret/);
+  });
+
+  it.each([
+    ['only a hash', '/api/no-such-route#frag'],
+    ['an empty query', '/api/no-such-route?'],
+    ['an empty query and hash', '/api/no-such-route?#'],
+  ])('cuts %s from the logged url', async (_label, url) => {
+    app.lines.length = 0;
+    await request(app.server).get(url);
+    expect((await accessLine()).url).toBe('/api/no-such-route');
+  });
+});

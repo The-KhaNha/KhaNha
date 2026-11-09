@@ -78,3 +78,44 @@ describe('clientErrorsSchema scrub: encoded and unusual shapes', () => {
     expect(clientErrorsSchema.parse(batch(text)).reports[0]?.message).toBe(text);
   });
 });
+
+// Phone numbers written with wider separators slipped past the first pattern (up to two of space, dash, dot or
+// parenthesis). Ordinary short numbers in an error message must survive: they are what makes a report readable.
+describe('clientErrorsSchema scrub: phone numbers', () => {
+  it.each([
+    ['spaced dashes', '+91 - 98765 - 43210', '43210'],
+    ['a slash', '98765/43210', '43210'],
+    ['brackets and a dash', '(987) 654-3210', '3210'],
+    ['a space', '98765 43210', '43210'],
+    ['dots', '+91.98765.43210', '43210'],
+  ])('redacts a phone with %s', (_label, phone, leak) => {
+    const [parsed] = clientErrorsSchema.parse(batch(`call ${phone} failed`)).reports;
+    expect(JSON.stringify(parsed)).not.toContain(leak);
+    expect(parsed?.message).toBe('call [Redacted] failed');
+  });
+
+  it.each([
+    ['an order number', 'Order #1002 not found'],
+    ['a price', 'Total ₹270 does not match'],
+    ['a time', 'Pickup at 12:30 is closed'],
+    ['an ISO date', 'No slots on 2026-11-09'],
+    ['an ISO timestamp', 'Stale at 2026-11-09T12:30:00.000Z'],
+    ['a quantity and a stack position', 'Only 3 left at checkout.js:120:7'],
+  ])('leaves %s alone', (_label, text) => {
+    expect(clientErrorsSchema.parse(batch(text)).reports[0]?.message).toBe(text);
+  });
+
+  it.each([
+    ['digits split by three separators', '1 - '.repeat(875)],
+    ['nine-digit runs that never reach ten', `${'1/'.repeat(9)}x`.repeat(175)],
+    ['separators with no digits', '( -/'.repeat(875)],
+  ])('parses a worst-case batch (%s) in linear time', (_label, text) => {
+    let best = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < 3; i++) {
+      const start = performance.now();
+      clientErrorsSchema.parse(batch(text));
+      best = Math.min(best, performance.now() - start);
+    }
+    expect(best).toBeLessThan(50);
+  });
+});

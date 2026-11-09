@@ -21,7 +21,7 @@ const seen = new WeakMap<object, ClientErrorReport>();
 // may be URL-encoded (`refresh_token%3D…`), and an email's local part may hold `%` or `'`, which still end a run: an
 // encoded email deep in an encoded URL starts after the last `%`.
 const SECRET =
-  /[?#][^\s"')]*|\b[\w.-]{0,64}(?:password|token|email|phone|key|secret|signature|checksum|vpa|code|authorization|cookie)[\w.-]{0,64}["'\]]*\s*(?:[:=]|%3D)[^\r\n]*|(^|[^\w-])eyJ[\w-]+(?:\.[\w-]*){0,2}|sb_[a-z]+_[\w-]+|\bBearer\s+[\w.~+/=-]+|(^|[^\w.+-])[\w.+%'-]{1,64}(?:@|%40)[\w-]{1,63}(?:\.[\w-]{1,63}){1,8}|\+?\(?\d(?:[\s.()-]{0,2}\d){9,14}/gi;
+  /[?#][^\s"')]*|\b[\w.-]{0,64}(?:password|token|email|phone|key|secret|signature|checksum|vpa|code|authorization|cookie)[\w.-]{0,64}["'\]]*\s*(?:[:=]|%3D)[^\r\n]*|(^|[^\w-])eyJ[\w-]+(?:\.[\w-]*){0,2}|sb_[a-z]+_[\w-]+|\bBearer\s+[\w.~+/=-]+|(^|[^\w.+-])[\w.+%'-]{1,64}(?:@|%40)[\w-]{1,63}(?:\.[\w-]{1,63}){1,8}|\+?\(?\d(?:[\s.()/-]{0,3}\d){9,14}/gi;
 const scrub = (text: string) =>
   text
     .slice(0, 8000)

@@ -21,7 +21,8 @@ const ROUTE_INPUT_MAX = 4000;
 //   the head of a run (lookbehind), and its parts are bounded (RFC 5321), so a long run cannot make the scan quadratic.
 //   A `%` or `'` may sit inside the local part but still starts a new run: an encoded email at the end of an encoded
 //   URL follows far more than 64 joined characters, and only a start after a `%` reaches it;
-// - a phone number: 10 to 15 digits with spaces, dashes, dots or parentheses between them (an epoch timestamp too).
+// - a phone number: 10 to 15 digits with up to three spaces, dashes, dots, slashes or parentheses between each two
+//   (`+91 - 98765 - 43210`, `98765/43210`; an epoch timestamp too). A date, a time or an order number has under 10.
 const SECRET_SHAPED = new RegExp(
   [
     String.raw`(?<![\w-])eyJ[\w-]+(?:\.[\w-]*){0,2}`,
@@ -29,7 +30,7 @@ const SECRET_SHAPED = new RegExp(
     String.raw`\bBearer\s+[\w.~+/=-]+`,
     String.raw`(?:access_token|refresh_token|provider_token|provider_refresh_token|token|code|password)(?:=|%3D)[^&\s#"']+`,
     String.raw`(?<![\w.+-])[\w.+%'-]{1,64}(?:@|%40)[\w-]{1,63}(?:\.[\w-]{1,63}){1,8}`,
-    String.raw`\+?\(?\d(?:[\s.()-]{0,2}\d){9,14}`,
+    String.raw`\+?\(?\d(?:[\s.()/-]{0,3}\d){9,14}`,
   ].join('|'),
   'gi',
 );
