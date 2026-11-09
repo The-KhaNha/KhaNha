@@ -42,7 +42,6 @@ function menuItem(overrides: Partial<Tables<'menu_items'>> = {}): Tables<'menu_i
     category: 'Coffee',
     name: 'Cold Coffee',
     description: 'Creamy chilled coffee',
-    price: 120,
     price_paise: 12000,
     image_url: '/images/cold-coffee.jpg',
     is_available: true,

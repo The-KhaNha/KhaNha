@@ -8,8 +8,7 @@ The Postgres schema in the Supabase project, from `server/supabase/migrations/`.
 - Money is paise in `bigint` columns named `…_paise` ([ADR-004](adr/004-rupees-and-paise.md)); the API sends whole
   rupees, converted only by `server/src/utils/money.ts`. While a rupee API field exists for a column, its paise column
   has a `check (… % 100 = 0)`, so the rupee field never rounds. The old whole-rupee `integer` columns (`price`,
-  `total`, `unit_price`, `line_total`) are still written, for the API deployed before the move, and are dropped by
-  the contract migration (P1 PR 16); nothing in the current API reads them.
+  `total`, `unit_price`, `line_total`) were dropped by `20261109094725_money_paise_contract.sql` (P1 PR 16).
 - Every table is in the `public` schema. `profiles.id` references Supabase's `auth.users`.
 - Extensions: `pgmq` (queues, in its own `pgmq` schema) and `pg_cron` (schedules, in `cron`), both from
   `20261024181904_outbox.sql`. How the queues and schedules are used: [JOBS.md](JOBS.md).
@@ -38,6 +37,7 @@ a new file (see [DEPLOYMENT.md](DEPLOYMENT.md#schema-changes)).
 | `20261102183832_money_paise.sql`                   | adds `menu_items.price_paise`, `orders.total_paise`, `order_items.unit_price_paise` and `line_total_paise` (`bigint`, backfilled ×100 without touching `orders.updated_at`, `not null`, `>= 0`, whole rupees); `place_order` (same signature) prices every line from `menu_items.price_paise`, refuses a line whose `unit_price_paise` is no longer the price (`PRICE_CHANGED`) and writes both units; `menu_items_audit` also watches `price_paise`; `menu_items_sync_price` keeps `price` and `price_paise` in step until PR 16 |
 | `20261103172932_reserved_stock_on_order_items.sql` | adds `order_items.reserved_quantity` (`check (reserved_quantity in (0, quantity))`), set to `quantity` for orders still `PLACED`, `PREPARING` or `READY`; `place_order` (same signature) records what each line reserved, by line number; `update_order_status` (same signature) gives back the sum of `reserved_quantity`, not of `quantity`                                                                                                                                                                                     |
 | `20261103173300_profile_name_bounds.sql`           | adds `profile_name(text, text)` and `profile_phone(text)`; `handle_new_user` (same signature) passes the Auth metadata through them; cleans legacy rows, then adds the checks `profiles_name_length` and `profiles_phone_format`                                                                                                                                                                                                                                                                                                  |
+| `20261109094725_money_paise_contract.sql`          | drops `menu_items.price`, `orders.total`, `order_items.unit_price` and `line_total`, and the `menu_items_sync_price` trigger and function first; `place_order` (same signature) stops writing the rupee columns; `menu_items_audit` watches `price_paise` and no longer `price`                                                                                                                                                                                                                                                   |
 
 ## Enums
 
@@ -89,25 +89,19 @@ V0 has exactly one row, created by `npm run seed`.
 
 ### menu_items
 
-| Column           | Type    | Null | Default             | Constraints                                                                                                              |
-| ---------------- | ------- | ---- | ------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `id`             | uuid    | no   | `gen_random_uuid()` | primary key                                                                                                              |
-| `store_id`       | uuid    | no   |                     | references `stores (id)`                                                                                                 |
-| `category`       | text    | no   |                     |                                                                                                                          |
-| `name`           | text    | no   |                     |                                                                                                                          |
-| `description`    | text    | no   |                     |                                                                                                                          |
-| `price`          | integer | no   |                     | `check (price >= 0)`; whole rupees; until PR 16                                                                          |
-| `price_paise`    | bigint  | no   |                     | `>= 0`, `% 100 = 0` (whole rupees); the price in paise, kept in step with `price` by `menu_items_sync_price` until PR 16 |
-| `image_url`      | text    | no   |                     |                                                                                                                          |
-| `is_available`   | boolean | no   | `true`              |                                                                                                                          |
-| `is_popular`     | boolean | no   | `false`             |                                                                                                                          |
-| `sort_order`     | integer | no   | `0`                 |                                                                                                                          |
-| `stock_quantity` | integer | yes  |                     | `check (stock_quantity >= 0)`; `null` = not tracked                                                                      |
-
-Until PR 16 drops `price`, the `menu_items_sync_price` trigger keeps the two price columns in step: a write that sets
-only one (an insert with the other null, or an update that changes one) derives the other (`price_paise = price *
-100`, `price = price_paise / 100`); a write that changes both to values that disagree is refused. An update counts a
-column as written when its value changes.
+| Column           | Type    | Null | Default             | Constraints                                            |
+| ---------------- | ------- | ---- | ------------------- | ------------------------------------------------------ |
+| `id`             | uuid    | no   | `gen_random_uuid()` | primary key                                            |
+| `store_id`       | uuid    | no   |                     | references `stores (id)`                               |
+| `category`       | text    | no   |                     |                                                        |
+| `name`           | text    | no   |                     |                                                        |
+| `description`    | text    | no   |                     |                                                        |
+| `price_paise`    | bigint  | no   |                     | `>= 0`, `% 100 = 0` (whole rupees); the price in paise |
+| `image_url`      | text    | no   |                     |                                                        |
+| `is_available`   | boolean | no   | `true`              |                                                        |
+| `is_popular`     | boolean | no   | `false`             |                                                        |
+| `sort_order`     | integer | no   | `0`                 |                                                        |
+| `stock_quantity` | integer | yes  |                     | `check (stock_quantity >= 0)`; `null` = not tracked    |
 
 `stock_quantity` is decremented by `place_order` and restored when an order is cancelled, by what the order's lines
 reserved (`order_items.reserved_quantity`), not by what they ordered.
@@ -124,7 +118,6 @@ reserved (`order_items.reserved_quantity`), not by what they ordered.
 | `customer_name`      | text             | no   |                     |                                                                                            |
 | `customer_phone`     | text             | yes  |                     |                                                                                            |
 | `note`               | text             | yes  |                     |                                                                                            |
-| `total`              | integer          | no   |                     | `total_paise / 100`; until PR 16                                                           |
 | `total_paise`        | bigint           | no   |                     | computed in `place_order`; `>= 0`, `% 100 = 0`                                             |
 | `payment_status`     | `payment_status` | no   | `PENDING`           |                                                                                            |
 | `status`             | `order_status`   | no   | `PLACED`            |                                                                                            |
@@ -142,10 +135,8 @@ reserved (`order_items.reserved_quantity`), not by what they ordered.
 | `line_number`       | integer | no   |                     | position in the cart; `unique (order_id, line_number)`                                                                                                                                                                                                                                                                |
 | `menu_item_id`      | uuid    | no   |                     | references `menu_items (id)`                                                                                                                                                                                                                                                                                          |
 | `name`              | text    | no   |                     | snapshot at order time                                                                                                                                                                                                                                                                                                |
-| `unit_price`        | integer | no   |                     | `unit_price_paise / 100`; until PR 16                                                                                                                                                                                                                                                                                 |
 | `unit_price_paise`  | bigint  | no   |                     | snapshot of `menu_items.price_paise`; `>= 0`, `% 100 = 0`                                                                                                                                                                                                                                                             |
 | `quantity`          | integer | no   |                     | `check (quantity > 0)`                                                                                                                                                                                                                                                                                                |
-| `line_total`        | integer | no   |                     | `line_total_paise / 100`; until PR 16                                                                                                                                                                                                                                                                                 |
 | `line_total_paise`  | bigint  | no   |                     | `unit_price_paise * quantity`; `>= 0`, `% 100 = 0`                                                                                                                                                                                                                                                                    |
 | `image_url`         | text    | no   |                     | snapshot of `menu_items.image_url` at order time                                                                                                                                                                                                                                                                      |
 | `category`          | text    | no   |                     | snapshot at order time; for analytics (P7.1), not sent                                                                                                                                                                                                                                                                |
@@ -295,21 +286,20 @@ write for one small nightly scan.
 
 ## Triggers
 
-| Trigger                        | On                                                                                                                                         | Function                                                 |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------- |
-| `orders_set_updated_at`        | before update on `orders`, each row                                                                                                        | `set_updated_at()`                                       |
-| `site_settings_set_updated_at` | before update on `site_settings`, each row                                                                                                 | `set_updated_at()`                                       |
-| `feature_flags_set_updated_at` | before update on `feature_flags`, each row                                                                                                 | `set_updated_at()`                                       |
-| `on_auth_user_created`         | after insert on `auth.users`                                                                                                               | `handle_new_user()`                                      |
-| `on_auth_user_email_changed`   | after update of `email` on `auth.users`, when the email changed                                                                            | `handle_user_email_change()`                             |
-| `site_settings_audit`          | after update on `site_settings`, each row                                                                                                  | `audit_row_change('site_settings.changed', '*')`         |
-| `orders_audit`                 | after update of `status` on `orders`, each row                                                                                             | `audit_row_change('order.status_changed', 'status')`     |
-| `profiles_audit`               | after update of `role` on `profiles`, each row                                                                                             | `audit_row_change('profile.role_changed', 'role')`       |
-| `menu_items_sync_price`        | before insert or update of `price`, `price_paise` on `menu_items`, each row; dropped by PR 16                                              | `menu_items_sync_price()`                                |
-| `menu_items_audit`             | after update of `name`, `price`, `price_paise`, `is_available`, `image_url`, `category` on `menu_items`, each row (never `stock_quantity`) | `audit_row_change('menu_item.changed', <those columns>)` |
-| `feature_flags_audit`          | after update on `feature_flags`, each row                                                                                                  | `audit_row_change('feature_flag.changed', '*')`          |
-| `audit_log_no_change`          | before update or delete on `audit_log`, each row                                                                                           | `audit_log_append_only()`                                |
-| `audit_log_no_truncate`        | before truncate on `audit_log`, each statement                                                                                             | `audit_log_append_only()`                                |
+| Trigger                        | On                                                                                                                                | Function                                                 |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `orders_set_updated_at`        | before update on `orders`, each row                                                                                               | `set_updated_at()`                                       |
+| `site_settings_set_updated_at` | before update on `site_settings`, each row                                                                                        | `set_updated_at()`                                       |
+| `feature_flags_set_updated_at` | before update on `feature_flags`, each row                                                                                        | `set_updated_at()`                                       |
+| `on_auth_user_created`         | after insert on `auth.users`                                                                                                      | `handle_new_user()`                                      |
+| `on_auth_user_email_changed`   | after update of `email` on `auth.users`, when the email changed                                                                   | `handle_user_email_change()`                             |
+| `site_settings_audit`          | after update on `site_settings`, each row                                                                                         | `audit_row_change('site_settings.changed', '*')`         |
+| `orders_audit`                 | after update of `status` on `orders`, each row                                                                                    | `audit_row_change('order.status_changed', 'status')`     |
+| `profiles_audit`               | after update of `role` on `profiles`, each row                                                                                    | `audit_row_change('profile.role_changed', 'role')`       |
+| `menu_items_audit`             | after update of `name`, `price_paise`, `is_available`, `image_url`, `category` on `menu_items`, each row (never `stock_quantity`) | `audit_row_change('menu_item.changed', <those columns>)` |
+| `feature_flags_audit`          | after update on `feature_flags`, each row                                                                                         | `audit_row_change('feature_flag.changed', '*')`          |
+| `audit_log_no_change`          | before update or delete on `audit_log`, each row                                                                                  | `audit_log_append_only()`                                |
+| `audit_log_no_truncate`        | before truncate on `audit_log`, each statement                                                                                    | `audit_log_append_only()`                                |
 
 ## Functions
 
@@ -336,7 +326,6 @@ object (SQLSTATE `P0001`). How the API maps them is in [API.md](API.md#database-
 | `purge_domain_events(...)`   | sql      | invoker  | integer | pg_cron `purge-domain-events`                                                           | `service_role`       |
 | `audit_row_change()`         | plpgsql  | definer  | trigger | the five `*_audit` triggers                                                             | nobody               |
 | `audit_log_append_only()`    | plpgsql  | invoker  | trigger | `audit_log_no_change`, `_no_truncate`                                                   | nobody               |
-| `menu_items_sync_price()`    | plpgsql  | invoker  | trigger | `menu_items_sync_price`                                                                 | nobody               |
 
 ### set_updated_at
 
@@ -395,8 +384,8 @@ place_order(
 The API has already checked every line and charged for it. The function prices them itself, from
 `menu_items.price_paise`, and each line's `unit_price_paise` is the price the API charged: a line whose price has
 changed since refuses the order (step 3), so nothing is stored at a price other than the one charged. A line without
-`unit_price_paise` (the API deployed before the paise move sends rupees in `unit_price`) is not checked, and its
-`unit_price` is ignored.
+`unit_price_paise` is refused the same way (PR 09 let it through for the pre-paise API, which no longer runs), and any
+other key in a line (a rupee `unit_price`) is ignored.
 It first sets `app.actor` and
 `app.request_id` for the transaction (`set_config(..., true)`; PR 06's audit trigger reads them). Then:
 
@@ -410,15 +399,15 @@ It first sets `app.actor` and
    - otherwise (too few left, or the item does not exist): raises `INSUFFICIENT_STOCK` with detail
      `{ menuItemId, name, available }`, where `available` is the stock left (0 when the item is missing).
 3. Reads every line's `menu_items` row once (price, name, photo, category), so the total and the lines come from the
-   same versions even if a price changes meanwhile. If any line's `unit_price_paise` differs from that read's
-   `price_paise`, raises `PRICE_CHANGED` with detail `{ menuItemId, name, price }` (the first such line in cart order;
+   same versions even if a price changes meanwhile. If any line's `unit_price_paise` is missing or differs from that
+   read's `price_paise`, raises `PRICE_CHANGED` with detail `{ menuItemId, name, price }` (the first such line in cart order;
    `price` is the current price in rupees), which rolls back the stock reserved in step 1. Otherwise inserts the
-   `orders` row: `total_paise = sum(price_paise * quantity)` (and `total = total_paise / 100`), `status = 'PLACED'`,
+   `orders` row: `total_paise = sum(price_paise * quantity)`, `status = 'PLACED'`,
    `payment_status = p_payment_status`, `estimated_ready_at = now() + stores.prep_time_max_minutes` minutes,
    `idempotency_key = p_idempotency_key`, and the snapshot `store_name = stores.name`.
 4. Inserts one `order_items` row per line with `line_number` = the line's position in `p_lines` (1-based),
-   `unit_price_paise = price_paise`, `line_total_paise = unit_price_paise * quantity` (and the rupee columns, each
-   paise value / 100), and the snapshots `name`, `image_url` and `category`, all from that read. `reserved_quantity` is
+   `unit_price_paise = price_paise`, `line_total_paise = unit_price_paise * quantity`, and the snapshots `name`,
+   `image_url` and `category`, all from that read. `reserved_quantity` is
    `quantity` for a line whose decrement in step 1 succeeded and `0` for an untracked item. It is decided in the
    step 1 loop, where tracked rows are locked, so an item that becomes tracked in between is not counted.
 5. Calls `emit_event('order.placed', 'order', id, store_id, { orderNumber }, p_actor, p_request_id)`. An idempotent
@@ -560,7 +549,7 @@ never read (a later SQL edit would carry the last admin's id).
   not need its own `revoke`/`grant` for functions — it adds no new function — but still revokes table privileges for
   `site_settings` explicitly, matching every other table.
 - `EXECUTE` on every function is revoked from `public`, `anon` and `authenticated`, then granted to `service_role`
-  for all but the six trigger functions.
+  for all but the five trigger functions.
 - `anon` and `authenticated` have no `USAGE` on the `pgmq` or `cron` schema, and neither schema is exposed through
   the Data API (`api.schemas` in `server/supabase/config.toml`).
 - `server/test/api/database-lockdown.test.ts` checks all of the above from the catalogs, for every table and function,

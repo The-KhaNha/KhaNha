@@ -220,7 +220,6 @@ export type Database = {
           is_available: boolean;
           is_popular: boolean;
           name: string;
-          price: number;
           price_paise: number;
           sort_order: number;
           stock_quantity: number | null;
@@ -234,7 +233,6 @@ export type Database = {
           is_available?: boolean;
           is_popular?: boolean;
           name: string;
-          price: number;
           price_paise: number;
           sort_order?: number;
           stock_quantity?: number | null;
@@ -248,7 +246,6 @@ export type Database = {
           is_available?: boolean;
           is_popular?: boolean;
           name?: string;
-          price?: number;
           price_paise?: number;
           sort_order?: number;
           stock_quantity?: number | null;
@@ -270,14 +267,12 @@ export type Database = {
           id: string;
           image_url: string;
           line_number: number;
-          line_total: number;
           line_total_paise: number;
           menu_item_id: string;
           name: string;
           order_id: string;
           quantity: number;
           reserved_quantity: number;
-          unit_price: number;
           unit_price_paise: number;
         };
         Insert: {
@@ -285,14 +280,12 @@ export type Database = {
           id?: string;
           image_url: string;
           line_number: number;
-          line_total: number;
           line_total_paise: number;
           menu_item_id: string;
           name: string;
           order_id: string;
           quantity: number;
           reserved_quantity: number;
-          unit_price: number;
           unit_price_paise: number;
         };
         Update: {
@@ -300,14 +293,12 @@ export type Database = {
           id?: string;
           image_url?: string;
           line_number?: number;
-          line_total?: number;
           line_total_paise?: number;
           menu_item_id?: string;
           name?: string;
           order_id?: string;
           quantity?: number;
           reserved_quantity?: number;
-          unit_price?: number;
           unit_price_paise?: number;
         };
         Relationships: [
@@ -341,7 +332,6 @@ export type Database = {
           status: Database['public']['Enums']['order_status'];
           store_id: string;
           store_name: string;
-          total: number;
           total_paise: number;
           updated_at: string;
           user_id: string;
@@ -359,7 +349,6 @@ export type Database = {
           status?: Database['public']['Enums']['order_status'];
           store_id: string;
           store_name: string;
-          total: number;
           total_paise: number;
           updated_at?: string;
           user_id: string;
@@ -377,7 +366,6 @@ export type Database = {
           status?: Database['public']['Enums']['order_status'];
           store_id?: string;
           store_name?: string;
-          total?: number;
           total_paise?: number;
           updated_at?: string;
           user_id?: string;

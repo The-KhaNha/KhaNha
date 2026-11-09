@@ -300,6 +300,17 @@ no-cache` and `Vary: Authorization, Origin`; normal `GET` 304 revalidation on `/
   1432 ms, `/menu` LCP 1536 → 1552 ms, CLS 0 / 0.0001 both, `/menu` INP 48 → 48 ms. Details:
   [Browser error reporting](#web-vitals-ab-2026-11-03-0040f5d-against-its-base-572a359).
 
+- **2026-11-09 (feat/p1-16-paise-contract @ eef97d9, uncommitted)** · P1 PR 16, server-only: migration drops `menu_items.price`, `orders.total`,
+  `order_items.unit_price/line_total` and the `menu_items_sync_price` trigger; `place_order` re-created without the rupee writes. Client and response shape
+  untouched, so no bundle/Web Vitals/polling run. Local API, curl, 30 requests after 2 warm-ups, 30 orders in the DB (all placed by this run, left in place).
+  `GET /api/menu` p50 0.9 / p95 1.1 ms, 4,416 B (same bytes as PR 09); `GET /api/store` 0.9 / 1.1 ms; `GET /api/orders` customer (20 orders) 8.4 / 11.6 ms,
+  13,276 B; `GET /api/orders/:id` 7.6 / 8.6 ms, 788 B; staff `GET /api/orders` 8.2 / 9.2 ms, 19,136 B (limit 100, 30 orders); `?status=PLACED` 8.6 / 11.4 ms.
+  The DB held 0 orders before this run, so the order-list rows are not like-for-like with PR 09's (132 orders); per order they cost less than before. `POST /api/orders`
+  (1 line, 20 x 201) p50 19.5 / p95 26.3 ms over HTTP (PR 09 14.4 / 17.2, PR 08 18.5 / 26.0: run-to-run session noise on a ~15-20 ms request; the 10-line batch hit the
+  order rate limiter, 12 x 429, and is not reported). `place_order` in the database (300 one-line calls per round, rolled back, 3 rounds): p50 0.359 / 0.342 / 0.371 ms,
+  p95 0.48-0.59 ms, against PR 09's 0.355 / 0.469 ms: unchanged, the dropped rupee writes are not measurable. Queries: `selectOrders()` keeps its explicit column
+  list, no N+1, no new `select *` on a polled path; no index touched. No regression.
+
 ## CI numbers
 
 Lighthouse CI (`.github/workflows/perf.yml`, config `client/lighthouserc.json`) runs `/` and `/menu` on the compose

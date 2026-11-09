@@ -41,7 +41,6 @@ it('an order reads the same after its item and store are edited (P1.5 snapshots)
     .from('menu_items')
     .update({
       name: 'Renamed',
-      price: 999,
       price_paise: 99900,
       image_url: '/images/elsewhere.jpg',
       category: 'Moved',
@@ -99,7 +98,6 @@ it('the customer list and the staff list read the snapshots too, even after the 
       .from('menu_items')
       .update({
         name: 'Gone',
-        price: 1,
         price_paise: 100,
         image_url: '/images/gone.jpg',
         is_available: false,
@@ -125,7 +123,7 @@ it("stores the menu item's own name, never the name a caller sends in p_lines", 
   // Any item without a stock count: the tests above rename Cold Coffee, so it is not looked up by name.
   const { data: item } = await supabaseAdmin
     .from('menu_items')
-    .select('id, store_id, name, price')
+    .select('id, store_id, name, price_paise')
     .is('stock_quantity', null)
     .order('id')
     .limit(1)
@@ -137,7 +135,14 @@ it("stores the menu item's own name, never the name a caller sends in p_lines", 
       p_store_id: item.store_id,
       p_customer_name: 'Snapshot Test',
       p_payment_status: 'PAID',
-      p_lines: [{ menu_item_id: item.id, name: 'Tampered', unit_price: item.price, quantity: 1 }],
+      p_lines: [
+        {
+          menu_item_id: item.id,
+          name: 'Tampered',
+          quantity: 1,
+          unit_price_paise: item.price_paise,
+        },
+      ],
     })
     .throwOnError();
   const { data: lines } = await supabaseAdmin

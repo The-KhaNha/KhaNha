@@ -580,10 +580,10 @@ flowchart TD
   Why -->|"no: too few left, or item gone"| Raise["RAISE 'INSUFFICIENT_STOCK'<br/>detail = { menuItemId, name, available }<br/>→ whole transaction rolled back"]
   Next -->|"yes"| Loop
   Next -->|"no"| Read["read each line's menu_items row once (its price_paise, never p_lines')"]
-  Read --> Same{"Every sent unit_price_paise<br/>equals that price_paise?"}
-  Same -->|"no"| RaisePrice["RAISE 'PRICE_CHANGED'<br/>detail = { menuItemId, name, price }<br/>→ whole transaction rolled back"]
-  Same -->|"yes, or none sent"| InsOrder["INSERT orders: store_name snapshot,<br/>total_paise = Σ price_paise × quantity,<br/>status PLACED, payment status,<br/>estimated_ready_at = now() + store.prep_time_max_minutes,<br/>order_number from identity (starts at 1001)"]
-  InsOrder --> InsItems["INSERT order_items with line_number = cart position,<br/>snapshot name + unit_price_paise + image_url + category,<br/>line_total_paise (rupee columns too, until PR 16)"]
+  Read --> Same{"Every line sent a unit_price_paise<br/>equal to that price_paise?"}
+  Same -->|"no, or one missing"| RaisePrice["RAISE 'PRICE_CHANGED'<br/>detail = { menuItemId, name, price }<br/>→ whole transaction rolled back"]
+  Same -->|"yes"| InsOrder["INSERT orders: store_name snapshot,<br/>total_paise = Σ price_paise × quantity,<br/>status PLACED, payment status,<br/>estimated_ready_at = now() + store.prep_time_max_minutes,<br/>order_number from identity (starts at 1001)"]
+  InsOrder --> InsItems["INSERT order_items with line_number = cart position,<br/>snapshot name + unit_price_paise + image_url + category,<br/>line_total_paise"]
   InsItems --> Ret(["RETURN order id"])
 ```
 
@@ -1026,7 +1026,6 @@ erDiagram
     text category
     text name
     text description
-    int price "whole rupees, until PR 16"
     bigint price_paise "whole rupees in paise, at least 0"
     text image_url
     boolean is_available
@@ -1043,7 +1042,6 @@ erDiagram
     text customer_name
     text customer_phone
     text note
-    int total "until PR 16"
     bigint total_paise "computed in place_order"
     payment_status payment_status "PENDING or PAID"
     order_status status "PLACED to COLLECTED or CANCELLED"
@@ -1057,10 +1055,8 @@ erDiagram
     int line_number "cart order, unique per order"
     uuid menu_item_id FK
     text name "snapshot"
-    int unit_price "until PR 16"
     bigint unit_price_paise "snapshot"
     int quantity "at least 1"
-    int line_total "until PR 16"
     bigint line_total_paise
     text image_url "snapshot"
     text category "snapshot, not sent"
