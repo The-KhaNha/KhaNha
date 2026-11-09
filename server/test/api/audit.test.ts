@@ -176,7 +176,7 @@ describe('changes outside the API', () => {
   it('a menu item edit records only the watched columns, and a stock-only edit records nothing', async () => {
     const { data: item } = await supabaseAdmin
       .from('menu_items')
-      .select('price, price_paise, stock_quantity')
+      .select('price_paise, stock_quantity')
       .eq('id', menuItemId)
       .single()
       .throwOnError();
@@ -184,11 +184,9 @@ describe('changes outside the API', () => {
     const before = (await auditForEntity('menu_item', menuItemId)).length;
     await supabaseAdmin
       .from('menu_items')
-      .update({ price: item.price + 5, stock_quantity: 7 })
+      .update({ price_paise: item.price_paise + 500, stock_quantity: 7 })
       .eq('id', menuItemId)
       .throwOnError();
-    // Until PR 16 a price can be written through either column, so each is watched on its own; menu_items_sync_price
-    // derives the other, so either write records both.
     await supabaseAdmin
       .from('menu_items')
       .update({ price_paise: item.price_paise + 1000 })
@@ -205,17 +203,11 @@ describe('changes outside the API', () => {
         actor_type: 'SYSTEM',
         action: 'menu_item.changed',
         store_id: storeId,
-        changes: {
-          price: [item.price, item.price + 5],
-          price_paise: [item.price_paise, item.price_paise + 500],
-        },
+        changes: { price_paise: [item.price_paise, item.price_paise + 500] },
       }),
       expect.objectContaining({
         action: 'menu_item.changed',
-        changes: {
-          price: [item.price + 5, item.price + 10],
-          price_paise: [item.price_paise + 500, item.price_paise + 1000],
-        },
+        changes: { price_paise: [item.price_paise + 500, item.price_paise + 1000] },
       }),
     ]);
   });

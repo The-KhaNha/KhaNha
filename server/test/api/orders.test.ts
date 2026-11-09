@@ -3,6 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { MAX_QUANTITY_PER_ITEM } from '../../src/schemas/order.schema';
 import type { OrderStatus } from '../../src/types/enums';
 import { invalidate } from '../../src/utils/cache';
+import { paiseToRupees } from '../../src/utils/money';
 import { supabaseAdmin } from '../../src/utils/supabase';
 import {
   createTestUser,
@@ -44,10 +45,16 @@ beforeAll(async () => {
   storeId = store.id;
   const { data: rows } = await supabaseAdmin
     .from('menu_items')
-    .select('id, name, price, stock_quantity, is_available')
+    .select('id, name, price_paise, stock_quantity, is_available')
     .eq('store_id', storeId)
     .throwOnError();
-  items = Object.fromEntries(rows.map((row) => [row.name, row]));
+  // Rupees, as the API speaks them.
+  items = Object.fromEntries(
+    rows.map(({ price_paise, ...row }) => [
+      row.name,
+      { ...row, price: paiseToRupees(price_paise) },
+    ]),
+  );
 
   [customer1, customer2, staff] = await Promise.all([
     createTestUser('CUSTOMER'),

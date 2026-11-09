@@ -6,7 +6,7 @@ builds less than the roadmap describes (each with its reason and the phase that 
 its box here and in the roadmap.
 
 > **Status: in progress** (3 November 2026). PRs 01–11, 02b and 13–15 are merged into `feat/P1`; PR 12 is
-> implemented and verified, in review. PR 16 waits for the production release. Every
+> implemented and verified, in review. PR 16 lands in `feat/P1` before the phase PR (user decision of 9 November 2026: nothing reaches production until P8). Every
 > [decision](#decisions) is answered, and ADR-001, 004, 005, 006, 008, 009 and 010 are accepted (001, 004, 006 and 009
 > with amendments). One agent builds P1 on the `feat/P1` feature branch, one PR at a time, in the order below.
 
@@ -49,28 +49,28 @@ P0 already shipped parts of P1. The plan builds on them instead of rebuilding th
 
 ## Build order
 
-| #   | PR                                                                         | Step       | Depends on                                      | Size (files / lines) |
-| --- | -------------------------------------------------------------------------- | ---------- | ----------------------------------------------- | -------------------- |
-| 01  | The 429 contract and one error-details union                               | P1.1, P1.6 | –                                               | 8 / 180              |
-| 02  | Outbox schema: events, subscriptions, the first schedule                   | P1.2       | –                                               | 11 / 470             |
-| 02b | Queue wrappers and dead letters                                            | P1.2       | 02                                              | 6 / 300              |
-| 03  | The job runner                                                             | P1.2       | 02b                                             | 9 / 450              |
-| 04  | The worker process                                                         | P1.2       | 03                                              | 14 / 300             |
-| 05  | Today's transitions emit events and carry their actor; retry-safe statuses | P1.2, P1.4 | 03                                              | 10 / 490             |
-| 06  | Audit log                                                                  | P1.3       | 05                                              | 7 / 380              |
-| 07  | `GET /api/admin/audit`                                                     | P1.3       | 06                                              | 12 / 400             |
-| 08  | Order snapshots v2                                                         | P1.5       | 05                                              | 9 / 300              |
-| 09  | Money in paise: expand                                                     | ADR-004    | 08                                              | 14 / 420             |
-| 10  | `POST /api/client-errors`                                                  | P1.6       | 01                                              | 13 / 380             |
-| 11  | `client_error_sample_percent` through to `/api/config`                     | P1.6       | 10                                              | 16 / 250             |
-| 12  | The error reporter, and render errors told apart from chunk failures       | P1.6       | 11                                              | 11 / 420             |
-| 13  | Feature flags: table, evaluation, the admin flip                           | P1.7       | 06                                              | 16 / 470             |
-| 14  | Client-visible flags in `/api/config`                                      | P1.7       | 13                                              | 6 / 150              |
-| 15  | Server-side idle sign-out                                                  | ADR-011    | 02                                              | 9 / 380              |
-| 16  | Money in paise: contract                                                   | ADR-004    | P1 merged into `dev` and released to production | 7 / 220              |
+| #   | PR                                                                         | Step       | Depends on                                   | Size (files / lines) |
+| --- | -------------------------------------------------------------------------- | ---------- | -------------------------------------------- | -------------------- |
+| 01  | The 429 contract and one error-details union                               | P1.1, P1.6 | –                                            | 8 / 180              |
+| 02  | Outbox schema: events, subscriptions, the first schedule                   | P1.2       | –                                            | 11 / 470             |
+| 02b | Queue wrappers and dead letters                                            | P1.2       | 02                                           | 6 / 300              |
+| 03  | The job runner                                                             | P1.2       | 02b                                          | 9 / 450              |
+| 04  | The worker process                                                         | P1.2       | 03                                           | 14 / 300             |
+| 05  | Today's transitions emit events and carry their actor; retry-safe statuses | P1.2, P1.4 | 03                                           | 10 / 490             |
+| 06  | Audit log                                                                  | P1.3       | 05                                           | 7 / 380              |
+| 07  | `GET /api/admin/audit`                                                     | P1.3       | 06                                           | 12 / 400             |
+| 08  | Order snapshots v2                                                         | P1.5       | 05                                           | 9 / 300              |
+| 09  | Money in paise: expand                                                     | ADR-004    | 08                                           | 14 / 420             |
+| 10  | `POST /api/client-errors`                                                  | P1.6       | 01                                           | 13 / 380             |
+| 11  | `client_error_sample_percent` through to `/api/config`                     | P1.6       | 10                                           | 16 / 250             |
+| 12  | The error reporter, and render errors told apart from chunk failures       | P1.6       | 11                                           | 11 / 420             |
+| 13  | Feature flags: table, evaluation, the admin flip                           | P1.7       | 06                                           | 16 / 470             |
+| 14  | Client-visible flags in `/api/config`                                      | P1.7       | 13                                           | 6 / 150              |
+| 15  | Server-side idle sign-out                                                  | ADR-011    | 02                                           | 9 / 380              |
+| 16  | Money in paise: contract                                                   | ADR-004    | 09; last into `feat/P1`, before the phase PR | 7 / 220              |
 
-The table gives the dependency order; PR 12 is the remaining implementation PR. PR 16 is not part of `feat/P1`: it
-goes into `dev` once the release containing P1 runs in production.
+The table gives the dependency order; PR 12 is the remaining implementation PR. PR 16 also goes into `feat/P1`, as
+its last PR before the phase PR into `dev` (user decision of 9 November 2026: nothing reaches production until P8, so no production API still reads the rupee columns).
 
 Why this order: the 429 contract first because it is small and every later 429 (P5, P6, P7 buckets) inherits it; the
 outbox schema before the runner and the runner before the process, so each lands testable on its own; today's
@@ -526,7 +526,7 @@ Docs: `docs/SCHEMA.md`, `docs/API.md`, `docs/CONFIGURATION.md`. Intent: `--serve
 
 ### PR 12 — The error reporter, and render errors told apart from chunk failures (P1.6)
 
-- [ ] Merged
+- [x] Merged
 
 Implementation completed on `feat/p1-12-error-reporter` (3 November 2026). Client typecheck, lint, 378 unit tests,
 the container build, bundle and dist-secret checks passed. Full Chromium and WebKit smokes passed (35 and 27
@@ -561,8 +561,8 @@ Remaining work, in order:
 1. Address review findings. The user merges into `feat/P1`; tick PR 12's Merged box only after that merge is
    confirmed.
 2. After P12 merges, follow [Closing P1](#closing-p1): on the updated phase branch, validate both packages, run
-   Chromium e2e and `/break`, and resolve failures before the phase PR into `dev`. PR 16 remains blocked until the
-   user confirms the P1 release is running in production. The separate pnpm migration follows the phase merge
+   Chromium e2e and `/break`, and resolve failures before the phase PR into `dev`. PR 16 goes into `feat/P1` before
+   that phase PR (user decision of 9 November 2026: nothing reaches production until P8). The separate pnpm migration follows the phase merge
    ([roadmap P1.8](ROADMAP.md#p18-tooling-pnpm-after-the-phase-merges)). Never apply production migrations here.
 
 Preserve the regression guards for complete Authorization/Cookie redaction, delayed zero-percent sampling,
@@ -720,9 +720,8 @@ ADR-011's Links to this PR (the decision itself is not rewritten). Intent: `--se
 
 - [ ] Merged
 
-Not part of `feat/P1`. It goes into `dev` from `feat/p1-16-paise-contract` once `feat/P1` has merged into `dev` and
-the release containing it runs in production (the user confirms): until then the deployed API still reads the rupee
-columns.
+Branch `feat/p1-16-paise-contract`, PR target `feat/P1`, before the phase PR into `dev` (user decision of 9 November 2026: nothing reaches production until P8, so no deployed API
+still reads the rupee columns when this migration runs anywhere).
 
 Migration `<ts>_money_paise_contract.sql`: `create or replace place_order` without the rupee writes; the audit trigger
 stops watching `price`; drop the `menu_items_sync_price` trigger and its function (PR 09) before the column; drop `menu_items.price`, `orders.total`, `order_items.unit_price` and
@@ -753,21 +752,21 @@ Docs: `docs/SCHEMA.md`. Intent: `--server patch`.
 
 Answered by the user on 24 October 2026.
 
-| #   | Decision                                                                                | Answer                                                                                                                                   | Applies to |
-| --- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| D1  | Rate limiter: keep `express-rate-limit`, or move to `rate-limiter-flexible` now         | keep it; ADR-009 accepted with that amendment (`rate-limiter-flexible` arrives with the Redis store)                                     | PR 01      |
-| D2  | A staff status change repeated after a lost answer: 200 with the order, or 409 as today | 200; other invalid transitions stay 409                                                                                                  | PR 05      |
-| D3  | The server-side idle sign-out in P1                                                     | yes, keyed per session                                                                                                                   | PR 15      |
-| D4  | The generic idempotency table and middleware                                            | built in P5.3 with `POST /api/checkout`, its first consumer                                                                              | P5.3       |
-| D5  | Error tracking: self-reported or Sentry (roadmap decision 8)                            | self-reported in P1; Sentry later as a low-priority roadmap item (P10.4)                                                                 | PR 10–12   |
-| D6  | How long `domain_events` are kept                                                       | 30 days; the audit log is the long-term record                                                                                           | PR 02      |
-| D7  | ADR-005 (three processes)                                                               | accepted as written                                                                                                                      | PR 04      |
-| D8  | When money moves to paise (ADR-004 as amended)                                          | in P1, right after the snapshots: expand in PR 09, contract in PR 16 once PR 09 runs in production                                       | PR 09, 16  |
-| D9  | Who builds P1, and where                                                                | one agent, PR by PR, each into the `feat/P1` feature branch, which goes into `dev` at the end (two parallel lanes until 1 November 2026) | all        |
+| #   | Decision                                                                                | Answer                                                                                                                                                                  | Applies to |
+| --- | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| D1  | Rate limiter: keep `express-rate-limit`, or move to `rate-limiter-flexible` now         | keep it; ADR-009 accepted with that amendment (`rate-limiter-flexible` arrives with the Redis store)                                                                    | PR 01      |
+| D2  | A staff status change repeated after a lost answer: 200 with the order, or 409 as today | 200; other invalid transitions stay 409                                                                                                                                 | PR 05      |
+| D3  | The server-side idle sign-out in P1                                                     | yes, keyed per session                                                                                                                                                  | PR 15      |
+| D4  | The generic idempotency table and middleware                                            | built in P5.3 with `POST /api/checkout`, its first consumer                                                                                                             | P5.3       |
+| D5  | Error tracking: self-reported or Sentry (roadmap decision 8)                            | self-reported in P1; Sentry later as a low-priority roadmap item (P10.4)                                                                                                | PR 10–12   |
+| D6  | How long `domain_events` are kept                                                       | 30 days; the audit log is the long-term record                                                                                                                          | PR 02      |
+| D7  | ADR-005 (three processes)                                                               | accepted as written                                                                                                                                                     | PR 04      |
+| D8  | When money moves to paise (ADR-004 as amended)                                          | in P1, right after the snapshots: expand in PR 09, contract in PR 16, into `feat/P1` before the phase PR (amended 9 November 2026: nothing reaches production until P8) | PR 09, 16  |
+| D9  | Who builds P1, and where                                                                | one agent, PR by PR, each into the `feat/P1` feature branch, which goes into `dev` at the end (two parallel lanes until 1 November 2026)                                | all        |
 
 ## Closing P1
 
-Once every box but PR 16's is ticked: on a fresh `origin/feat/P1`, the gate in both packages, `npm run e2e:chromium`
+Once every box is ticked (PR 16 included, since 9 November 2026): on a fresh `origin/feat/P1`, the gate in both packages, `npm run e2e:chromium`
 and `/break` (P1 changes auth, orders, money and the request pipeline), with fixes as normal PRs into `feat/P1`. Then
 the PR `feat/P1` → `dev` ("P1 — platform core", exempt from the size limit, linking the plan's PRs); the user merges
 it and cuts the release as usual (`release.yml`).
@@ -779,7 +778,6 @@ it and cuts the release as usual (`release.yml`).
   staging (`npm run db:push:staging`), and merge `feat/P1` into `dev` when P1 is done ([closing P1](#closing-p1)).
 - After P1 reaches `main`: `npm run db:push:production` (user only), then check that pgmq and pg_cron show under the
   production project's Integrations.
-- Confirm when the release containing P1 runs in production, so PR 16 can start.
 - Run the worker wherever the API runs. Until P8.4 there is no hosted API, so on staging `q_notifications` fills
   while no worker runs; `docs/JOBS.md` has the purge command.
 - Flip flags in production with `PATCH /api/admin/flags/:key` and an admin token, so the audit names you.
@@ -796,7 +794,7 @@ it and cuts the release as usual (`release.yml`).
 - **The paise expand window.** Between PR 09's migration and the new API reaching every environment, the old API
   still passes rupee prices in `p_lines` (no `unit_price_paise`, so no price check) and writes `menu_items.price`
   alone; `place_order` ignores those prices and prices from `menu_items.price_paise`, and `menu_items_sync_price`
-  keeps the two columns in step. PR 16 must not run before production runs PR 09's API.
+  keeps the two columns in step. PR 16 must not run anywhere an older API is deployed; it lands in `feat/P1` with PR 09's API (user decision of 9 November 2026: nothing reaches production until P8).
 - **Visibility timeout shorter than a slow handler** means a second delivery while the first still runs. Handlers are
   idempotent anyway; set each timeout to at least twice its slowest expected run.
 - **pg_cron on Supabase:** at most 8 concurrent jobs of at most 10 minutes; schedules are UTC; a paused staging

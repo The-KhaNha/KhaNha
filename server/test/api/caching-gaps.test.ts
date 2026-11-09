@@ -163,7 +163,6 @@ describe('customer order list is capped by site_settings (default 20)', () => {
       store_id: storeId,
       store_name: 'Campus Cafe',
       customer_name: 'Bulk Test',
-      total: 100,
       total_paise: 10000,
       note: `bulk-${i}`,
       estimated_ready_at: new Date(now + 600_000).toISOString(),
