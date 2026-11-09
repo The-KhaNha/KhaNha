@@ -782,8 +782,10 @@ staging.
 - Merge PR 00 into `dev` (the docs PR needs an exemption from the size limit), then create `feat/P1` from `dev`.
 - Merge each PR into `feat/P1`, merge `dev` into `feat/P1` when `dev` has moved, push `feat/P1`'s migrations to
   staging (`npm run db:push:staging`), and merge `feat/P1` into `dev` when P1 is done ([closing P1](#closing-p1)).
-- After P1 reaches `main`: `npm run db:push:production` (user only), then check that pgmq and pg_cron show under the
-  production project's Integrations.
+  PR 16's contract migration is the exception: push it to staging only once `feat/P1` is in `dev` and staging runs
+  that API ([PR 16](#pr-16--money-in-paise-contract-adr-004)).
+- At P8, when P1 first reaches `main` (not before, D8): `npm run db:push:production` (user only), then check that
+  pgmq and pg_cron show under the production project's Integrations.
 - Run the worker wherever the API runs. Until P8.4 there is no hosted API, so on staging `q_notifications` fills
   while no worker runs; `docs/JOBS.md` has the purge command.
 - Flip flags in production with `PATCH /api/admin/flags/:key` and an admin token, so the audit names you.
