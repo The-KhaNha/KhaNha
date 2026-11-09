@@ -54,6 +54,7 @@ export function OrderPage() {
         message={error.status === 404 ? "We couldn't find this order." : error.message}
         onRetry={retry}
         unreachable={error.isUnreachable}
+        code={error.code}
       />
     );
   }

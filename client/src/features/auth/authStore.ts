@@ -3,8 +3,8 @@ import { persist } from 'zustand/middleware';
 import type { User } from '../../types/api';
 import { logger } from '../../lib/logger';
 import { safeJSONStorage } from '../../lib/safeStorage';
-import { getSupabase, mayHaveSession } from '../../lib/supabase';
-import { ApiError } from '../../services/api';
+import { mayHaveSession } from '../../lib/supabase';
+import { ApiError, loadSupabase } from '../../services/api';
 import { fetchMe, register as registerRequest, signIn, signOut } from '../../services/auth';
 import type { RegisterInput } from '../../services/auth';
 import { clearActivity, isIdleExpired, markActive, readLastActive } from './sessionActivity';
@@ -45,7 +45,8 @@ export const useAuthStore = create<AuthState>()(
       token: null,
 
       async login(email, password) {
-        void watchAuth();
+        // signIn loads the same module and puts its failure in the form; this copy would only be an unhandled rejection.
+        watchAuth().catch(() => undefined);
         const session = await signIn(email, password);
         try {
           const { user } = await fetchMe();
@@ -90,8 +91,17 @@ export const useAuthStore = create<AuthState>()(
             set({ user: null, token: null });
             return;
           }
-          // Refreshes an expired access token when the refresh token is still valid.
-          const { data } = await (await watchAuth()).auth.getSession();
+          // Refreshes an expired access token when the refresh token is still valid. If supabase-js cannot load
+          // (CLIENT_RELOAD_REQUIRED, a network condition, not a crash), keep the persisted session like a server that
+          // is down: the first request that needs it shows Reload.
+          let supabase;
+          try {
+            supabase = await watchAuth();
+          } catch (err) {
+            if (err instanceof ApiError && err.code === 'CLIENT_RELOAD_REQUIRED') return;
+            throw err;
+          }
+          const { data } = await supabase.auth.getSession();
           if (!data.session) {
             set({ user: null, token: null });
             return;
@@ -133,7 +143,7 @@ let watching = false;
  * that ended. Runs when a session may exist (hydrate) or is about to (login); anonymous visitors never load it.
  */
 async function watchAuth() {
-  const supabase = await getSupabase();
+  const supabase = await loadSupabase();
   if (!watching) {
     watching = true;
     supabase.auth.onAuthStateChange((_event, session) => {

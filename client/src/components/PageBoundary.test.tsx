@@ -1,6 +1,7 @@
 import { Suspense } from 'react';
 import { render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { logger } from '../lib/logger';
 import { PageBoundary } from './PageBoundary';
 
 const reportError = vi.hoisted(() => vi.fn());
@@ -119,5 +120,33 @@ describe('PageBoundary', () => {
     );
     expect(localStorage.getItem('fp_cache:v1:menu')).toBeNull();
     localStorage.clear();
+  });
+
+  // A render crash left no trace in the console at warn level; the message and stack stay out (they may hold PII).
+  it('logs a render crash with its scope only', () => {
+    const logError = vi.spyOn(logger, 'error').mockImplementation(() => {});
+    function Crash(): never {
+      throw new Error('Cannot read properties of undefined (reading anishka@example.com)');
+    }
+    render(
+      <PageBoundary scope="app">
+        <Crash />
+      </PageBoundary>,
+    );
+    expect(logError).toHaveBeenCalledExactlyOnceWith('Page render failed', { scope: 'app' });
+  });
+
+  it('silent renders nothing on a crash but still reports it', () => {
+    const error = new Error('Cannot read properties of null');
+    function Crash(): never {
+      throw error;
+    }
+    const { container } = render(
+      <PageBoundary scope="app" silent>
+        <Crash />
+      </PageBoundary>,
+    );
+    expect(container).toBeEmptyDOMElement();
+    expect(reportError).toHaveBeenCalledExactlyOnceWith(error, 'render');
   });
 });

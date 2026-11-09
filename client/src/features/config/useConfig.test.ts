@@ -69,3 +69,55 @@ describe('withFallback', () => {
     });
   });
 });
+
+describe('withFallback edge cases', () => {
+  it('returns the fallback for non-object values where an object is expected', () => {
+    const fb = { a: 1 };
+    expect(withFallback(fb, [])).toBe(fb);
+    expect(withFallback(fb, 'x')).toBe(fb);
+    expect(withFallback(fb, 5)).toBe(fb);
+  });
+
+  it('takes an array field as given when the fallback is an array', () => {
+    expect(withFallback({ list: [1, 2] }, { list: [3] })).toEqual({ list: [3] });
+  });
+
+  it('replaces an object where the fallback has an array', () => {
+    expect(withFallback({ list: [1, 2] }, { list: { a: 1 } })).toEqual({ list: [1, 2] });
+  });
+
+  it('replaces an array where the fallback has an object', () => {
+    expect(withFallback({ o: { a: 1 } }, { o: [1] })).toEqual({ o: { a: 1 } });
+  });
+
+  it('repairs nested nulls at every depth', () => {
+    const fb = { a: { b: { c: 7, d: 'x' } } };
+    expect(withFallback(fb, { a: { b: null } })).toEqual(fb);
+    expect(withFallback(fb, { a: { b: { c: null, d: 'y' } } })).toEqual({
+      a: { b: { c: 7, d: 'y' } },
+    });
+  });
+
+  it('passes extra keys through, including nested ones', () => {
+    expect(withFallback({ a: { b: 1 } }, { a: { b: 2, z: 3 }, extra: true })).toEqual({
+      a: { b: 2, z: 3 },
+      extra: true,
+    });
+  });
+
+  it('keeps a legitimate falsy value of the right type', () => {
+    expect(withFallback({ n: 5, s: 'x', f: true }, { n: 0, s: '', f: false })).toEqual({
+      n: 0,
+      s: '',
+      f: false,
+    });
+  });
+
+  it('does not mutate the fallback or the value', () => {
+    const fb = { a: { b: 1 } };
+    const value = { a: null };
+    withFallback(fb, value);
+    expect(fb).toEqual({ a: { b: 1 } });
+    expect(value).toEqual({ a: null });
+  });
+});

@@ -48,6 +48,7 @@ export function AdminPage() {
       ) : error || !settings ? (
         <ErrorState
           unreachable={error?.isUnreachable}
+          code={error?.code}
           title="Settings didn't load"
           message={error?.message}
           onRetry={retry}

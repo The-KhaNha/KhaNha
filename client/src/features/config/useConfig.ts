@@ -32,6 +32,7 @@ export function withFallback<T>(fallback: T, value: unknown): T {
     for (const key of Object.keys(fallback)) merged[key] = withFallback(fallback[key], value[key]);
     return merged as T;
   }
+  if (Array.isArray(fallback) !== Array.isArray(value)) return fallback;
   if (fallback !== null && typeof value !== typeof fallback) return fallback;
   return value as T;
 }

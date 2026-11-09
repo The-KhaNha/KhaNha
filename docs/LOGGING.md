@@ -63,7 +63,9 @@ response goes out with `features: {}`, once until a read succeeds again (per pro
   `{ operation, error }`, once per session when `localStorage` refuses the write, so the client-side 7-day cap is off;
   locally `inactivity_timeout` still applies, on hosted Supabase Free only the API's idle check does, see ADR-011); `warn` "Session expired from inactivity" (`features/auth/authStore.ts`, `{ idleDays }`, once when
   an unused device is signed out after 7 days); `error` "Page chunk failed to load" (`components/PageBoundary.tsx`, once per failed lazy
-  route); `debug` "Resource cache unavailable" (`lib/useResource.ts`, once per key when `localStorage` is full or
+  route); `error` "Page render failed" (`components/PageBoundary.tsx`, `{ scope }`, once per caught render crash, no
+  message or stack); `error` "Sign-in module failed to load" (`services/api.ts` `loadSupabase`, `{ name }`, once per
+  page life after the retried import fails); `debug` "Resource cache unavailable" (`lib/useResource.ts`, once per key when `localStorage` is full or
   blocked).
 
 ## How to log

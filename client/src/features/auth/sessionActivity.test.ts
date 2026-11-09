@@ -72,7 +72,10 @@ vi.mock('../../services/auth', () => ({
   signOut: () => signOut(),
   register: vi.fn(),
 }));
-vi.mock('../../services/api', () => ({ ApiError: class ApiError extends Error {} }));
+vi.mock('../../services/api', () => ({
+  ApiError: class ApiError extends Error {},
+  loadSupabase: async () => (await import('../../lib/supabase')).getSupabase(),
+}));
 
 describe('authStore.hydrate', () => {
   afterEach(() => {

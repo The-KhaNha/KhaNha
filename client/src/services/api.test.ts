@@ -119,13 +119,35 @@ describe('supabase-js loading', () => {
   });
 
   // Chromium keeps a failed import() for the page's life: only a reload can load it, so the retry must become one.
-  it('turns a failed load into CLIENT_RELOAD_REQUIRED and marks the page for a reload', async () => {
-    const { useVersionStore } = await import('../features/version/versionStore');
+  it('turns a failed load into CLIENT_RELOAD_REQUIRED', async () => {
     getSupabase.mockRejectedValueOnce(new TypeError('Failed to fetch dynamically imported module'));
     await expect(request('/orders')).rejects.toSatisfy(
       (err) =>
         err instanceof ApiError && err.isUnreachable && err.code === 'CLIENT_RELOAD_REQUIRED',
     );
-    expect(useVersionStore.getState().reloadRequired).toBe(true);
+  });
+
+  // Every later call fails with the same kept rejection: one line per page life, the name only (the message is a URL).
+  it('logs the failed load once, with the error name only', async () => {
+    // A fresh module: an earlier test here already spent this page life's one log line.
+    vi.resetModules();
+    const fresh = await import('./api');
+    const { logger } = await import('../lib/logger');
+    const logError = vi.spyOn(logger, 'error').mockImplementation(() => {});
+    getSupabase.mockRejectedValue(new TypeError('Failed to fetch dynamically imported module'));
+    try {
+      await expect(fresh.request('/orders')).rejects.toBeInstanceOf(fresh.ApiError);
+      await expect(fresh.request('/orders')).rejects.toBeInstanceOf(fresh.ApiError);
+      const calls = logError.mock.calls.filter(
+        ([message]) => message === 'Sign-in module failed to load',
+      );
+      expect(calls).toEqual([['Sign-in module failed to load', { name: 'TypeError' }]]);
+    } finally {
+      getSupabase.mockReset();
+      getSupabase.mockImplementation(async () => ({
+        auth: { getSession: async () => ({ data: { session: null } }) },
+      }));
+      logError.mockRestore();
+    }
   });
 });

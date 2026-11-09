@@ -8,6 +8,8 @@ import { Skeleton } from './Skeleton';
 interface PageBoundaryProps {
   children: ReactNode;
   scope?: 'page' | 'app';
+  /** Renders nothing on failure (still logged and reported): for a boundary around a component that renders nothing. */
+  silent?: boolean;
 }
 
 /**
@@ -34,12 +36,15 @@ export class PageBoundary extends Component<
       logger.error('Page chunk failed to load');
       return;
     }
+    // The scope only: the message and stack may carry user data, and reportError scrubs them on its own path.
+    logger.error('Page render failed', { scope: this.props.scope ?? 'page' });
     clearPersistedCache();
     reportError(error, 'render');
   }
 
   render() {
     if (this.state.failed) {
+      if (this.props.silent) return null;
       return (
         <ErrorState
           unreachable={this.state.chunk}

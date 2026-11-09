@@ -68,6 +68,7 @@ export function OrderSuccessPage() {
           message={error.message}
           onRetry={retry}
           unreachable={error.isUnreachable}
+          code={error.code}
         />
       </main>
     );
@@ -141,6 +142,7 @@ export function OrderSuccessPage() {
             message={error.message}
             onRetry={retry}
             unreachable={error.isUnreachable}
+            code={error.code}
           />
         )
       )}

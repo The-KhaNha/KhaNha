@@ -318,7 +318,8 @@ export function CheckoutPage() {
       )}
 
       {/* No Retry of its own: Pay, right below, is the retry. Unless the new price failed to load: Pay is off until it
-          does, so this card retries that load (a second card below it would sit off screen on a phone). */}
+          does, so this card retries that load (a second card below it would sit off screen on a phone). `code` turns
+          CLIENT_RELOAD_REQUIRED (sign-in failed to load) into a Reload, the one thing that can help. */}
       {error && !itemError && error.code !== 'IDEMPOTENCY_KEY_REUSED' && (
         <div ref={errorRef} tabIndex={-1} className="mt-4 focus:outline-none">
           <ErrorState
@@ -330,6 +331,7 @@ export function CheckoutPage() {
                 : error.message
             }
             unreachable={(repriceError ?? error).isUnreachable}
+            code={error.code}
             onRetry={repriceError ? reloadMenu : undefined}
           />
         </div>

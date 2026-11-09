@@ -167,8 +167,9 @@ function AppShell() {
 }
 
 /**
- * In its own app boundary: a config that crashes the read shows the error state instead of a blank page, and a shell
- * crash cannot take the reporting setting down with it.
+ * In its own silent app boundary: a config that crashes the read is logged and reported but renders nothing (it has no
+ * UI of its own, and the shell below still works), and a shell crash cannot take the reporting setting down with it.
+ * If it crashes, setSamplePercent never runs and reports stay buffered, unsent: the safe side of a 0% sample.
  */
 function ClientErrorSampling() {
   const {
@@ -189,7 +190,7 @@ export default function App() {
 
   return (
     <>
-      <PageBoundary scope="app">
+      <PageBoundary scope="app" silent>
         <ClientErrorSampling />
       </PageBoundary>
       <PageBoundary scope="app">

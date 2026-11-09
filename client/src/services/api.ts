@@ -51,16 +51,24 @@ function isErrorEnvelope(value: unknown): value is ApiErrorEnvelope {
   );
 }
 
+let loadFailureLogged = false;
+
 /**
- * supabase-js, or CLIENT_RELOAD_REQUIRED (client-only, never sent by the server) when its chunk failed to load: the
- * failure is kept for the page's life (lib/supabase.ts), so every retry button becomes a reload (ErrorState). The cart,
- * the checkout draft and its idempotency key are persisted, so the reload loses nothing.
+ * supabase-js, or CLIENT_RELOAD_REQUIRED (client-only, never sent by the server) when its chunk failed to load twice:
+ * the failure is kept for the page's life (lib/supabase.ts), so the ErrorState showing it offers Reload instead of a
+ * retry. The cart, the checkout draft and its idempotency key are persisted, so the reload loses nothing.
  */
 export async function loadSupabase(): Promise<SupabaseClient> {
   try {
     return await getSupabase();
-  } catch {
-    useVersionStore.getState().markReloadRequired();
+  } catch (error) {
+    // Once per page life: every later call fails with the same kept rejection. The name only: the message holds a URL.
+    if (!loadFailureLogged) {
+      loadFailureLogged = true;
+      logger.error('Sign-in module failed to load', {
+        name: error instanceof Error ? error.name : typeof error,
+      });
+    }
     throw new ApiError(
       0,
       'CLIENT_RELOAD_REQUIRED',

@@ -79,7 +79,7 @@ jobs:
       - run: npm run build:staging
       - run: node ../scripts/ci/check-bundle.mjs .
       - run: node ../scripts/ci/check-dist-secrets.mjs .
-      # The smoke spec (client/e2e/smoke.spec.ts) on Chromium at 360×640, every /api call mocked: layout at 200% text,
+      # The e2e specs (client/e2e/*.spec.ts) on Chromium at 360×640, every /api call mocked: layout at 200% text,
       # 44px tap targets, the add-to-cart path. WebKit runs weekly in browsers.yml (ADR-011 minutes).
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:

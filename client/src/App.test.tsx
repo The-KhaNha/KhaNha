@@ -87,15 +87,18 @@ describe('App shell on navigation', () => {
     }
   });
 
-  // Read above the app boundary, a malformed config once left a blank white page.
-  it('catches a crash while reading the config and still renders the shell', () => {
+  // Read above the app boundary, a malformed config once left a blank white page. Its boundary has no UI to replace:
+  // it reports the crash and renders nothing, so the working shell is not topped by an error block.
+  it('catches a crash while reading the config, reports it, and renders only the shell', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const preventError = (event: ErrorEvent) => event.preventDefault();
     window.addEventListener('error', preventError);
     crashConfig.enabled = true;
+    reportError.mockClear();
     try {
       render(<App />);
-      expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+      expect(screen.queryByText('Something went wrong')).toBeNull();
+      expect(reportError).toHaveBeenCalledExactlyOnceWith(expect.any(Error), 'render');
       expect(screen.getAllByText('Page not found').length).toBeGreaterThan(0);
     } finally {
       crashConfig.enabled = false;

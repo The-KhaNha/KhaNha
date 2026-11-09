@@ -19,6 +19,8 @@ interface ErrorStateProps {
   actions?: ReactNode;
   /** 1 when the failure is the whole page (a full-screen page has no TopBar title), so the page keeps its one <h1>. */
   headingLevel?: 1 | 2;
+  /** The shown error's code: CLIENT_RELOAD_REQUIRED turns the retry into a Reload. */
+  code?: string;
   className?: string;
 }
 
@@ -33,12 +35,14 @@ export function ErrorState({
   compact = false,
   actions,
   headingLevel = 2,
+  code,
   className,
 }: ErrorStateProps) {
   // This build is too old (426): retrying would only fail again, so the one useful action is loading the new build.
   const outdated = useVersionStore((s) => s.outdated);
-  // The sign-in code failed to load (CLIENT_RELOAD_REQUIRED): the browser keeps that failure until the page reloads.
-  const reloadRequired = useVersionStore((s) => s.reloadRequired);
+  // This error is the sign-in code failing to load (CLIENT_RELOAD_REQUIRED): only a page reload can load it again. Other
+  // errors on the same page (a public menu load) keep their own retry.
+  const reloadRequired = code === 'CLIENT_RELOAD_REQUIRED';
   const mustReload = outdated || reloadRequired;
   const Icon = unreachable ? WifiOff : CircleAlert;
   const Heading = headingLevel === 1 ? 'h1' : 'h2';

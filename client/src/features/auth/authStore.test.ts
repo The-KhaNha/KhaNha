@@ -31,7 +31,10 @@ vi.mock('../../services/auth', () => ({
   signOut: () => signOut(),
   register: vi.fn(),
 }));
-vi.mock('../../services/api', () => ({ ApiError: class ApiError extends Error {} }));
+vi.mock('../../services/api', () => ({
+  ApiError: class ApiError extends Error {},
+  loadSupabase: async () => (await import('../../lib/supabase')).getSupabase(),
+}));
 
 // A visibilitychange listener is registered once, as a side effect of importing this module.
 const { useAuthStore } = await import('./authStore');

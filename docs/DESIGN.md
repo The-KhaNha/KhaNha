@@ -14,7 +14,7 @@ step.
   basil means success, slate means cancelled, taupe means collected. Nothing else carries colour.
 - **Phone first.** Designed at 360px on a cheap Android phone; every tap target is at least 44px; text grows with the
   reader's font setting (sizes are rem) and layouts wrap rather than overflow at 200% text
-  (`client/e2e/smoke.spec.ts`).
+  (`client/e2e/layout.spec.ts`).
 - **Warm, not grey.** A butter-cream page, white cards, warm-brown shadows.
 - **Quiet motion.** Short, runs once, `transform`/`opacity` only; two loops in the whole app; everything stops under
   `prefers-reduced-motion`.

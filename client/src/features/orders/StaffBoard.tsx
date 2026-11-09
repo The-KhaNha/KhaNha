@@ -61,6 +61,7 @@ export function StaffBoard({
           message={error.message}
           onRetry={onRetry}
           unreachable={error.isUnreachable}
+          code={error.code}
         />
       </div>
     );

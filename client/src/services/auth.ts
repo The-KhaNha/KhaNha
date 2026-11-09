@@ -1,5 +1,6 @@
 import type { AuthError, Session } from '@supabase/supabase-js';
 import type { User } from '../types/api';
+import { clearStoredSession } from '../lib/supabase';
 import { ApiError, loadSupabase, request } from './api';
 
 export interface RegisterInput {
@@ -17,9 +18,19 @@ export async function signIn(email: string, password: string): Promise<Session> 
   return data.session;
 }
 
-/** Ends the session on this device only (other devices stay signed in). */
+/**
+ * Ends the session on this device only (other devices stay signed in). Without supabase-js (its chunk failed to load)
+ * there is no client in memory, so dropping the stored session is the whole local sign-out.
+ */
 export async function signOut(): Promise<void> {
-  await (await loadSupabase()).auth.signOut({ scope: 'local' });
+  let supabase;
+  try {
+    supabase = await loadSupabase();
+  } catch {
+    clearStoredSession();
+    return;
+  }
+  await supabase.auth.signOut({ scope: 'local' });
 }
 
 /** The API creates the account (already confirmed); the caller signs in afterwards. */
