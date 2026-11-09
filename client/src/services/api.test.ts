@@ -118,10 +118,14 @@ describe('supabase-js loading', () => {
     expect(getSupabase).not.toHaveBeenCalled();
   });
 
-  it('turns a failed load into an unreachable ApiError', async () => {
+  // Chromium keeps a failed import() for the page's life: only a reload can load it, so the retry must become one.
+  it('turns a failed load into CLIENT_RELOAD_REQUIRED and marks the page for a reload', async () => {
+    const { useVersionStore } = await import('../features/version/versionStore');
     getSupabase.mockRejectedValueOnce(new TypeError('Failed to fetch dynamically imported module'));
     await expect(request('/orders')).rejects.toSatisfy(
-      (err) => err instanceof ApiError && err.isUnreachable,
+      (err) =>
+        err instanceof ApiError && err.isUnreachable && err.code === 'CLIENT_RELOAD_REQUIRED',
     );
+    expect(useVersionStore.getState().reloadRequired).toBe(true);
   });
 });

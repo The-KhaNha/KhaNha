@@ -1,3 +1,4 @@
+import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ApiErrorDetails, ApiErrorEnvelope } from '../types/api';
 import { useAuthStore } from '../features/auth/authStore';
 import { useVersionStore } from '../features/version/versionStore';
@@ -50,19 +51,26 @@ function isErrorEnvelope(value: unknown): value is ApiErrorEnvelope {
   );
 }
 
-async function currentAccessToken(): Promise<string | undefined> {
-  let supabase;
+/**
+ * supabase-js, or CLIENT_RELOAD_REQUIRED (client-only, never sent by the server) when its chunk failed to load: the
+ * failure is kept for the page's life (lib/supabase.ts), so every retry button becomes a reload (ErrorState). The cart,
+ * the checkout draft and its idempotency key are persisted, so the reload loses nothing.
+ */
+export async function loadSupabase(): Promise<SupabaseClient> {
   try {
-    supabase = await getSupabase();
+    return await getSupabase();
   } catch {
-    // The supabase-js chunk did not load: the network is gone, the same as any unreachable request.
+    useVersionStore.getState().markReloadRequired();
     throw new ApiError(
       0,
-      'UNREACHABLE',
-      "We couldn't reach the server. Check your connection and try again.",
+      'CLIENT_RELOAD_REQUIRED',
+      "We couldn't load sign-in. Reload the page to continue.",
     );
   }
-  return (await supabase.auth.getSession()).data.session?.access_token;
+}
+
+async function currentAccessToken(): Promise<string | undefined> {
+  return (await (await loadSupabase()).auth.getSession()).data.session?.access_token;
 }
 
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {

@@ -98,4 +98,26 @@ describe('PageBoundary', () => {
     );
     expect(screen.getByText('Outer fallback')).toBeInTheDocument();
   });
+
+  // A malformed response that useResource persisted would crash every later visit before the fresh fetch replaced it.
+  it('drops the persisted cache on a render crash so Reload recovers, and keeps it for a chunk failure', () => {
+    function Crash({ message }: { message: string }): never {
+      throw new TypeError(message);
+    }
+    localStorage.setItem('fp_cache:v1:menu', '{"categories":null}');
+    const chunk = render(
+      <PageBoundary>
+        <Crash message="Failed to fetch dynamically imported module: /assets/page.js" />
+      </PageBoundary>,
+    );
+    expect(localStorage.getItem('fp_cache:v1:menu')).not.toBeNull();
+    chunk.unmount();
+    render(
+      <PageBoundary>
+        <Crash message="Cannot read properties of null (reading 'map')" />
+      </PageBoundary>,
+    );
+    expect(localStorage.getItem('fp_cache:v1:menu')).toBeNull();
+    localStorage.clear();
+  });
 });

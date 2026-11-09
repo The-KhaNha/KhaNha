@@ -22,7 +22,7 @@ else if (window.location.pathname === '/') prefetchStore();
 
 // A signed-in visit needs supabase-js for its first request (the access token). Start the chunk now, alongside the
 // page's own lazy chunk, rather than from the first render's effects; an anonymous visitor never loads it. A failed
-// load (offline) is retried by the first request.
+// load is kept, and the first request then asks for a reload (CLIENT_RELOAD_REQUIRED in services/api.ts).
 if (mayHaveSession()) getSupabase().catch(() => undefined);
 
 const container = document.getElementById('root');

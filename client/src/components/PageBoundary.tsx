@@ -1,6 +1,7 @@
 import { Component, Suspense, type ReactNode } from 'react';
 import { logger } from '../lib/logger';
 import { CHUNK_FAILURE, reportError } from '../lib/errorReporter';
+import { clearPersistedCache } from '../lib/useResource';
 import { ErrorState } from './ErrorState';
 import { Skeleton } from './Skeleton';
 
@@ -25,10 +26,16 @@ export class PageBoundary extends Component<
     return { failed: true, chunk };
   }
 
-  // Once per failed navigation, so a burst after a deploy (old chunk names gone) shows up.
+  // Once per failed navigation, so a burst after a deploy (old chunk names gone) shows up. A render crash may come
+  // from a malformed response that useResource persisted: drop the cache so Reload starts clean. A chunk failure is
+  // the network, and the cache is what still renders offline, so it stays.
   componentDidCatch(error: unknown) {
-    if (this.state.chunk) logger.error('Page chunk failed to load');
-    else reportError(error, 'render');
+    if (this.state.chunk) {
+      logger.error('Page chunk failed to load');
+      return;
+    }
+    clearPersistedCache();
+    reportError(error, 'render');
   }
 
   render() {

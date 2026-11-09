@@ -5,7 +5,7 @@ import { ErrorState } from './ErrorState';
 
 describe('ErrorState action', () => {
   afterEach(() => {
-    useVersionStore.setState({ outdated: false });
+    useVersionStore.setState({ outdated: false, reloadRequired: false });
     vi.unstubAllGlobals();
   });
 
@@ -32,5 +32,14 @@ describe('ErrorState action', () => {
     useVersionStore.setState({ outdated: true });
     render(<ErrorState title="Unable to load the menu." />);
     expect(screen.getByRole('button', { name: 'Refresh' })).toBeInTheDocument();
+  });
+
+  it('offers Reload once the sign-in code failed to load, even where the page gave no retry', () => {
+    const reload = vi.fn();
+    vi.stubGlobal('location', { ...window.location, reload });
+    useVersionStore.setState({ reloadRequired: true });
+    render(<ErrorState title="Your order didn't go through." />);
+    fireEvent.click(screen.getByRole('button', { name: 'Reload' }));
+    expect(reload).toHaveBeenCalledTimes(1);
   });
 });

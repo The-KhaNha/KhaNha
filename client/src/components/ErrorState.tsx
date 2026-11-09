@@ -37,6 +37,9 @@ export function ErrorState({
 }: ErrorStateProps) {
   // This build is too old (426): retrying would only fail again, so the one useful action is loading the new build.
   const outdated = useVersionStore((s) => s.outdated);
+  // The sign-in code failed to load (CLIENT_RELOAD_REQUIRED): the browser keeps that failure until the page reloads.
+  const reloadRequired = useVersionStore((s) => s.reloadRequired);
+  const mustReload = outdated || reloadRequired;
   const Icon = unreachable ? WifiOff : CircleAlert;
   const Heading = headingLevel === 1 ? 'h1' : 'h2';
   return (
@@ -63,15 +66,15 @@ export function ErrorState({
       {actions && (
         <div className="mt-6 flex w-full max-w-xs flex-col items-stretch gap-2">{actions}</div>
       )}
-      {!actions && (outdated || onRetry) && (
+      {!actions && (mustReload || onRetry) && (
         <Button
           variant="secondary"
           className="mt-6 min-w-40"
-          onClick={outdated ? () => window.location.reload() : onRetry}
-          loading={!outdated && retrying}
+          onClick={mustReload ? () => window.location.reload() : onRetry}
+          loading={!mustReload && retrying}
           iconLeft={<RefreshCw className="h-4 w-4" aria-hidden />}
         >
-          {outdated ? 'Refresh' : retryLabel}
+          {outdated ? 'Refresh' : reloadRequired ? 'Reload' : retryLabel}
         </Button>
       )}
     </div>

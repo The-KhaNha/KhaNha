@@ -166,7 +166,11 @@ function AppShell() {
   );
 }
 
-export default function App() {
+/**
+ * In its own app boundary: a config that crashes the read shows the error state instead of a blank page, and a shell
+ * crash cannot take the reporting setting down with it.
+ */
+function ClientErrorSampling() {
   const {
     clientErrors: { samplePercent },
     serverVersion,
@@ -175,16 +179,25 @@ export default function App() {
     // Buffer startup crashes until the server's setting is known; the fallback must not bypass a 0% sample.
     if (serverVersion !== 'unknown') setSamplePercent(samplePercent);
   }, [samplePercent, serverVersion]);
+  return null;
+}
+
+export default function App() {
   useEffect(() => {
     void useAuthStore.getState().hydrate();
   }, []);
 
   return (
-    <PageBoundary scope="app">
-      <BrowserRouter>
-        <OutdatedBanner />
-        <AppShell />
-      </BrowserRouter>
-    </PageBoundary>
+    <>
+      <PageBoundary scope="app">
+        <ClientErrorSampling />
+      </PageBoundary>
+      <PageBoundary scope="app">
+        <BrowserRouter>
+          <OutdatedBanner />
+          <AppShell />
+        </BrowserRouter>
+      </PageBoundary>
+    </>
   );
 }

@@ -5,7 +5,7 @@ const fetchConfig = vi.hoisted(() => vi.fn());
 vi.mock('../../services/config', () => ({ fetchConfig }));
 vi.mock('../../services/api', () => ({ ApiError: class ApiError extends Error {} }));
 
-const { useConfig } = await import('./useConfig');
+const { useConfig, withFallback } = await import('./useConfig');
 const { CONFIG_FALLBACK } = await import('./fallbacks');
 
 describe('useConfig', () => {
@@ -39,5 +39,33 @@ describe('useConfig', () => {
     const { result } = renderHook(() => useConfig());
     await waitFor(() => expect(fetchConfig).toHaveBeenCalled());
     expect(result.current).toBe(CONFIG_FALLBACK);
+  });
+
+  it('falls back per key for a null, missing or wrongly typed field, at any depth', async () => {
+    const malformed = {
+      ...CONFIG_FALLBACK,
+      serverVersion: '0.3.0',
+      clientErrors: null,
+      polling: { orderMs: 6000, ordersMs: null, staffBoardMs: 'fast' },
+      session: 7,
+      features: { multi_store_ui: true },
+    };
+    fetchConfig.mockResolvedValue(malformed);
+    const { result } = renderHook(() => useConfig());
+    await waitFor(() => expect(result.current.serverVersion).toBe('0.3.0'));
+    expect(result.current.clientErrors).toEqual(CONFIG_FALLBACK.clientErrors);
+    expect(result.current.polling).toEqual({ ...CONFIG_FALLBACK.polling, orderMs: 6000 });
+    expect(result.current.session).toEqual(CONFIG_FALLBACK.session);
+    expect(result.current.features).toEqual({ multi_store_ui: true });
+  });
+});
+
+describe('withFallback', () => {
+  it('keeps a nullable fallback’s value and replaces a non-object body whole', () => {
+    expect(withFallback(CONFIG_FALLBACK, null)).toBe(CONFIG_FALLBACK);
+    expect(withFallback(CONFIG_FALLBACK, 'oops')).toBe(CONFIG_FALLBACK);
+    expect(withFallback({ payment: null }, { payment: { provider: 'x' } })).toEqual({
+      payment: { provider: 'x' },
+    });
   });
 });

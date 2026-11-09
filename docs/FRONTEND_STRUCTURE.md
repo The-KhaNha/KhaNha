@@ -140,7 +140,7 @@ menu's cart sync, a sign-in) threw; with it the store carries on in memory and o
 | `useAuthStore`          | `client/src/features/auth/authStore.ts`              | `fp_auth`                                 | `user`, `token`                           | the profile and a mirror of the Supabase access token; `login`, `register`, `logout`, `hydrate`, `clearSession`                                                                                                                                                                                                                                                    |
 | `useCartStore`          | `client/src/features/cart/cartStore.ts`              | `fp_cart` (version 1)                     | `lines`                                   | cart lines; `add`, `increment`, `decrement`, `remove`, `clear`, `fix`, `setAvailability`, `syncAvailability`                                                                                                                                                                                                                                                       |
 | `useCheckoutDraftStore` | `client/src/features/checkout/checkoutDraftStore.ts` | `fp_checkout` (sessionStorage, version 1) | `name`, `phone`, `note`, `idempotencyKey` | the checkout form as typed (a refresh or Back keeps it; `null` = never touched, so the profile fills it) and one idempotency key per attempt (`ensureKey`); `reset` after the order is placed; `dropKey` after a 409 `IDEMPOTENCY_KEY_REUSED`; reset on every sign-in and sign-out by `authStore.ts` (always loaded), so typed data never reaches the next account |
-| `useVersionStore`       | `client/src/features/version/versionStore.ts`        | –                                         | nothing                                   | `outdated` (set by `services/api.ts` on a 426 `CLIENT_OUTDATED`), `markOutdated`; `OutdatedBanner` in `App.tsx` shows "New version available" with Refresh on every screen while it is set                                                                                                                                                                         |
+| `useVersionStore`       | `client/src/features/version/versionStore.ts`        | –                                         | nothing                                   | `outdated` (set by `services/api.ts` on a 426 `CLIENT_OUTDATED`), `markOutdated`; `OutdatedBanner` in `App.tsx` shows "New version available" with Refresh on every screen while it is set. `reloadRequired`, `markReloadRequired` (set with `CLIENT_RELOAD_REQUIRED`): `ErrorState` offers Reload                                                                 |
 
 - supabase-js keeps the real session in localStorage under its own key (`sb-<project-ref>-auth-token`) and refreshes
   it. `authStore` subscribes to `supabase.auth.onAuthStateChange` to keep `token` in step, and `services/api.ts` reads
@@ -181,6 +181,13 @@ Only these modules call `request()` from `services/api.ts`. Components and hooks
 - logs 5xx at `error` and 4xx at `debug`, with the response's `x-request-id`.
 
 `ApiError.isUnreachable` is true for status 0 or code `UNREACHABLE`.
+
+`CLIENT_RELOAD_REQUIRED` is a client-only code (status 0, so also unreachable), never sent by the server: an
+authenticated `request()`, `signIn` or `signOut` throws it when the supabase-js chunk failed to load (`loadSupabase()`
+in `services/api.ts`). Chromium keeps a failed `import()` for the page's life, so no retry could succeed; the code also
+sets `useVersionStore`'s `reloadRequired`, which turns every `ErrorState` button into "Reload" (`window.location.reload()`),
+including Checkout's Pay error, which otherwise has none. The cart, the checkout draft and its idempotency key are
+persisted, so the reload loses nothing.
 
 ## Feature folders
 
@@ -228,6 +235,9 @@ orders are user-specific and must never survive a sign-out on a shared device.
 If a refresh fails while a saved copy is showing, `MenuPage` and `HomePage` keep the saved copy and add a compact
 `ErrorState` ("Showing your saved menu" + Retry) instead of hiding it; checkout re-checks stock and prices anyway.
 
+A render crash clears every persisted copy (`PageBoundary` calls `clearPersistedCache()`), so one malformed 200 that
+was cached cannot crash every later load: Reload starts clean.
+
 Bump `CACHE_PREFIX` (`fp_cache:v1:` → `fp_cache:v2:`, …) whenever a persisted response's shape changes, so old code
 never hands new code a shape it no longer expects. Reading or writing the cache never throws: private-mode or a full
 quota just means no head start, not a crash.
@@ -269,8 +279,9 @@ and fallback behavior: [COMPONENTS.md](COMPONENTS.md#layout-and-navigation)).
 
 `main.tsx` installs `lib/errorReporter.ts` before startup work and rendering. `App` passes
 `useConfig().clientErrors.samplePercent` to `setSamplePercent` once loaded or cached server configuration replaces
-the `serverVersion: 'unknown'` fallback. The effect is outside the app boundary, so reporting still gets configured
-when the shell crashes on its first render. Startup errors wait for that first server sampling value.
+the `serverVersion: 'unknown'` fallback. The effect (`ClientErrorSampling`) sits in its own app boundary beside the
+shell's, so reporting still gets configured when the shell crashes on its first render, and a config that crashes its
+reader shows the error state instead of a blank page. Startup errors wait for that first server sampling value.
 The reporter sends through `services/clientErrors.ts`; its limits and privacy rules live in
 [LOGGING.md](LOGGING.md#client-error-reports).
 

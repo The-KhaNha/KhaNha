@@ -123,14 +123,15 @@ export function OrderPage() {
           <div className="mt-4 flex items-start gap-2.5 rounded-2xl bg-gold-50 px-4 py-3 text-sm text-gold-700">
             <MessageSquareText className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
             <p className="min-w-0 wrap-anywhere">
-              <span className="font-bold">Note:</span> {order.note}
+              <span className="font-bold">Note:</span> <bdi>{order.note}</bdi>
             </p>
           </div>
         )}
       </Card>
 
       <p className="wrap-anywhere pb-2 text-center text-caption text-muted">
-        Placed <TimeText iso={order.createdAt} withDay /> · Picking up as {order.customerName}
+        Placed <TimeText iso={order.createdAt} withDay /> · Picking up as{' '}
+        <bdi>{order.customerName}</bdi>
       </p>
     </div>
   );

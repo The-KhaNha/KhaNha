@@ -7,6 +7,8 @@ const { crashShell, reportingConfig, reportError, setSamplePercent } = vi.hoiste
   reportError: vi.fn(),
   setSamplePercent: vi.fn(),
 }));
+// Reading a malformed config (clientErrors: null) crashes its reader, as a real one did before useConfig's merge.
+const crashConfig = vi.hoisted(() => ({ enabled: false }));
 vi.mock('./lib/errorReporter', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./lib/errorReporter')>()),
   reportError,
@@ -18,7 +20,7 @@ vi.mock('./features/config/useConfig', async () => {
     useConfig: () => ({
       ...CONFIG_FALLBACK,
       serverVersion: reportingConfig.ready ? '0.0.0' : 'unknown',
-      clientErrors: { samplePercent: reportingConfig.samplePercent },
+      clientErrors: crashConfig.enabled ? null : { samplePercent: reportingConfig.samplePercent },
     }),
   };
 });
@@ -81,6 +83,22 @@ describe('App shell on navigation', () => {
       expect(setSamplePercent).toHaveBeenCalledWith(100);
     } finally {
       crashShell.enabled = false;
+      window.removeEventListener('error', preventError);
+    }
+  });
+
+  // Read above the app boundary, a malformed config once left a blank white page.
+  it('catches a crash while reading the config and still renders the shell', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const preventError = (event: ErrorEvent) => event.preventDefault();
+    window.addEventListener('error', preventError);
+    crashConfig.enabled = true;
+    try {
+      render(<App />);
+      expect(screen.getByText('Something went wrong')).toBeInTheDocument();
+      expect(screen.getAllByText('Page not found').length).toBeGreaterThan(0);
+    } finally {
+      crashConfig.enabled = false;
       window.removeEventListener('error', preventError);
     }
   });

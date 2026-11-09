@@ -4,15 +4,11 @@ let client: Promise<SupabaseClient> | null = null;
 
 /**
  * The supabase-js client, loaded on first use rather than with the app: it is 40% of the JavaScript, and a visitor who
- * only browses the menu never needs it. A failed load (offline) is forgotten, so the next call tries again.
+ * only browses the menu never needs it. A failed load is kept, not retried: Chromium caches a failed import() for the
+ * page's life, so a retry could never succeed there. Only a reload can (services/api.ts CLIENT_RELOAD_REQUIRED).
  */
 export function getSupabase(): Promise<SupabaseClient> {
-  client ??= import('./supabaseClient')
-    .then((module) => module.supabase)
-    .catch((err: unknown) => {
-      client = null;
-      throw err;
-    });
+  client ??= import('./supabaseClient').then((module) => module.supabase);
   return client;
 }
 
