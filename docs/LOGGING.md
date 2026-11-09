@@ -47,9 +47,10 @@ response goes out with `features: {}`, once until a read succeeds again (per pro
   `[A-Za-z0-9_.-]`; otherwise it generates a UUID. The id is echoed in the `x-request-id` response header.
 - A write also carries the id into the database, so the log line, the `domain_events` row and the `audit_log` row of one
   request can be matched ([SCHEMA.md](SCHEMA.md#audit_row_change)).
-- Every access line logs the request's path only (`req.url` with no query string or hash, and no parsed `query`): a
-  query can carry an email, a phone or a token, and redaction covers keys, never the inside of a URL (`pathOnly` in
-  `server/src/app.ts`; `server/test/api/client-errors.safe.test.ts` "request logs").
+- Every access line logs the request's path only (`req.url` with no query string or hash, no parsed `query`, and the
+  `Referer` header cut the same way): a query can carry an email, a phone or a token, and redaction covers keys, never
+  the inside of a URL (`pathOnly` in `server/src/app.ts`; `server/test/api/client-errors.safe.test.ts` "request logs"
+  and "request log serializer").
 - Every access line also carries `clientVersion`: the request's `X-Client-Version` (`none` when it is missing or
   malformed; `server/src/middleware/clientVersion.ts`). It tells a stale browser tab from a current one.
 - Log through `req.log` inside a request (controllers, middleware, the error handler). Every line then carries
@@ -146,7 +147,7 @@ with message at most 500 characters, optional stack at most 3500, and route at m
 `location.pathname`. Before those field cuts, the client scans at most 8000 characters and replaces URL query
 strings and fragments, JWTs, `sb_…` keys, `Bearer` values, email addresses (also `%40`-encoded, with `%` or `'` in
 the local part) and phone numbers (10 to 15 digits with up to three spaces, dashes, dots, slashes or parentheses
-between each two: `+91 - 98765 - 43210`, `98765/43210`; a date, a time or an order number stays) with `[Redacted]`. A sensitive keyed value (`name=` or URL-encoded `name%3D`) is
+between each two: `+91 - 98765 - 43210`, `98765/43210`; a lone date, time or order number stays, a date with its hour or a range of dates may not) with `[Redacted]`. A sensitive keyed value (`name=` or URL-encoded `name%3D`) is
 removed through the end of its line, including spaces and semicolon cookie fragments. This deliberately over-redacts
 rather than leaving a bearer token behind after removing its header name. `lib/errorReporter.test.ts` checks every
 field in the server's `REDACT_PATHS`, complete header values and the encoded shapes. The scrub uses no regex
@@ -161,7 +162,7 @@ throws or retries and does not report its own failure. Startup installation and 
 `POST /api/client-errors` ([API.md](API.md#post-client-errors)) writes one `warn` `Client error` line per report with
 `{ kind, message, stack, route, at }`, plus the `clientVersion` every request line carries. Never `error`: a browser
 cannot be allowed to page anyone. The body schema replaces anything shaped like a JWT, an `sb_…` key, a `Bearer`
-value, a token, code or password in a URL parameter, an email address or a phone number (each matched loosely: a cut-short JWT, an encoded `%3D` or `%40`, an apostrophe in an address, a bracketed, slashed or spaced-dash phone; a date, time or order number is left alone) in `message`, `stack` and `route` (cut to its path) with `[Redacted]` before the line is written (redaction below covers keys, not
+value, a token, code or password in a URL parameter, an email address or a phone number (each matched loosely: a cut-short JWT, an encoded `%3D` or `%40`, an apostrophe in an address, a bracketed, slashed or spaced-dash phone; a lone date, time or order number is left alone, a date with its hour or a range of dates may not be) in `message`, `stack` and `route` (cut to its path) with `[Redacted]` before the line is written (redaction below covers keys, not
 strings), behind the client's own scrub; `server/test/api/client-errors.safe.test.ts` fails if a token-shaped string
 reaches the log, and the same for an email or phone; `test/unit/client-errors-scrub.safe.test.ts` fails for each encoded or unusual shape and keeps the scrub linear on crafted input. `at` is the client's clock, as sent. At most 5 reports per request and `RATE_LIMIT_CLIENT_ERRORS_MAX` requests per address per window.
 

@@ -22,7 +22,8 @@ const ROUTE_INPUT_MAX = 4000;
 //   A `%` or `'` may sit inside the local part but still starts a new run: an encoded email at the end of an encoded
 //   URL follows far more than 64 joined characters, and only a start after a `%` reaches it;
 // - a phone number: 10 to 15 digits with up to three spaces, dashes, dots, slashes or parentheses between each two
-//   (`+91 - 98765 - 43210`, `98765/43210`; an epoch timestamp too). A date, a time or an order number has under 10.
+//   (`+91 - 98765 - 43210`, `98765/43210`; an epoch timestamp too). A lone date, time or order number has under 10;
+//   a date with its hour (`2026-11-09 12:30`) or a range of dates reaches 10 and is redacted, which costs nothing.
 const SECRET_SHAPED = new RegExp(
   [
     String.raw`(?<![\w-])eyJ[\w-]+(?:\.[\w-]*){0,2}`,

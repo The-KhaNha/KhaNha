@@ -1,5 +1,6 @@
 import { once } from 'node:events';
-import type { Server } from 'node:http';
+import { get as httpGet, type IncomingMessage, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { pino } from 'pino';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -312,6 +313,7 @@ describe('request log serializer', () => {
       .get('/api/no-such-route?token=abc123secret')
       .set('Authorization', 'Bearer not-a-real-token')
       .set('Cookie', 'sid=cookie-secret')
+      .set('Referer', 'http://127.0.0.1/login?next=/checkout&email=a@b.co')
       .set('X-Client-Version', '9.1.0');
     const req = await accessLine();
     expect(req).toMatchObject({
@@ -325,17 +327,23 @@ describe('request log serializer', () => {
       authorization: '[Redacted]',
       cookie: '[Redacted]',
       'x-client-version': '9.1.0',
+      referer: 'http://127.0.0.1/login',
     });
-    expect(JSON.stringify(req)).not.toMatch(/not-a-real-token|cookie-secret|abc123secret/);
+    expect(JSON.stringify(req)).not.toMatch(/not-a-real-token|cookie-secret|abc123secret|a@b\.co/);
   });
 
+  // Sent raw: Supertest rebuilds the path from `new URL()`, which drops a hash and a bare `?` before they are sent.
   it.each([
     ['only a hash', '/api/no-such-route#frag'],
     ['an empty query', '/api/no-such-route?'],
     ['an empty query and hash', '/api/no-such-route?#'],
-  ])('cuts %s from the logged url', async (_label, url) => {
+  ])('cuts %s from the logged url', async (_label, path) => {
     app.lines.length = 0;
-    await request(app.server).get(url);
+    const { port } = app.server.address() as AddressInfo;
+    const res = await new Promise<IncomingMessage>((resolve, reject) =>
+      httpGet({ host: '127.0.0.1', port, path }, resolve).on('error', reject),
+    );
+    res.resume();
     expect((await accessLine()).url).toBe('/api/no-such-route');
   });
 });
