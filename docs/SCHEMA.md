@@ -384,8 +384,8 @@ place_order(
 The API has already checked every line and charged for it. The function prices them itself, from
 `menu_items.price_paise`, and each line's `unit_price_paise` is the price the API charged: a line whose price has
 changed since refuses the order (step 3), so nothing is stored at a price other than the one charged. A line without
-`unit_price_paise` is not checked, and any other key in a line (a rupee `unit_price` from a pre-paise caller) is
-ignored.
+`unit_price_paise` is refused the same way (PR 09 let it through for the pre-paise API, which no longer runs), and any
+other key in a line (a rupee `unit_price`) is ignored.
 It first sets `app.actor` and
 `app.request_id` for the transaction (`set_config(..., true)`; PR 06's audit trigger reads them). Then:
 
@@ -399,8 +399,8 @@ It first sets `app.actor` and
    - otherwise (too few left, or the item does not exist): raises `INSUFFICIENT_STOCK` with detail
      `{ menuItemId, name, available }`, where `available` is the stock left (0 when the item is missing).
 3. Reads every line's `menu_items` row once (price, name, photo, category), so the total and the lines come from the
-   same versions even if a price changes meanwhile. If any line's `unit_price_paise` differs from that read's
-   `price_paise`, raises `PRICE_CHANGED` with detail `{ menuItemId, name, price }` (the first such line in cart order;
+   same versions even if a price changes meanwhile. If any line's `unit_price_paise` is missing or differs from that
+   read's `price_paise`, raises `PRICE_CHANGED` with detail `{ menuItemId, name, price }` (the first such line in cart order;
    `price` is the current price in rupees), which rolls back the stock reserved in step 1. Otherwise inserts the
    `orders` row: `total_paise = sum(price_paise * quantity)`, `status = 'PLACED'`,
    `payment_status = p_payment_status`, `estimated_ready_at = now() + stores.prep_time_max_minutes` minutes,

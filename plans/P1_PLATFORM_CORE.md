@@ -723,6 +723,11 @@ ADR-011's Links to this PR (the decision itself is not rewritten). Intent: `--se
 Branch `feat/p1-16-paise-contract`, PR target `feat/P1`, before the phase PR into `dev` (user decision of 9 November 2026: nothing reaches production until P8, so no deployed API
 still reads the rupee columns when this migration runs anywhere).
 
+**Staging order.** Staging's database takes `feat/P1`'s migrations while its API still runs `dev`, which predates PR 09
+and reads the rupee columns. So this migration reaches staging only after `feat/P1` has merged into `dev` and staging
+runs that API: push it then (`npm run db:push:staging`), and stop or update any other API process connected to the
+staging database first.
+
 Migration `<ts>_money_paise_contract.sql`: `create or replace place_order` without the rupee writes; the audit trigger
 stops watching `price`; drop the `menu_items_sync_price` trigger and its function (PR 09) before the column; drop `menu_items.price`, `orders.total`, `order_items.unit_price` and
 `order_items.line_total`; `npm run db:types`. The seed stops writing them. The whole-rupee checks stay until a paise
@@ -769,7 +774,8 @@ Answered by the user on 24 October 2026.
 Once every box is ticked (PR 16 included, since 9 November 2026): on a fresh `origin/feat/P1`, the gate in both packages, `npm run e2e:chromium`
 and `/break` (P1 changes auth, orders, money and the request pipeline), with fixes as normal PRs into `feat/P1`. Then
 the PR `feat/P1` → `dev` ("P1 — platform core", exempt from the size limit, linking the plan's PRs); the user merges
-it and cuts the release as usual (`release.yml`).
+it. No release into `main` and no production migration until P8 (D8 as amended 9 November 2026): P1 is tested on
+staging.
 
 ## User steps (cannot be done from the repository)
 
