@@ -29,13 +29,19 @@ reviews:
     # No max_security_risk: security risk ratings need the Advanced plan, and a limit with no rating withholds every
     # approval. security_risk_instructions below take effect if the plan changes.
     overrides:
-      # Append-only once pushed, or the guards every request passes through: always a human's call.
+      # Append-only once pushed, or the guards every request passes through (or that stop a destructive command): always
+      # a human's call.
       - enabled: false
         paths:
           - 'server/supabase/migrations/**'
           - '.github/workflows/**'
           - 'server/src/middleware/auth.ts'
           - 'server/src/middleware/rateLimit.ts'
+          - '.claude/hooks/**'
+          - '.claude/settings.json'
+          - '.codex/hooks.json'
+          - '.codex/config.toml'
+          - 'scripts/codex/hooks.mjs'
   merge_risk_instructions: |
     Live production pickup-ordering app with real concurrent customers; the deployed client lags the API.
     Critical: a migration that drops, renames or rewrites data, or changes place_order or another order-transition
@@ -44,11 +50,12 @@ reviews:
     High: any new file in server/supabase/migrations/ (append-only once pushed); money (prices, totals, paise
     columns); server/src/middleware/ (auth, sessions, rate limits, error handler, security headers); serializers and
     the client DTO copies; .github/workflows/, Dockerfiles, nginx and compose; caching headers or the read cache (a
-    stale copy of stock, price or order status misleads customers).
+    stale copy of stock, price or order status misleads customers); the agent safety hooks that block destructive git
+    (.claude/hooks/, .claude/settings.json, .codex/hooks.json, .codex/config.toml, scripts/codex/hooks.mjs).
     Moderate: other server routes, controllers and services; client services, stores, useResource and *Rules.ts;
     the order board and checkout pages.
-    Low: presentational client components with tests; tests only; scripts and tooling under .claude/, .codex/ and
-    scripts/.
+    Low: presentational client components with tests; tests only; other scripts and tooling under .claude/, .codex/ and
+    scripts/ (not the safety hooks above).
     Minimal: Markdown only (docs/, plans/, README) and .changes/ entries.
   security_risk_instructions: |
     The Express API is internet-facing behind nginx; the React client is public. Supabase is used for auth (the

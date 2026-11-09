@@ -23,7 +23,7 @@ skill, or changing its discovery metadata.
 
 The optional second command exposes the enabled plugins from `.claude/settings.json` using the existing
 `~/.claude/plugins/installed_plugins.json` registry. It prefers this project's install, then a user install; it never
-uses another project's install. Skills, command prompts and agent prompts get `local-<plugin>-<name>` names, avoiding
+uses another project's install. Skills, command prompts and agent prompts get `local-<plugin>-<name>` names (lowercased, other characters become `-`; two prompts normalizing to one name fail the sync), avoiding
 collisions with project and built-in skills. These wrappers contain machine paths and are gitignored. Run the command
 on each machine and after plugin upgrades. A local manifest removes obsolete adapters previously written by the bridge;
 edited or unrelated files are preserved. Missing plugins are reported and return a failing exit status; no downloads,
@@ -72,7 +72,7 @@ maps to `Write` for reuse reminders. Relative patch paths resolve from the event
 when launched inside `client/` or `server/` because registration resolves the script from the git root.
 
 The destructive-git hook's denial stays a denial; CodeRabbit and pending-major-change messages become model context;
-Stop reminders stay advisory. Graphify hints retain their existing optional behavior. Tool calls hidden inside another
+Stop reminders stay advisory. If the adapter itself fails, `UserPromptSubmit` and `Stop` get a `systemMessage` and exit 0 (a fault never rejects a prompt or forces a continuation); `PreToolUse` and any event that cannot be determined exit 2 (fail closed). Graphify hints retain their existing optional behavior. Tool calls hidden inside another
 tool's JavaScript payload and file writes made inside shell commands cannot all be inspected as individual operations.
 The standing safety and reuse rules apply to those operations too.
 

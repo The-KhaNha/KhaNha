@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import {
   cpSync,
   existsSync,
@@ -19,8 +19,13 @@ import { field, root, syncPlugins, syncProject } from './sync.mjs';
 function fixture(t) {
   const directory = mkdtempSync(join(tmpdir(), 'workflow-compat-'));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const real = join(root, '.claude/settings.json');
+  const before = readFileSync(real, 'utf8');
+  // Fails loudly if any fixture write ever reaches the real checkout.
+  t.after(() => assert.equal(readFileSync(real, 'utf8'), before, 'real settings.json changed'));
   cpSync(join(root, '.claude'), join(directory, '.claude'), {
     recursive: true,
+    dereference: true,
     filter: (file) => !file.includes('/.state'),
   });
   return directory;
@@ -204,6 +209,55 @@ test('plugin bridge selects this project, namespaces skills and commands, and re
     readFileSync(join(directory, '.agents/skills/local-unmanaged/SKILL.md'), 'utf8'),
     'local work',
   );
+});
+
+test('adapter faults stay advisory for prompt and stop events and fail closed otherwise', () => {
+  const run = (input) =>
+    spawnSync(process.execPath, [join(root, 'scripts/codex/hooks.mjs')], {
+      input,
+      encoding: 'utf8',
+    });
+  for (const event of ['UserPromptSubmit', 'Stop']) {
+    // A non-string tool_name makes normalize() throw inside runHooks.
+    const result = run(JSON.stringify({ hook_event_name: event, tool_name: 5 }));
+    assert.equal(result.status, 0, event);
+    assert.match(JSON.parse(result.stdout).systemMessage, /adapter failed/);
+  }
+  const bad = (event) => run(`{"hook_event_name":"${event}","tool_name":`);
+  assert.equal(bad('PreToolUse').status, 2);
+  assert.equal(run(JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 5 })).status, 2);
+  assert.equal(run('not json').status, 2);
+  assert.equal(run(JSON.stringify({ hook_event_name: 'Unknown', tool_name: 5 })).status, 2);
+});
+
+test('plugin names are normalized, collisions fail, and removal cleans up', (t) => {
+  const directory = fixture(t);
+  const home = join(directory, 'plugins');
+  const installPath = join(home, 'chosen');
+  put(
+    join(directory, '.claude/settings.json'),
+    JSON.stringify({ enabledPlugins: { 'Ex_Plug@market': true } }),
+  );
+  put(join(installPath, 'commands/My_Skill.v2.md'), '---\ndescription: Odd name\n---\n');
+  put(
+    join(home, 'installed_plugins.json'),
+    JSON.stringify({ plugins: { 'Ex_Plug@market': [{ scope: 'user', installPath }] } }),
+  );
+  syncPlugins(directory, home);
+  const file = '.agents/skills/local-ex-plug-my-skill-v2/SKILL.md';
+  assert.ok(existsSync(join(directory, file)));
+  assert.deepEqual(
+    JSON.parse(readFileSync(join(directory, '.codex/local-plugins.json'), 'utf8')).map(
+      (e) => e.path,
+    ),
+    [file],
+  );
+  put(join(installPath, 'commands/my-skill-v2.md'), '---\ndescription: Clash\n---\n');
+  assert.throws(() => syncPlugins(directory, home), /collision/);
+  rmSync(join(installPath, 'commands/my-skill-v2.md'));
+  put(join(directory, '.claude/settings.json'), JSON.stringify({ enabledPlugins: {} }));
+  syncPlugins(directory, home);
+  assert.ok(!existsSync(join(directory, file)));
 });
 
 test('checked-in adapters stay current with shared prompts', () => {

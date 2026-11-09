@@ -10,7 +10,7 @@ import {
 } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
-import { basename, dirname, join, relative, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -92,10 +92,18 @@ export function syncPlugins(repository = root, pluginHome = join(homedir(), '.cl
   const manifest = join(repository, '.codex/local-plugins.json');
   const previous = existsSync(manifest) ? JSON.parse(readFileSync(manifest, 'utf8')) : [];
   const managed = [];
+  const slug = (value) =>
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/g, '-')
+      .replace(/^-+|-+$/g, '');
   function save(file, content) {
+    // Two prompts that normalize to one name would silently overwrite each other.
+    if (managed.some((entry) => entry.path === relative(repository, file).split(sep).join('/')))
+      throw new Error(`Plugin adapter name collision after normalizing: ${file}`);
     emit(file, content, false);
     managed.push({
-      path: relative(repository, file),
+      path: relative(repository, file).split(sep).join('/'),
       hash: createHash('sha256').update(content).digest('hex'),
     });
   }
@@ -126,7 +134,7 @@ export function syncPlugins(repository = root, pluginHome = join(homedir(), '.cl
     for (const source of prompts) {
       const shortName =
         basename(source) === 'SKILL.md' ? basename(dirname(source)) : basename(source, '.md');
-      const name = `local-${plugin}-${shortName}`;
+      const name = `local-${slug(plugin)}-${slug(shortName)}`;
       const description = field(readFileSync(source, 'utf8'), 'description');
       const body = skill(
         name,
@@ -141,7 +149,7 @@ export function syncPlugins(repository = root, pluginHome = join(homedir(), '.cl
       if (!entry.name.endsWith('.md')) continue;
       const source = join(pluginRoot, 'agents', entry.name);
       const prompt = readFileSync(source, 'utf8');
-      const name = `local-${plugin}-${basename(entry.name, '.md')}`;
+      const name = `local-${slug(plugin)}-${slug(basename(entry.name, '.md'))}`;
       save(
         join(repository, '.codex/agents', `${name}.toml`),
         agent(name, field(prompt, 'description'), source),

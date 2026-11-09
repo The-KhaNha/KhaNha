@@ -142,7 +142,9 @@ Naming conventions: `.claude/rules/frontend.md` §12 and `.claude/rules/backend.
 ## 13. Validation after every change
 
 In every package you touched: `npm run typecheck && npm run lint && npm test` (the server suite needs local Supabase
-running and seeded; in `client/` also the e2e smoke; what each runs: `docs/TESTING.md`). Format with
+running and seeded; in `client/` also the e2e smoke; what each runs: `docs/TESTING.md`). Root and tooling changes
+(`scripts/`, `.github/`, `plans/`, root `package.json`) use the root gate `npm run format:check && npm test` instead
+(no `typecheck` or `lint` there; `docs/TESTING.md`). Format with
 `npx prettier --write <files>`. Report failures with their output; never weaken a test to get green.
 
 **Every fix ships with its guard.** A bug fix is done only when the check that would have caught it exists and you

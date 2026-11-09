@@ -83,10 +83,20 @@ export function runHooks(input, repository = root) {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  let event;
   try {
-    process.stdout.write(JSON.stringify(runHooks(JSON.parse(readFileSync(0, 'utf8')))));
+    const input = JSON.parse(readFileSync(0, 'utf8'));
+    event = input?.hook_event_name;
+    process.stdout.write(JSON.stringify(runHooks(input)));
   } catch (error) {
-    process.stderr.write(`Shared hook adapter failed: ${error.message}\n`);
-    process.exitCode = 2;
+    const message = `Shared hook adapter failed: ${error.message}`;
+    if (event === 'UserPromptSubmit' || event === 'Stop') {
+      // Advisory events: an adapter fault must not reject a prompt or force a Stop continuation.
+      process.stdout.write(JSON.stringify({ systemMessage: message }));
+    } else {
+      // PreToolUse and unknown events fail closed; this keeps the destructive-git denial intact.
+      process.stderr.write(`${message}\n`);
+      process.exitCode = 2;
+    }
   }
 }
