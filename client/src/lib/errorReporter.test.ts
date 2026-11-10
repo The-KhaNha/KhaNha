@@ -274,16 +274,28 @@ describe('browser error reporter: phone numbers', () => {
     expect(report(text)).toContain(text);
   });
 
-  it('stays linear on long runs of digits and phone separators', () => {
-    reporter.setSamplePercent(100);
+  it('stays linear on long runs of digits and phone separators', async () => {
     for (const run of [
       '1 - '.repeat(2000),
       `${'1/'.repeat(9)}x`.repeat(400),
       '( -/'.repeat(2000),
     ]) {
-      const start = performance.now();
-      reporter.reportError(new Error(run), 'error');
-      expect(performance.now() - start).toBeLessThan(50);
+      // Best of three absorbs a noisy CI neighbour; a fresh module each time resets the dedup and report cap,
+      // and the flushed report proves every timed call really went through the scrub.
+      let best = Infinity;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        vi.resetModules();
+        sendClientErrors.mockClear();
+        reporter = await import('./errorReporter');
+        reporter.installErrorReporter();
+        reporter.setSamplePercent(100);
+        const start = performance.now();
+        reporter.reportError(new Error(run), 'error');
+        best = Math.min(best, performance.now() - start);
+        flush();
+        expect(sendClientErrors).toHaveBeenCalledOnce();
+      }
+      expect(best).toBeLessThan(50);
     }
   });
 });
