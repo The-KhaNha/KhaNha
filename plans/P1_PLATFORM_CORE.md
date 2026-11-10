@@ -5,8 +5,10 @@ file says in which order, in which pull requests, with which files, tests, docs 
 builds less than the roadmap describes (each with its reason and the phase that picks it up). When a PR merges, tick
 its box here and in the roadmap.
 
-> **Status: in progress** (3 November 2026). PRs 01–11, 02b and 13–15 are merged into `feat/P1`; PR 12 is
-> implemented and verified, in review. PR 16 lands in `feat/P1` before the phase PR (user decision of 9 November 2026: nothing reaches production until P8). Every
+> **Status: done** (10 November 2026). PRs 01–16 and 02b are merged into `feat/P1`, PR 16 last (#35). The closing
+> `/break` run's fixes landed as three more PRs: order integrity (#36), client resilience (#37) and path-only request
+> logs with a wider phone scrub (#38). Next is the phase PR `feat/P1` → `dev` (user decision of 9 November 2026:
+> nothing reaches production until P8; P1 is tested on staging). Every
 > [decision](#decisions) is answered, and ADR-001, 004, 005, 006, 008, 009 and 010 are accepted (001, 004, 006 and 009
 > with amendments). One agent builds P1 on the `feat/P1` feature branch, one PR at a time, in the order below.
 
@@ -69,8 +71,8 @@ P0 already shipped parts of P1. The plan builds on them instead of rebuilding th
 | 15  | Server-side idle sign-out                                                  | ADR-011    | 02                                           | 9 / 380              |
 | 16  | Money in paise: contract                                                   | ADR-004    | 09; last into `feat/P1`, before the phase PR | 7 / 220              |
 
-The table gives the dependency order; PR 12 is the remaining implementation PR. PR 16 also goes into `feat/P1`, as
-its last PR before the phase PR into `dev` (user decision of 9 November 2026: nothing reaches production until P8, so no production API still reads the rupee columns).
+The table gives the dependency order; every PR in it is merged. PR 16 also went into `feat/P1`, as its last
+implementation PR before the phase PR into `dev` (user decision of 9 November 2026: nothing reaches production until P8, so no production API still reads the rupee columns).
 
 Why this order: the 429 contract first because it is small and every later 429 (P5, P6, P7 buckets) inherits it; the
 outbox schema before the runner and the runner before the process, so each lands testable on its own; today's
