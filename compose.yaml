@@ -1,35 +1,39 @@
 # Local containers: the API and web images against the Supabase stack on the host (`npm run db:start` in server/).
 #   docker compose up --build web api worker        then http://localhost:8080
-# See docs/DEPLOYMENT.md "Local compose".
+# See docs/DEPLOYMENT.md "Local compose". The variables below default to that local stack; ./run.sh staging sets
+# them to run the same images against the staging project instead.
 services:
   api: &api
+    image: fp-api:${FP_ENV:-dev}
     build:
       context: server
       args:
         GIT_COMMIT: ${GIT_COMMIT:-local}
-    env_file: server/.env
+    env_file: ${API_ENV_FILE:-server/.env}
     environment:
       # The host's Supabase stack, seen from inside the container.
-      SUPABASE_URL: http://host.docker.internal:54321
+      SUPABASE_URL: ${API_SUPABASE_URL:-http://host.docker.internal:54321}
       # @supabase/server only derives the JWKS URL from an https or localhost SUPABASE_URL (DEPLOYMENT.md).
-      SUPABASE_JWKS_URL: http://host.docker.internal:54321/auth/v1/.well-known/jwks.json
-      CLIENT_ORIGIN: http://localhost:8080
+      # `-` (not `:-`): an empty value stays empty, which the API reads as unset (an https URL needs none).
+      SUPABASE_JWKS_URL: ${API_SUPABASE_JWKS_URL-http://host.docker.internal:54321/auth/v1/.well-known/jwks.json}
+      CLIENT_ORIGIN: http://localhost:${WEB_PORT:-8080}
       # One proxy (the web container's nginx) in front of the API.
       TRUST_PROXY_HOPS: 1
     extra_hosts:
       - 'host.docker.internal:host-gateway'
 
   web:
+    image: fp-web:${FP_ENV:-dev}
     build:
       context: client
       args:
         GIT_COMMIT: ${GIT_COMMIT:-local}
     ports:
-      - '8080:8080'
+      - '${WEB_PORT:-8080}:8080'
     environment:
       API_UPSTREAM: http://api:8000
       # The browser's view of Supabase, not the container's.
-      SUPABASE_URL: http://127.0.0.1:54321
+      SUPABASE_URL: ${BROWSER_SUPABASE_URL:-http://127.0.0.1:54321}
       # The local key is VITE_SUPABASE_PUBLISHABLE_KEY in client/.env.development; the web container refuses to start
       # without one (nginx/runtime-env.sh).
       SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_PUBLISHABLE_KEY:-}
@@ -44,7 +48,11 @@ services:
     command: ['node', 'dist/src/worker.js']
     # Replaces the image's API healthcheck. $$ keeps compose from expanding the variable itself.
     healthcheck:
-      test: ['CMD-SHELL', 'wget -qO- "http://127.0.0.1:$${WORKER_HEALTH_PORT:-8001}/health" > /dev/null || exit 1']
+      test:
+        [
+          'CMD-SHELL',
+          'wget -qO- "http://127.0.0.1:$${WORKER_HEALTH_PORT:-8001}/health" > /dev/null || exit 1',
+        ]
       interval: 15s
       timeout: 3s
       start_period: 10s
