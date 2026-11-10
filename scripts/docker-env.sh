@@ -31,12 +31,17 @@ fi
 
 SUPABASE_PUBLISHABLE_KEY=$(env_value "$CLIENT_ENV_FILE" VITE_SUPABASE_PUBLISHABLE_KEY)
 [ -n "$SUPABASE_PUBLISHABLE_KEY" ] || fail "$CLIENT_ENV_FILE has no VITE_SUPABASE_PUBLISHABLE_KEY."
+case "$SUPABASE_PUBLISHABLE_KEY" in
+  *REPLACE_*) fail "$CLIENT_ENV_FILE has a placeholder VITE_SUPABASE_PUBLISHABLE_KEY." ;;
+esac
 
 unset API_SUPABASE_URL API_SUPABASE_JWKS_URL BROWSER_SUPABASE_URL
 if [ "$FP_ENV" = staging ]; then
   API_SUPABASE_URL=$(env_value "$API_ENV_FILE" SUPABASE_URL)
   BROWSER_SUPABASE_URL=$(env_value "$CLIENT_ENV_FILE" VITE_SUPABASE_URL)
   # Two projects would make the API reject every sign-in (docs/DEPLOYMENT.md).
+  # Empty on both sides would pass the equality and fall back to the local stack's URL in compose.yaml.
+  [ -n "$API_SUPABASE_URL" ] || fail "$API_ENV_FILE has no SUPABASE_URL."
   [ "$API_SUPABASE_URL" = "$BROWSER_SUPABASE_URL" ] ||
     fail "$API_ENV_FILE and $CLIENT_ENV_FILE point at different Supabase projects."
   # Empty means unset: the API derives the signing keys' URL from an https SUPABASE_URL itself.

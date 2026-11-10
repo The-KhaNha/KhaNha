@@ -18,7 +18,7 @@ case "${2:-up}" in
       docker image inspect "$image" > /dev/null 2>&1 || fail "$image is missing. Build it with: ./build.sh $FP_ENV"
     done
     if [ "$FP_ENV" = dev ] &&
-      [ "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:54321/rest/v1/)" = 000 ]; then
+      [ "$(curl -s --max-time 3 -o /dev/null -w '%{http_code}' http://127.0.0.1:54321/rest/v1/)" = 000 ]; then
       echo "Starting the local Supabase stack…"
       (cd server && npm run db:start)
     fi
