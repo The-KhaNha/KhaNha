@@ -16,4 +16,7 @@ regexes = [
   # A made-up refresh token in client/src/lib/errorReporter.test.ts, URL-encoded (`refresh_token%3D…`) so the
   # reporter's scrub must catch it; gitleaks decodes it. In history since the PR 12 scrub fix.
   '''brk7q2xw9zle''',
+  # The placeholder seed password in scripts/ci/docker-env.test.mjs, which docker-env.sh must refuse (and the
+  # server/.env.staging template's placeholder). Not a secret by construction; in history since PR #41.
+  '''REPLACE_ME_12_CHARS_MIN''',
 ]
