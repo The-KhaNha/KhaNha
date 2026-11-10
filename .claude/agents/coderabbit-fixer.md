@@ -298,6 +298,8 @@ gh api graphql -f query='mutation($id: ID!) { resolveReviewThread(input: {thread
 ```
 
 Replies are one line plus at most one line of reason. Do not retry a failed `gh api` call: record it and continue.
+Never write `@coderabbitai` in a reply: a mention spends CodeRabbit's hourly chat budget (`.claude/rules/workflow.md`
+§21).
 
 ## Step 8: Report
 

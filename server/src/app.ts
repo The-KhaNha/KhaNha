@@ -5,7 +5,7 @@ import express, { type Express } from 'express';
 import pino from 'pino';
 import { pinoHttp } from 'pino-http';
 import { readClientVersion } from './middleware/clientVersion';
-import { errorHandler, notFoundHandler } from './middleware/errorHandler';
+import { errorHandler, loggedAtDebug, notFoundHandler } from './middleware/errorHandler';
 import { floodLimiter } from './middleware/rateLimit';
 import { securityHeaders } from './middleware/securityHeaders';
 import { payloadTooLarge } from './utils/errors';
@@ -19,6 +19,31 @@ const REQUEST_ID = /^[\w.-]{1,64}$/;
 /** Largest JSON body accepted (docs/API.md "Headers and limits"); the web image's nginx enforces the same. */
 export const JSON_BODY_LIMIT_BYTES = 100 * 1024;
 
+// An upload refused for its declared size is read and thrown away before the 413, up to these bounds. Answering with it
+// unread made the OS reset the connection, and a client still sending could lose the 413 to the reset (nginx in front
+// drains the same way: its lingering close). Past either bound the 413 goes out anyway and the connection closes.
+const REFUSED_UPLOAD_DRAIN_BYTES = 1024 * 1024;
+const REFUSED_UPLOAD_DRAIN_MS = 2000;
+
+/** Reads the rest of a refused upload and throws it away, then calls `answer` once, within the drain bounds. */
+function drainThen(req: IncomingMessage, answer: () => void): void {
+  let read = 0;
+  let answered = false;
+  const finish = () => {
+    if (answered) return;
+    answered = true;
+    clearTimeout(timer);
+    answer();
+  };
+  const timer = setTimeout(finish, REFUSED_UPLOAD_DRAIN_MS);
+  req.on('data', (chunk: Buffer) => {
+    read += chunk.length;
+    if (read > REFUSED_UPLOAD_DRAIN_BYTES) finish();
+  });
+  req.once('end', finish);
+  req.once('close', finish);
+}
+
 function requestId(req: IncomingMessage, res: ServerResponse): string {
   const incoming = req.headers['x-request-id'];
   const id = typeof incoming === 'string' && REQUEST_ID.test(incoming) ? incoming : randomUUID();
@@ -28,11 +53,32 @@ function requestId(req: IncomingMessage, res: ServerResponse): string {
 
 /**
  * One access line per request. Successful reads are debug: the customer and staff screens poll, and at info they
- * would flood production logs. Writes and every failure are info; the error handler adds the detail.
+ * would flood production logs. Writes and every failure are info, and the error handler adds the detail, except a
+ * failure it logged at debug (an expected repeat): that access line goes down with it.
  */
-function accessLevel(req: IncomingMessage, res: ServerResponse): 'debug' | 'info' {
+export function accessLevel(req: IncomingMessage, res: ServerResponse): 'debug' | 'info' {
   const read = req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS';
-  return read && res.statusCode < 400 ? 'debug' : 'info';
+  return (read && res.statusCode < 400) || loggedAtDebug.has(res) ? 'debug' : 'info';
+}
+
+const QUERY_AND_HASH = /[?#][\s\S]*$/;
+
+/**
+ * The access line's request, as a path only. A query string can carry an email, a phone or a token, and REDACT_PATHS
+ * blanks keys, never the inside of a URL; the parsed `query` the standard serializer adds is dropped for the same
+ * reason (`req.query.email` sits deeper than `*.email` reaches). The `Referer` header is the page's full URL (same
+ * origin, so the browser sends its query), and is cut the same way; the headers are copied, never edited in place.
+ */
+function pathOnly(req: IncomingMessage) {
+  const { query: _query, ...rest } = pino.stdSerializers.req(req);
+  const { referer } = rest.headers;
+  return {
+    ...rest,
+    url: rest.url.replace(QUERY_AND_HASH, ''),
+    headers: referer
+      ? { ...rest.headers, referer: referer.replace(QUERY_AND_HASH, '') }
+      : rest.headers,
+  };
 }
 
 /** The whole request pipeline, without `listen`, so tests can drive it with Supertest. */
@@ -64,7 +110,7 @@ export function createApp(): Express {
       wrapSerializers: false,
       serializers: {
         ...LOG_SERIALIZERS,
-        req: pino.stdSerializers.req,
+        req: pathOnly,
         res: pino.stdSerializers.res,
       },
       customLogLevel: accessLevel,
@@ -81,12 +127,12 @@ export function createApp(): Express {
   // After the access log (a refused request still gets its line) and before the body is parsed (a flood is refused
   // before it costs anything). The probes in routes/index.ts count too: they are only cheaper, not exempt.
   app.use('/api', floodLimiter);
-  // body-parser reads an oversized body to its end before answering 413. Refusing on the declared length instead
-  // tells a phone on a slow link at once, and Connection: close drops the rest of the upload unread.
+  // body-parser reads an oversized body to its end, however long, before answering 413. Refusing on the declared
+  // length reads at most the drain bounds instead, then answers and closes the connection.
   app.use('/api', (req, res, next) => {
     if (Number(req.headers['content-length']) > JSON_BODY_LIMIT_BYTES) {
       res.set('Connection', 'close');
-      next(payloadTooLarge());
+      drainThen(req, () => next(payloadTooLarge()));
       return;
     }
     next();

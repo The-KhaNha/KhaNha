@@ -8,6 +8,10 @@ How Food Pickup works end to end: which piece talks to which, and what happens, 
 
 ## Docs map
 
+Repository tooling also includes `.agents/` (skill discovery entry files) and `.codex/` (runtime configuration, hooks and
+role adapters). Both reuse the canonical `.claude/` resources; setup and runtime behavior are owned by
+[CODEX.md](CODEX.md).
+
 This file owns the system overview, the cross-cutting flows and the diagrams. Everything else has one owner:
 
 | Topic                                                           | Doc                                                           |
@@ -61,6 +65,10 @@ flowchart LR
     Verify["@supabase/server<br/>verifyCredentials"]
   end
 
+  subgraph Worker["Worker :8001 health (server/src/worker.ts)"]
+    Runner["runQueue per handler<br/>(notifyHandler)"]
+  end
+
   subgraph Supabase["Supabase project (local / staging / production)"]
     GoTrue["Auth (GoTrue)<br/>/auth/v1"]
     JWKS["JWKS<br/>/auth/v1/.well-known/jwks.json"]
@@ -84,12 +92,23 @@ flowchart LR
   Admin -->|"select / rpc"| PostgREST
   PostgREST --> PG
   GoTrue -->|"auth.users + trigger"| PG
+  Runner -->|"queue_read / delete / retry (pgmq)"| PostgREST
   SBJS -.->|"publishable key: permission denied on every table"| PostgREST
 ```
 
 The browser talks to Supabase **only** to sign in, refresh its token and sign out. All data goes through the API. The publishable key shipped in the bundle cannot read or write any table (see [Access control](#11-access-control)).
 
+The worker is a second process from the same image: it reads the pgmq queues in Postgres and has no HTTP surface but `GET /health` ([JOBS.md](JOBS.md#the-worker-process)).
+
 The API logs every request with pino. Each request gets an id, echoed in the `x-request-id` response header, and every log line inside the request carries it; the client logs that id when a call fails. See [LOGGING.md](LOGGING.md).
+
+Three records, three purposes, three retentions, joined by that request id:
+
+| Record          | Answers                                          | Written by                                      | Kept                                                      |
+| --------------- | ------------------------------------------------ | ----------------------------------------------- | --------------------------------------------------------- |
+| logs (pino)     | what the process did, for debugging              | the API and the worker                          | the host's log retention                                  |
+| `domain_events` | what happened, for the jobs that react to it     | transition functions (`emit_event`)             | 30 days ([JOBS.md](JOBS.md))                              |
+| `audit_log`     | who changed what, for people (support, disputes) | `audit_row_change()` triggers on audited tables | 13 months, append-only ([SCHEMA.md](SCHEMA.md#audit_log)) |
 
 ---
 
@@ -229,7 +248,7 @@ sequenceDiagram
   end
 ```
 
-The account is created already confirmed and no email is sent, so the customer can order straight away. Direct sign-ups with the publishable key (`supabase.auth.signUp`) also get a CUSTOMER profile from the same trigger, but they skip the API's validation. That is why [DEPLOYMENT.md](DEPLOYMENT.md#production-first-time-setup) recommends turning off public sign-ups on hosted projects.
+The account is created already confirmed and no email is sent, so the customer can order straight away. Direct sign-ups with the publishable key (`supabase.auth.signUp`) would skip the API's validation, so public sign-ups are off (locally in `server/supabase/config.toml`, and a required step on hosted projects, [DEPLOYMENT.md](DEPLOYMENT.md#production-first-time-setup)). The trigger also keeps the profile's name and phone inside the API's bounds for any account, however it was made ([SCHEMA.md](SCHEMA.md#profile_name-and-profile_phone)).
 
 ### 3.3 Sign-in
 
@@ -314,8 +333,16 @@ sequenceDiagram
     alt no profile (account deleted)
       MW-->>C: 401 "That account no longer exists..."
     else found
-      MW->>H: req.user = { id, role }, next()
-      H-->>C: 2xx JSON
+      opt session not checked by this process in the last 5 min
+        MW->>DB: touch_session(session_id, user, SESSION_IDLE_DAYS)
+      end
+      alt idle longer than SESSION_IDLE_DAYS, or the session is gone from auth.sessions
+        MW->>Auth: auth.admin.signOut(token, local) (revokes the refresh token; once per 5 min, replays answered from memory)
+        MW-->>C: 401 "Your session has expired. Please sign in again."
+      else active, or the check failed (fail-open)
+        MW->>H: req.user = { id, role }, next()
+        H-->>C: 2xx JSON
+      end
     end
   end
   opt response is 401 and a token was sent
@@ -443,7 +470,7 @@ flowchart TD
   One -->|"no"| Minus["quantity - 1"]
 ```
 
-Count and total are always derived (`selectCount`, `selectTotal`) and never stored. The prices shown are the ones captured when the item was added. The server re-prices every line from the database at checkout.
+Count and total are always derived (`selectCount`, `selectTotal`) and never stored. The prices shown are the ones captured when the item was added. Checkout sends each line's shown price as `expectedUnitPrice`; the server re-prices every line from the database and refuses the order (409 `PRICE_CHANGED`) when a shown price is no longer the menu's, so a cart older than a price change is never charged a price it did not show.
 
 ### 5.2 A cart line going stale
 
@@ -489,7 +516,7 @@ sequenceDiagram
   end
   U->>CO: Pay (name, optional phone, optional note)
   CO->>CO: validate name, phone, note
-  CO->>API: POST /api/orders { items: [{menuItemId, quantity}], customerName, customerPhone, note }
+  CO->>API: POST /api/orders { items: [{menuItemId, quantity, expectedUnitPrice}], customerName, customerPhone, note, idempotencyKey }
   API->>API: requireAuth (3.4)
   API->>API: validate(createOrderSchema)<br/>1-30 lines, quantity ≥ 1 whole number,<br/>duplicate items merged, unknown keys such as price dropped
   API->>Svc: createOrder(user, input)
@@ -514,17 +541,22 @@ sequenceDiagram
     Svc-->>CO: 400 ITEM_UNAVAILABLE { menuItemId, name, available 0 }
   else quantity > 10
     Svc-->>CO: 400 VALIDATION_ERROR "You can order at most 10 of ..."
+  else expectedUnitPrice ≠ the current price (a cart older than a price change)
+    Svc-->>CO: 409 PRICE_CHANGED (nothing charged)
   end
-  Svc->>Svc: total = Σ unit_price × quantity (prices from the database)
-  Svc->>Pay: simulatePayment(total)
+  Svc->>Svc: totalPaise = Σ price_paise × quantity (prices from the database)
+  Svc->>Pay: simulatePayment(totalPaise)
   Pay-->>Svc: PAID
-  Svc->>DB: rpc place_order(user, store, name, PAID, lines, phone, note), one transaction (6.2)
+  Svc->>DB: rpc place_order(user, store, name, PAID, lines + charged unit_price_paise, phone, note), one transaction (6.2)
   alt not enough stock
     DB-->>Svc: raise INSUFFICIENT_STOCK { menuItemId, name, available }
     Svc-->>CO: 400 INSUFFICIENT_STOCK "Only 1 Cheese Toast left..." or "... just sold out."
+  else a price changed since the charge
+    DB-->>Svc: raise PRICE_CHANGED { menuItemId, name, price }
+    Svc-->>CO: 409 PRICE_CHANGED "The price of Cheese Toast just changed to ₹60..."
   else placed
     DB-->>Svc: order id
-    Svc->>DB: select order + stores(id, name) + order_items(... menu_items(image_url)) by line_number
+    Svc->>DB: select order + order_items by line_number (store name and photos are order-time snapshots, no joins)
     Svc-->>API: order row
     API-->>CO: 201 { order } (order number, PAID, PLACED, estimatedReadyAt = created + 15 min)
     CO->>CO: flushSync: show green Paid state + receipt
@@ -540,7 +572,9 @@ One function call is one Postgres transaction. Any `raise` rolls back every stoc
 
 ```mermaid
 flowchart TD
-  Start(["place_order(p_user_id, p_store_id, p_customer_name,<br/>p_payment_status, p_lines, p_customer_phone, p_note)"]) --> Loop["For each line, ordered by menu_item_id<br/>(same lock order for concurrent orders, avoiding deadlocks)"]
+  Start(["place_order(p_user_id, p_store_id, p_customer_name,<br/>p_payment_status, p_lines, p_customer_phone, p_note)"]) --> Open{"stores.is_open, read FOR SHARE?"}
+  Open -->|"no"| RaiseClosed["RAISE 'STORE_CLOSED'<br/>detail = { storeId }"]
+  Open -->|"yes"| Loop["For each line, ordered by menu_item_id<br/>(same lock order for concurrent orders, avoiding deadlocks)"]
   Loop --> Dec["UPDATE menu_items SET stock_quantity = stock_quantity - qty<br/>WHERE id = line AND stock_quantity ≥ qty"]
   Dec --> Found{"Row updated?"}
   Found -->|"yes"| Next{"More lines?"}
@@ -549,8 +583,13 @@ flowchart TD
   Why -->|"yes: not stock-tracked"| Next
   Why -->|"no: too few left, or item gone"| Raise["RAISE 'INSUFFICIENT_STOCK'<br/>detail = { menuItemId, name, available }<br/>→ whole transaction rolled back"]
   Next -->|"yes"| Loop
-  Next -->|"no"| InsOrder["INSERT orders: total = Σ unit_price × quantity,<br/>status PLACED, payment status,<br/>estimated_ready_at = now() + store.prep_time_max_minutes,<br/>order_number from identity (starts at 1001)"]
-  InsOrder --> InsItems["INSERT order_items with line_number = cart position,<br/>snapshot name + unit_price, line_total"]
+  Next -->|"no"| Read["read each line's menu_items row once (its price_paise, never p_lines')"]
+  Read --> Avail{"Every line's item is_available?"}
+  Avail -->|"no: switched off after the API's check"| RaiseOff["RAISE 'ITEM_UNAVAILABLE'<br/>detail = { menuItemId, name, available: 0 }<br/>→ whole transaction rolled back"]
+  Avail -->|"yes"| Same{"Every line sent a unit_price_paise<br/>equal to that price_paise?"}
+  Same -->|"no, or one missing"| RaisePrice["RAISE 'PRICE_CHANGED'<br/>detail = { menuItemId, name, price }<br/>→ whole transaction rolled back"]
+  Same -->|"yes"| InsOrder["INSERT orders: store_name snapshot,<br/>total_paise = Σ price_paise × quantity,<br/>status PLACED, payment status,<br/>estimated_ready_at = now() + store.prep_time_max_minutes,<br/>order_number from identity (starts at 1001)"]
+  InsOrder --> InsItems["INSERT order_items with line_number = cart position,<br/>snapshot name + unit_price_paise + image_url + category,<br/>line_total_paise"]
   InsItems --> Ret(["RETURN order id"])
 ```
 
@@ -566,6 +605,8 @@ flowchart TD
   Fix -->|"Fix cart"| Trim["fix(): trim to what is left, or remove when sold out"]
   Trim --> Retry["Pay again"]
   Fix -->|"Back to cart"| CartPage["Cart page, same flags"]
+  Kind -->|"PRICE_CHANGED"| Reprice["Show the message, reload the menu,<br/>cartStore.syncPrices(items): the cart shows the new price.<br/>Pay is off until the load lands; if it fails, the same error card gets a Try Again that reloads the menu"]
+  Reprice --> Retry
   Kind -->|"STORE_CLOSED, VALIDATION_ERROR, UNREACHABLE, INTERNAL"| Plain["Show the message, cart unchanged, Pay can be retried"]
   Kind -->|"401"| Session["Session cleared → redirected to sign in, cart kept"]
 ```
@@ -757,7 +798,7 @@ sequenceDiagram
   API->>Svc: updateOrderStatus(id, next)
   Svc->>Svc: id must be a UUID (else 404)
   Svc->>Svc: from = every status whose ALLOWED_TRANSITIONS include next
-  Svc->>DB: rpc update_order_status(id, next, from), one transaction (8.3)
+  Svc->>DB: rpc update_order_status(id, next, from, actor, request id), one transaction (8.3)
   alt order does not exist
     DB-->>Svc: raise NOT_FOUND
     Svc-->>B: 404
@@ -789,24 +830,46 @@ sequenceDiagram
   Note over DB: order 1001 is PLACED
   par both press Start Preparing
     S1->>API: PATCH status PREPARING
-    API->>DB: UPDATE orders SET status = PREPARING<br/>WHERE id = X AND status = ANY(PLACED)
-    DB->>DB: 1 row, locked until commit
+    API->>DB: update_order_status(..., actor, request id)<br/>SELECT ... FOR UPDATE
+    DB->>DB: row locked until commit
   and
     S2->>API: PATCH status PREPARING
-    API->>DB: same UPDATE, waits for the lock
+    API->>DB: same call, waits for the lock
   end
-  DB-->>API: device 1 commits (updated_at set by trigger)
+  DB->>DB: device 1: PLACED is allowed → UPDATE status, emit_event order.preparing
+  DB-->>API: committed, returns true
   API-->>S1: 200 { order PREPARING }
-  DB->>DB: device 2 re-checks: status is now PREPARING, not in (PLACED) → 0 rows
-  DB->>DB: SELECT status, order_number → RAISE INVALID_STATUS_TRANSITION
-  API-->>S2: 409 "Order #1001 cannot move from PREPARING to PREPARING."
+  DB->>DB: device 2: status is already PREPARING → returns false, no update, no event
+  API-->>S2: 200 { order PREPARING } (logged "Order status repeated")
 
+  Note over S1,DB: A real invalid move (PLACED to READY, PLACED to PLACED) raises INVALID_STATUS_TRANSITION: 409, no event.
   Note over S1,DB: Cancelling (from PLACED or PREPARING) runs in the same transaction:
   S1->>API: PATCH status CANCELLED
-  API->>DB: UPDATE ... WHERE status = ANY(PLACED, PREPARING)
-  DB->>DB: UPDATE menu_items SET stock += SUM(order_items.quantity)<br/>WHERE stock_quantity IS NOT NULL (untracked items untouched)
-  DB-->>API: committed, stock restored exactly once
+  API->>DB: update_order_status(..., CANCELLED, from PLACED, PREPARING)
+  DB->>DB: UPDATE menu_items SET stock += SUM(order_items.reserved_quantity)<br/>WHERE stock_quantity IS NOT NULL (untracked items untouched)
+  DB-->>API: committed with its order.cancelled event, stock restored exactly once
   API-->>S1: 200 { order CANCELLED }
+```
+
+The event leaves with the change ([JOBS.md](JOBS.md#order-events)):
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant Svc as order.service
+  participant DB as update_order_status / place_order
+  participant Ev as emit_event
+  participant W as Worker (notifyHandler)
+
+  Svc->>DB: rpc(..., p_actor, p_request_id)
+  DB->>DB: set app.actor, app.request_id; change the order
+  DB->>DB: orders_audit trigger: INSERT audit_log (same actor and request id)
+  DB->>Ev: emit_event('order.ready', ...) in the same transaction
+  Ev->>Ev: INSERT domain_events
+  Ev->>Ev: pgmq.send to q_notifications (subscription order.*)
+  DB-->>Svc: commit: change, audit row, event and message together (a raise leaves none)
+  W->>Ev: queue_read q_notifications
+  W->>W: notifyHandler(event)
 ```
 
 ### 8.4 Order lifecycle
@@ -823,7 +886,7 @@ stateDiagram-v2
   CANCELLED --> [*]
 ```
 
-`ALLOWED_TRANSITIONS` in [order.service.ts](../server/src/services/order.service.ts) is the single source of truth for these transitions. Anything not drawn here is a 409. The client's `STATUS_META` only decides which button to show.
+`ALLOWED_TRANSITIONS` in [order.service.ts](../server/src/services/order.service.ts) is the single source of truth for these transitions. Anything not drawn here is a 409, except repeating a transition that already happened (200, nothing changes). The client's `STATUS_META` only decides which button to show.
 
 ### 8.5 Stock for one tracked item
 
@@ -844,7 +907,7 @@ stateDiagram-v2
 
 ## 9. Server request pipeline and error handling
 
-Code: [server/src/app.ts](../server/src/app.ts), [server/src/routes/](../server/src/routes/), [server/src/middleware/](../server/src/middleware/), [server/src/utils/serializers.ts](../server/src/utils/serializers.ts). [server/src/server.ts](../server/src/server.ts) only calls `createApp()` from `app.ts`, listens on `PORT`, and on `SIGINT`/`SIGTERM` closes the server and flushes the logger. Module-by-module detail is in [BACKEND_STRUCTURE.md](BACKEND_STRUCTURE.md).
+Code: [server/src/app.ts](../server/src/app.ts), [server/src/routes/](../server/src/routes/), [server/src/middleware/](../server/src/middleware/), [server/src/utils/serializers.ts](../server/src/utils/serializers.ts). [server/src/server.ts](../server/src/server.ts) only calls `createApp()` from `app.ts`, listens on `PORT`, and on `SIGINT`/`SIGTERM` closes the server and flushes the logger (`utils/shutdown.ts`, shared with the worker). Module-by-module detail is in [BACKEND_STRUCTURE.md](BACKEND_STRUCTURE.md).
 
 ### 9.1 Pipeline
 
@@ -855,6 +918,7 @@ flowchart TD
   Cors --> Json["express.json (100 kB limit)"]
   Json --> Router{"/api router"}
   Router -->|"GET /health"| Health["{ ok: true }"]
+  Router -->|"POST /client-errors"| ValCE["clientErrorLimiter → validate(clientErrorsSchema)"] --> CECtl["clientErrors.controller: one warn per report, 204"]
   Router -->|"GET /store, GET /menu"| Public["controller → service"]
   Router -->|"POST /auth/register"| ValReg["validate(registerSchema)"] --> RegCtl["auth.controller.register"]
   Router -->|"GET /auth/me"| AuthMe["requireAuth"] --> MeCtl["auth.controller.me"]
@@ -896,7 +960,7 @@ flowchart TD
   U -->|"yes"| U1["400 BAD_REQUEST malformed URL"]
   U -->|"no"| P{"PostgrestError?"}
   P -->|"22001"| P1["400 One of the values is too long"]
-  P -->|"22021 / 22P05"| P2["400 Invalid characters in input"]
+  P -->|"22021 / 22P05 / PGRST102"| P2["400 Invalid characters in input"]
   P -->|"other"| I["500 INTERNAL, logged with stack"]
   P -->|"not a PostgrestError"| H{"body-parser error?"}
   H -->|"entity.too.large"| H1["413 PAYLOAD_TOO_LARGE"]
@@ -968,7 +1032,7 @@ erDiagram
     text category
     text name
     text description
-    int price "whole rupees, at least 0"
+    bigint price_paise "whole rupees in paise, more than 0"
     text image_url
     boolean is_available
     boolean is_popular
@@ -980,10 +1044,11 @@ erDiagram
     int order_number UK "identity from 1001"
     uuid user_id FK
     uuid store_id FK
+    text store_name "snapshot"
     text customer_name
     text customer_phone
     text note
-    int total "computed in place_order"
+    bigint total_paise "computed in place_order"
     payment_status payment_status "PENDING or PAID"
     order_status status "PLACED to COLLECTED or CANCELLED"
     timestamptz estimated_ready_at
@@ -996,13 +1061,16 @@ erDiagram
     int line_number "cart order, unique per order"
     uuid menu_item_id FK
     text name "snapshot"
-    int unit_price "snapshot"
+    bigint unit_price_paise "snapshot"
     int quantity "at least 1"
-    int line_total
+    bigint line_total_paise
+    text image_url "snapshot"
+    text category "snapshot, not sent"
+    int reserved_quantity "0 or quantity: what place_order took"
   }
 ```
 
-Five tables: `profiles` (one per Auth user, holds the role), `stores` (one row in V0), `menu_items` (with optional tracked stock), `orders` and `order_items` (name and price snapshotted at order time). Columns with their types, defaults and constraints, the indexes, triggers and the `place_order` / `update_order_status` / `reset_demo_orders` functions are in [SCHEMA.md](SCHEMA.md).
+Five tables: `profiles` (one per Auth user, holds the role), `stores` (one row in V0), `menu_items` (with optional tracked stock), `orders` and `order_items` (name, price, photo and category on each line, and the store name, snapshotted at order time). Columns with their types, defaults and constraints, the indexes, triggers and the `place_order` / `update_order_status` / `reset_demo_orders` functions are in [SCHEMA.md](SCHEMA.md).
 
 ---
 

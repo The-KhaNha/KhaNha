@@ -1,6 +1,6 @@
 name: browsers
 
-# The WebKit smoke (client/e2e/smoke.spec.ts): Safari's engine, which no other check exercises. Weekly and on demand,
+# The e2e specs (client/e2e/*.spec.ts) on WebKit: Safari's engine, which no other check exercises. Weekly and on demand,
 # not on every PR: installing WebKit costs minutes (GitHub Free, ADR-011). Informational.
 on:
   schedule:

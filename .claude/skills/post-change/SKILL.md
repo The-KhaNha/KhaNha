@@ -1,6 +1,6 @@
 ---
 name: post-change
-description: Verification pipeline for a MAJOR change in food-pickup — runs the gate, then refactorer → responsive-fixer → logging-auditor, then test-generator + docs-writer, then ui-verifier → perf-auditor, acts on every verdict, refreshes graphify and records the change as verified. Use it whenever a "[post-change] unverified major change" reminder appears, when a feature, endpoint, migration, page or dependency change is finished, before saying a substantial piece of work is done, or when the user says "/post-change", "run the pipeline", "verify everything", "is this ready". Do not use it after a docs-only change, a copy edit or a one-line fix.
+description: Verification pipeline for a MAJOR change in food-pickup — runs the gate, then refactorer → responsive-fixer → logging-auditor, then test-generator + docs-writer, then ui-verifier → perf-auditor, then code-review (and a claude-security scan when auth, orders, money or middleware changed), acts on every verdict, refreshes graphify and records the change as verified. Use it whenever a "[post-change] unverified major change" reminder appears, when a feature, endpoint, migration, page or dependency change is finished, before saying a substantial piece of work is done, or when the user says "/post-change", "run the pipeline", "verify everything", "is this ready". Do not use it after a docs-only change, a copy edit or a one-line fix.
 ---
 
 # /post-change — the major-change pipeline
@@ -8,7 +8,7 @@ description: Verification pipeline for a MAJOR change in food-pickup — runs th
 `$BASE` is the PR's base branch: `origin/dev` for features, `origin/main` for `hotfix/*` branches
 (`BASE=origin/dev`; `BASE=origin/main` when `git branch --show-current` starts with `hotfix/`).
 
-A major change (see CLAUDE.md "What counts as a major change") gets the full treatment once, when the piece of work
+A major change (see `.claude/rules/workflow.md` "What counts as a major change") gets the full treatment once, when the piece of work
 is finished — not after every edit. The stages run in a fixed order because the early agents rewrite source and the
 later ones must check the final state. Report progress one line per stage as you go.
 
@@ -52,6 +52,13 @@ results (the same reason `responsive-fixer` never overlaps them). Skip `ui-verif
 `client/` changed AND no response shape changed (`server/src/types/api.ts`, `utils/serializers.ts`).
 `perf-auditor` always runs.
 
+## 4b. Review the diff
+
+Run `code-review:code-review` on the scope (bugs only; `--fix` is fine inside the scope). When the scope touches
+`server/src/middleware/`, auth, orders, money, settings or the request pipeline, also run
+`claude-security:claude-security` as a scan of this branch's changes. Treat both outputs as verdicts for step 5: a
+confirmed bug or finding is CONFIRM unless its fix is one obvious line inside the scope (AUTO-EXECUTE).
+
 ## 5. Act on every verdict
 
 Classify each item with the agent's handoff table (CLAUDE.md "Verdict handoff"):
@@ -71,7 +78,7 @@ same class of bug returns. Run it once with the fix reverted to see it fail, the
 1. Record the change intent if missing: when `git diff --name-status $BASE...HEAD` plus `git status --porcelain`
    touch `client/src`, `server/src`, `server/scripts`, `server/supabase/migrations` or a `package.json` and add no
    `.changes/*.md`, pick the levels from `.changes/README.md` and run
-   `npm run change -- --client <level> --server <level> "summary"` (CLAUDE.md "Versioning and branches").
+   `npm run change -- --client <level> --server <level> "summary"` (`.claude/rules/workflow.md` §21).
 2. `graphify update .`
 3. `node .claude/hooks/major-change-gate.js --mark` — records the verified state so the Stop hook and the prompt
    reminder go quiet.

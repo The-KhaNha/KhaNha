@@ -1,9 +1,11 @@
+import { PostgrestError } from '@supabase/supabase-js';
 import type { Request, Response } from 'express';
 import { describe, expect, it } from 'vitest';
-import { errorHandler } from '../../src/middleware/errorHandler';
+import { errorHandler, loggedAtDebug } from '../../src/middleware/errorHandler';
 import {
   AppError,
   IntegrationError,
+  InvariantError,
   clientOutdated,
   forbidden,
   idempotencyKeyReused,
@@ -108,7 +110,7 @@ describe('errorHandler mapping', () => {
       },
     } as unknown as Response;
     errorHandler(err, req, res, () => {});
-    return { status, body, headers, logged };
+    return { status, body, headers, logged, res };
   }
 
   const fetchFailed = () =>
@@ -151,14 +153,29 @@ describe('errorHandler mapping', () => {
     expect(headers['Retry-After']).toBeUndefined();
   });
 
+  it('answers an InvariantError 500 INTERNAL, logged at error with invariant: true', () => {
+    const { status, body, logged } = run(new InvariantError('order has no lines'), { id: 'u1' });
+    expect(status).toBe(500);
+    expect(body).toEqual({
+      error: { code: 'INTERNAL', message: 'Something went wrong. Please try again.' },
+    });
+    expect(logged).toEqual([
+      expect.objectContaining({
+        level: 'error',
+        fields: expect.objectContaining({ invariant: true }),
+      }),
+    ]);
+    expect(run(new Error('boom')).logged[0]?.fields).not.toHaveProperty('invariant', true);
+  });
+
   it('keeps an AppError as it is, logged below error', () => {
     const { status, logged } = run(forbidden());
     expect(status).toBe(403);
     expect(logged[0]?.level).toBe('warn');
   });
 
-  // docs/LOGGING.md: 401/403/429 warn (a burst is worth noticing), 426 debug (a stale tab keeps asking), other 4xx
-  // info. A 4xx never carries err: the stack is only for 5xx.
+  // docs/LOGGING.md: 401/403 and the first 429 per key per window warn (a burst is worth noticing, once), a repeat 429
+  // and 426 debug (each repeat is expected), other 4xx info. A 4xx never carries err: the stack is only for 5xx.
   it.each([
     ['validationError', 400, 'info', validationError('x')],
     ['unauthorized', 401, 'warn', unauthorized()],
@@ -168,7 +185,8 @@ describe('errorHandler mapping', () => {
     ['idempotencyKeyReused', 409, 'info', idempotencyKeyReused('o1', 7)],
     ['payloadTooLarge', 413, 'info', payloadTooLarge()],
     ['clientOutdated', 426, 'debug', clientOutdated()],
-    ['rateLimited', 429, 'warn', rateLimited('flood', 'ip')],
+    ['rateLimited, the first in its window', 429, 'warn', rateLimited('flood', 'ip', 30, true)],
+    ['rateLimited, a repeat in its window', 429, 'debug', rateLimited('flood', 'ip', 30, false)],
   ])('%s → %i, logged once at %s without err', (_name, status, level, err) => {
     const result = run(err, { id: 'u1' });
     expect(result.status).toBe(status);
@@ -178,9 +196,70 @@ describe('errorHandler mapping', () => {
   });
 
   it('a 429 log line says which limiter refused and what it counted, and the client never sees it', () => {
-    const { logged, body } = run(rateLimited('write', 'user'), { id: 'u1' });
+    const { logged, body } = run(rateLimited('write', 'user', 30, true), { id: 'u1' });
     expect(logged[0]?.fields).toMatchObject({ status: 429, limiter: 'write', keyedBy: 'user' });
     expect(JSON.stringify(body)).not.toMatch(/limiter|keyedBy/);
+  });
+
+  // app.ts's access line follows the error handler down to debug, so an expected repeat writes nothing louder.
+  it.each([
+    ['clientOutdated', true, clientOutdated()],
+    ['a repeat rateLimited', true, rateLimited('write', 'user', 30, false)],
+    ['a first rateLimited', false, rateLimited('write', 'user', 30, true)],
+    ['forbidden', false, forbidden()],
+    ['an unknown error', false, new Error('boom')],
+  ])('%s: response marked as logged at debug is %s', (_label, quiet, err) => {
+    expect(loggedAtDebug.has(run(err).res)).toBe(quiet);
+  });
+
+  // The client narrows new shapes on `kind` and old ones on `code` (docs/API.md "Error details").
+  it.each([
+    ['an item', insufficientStock('i1', 'Tea', 2), { menuItemId: 'i1', name: 'Tea', available: 2 }],
+    ['a field', validationError('x', 'email'), { field: 'email' }],
+    ['a replayed order', idempotencyKeyReused('o1', 7), { orderId: 'o1', orderNumber: 7 }],
+    [
+      'a rate limit',
+      rateLimited('write', 'user', 42, true),
+      { kind: 'rateLimit', retryAfterSeconds: 42 },
+    ],
+  ])('passes %s details through untouched', (_label, err, details) => {
+    expect(run(err).body).toEqual({ error: { code: err.code, message: err.message, details } });
+  });
+
+  // A lone UTF-16 surrogate in an RPC argument makes PostgREST refuse the JSON (PGRST102) before Postgres sees it. Each
+  // of these is a value the client sent, so it is a 400, never a 500 logged at error. PGRST102 is warn: validation
+  // should have refused the value first, so one reaching PostgREST may be a server bug and must not hide at info.
+  it.each([
+    [
+      'PGRST102 (an RPC argument PostgREST cannot read as JSON)',
+      'PGRST102',
+      'Invalid characters in input.',
+      { level: 'warn', fields: { status: 400, code: 'VALIDATION_ERROR', dbCode: 'PGRST102' } },
+    ],
+    [
+      '22021 (invalid byte sequence)',
+      '22021',
+      'Invalid characters in input.',
+      { level: 'info', fields: { status: 400, code: 'VALIDATION_ERROR' } },
+    ],
+    [
+      '22001 (value too long)',
+      '22001',
+      'One of the values is too long.',
+      { level: 'info', fields: { status: 400, code: 'VALIDATION_ERROR' } },
+    ],
+  ])('maps PostgREST %s to 400 VALIDATION_ERROR', (_label, code, message, logLine) => {
+    const err = new PostgrestError({
+      message: 'Empty or invalid json',
+      details: 'the raw body: x\ud800y',
+      hint: '',
+      code,
+    });
+    const { status, body, logged } = run(err, { id: 'u1' });
+    expect(status).toBe(400);
+    expect(body).toEqual({ error: { code: 'VALIDATION_ERROR', message } });
+    // Exactly these fields: nothing of the error's details (the value the client sent) reaches the log.
+    expect(logged).toEqual([logLine]);
   });
 
   it('does not treat an ordinary TypeError as a transport failure', () => {

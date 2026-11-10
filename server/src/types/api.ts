@@ -1,5 +1,5 @@
 // Response shapes shared with the client. Keep these in sync with the API contract.
-import type { OrderStatus, PaymentStatus, Role } from './enums';
+import type { ActorType, OrderStatus, PaymentStatus, Role } from './enums';
 
 export interface UserDto {
   id: string;
@@ -59,6 +59,8 @@ export interface SiteSettingsDto {
   orderPollMs: number;
   ordersPollMs: number;
   staffBoardPollMs: number;
+  /** The share of page loads (0–100) whose errors the client reports to POST /api/client-errors. */
+  clientErrorSamplePercent: number;
   /** The oldest client version served; older clients get 426 CLIENT_OUTDATED. */
   minClientVersion: string;
   updatedAt: string;
@@ -71,7 +73,7 @@ export interface OrderItemDto {
   unitPrice: number;
   quantity: number;
   lineTotal: number;
-  /** Current photo of the menu item, so order screens need no menu lookup for thumbnails. */
+  /** The menu item's photo when the order was placed, so order screens need no menu lookup for thumbnails. */
   imageUrl: string;
 }
 
@@ -87,6 +89,7 @@ export interface OrderDto {
   estimatedReadyAt: string;
   createdAt: string;
   updatedAt: string;
+  /** The store's name when the order was placed. */
   store: { id: string; name: string };
   items: OrderItemDto[];
 }
@@ -103,4 +106,46 @@ export interface ConfigDto {
   /** Poll intervals in ms: one order's page, the customer's order list, the staff board. */
   polling: { orderMs: number; ordersMs: number; staffBoardMs: number };
   session: { idleDays: number };
+  /** The share of page loads (0–100) that report their errors to POST /api/client-errors. */
+  clientErrors: { samplePercent: number };
+}
+
+/** One audit_log row (GET /api/admin/audit): who changed what, when. */
+export interface AuditEntryDto {
+  id: number;
+  occurredAt: string;
+  actorType: ActorType;
+  /** The profile id for a USER, null for system actors. */
+  actorId: string | null;
+  /** The actor's role when the change happened. */
+  actorRole: string | null;
+  storeId: string | null;
+  /** 'order.status_changed', 'menu_item.changed', ... */
+  action: string;
+  entityType: string;
+  entityId: string;
+  /** The watched columns that changed, as { column: [old, new] }. */
+  changes: Record<string, [unknown, unknown]> | null;
+  reason: string | null;
+  requestId: string | null;
+}
+
+/** GET /api/admin/audit: one page, newest first. Pass nextCursor back as `before`; null on the last page. */
+export interface AuditPageDto {
+  entries: AuditEntryDto[];
+  nextCursor: number | null;
+}
+
+/** One feature_flags row (PATCH /api/admin/flags/:key). */
+export interface FeatureFlagDto {
+  key: string;
+  description: string;
+  enabled: boolean;
+  /** Served to the client through GET /api/config (P1.7, PR 14). */
+  clientVisible: boolean;
+  /** Who gets it once enabled: each list narrows, `percent` is a stable share of signed-in users. */
+  rules: { storeIds?: string[]; roles?: Role[]; percent?: number };
+  updatedAt: string;
+  /** The admin who last changed it; null for a migration or a deleted account. */
+  updatedBy: string | null;
 }

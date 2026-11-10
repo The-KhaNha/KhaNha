@@ -41,10 +41,15 @@ const bearer = (u: TestUser) => `Bearer ${u.token}`;
 
 function expectRateLimited(res: request.Response) {
   expect(res.status).toBe(429);
+  const retryAfter = Number(res.headers['retry-after']);
   expect(res.body).toEqual({
-    error: { code: 'RATE_LIMITED', message: expect.any(String) },
+    error: {
+      code: 'RATE_LIMITED',
+      message: expect.any(String),
+      details: { kind: 'rateLimit', retryAfterSeconds: retryAfter },
+    },
   });
-  expect(Number(res.headers['retry-after'])).toBeGreaterThanOrEqual(1);
+  expect(retryAfter).toBeGreaterThanOrEqual(1);
   expect(res.headers['x-content-type-options']).toBe('nosniff');
 }
 

@@ -16,6 +16,7 @@ const saved: SiteSettings = {
   orderPollMs: 4000,
   ordersPollMs: 8000,
   staffBoardPollMs: 4000,
+  clientErrorSamplePercent: 100,
   minClientVersion: '0.0.0',
   updatedAt: '2026-09-27T00:00:00Z',
 };
@@ -33,6 +34,7 @@ describe('SETTING_FIELDS', () => {
     expect(SETTING_FIELDS.maxLinesPerOrder).toMatchObject({ min: 1, max: 100 });
     expect(SETTING_FIELDS.orderPollMs).toMatchObject({ min: 2000, max: 60_000 });
     expect(SETTING_FIELDS.minClientVersion.kind).toBe('semver');
+    expect(SETTING_FIELDS.clientErrorSamplePercent).toMatchObject({ min: 0, max: 100 });
   });
 });
 
@@ -48,6 +50,8 @@ describe('validateSetting', () => {
     expect(validateSetting('staffOrderListLimit', ' 500 ')).toBeNull();
     expect(validateSetting('orderPollMs', '2000')).toBeNull();
     expect(validateSetting('staffBoardPollMs', '60000')).toBeNull();
+    expect(validateSetting('clientErrorSamplePercent', '0')).toBeNull();
+    expect(validateSetting('clientErrorSamplePercent', '100')).toBeNull();
   });
 
   it('rejects out-of-range, fractional, negative and non-numeric input', () => {
@@ -55,6 +59,8 @@ describe('validateSetting', () => {
     expect(validateSetting('customerOrderHistoryLimit', '201')).toBe('Must be between 1 and 200.');
     expect(validateSetting('maxLinesPerOrder', '101')).toBe('Must be between 1 and 100.');
     expect(validateSetting('ordersPollMs', '1999')).toBe('Must be between 2000 and 60000.');
+    expect(validateSetting('clientErrorSamplePercent', '101')).toBe('Must be between 0 and 100.');
+    expect(validateSetting('clientErrorSamplePercent', '-1')).toBe('Must be between 0 and 100.');
     for (const raw of ['', '2.5', 'abc', '1e2', '--3']) {
       expect(validateSetting('staffOrderListLimit', raw)).toBe('Enter a whole number.');
     }

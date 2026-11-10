@@ -1,5 +1,5 @@
 import type { RequestHandler } from 'express';
-import { currentUser } from '../middleware/auth';
+import { currentUser, requestContext } from '../middleware/auth';
 import type {
   CreateOrderInput,
   ListOrdersQuery,
@@ -12,7 +12,7 @@ import { toOrderDto } from '../utils/serializers';
 type OrderParams = { id: string };
 
 export const createOrder: BodyHandler<CreateOrderInput> = async (req, res) => {
-  const placed = await orderService.createOrder(currentUser(req), req.body);
+  const placed = await orderService.createOrder(currentUser(req), req.body, requestContext(req));
   const order = toOrderDto(placed.order);
   req.log.info(
     {
@@ -42,15 +42,23 @@ export const updateOrderStatus: BodyHandler<UpdateOrderStatusInput, OrderParams>
   req,
   res,
 ) => {
-  const order = toOrderDto(await orderService.updateOrderStatus(req.params.id, req.body.status));
+  const ctx = requestContext(req);
+  const { order: updated, repeated } = await orderService.updateOrderStatus(
+    req.params.id,
+    req.body.status,
+    ctx,
+  );
+  const order = toOrderDto(updated);
   req.log.info(
     {
       orderId: order.id,
       orderNumber: order.orderNumber,
       status: order.status,
-      by: currentUser(req).id,
+      by: ctx.actor.id,
     },
-    'Order status changed',
+    // A repeat answers the same 200 (a retried request, a second device), but changed nothing: told apart in the logs,
+    // like a replayed placement.
+    repeated ? 'Order status repeated' : 'Order status changed',
   );
   res.json({ order });
 };

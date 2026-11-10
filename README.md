@@ -9,6 +9,8 @@ One shop, one staff screen, real-time-enough status updates. The API and web app
 
 ## Docs
 
+Which doc to update for a given change: [docs/README.md](docs/README.md).
+
 | Doc                                                      | What it covers                                                                                                                                                                                         |
 | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)             | system overview and every flow, as diagrams                                                                                                                                                            |
@@ -27,6 +29,10 @@ One shop, one staff screen, real-time-enough status updates. The API and web app
 | [plans/ROADMAP.md](plans/ROADMAP.md)                     | the roadmap from V0 to the multi-store platform (P0–P10); [plans/PAYMENT_OPTIONS.md](plans/PAYMENT_OPTIONS.md) is its payment research, [plans/P0_FOUNDATIONS.md](plans/P0_FOUNDATIONS.md) the P0 plan |
 
 ## Prerequisites
+
+Repository workflow setup for Codex: [docs/CODEX.md](docs/CODEX.md). Run `node scripts/codex/sync.mjs` to refresh
+project skill entry files and role adapters, and `node scripts/codex/sync.mjs --plugins` to expose locally installed plugin
+prompts. The existing shared instructions and tooling remain authoritative.
 
 - **Node 24.15 or later 24.x** with any installer (`.nvmrc` / `.node-version` pin it; `npm ci` refuses other majors with `EBADENGINE`)
 - **Docker** (Docker Desktop, OrbStack or Colima) for the local Supabase stack. Not needed if you develop against staging.
@@ -81,10 +87,10 @@ It prints the URLs and logins when both servers answer. Press **Ctrl+C** once to
 - Reads `APP_ENV` from `server/.env` and starts the web app in the matching mode (`local` → `npm run dev`, `staging` → `npm run dev:staging`), so the browser signs in to the same Supabase project the API uses. Refuses `APP_ENV=production`.
 - Stops with a clear message if `server/.env` is missing, or (for `local`) the Supabase stack is not running.
 - Runs `npm install` in `server/` and `client/` if `node_modules` is missing.
-- **Frees the API and web ports first** (8000 and 5173 unless configured) — anything still listening on them (a stray `npm run dev`, an earlier `start.sh`) is killed. Don't run it while another copy of the project is deliberately serving those ports.
+- **Frees the API, worker and web ports first** (8000, 8001 and 5173 unless configured) — anything still listening on them (a stray `npm run dev`, an earlier `start.sh`) is killed. Don't run it while another copy of the project is deliberately serving those ports.
 - `--seed` runs `npm run seed` before starting (see [Re-seeding wipes orders](#re-seeding-wipes-orders)).
-- Starts the API (`tsx watch`, auto-reloads on server edits) and the web app (Vite, hot reloads client edits). Their output goes to **`.logs/server.log`** and **`.logs/client.log`** (gitignored) — look there when something misbehaves.
-- Waits until `GET /api/health`, the web app and `GET /api/menu` all return 200. If the API is up but the menu isn't, it says **"Database looks empty or unreachable — run ./start.sh --seed"** and stops.
+- Starts the API and the job worker (`tsx watch`, auto-reload on server edits) and the web app (Vite, hot reloads client edits). Their output goes to **`.logs/server.log`**, **`.logs/worker.log`** and **`.logs/client.log`** (gitignored) — look there when something misbehaves.
+- Waits until `GET /api/health`, the worker's `http://localhost:8001/health`, the web app and `GET /api/menu` all return 200. If the API is up but the menu isn't, it says **"Database looks empty or unreachable — run ./start.sh --seed"** and stops.
 - Does _not_ start Supabase or apply migrations — that is step 1 above (or `npm run db:push:staging` for staging).
 
 ### Manual start (two terminals)
@@ -161,14 +167,16 @@ Also worth showing: **Order Again** adds a past order to the cart (and says what
 
 ```
 food-pickup/
+├── .agents/       project skill entry files and ignored local plugin wrappers (docs/CODEX.md)
+├── .codex/        runtime configuration, lifecycle hooks and role adapters (docs/CODEX.md)
 ├── client/        React 18 + Vite web app (docs/FRONTEND_STRUCTURE.md)
 ├── server/        Express 5 API, Supabase migrations, seed and db-push scripts (docs/BACKEND_STRUCTURE.md)
 ├── docs/          the documentation set (see Docs below)
-├── .logs/         server.log / client.log written by start.sh (gitignored)
-└── start.sh       starts both servers (see "What start.sh does")
+├── .logs/         server.log / worker.log / client.log written by start.sh (gitignored)
+└── start.sh       starts the API, the worker and the web app (see "What start.sh does")
 ```
 
-Ports: API **8000** (`PORT` in `server/.env`), web app **5173** (`VITE_DEV_PORT` in `client/.env.<mode>`). `start.sh` reads both and points the dev proxy at the API's port; Vite fails instead of moving when its port is busy (`strictPort`). The containers serve both on **8080** (`docker compose up web api`).
+Ports: API **8000** (`PORT` in `server/.env`), worker health **8001** (`WORKER_HEALTH_PORT`), web app **5173** (`VITE_DEV_PORT` in `client/.env.<mode>`). `start.sh` reads both and points the dev proxy at the API's port; Vite fails instead of moving when its port is busy (`strictPort`). The containers serve both on **8080** (`docker compose up web api worker`).
 
 ## Stock limits
 
@@ -184,32 +192,48 @@ Menu items can carry a `stockQuantity` (`null` = not tracked, which is the defau
 
 `npm run seed` (in `server/`, or `./start.sh --seed`) deletes **every order** and restarts numbering at **#1001**. The store, menu items and the two test accounts are updated in place and keep their ids, so logins and saved carts in an open browser keep working. Accounts registered while testing are removed. It seeds whichever project `server/.env` points at, and refuses `APP_ENV=production`.
 
+## Ports
+
+Client `5173` (`VITE_DEV_PORT`), API `8000` (`PORT`), worker health `8001` (`WORKER_HEALTH_PORT`), local Supabase
+`54321` (`SUPABASE_URL`); `start.sh` reads them from the env files and kills whatever holds 8000/8001/5173 first.
+`docker compose up web api worker` serves the web app on `8080`.
+
 ## Useful scripts
 
-| Where   | Command                                          | What it does                                                                                                                                                                                          |
-| ------- | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| root    | `./start.sh [--seed]`                            | Start (and optionally reseed) everything                                                                                                                                                              |
-| server/ | `npm run dev`                                    | API with reload (tsx watch) on :8000                                                                                                                                                                  |
-| server/ | `npm run seed`                                   | Reset demo data (see above)                                                                                                                                                                           |
-| server/ | `npm run typecheck`                              | `tsc --noEmit`                                                                                                                                                                                        |
-| server/ | `npm run lint`                                   | ESLint                                                                                                                                                                                                |
-| server/ | `npm test` / `test:watch`                        | Vitest against the local Supabase stack (see [docs/TESTING.md](docs/TESTING.md))                                                                                                                      |
-| server/ | `npm run format` / `format:check`                | Prettier write / check                                                                                                                                                                                |
-| server/ | `npm run db:start` / `db:stop`                   | Start / stop the local Supabase stack (Docker)                                                                                                                                                        |
-| server/ | `npm run db:reset`                               | Rebuild the local database from the migrations (wipes local data)                                                                                                                                     |
-| server/ | `npm run db:new <name>`                          | New empty migration file                                                                                                                                                                              |
-| server/ | `npm run db:types`                               | Regenerate `src/types/database.ts` from the local database                                                                                                                                            |
-| server/ | `npm run db:push:staging` / `db:push:production` | Apply new migrations to a hosted project                                                                                                                                                              |
-| server/ | `npm run build` / `npm start`                    | Compile to `dist/` and run `dist/src/server.js` without tsx                                                                                                                                           |
-| client/ | `npm run dev` / `dev:staging`                    | Vite dev server on :5173 with `/api` proxy, signing in to local / staging Supabase                                                                                                                    |
-| client/ | `npm run typecheck`                              | `tsc --noEmit`                                                                                                                                                                                        |
-| client/ | `npm run lint`                                   | ESLint                                                                                                                                                                                                |
-| client/ | `npm test` / `test:watch`                        | Vitest unit tests (jsdom, no backend needed)                                                                                                                                                          |
-| client/ | `npm run format` / `format:check`                | Prettier write / check                                                                                                                                                                                |
-| client/ | `npm run build` / `build:staging`                | Type-check + build into `dist/` for production / staging. `build` needs `client/.env.production` (see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#builds))                                                |
-| client/ | `npm run preview`                                | `vite preview` of the last build                                                                                                                                                                      |
-| client/ | `python3 scripts/optimize-images.py`             | Compress a new/replaced photo in `public/images/` and write its 400px thumbnail (needs Pillow: `pip3 install pillow`; see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#compressing-photos-before-a-build)) |
-| client/ | `npm run e2e:webkit`                             | The WebKit smoke (Safari's engine, 360px, API mocked); `npm run e2e:install` once first                                                                                                               |
+| Where   | Command                                                                                | What it does                                                                                                                                                                                          |
+| ------- | -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| root    | `./start.sh [--seed]`                                                                  | Start (and optionally reseed) everything                                                                                                                                                              |
+| server/ | `npm run dev`                                                                          | API with reload (tsx watch) on :8000                                                                                                                                                                  |
+| server/ | `npm run dev:worker` / `start:worker`                                                  | The job worker (tsx watch / built) with `GET /health` on :8001                                                                                                                                        |
+| server/ | `npm run seed`                                                                         | Reset demo data (see above)                                                                                                                                                                           |
+| server/ | `npm run typecheck`                                                                    | `tsc --noEmit`                                                                                                                                                                                        |
+| server/ | `npm run lint`                                                                         | ESLint                                                                                                                                                                                                |
+| server/ | `npm test` / `test:watch`                                                              | Vitest against the local Supabase stack (see [docs/TESTING.md](docs/TESTING.md))                                                                                                                      |
+| server/ | `npm run format` / `format:check`                                                      | Prettier write / check                                                                                                                                                                                |
+| server/ | `npm run db:start` / `db:stop`                                                         | Start / stop the local Supabase stack (Docker)                                                                                                                                                        |
+| server/ | `npm run db:reset`                                                                     | Rebuild the local database from the migrations (wipes local data)                                                                                                                                     |
+| server/ | `npm run db:new <name>`                                                                | New empty migration file                                                                                                                                                                              |
+| server/ | `npm run db:types`                                                                     | Regenerate `src/types/database.ts` from the local database                                                                                                                                            |
+| server/ | `npm run db:push:staging` / `db:push:production`                                       | Apply new migrations to a hosted project                                                                                                                                                              |
+| server/ | `npm run build` / `npm start`                                                          | Compile to `dist/` and run `dist/src/server.js` without tsx                                                                                                                                           |
+| client/ | `npm run dev` / `dev:staging`                                                          | Vite dev server on :5173 with `/api` proxy, signing in to local / staging Supabase                                                                                                                    |
+| client/ | `npm run typecheck`                                                                    | `tsc --noEmit`                                                                                                                                                                                        |
+| client/ | `npm run lint`                                                                         | ESLint                                                                                                                                                                                                |
+| client/ | `npm test` / `test:watch`                                                              | Vitest unit tests (jsdom, no backend needed)                                                                                                                                                          |
+| client/ | `npm run format` / `format:check`                                                      | Prettier write / check                                                                                                                                                                                |
+| client/ | `npm run build` / `build:staging`                                                      | Type-check + build into `dist/` for production / staging. `build` needs `client/.env.production` (see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#builds))                                                |
+| client/ | `npm run preview`                                                                      | `vite preview` of the last build                                                                                                                                                                      |
+| client/ | `python3 scripts/optimize-images.py`                                                   | Compress a new/replaced photo in `public/images/` and write its 400px thumbnail (needs Pillow: `pip3 install pillow`; see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#compressing-photos-before-a-build)) |
+| client/ | `npm run e2e:webkit`                                                                   | The WebKit smoke (Safari's engine, 360px, API mocked); `npm run e2e:install` once first                                                                                                               |
+| root    | `npm run format` / `format:check`                                                      | Prettier over `scripts/**`, `.github/**` and `plans/**` (root `package.json`, not a workspace; only devDependency `prettier`)                                                                         |
+| root    | `npm test`                                                                             | `node --test` over `scripts/**/*.test.mjs`                                                                                                                                                            |
+| root    | `npm run change -- --client <level> --server <level> "summary"`                        | Record a change intent in `.changes/` (`.claude/rules/workflow.md` §21)                                                                                                                               |
+| root    | `npm run release:dry` / `release`                                                      | Print / apply the version bump from the intents (release PR only)                                                                                                                                     |
+| root    | `npm run change:check`                                                                 | The `version-intent` CI check against `origin/dev`                                                                                                                                                    |
+| root    | `npm run check:bundle` / `check:migrations` / `check:durations` / `check:dist-secrets` | The CI checks: initial JS budget (after a client build), migrations append-only, no hard-coded durations, no secret in the built bundle                                                               |
+| server/ | `npm run db:start:ci`                                                                  | `db:start` without Studio, storage, realtime, mail, logs and edge functions (CI)                                                                                                                      |
+| server/ | `npm run seed -- --production`                                                         | First-time production setup: **the user runs it**, never an agent (like `db:push:production`)                                                                                                         |
+| client/ | `npm run e2e:chromium` / `e2e:install`                                                 | The 360×640 smoke on Chromium (CI, every client PR); `e2e:install` downloads the browsers once                                                                                                        |
 
 The gate for a changed package is `npm run typecheck && npm run lint && npm test`.
 

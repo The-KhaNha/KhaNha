@@ -4,11 +4,10 @@ import { ZodError } from 'zod';
 import {
   AppError,
   IntegrationError,
+  InvariantError,
   payloadTooLarge,
   type ErrorCode,
-  type ItemErrorDetails,
-  type FieldErrorDetails,
-  type ReplayedOrderDetails,
+  type ErrorDetails,
 } from '../utils/errors';
 import { asDatabaseUnavailable } from '../utils/supabase';
 import { describeIssue } from './validate';
@@ -17,8 +16,11 @@ interface ErrorDescription {
   status: number;
   code: ErrorCode;
   message: string;
-  /** Which cart line an item error is about, or which order a reused idempotency key placed. */
-  details?: ItemErrorDetails | ReplayedOrderDetails | FieldErrorDetails;
+  details?: ErrorDetails;
+  /** A level other than the status's usual one (AppError.logLevel, or a database error worth a second look). */
+  logLevel?: 'debug' | 'warn';
+  /** Constant fields added to the log line; never the value the client sent. */
+  logFields?: Record<string, string>;
 }
 
 const UPSTREAM_UNAVAILABLE: ErrorDescription = {
@@ -34,6 +36,12 @@ const INTERNAL: ErrorDescription = {
   message: 'Something went wrong. Please try again.',
 };
 
+/**
+ * Responses whose failure was logged at debug. app.ts's access line follows them down, so an expected repeat (a stale
+ * tab's 426, a 429 after the first in its window) writes nothing above debug.
+ */
+export const loggedAtDebug = new WeakSet<object>();
+
 /** Final non-error middleware: anything that reached here matched no route. */
 export const notFoundHandler: RequestHandler = (req, res) => {
   res.status(404).json({
@@ -44,21 +52,25 @@ export const notFoundHandler: RequestHandler = (req, res) => {
 // Express only treats a 4-argument function as an error handler, so `_next` must stay.
 export const errorHandler: ErrorRequestHandler = (thrown: unknown, req, res, _next) => {
   const err = asDatabaseUnavailable(thrown) ?? thrown;
-  const { status, code, message, details } = describeError(err);
+  const { status, code, message, details, logLevel, logFields } = describeError(err);
   if (err instanceof IntegrationError) res.set('Retry-After', RETRY_AFTER_SECONDS);
   // The one place a failed request is logged. Only 5xx carries the error and its stack; a 4xx is an expected
-  // client error, and 401/403/429 are warn because a burst of them is worth noticing.
+  // client error, and 401/403/429 are warn because a burst of them is worth noticing. A repeat 429 in its window
+  // is debug (AppError.logLevel): the first one already said so. A PGRST102 400 is warn (describeDatabaseError).
   // A 426 is debug: a stale tab keeps asking until it reloads, and each ask is expected.
   if (status >= 500) {
     const route = req.route ? `${req.baseUrl}${String(req.route.path)}` : req.path;
-    req.log.error({ err, route, status, code, userId: req.user?.id }, 'Request failed');
-  } else if (status === 426) req.log.debug({ status, code }, message);
-  else {
-    const fields = { status, code, ...(err instanceof AppError && err.logFields) };
-    req.log[[401, 403, 429].includes(status) ? 'warn' : 'info'](fields, message);
+    const invariant = err instanceof InvariantError || undefined;
+    req.log.error({ err, route, status, code, userId: req.user?.id, invariant }, 'Request failed');
+  } else {
+    const fields = { status, code, ...logFields };
+    const level =
+      status === 426 ? 'debug' : logLevel || ([401, 403, 429].includes(status) ? 'warn' : 'info');
+    if (level === 'debug') loggedAtDebug.add(res);
+    req.log[level](fields, message);
   }
-  // The envelope is { error: { code, message } }, plus `details` for a cart-line error, a reused idempotency key or
-  // the request field a validation error is about.
+  // The envelope is { error: { code, message } }, plus `details` when the error has them (utils/errors.ts
+  // ErrorDetails: a cart line, a reused idempotency key, the field at fault, the seconds until a limit resets).
   res.status(status).json({ error: { code, message, ...(details && { details }) } });
 };
 
@@ -76,7 +88,10 @@ function describeError(err: unknown): ErrorDescription {
   return describeHttpError(err) ?? INTERNAL;
 }
 
-/** Postgres errors (SQLSTATE codes) that a client can cause despite validation; everything else is a real 500. */
+/**
+ * Postgres errors (SQLSTATE codes) and PostgREST ones (PGRST…) that a client can cause despite validation; everything
+ * else is a real 500.
+ */
 function describeDatabaseError(err: PostgrestError): ErrorDescription {
   switch (err.code) {
     case '22001': // value too long for the column
@@ -84,6 +99,16 @@ function describeDatabaseError(err: PostgrestError): ErrorDescription {
     case '22021': // invalid byte sequence, e.g. a NUL byte that slipped past validation
     case '22P05': // untranslatable character, the same for JSON arguments
       return { status: 400, code: 'VALIDATION_ERROR', message: 'Invalid characters in input.' };
+    case 'PGRST102':
+      // PostgREST could not read an RPC's arguments as JSON: a lone UTF-16 surrogate let through. Validation refuses
+      // those, so this is also what a server bug building a bad RPC payload looks like: warn, so it is not lost at info.
+      return {
+        status: 400,
+        code: 'VALIDATION_ERROR',
+        message: 'Invalid characters in input.',
+        logLevel: 'warn',
+        logFields: { dbCode: err.code },
+      };
     default:
       return INTERNAL;
   }

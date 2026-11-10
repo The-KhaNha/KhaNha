@@ -1,43 +1,66 @@
 import { Component, Suspense, type ReactNode } from 'react';
 import { logger } from '../lib/logger';
+import { CHUNK_FAILURE, reportError } from '../lib/errorReporter';
+import { clearPersistedCache } from '../lib/useResource';
 import { ErrorState } from './ErrorState';
 import { Skeleton } from './Skeleton';
 
 interface PageBoundaryProps {
   children: ReactNode;
+  scope?: 'page' | 'app';
+  /** Renders nothing on failure (still logged and reported): for a boundary around a component that renders nothing. */
+  silent?: boolean;
 }
 
 /**
  * Wraps the routes so a code-split page can load on a slow connection: a skeleton while its chunk downloads, and if
- * the download fails (offline, flaky Wi-Fi, or a deploy replaced the chunk) the unreachable state with a reload
- * instead of a blank screen.
+ * the download fails, the unreachable state with a reload. Render bugs are reported separately. App scope catches
+ * shell crashes and leaves suspense to the page so it never replaces the shell with a page skeleton.
  */
-export class PageBoundary extends Component<PageBoundaryProps, { failed: boolean }> {
-  state = { failed: false };
+export class PageBoundary extends Component<
+  PageBoundaryProps,
+  { failed: boolean; chunk: boolean }
+> {
+  state = { failed: false, chunk: false };
 
-  static getDerivedStateFromError() {
-    return { failed: true };
+  static getDerivedStateFromError(error: unknown) {
+    const chunk = error instanceof Error && CHUNK_FAILURE.test(error.message.slice(0, 8000));
+    return { failed: true, chunk };
   }
 
-  // Once per failed navigation, so a burst after a deploy (old chunk names gone) shows up.
+  // Once per failed navigation, so a burst after a deploy (old chunk names gone) shows up. A render crash may come
+  // from a malformed response that useResource persisted: drop the cache so Reload starts clean. A chunk failure is
+  // the network, and the cache is what still renders offline, so it stays.
   componentDidCatch(error: unknown) {
-    logger.error('Page chunk failed to load', {
-      message: error instanceof Error ? error.message : String(error),
-    });
+    if (this.state.chunk) {
+      logger.error('Page chunk failed to load');
+      return;
+    }
+    // The scope only: the message and stack may carry user data, and reportError scrubs them on its own path.
+    logger.error('Page render failed', { scope: this.props.scope ?? 'page' });
+    clearPersistedCache();
+    reportError(error, 'render');
   }
 
   render() {
     if (this.state.failed) {
+      if (this.props.silent) return null;
       return (
         <ErrorState
-          unreachable
-          className="mt-8"
-          title="This page didn't load"
-          message="We couldn't reach the server. Check your connection and try again."
+          unreachable={this.state.chunk}
+          className={this.props.scope === 'app' ? 'mx-auto mt-8 max-w-md' : 'mt-8'}
+          title={this.state.chunk ? "This page didn't load" : 'Something went wrong'}
+          message={
+            this.state.chunk
+              ? "We couldn't reach the server. Check your connection and try again."
+              : 'Please reload the page and try again.'
+          }
+          retryLabel={this.state.chunk ? 'Try Again' : 'Reload'}
           onRetry={() => window.location.reload()}
         />
       );
     }
+    if (this.props.scope === 'app') return this.props.children;
     // Padding, not a margin: on a full-screen route nothing sits above the fallback, and its margin would collapse
     // through <body>, moving the whole page 16px down and back while the chunk loads.
     return (

@@ -1,8 +1,14 @@
 import type { Request, RequestHandler } from 'express';
+import type { Logger } from 'pino';
 import { verifyCredentials } from '@supabase/server/core';
-import type { AuthUser } from '../types/auth';
+import { isAuthSessionMissingError } from '@supabase/supabase-js';
+import type { AuthUser, RequestContext } from '../types/auth';
+import { env } from '../utils/env';
 import { forbidden, IntegrationError, unauthorized } from '../utils/errors';
+import { isUuid } from '../utils/ids';
 import { supabaseAdmin, supabaseEnv } from '../utils/supabase';
+
+const SESSION_EXPIRED = 'Your session has expired. Please sign in again.';
 
 function readBearerToken(header: string | undefined): string | undefined {
   const [scheme, token] = header?.split(' ') ?? [];
@@ -38,7 +44,8 @@ export function verifyBearer(req: Request): Promise<Verification> {
  * The role comes from the profile, not the token, so promoting or demoting staff takes effect on the next request.
  */
 export const requireAuth: RequestHandler = async (req, _res, next) => {
-  if (!readBearerToken(req.header('authorization'))) throw unauthorized();
+  const token = readBearerToken(req.header('authorization'));
+  if (!token) throw unauthorized();
 
   const { data: auth, error } = await verifyBearer(req);
   // Supabase Auth unreachable (its signing keys could not be fetched): a 503 the client may retry.
@@ -47,7 +54,7 @@ export const requireAuth: RequestHandler = async (req, _res, next) => {
   }
   // Any other 5xx means this server is misconfigured (no JWKS, no keys): not the caller's fault, and not transient.
   if (error && error.status >= 500) throw error;
-  if (!auth?.userClaims) throw unauthorized('Your session has expired. Please sign in again.');
+  if (!auth?.userClaims) throw unauthorized(SESSION_EXPIRED);
 
   const { data: user } = await supabaseAdmin
     .from('profiles')
@@ -57,9 +64,100 @@ export const requireAuth: RequestHandler = async (req, _res, next) => {
     .throwOnError();
   if (!user) throw unauthorized('That account no longer exists. Please sign in again.');
 
+  await enforceSessionIdle(auth.jwtClaims?.session_id, user.id, token, req.log);
   req.user = user;
   next();
 };
+
+/** How often one API process records a session's use: one RPC per active session per 5 minutes per instance. */
+export const SESSION_TOUCH_EVERY_MS = 5 * 60 * 1000;
+/**
+ * session id → when this process last checked it, and whether it was refused. Roughly time order, so the sweep stops
+ * at the first fresh entry: an entry is stamped with its request's start but set when the RPC answers, so under
+ * concurrency an expired one can sit behind a fresher one and outlive the window by at most one RPC's latency.
+ */
+const checked = new Map<string, { at: number; refused: boolean }>();
+/** session id → the check still waiting on its RPC, shared by every request that arrives meanwhile. */
+const inFlight = new Map<string, Promise<'ok' | 'refused'>>();
+// A failing check (the function missing before its migration lands) fails the same way for every session, so it logs
+// once per window per process, with how many failures it stayed quiet about since the last line.
+let idleCheckErrorAt = Number.NEGATIVE_INFINITY;
+let idleCheckErrorsSuppressed = 0;
+
+/**
+ * The server's half of the idle sign-out (ADR-011): a sign-in unused for SESSION_IDLE_DAYS, or no longer live in
+ * Supabase Auth (signed out or revoked, while its access token has up to an hour left), is refused with a 401 and
+ * revoked, so its refresh token stops working too. A refusal is remembered for the window, so a replayed token costs
+ * no RPC and no sign-out call. Fails open: if the check itself fails (the function missing on an environment the
+ * migration has not reached, a dropped connection), the request goes on and the failure is logged; the token was
+ * already verified, and the client keeps its own idle cap.
+ */
+export async function enforceSessionIdle(
+  sessionId: unknown,
+  userId: string,
+  token: string,
+  log: Logger,
+  now = Date.now(),
+): Promise<void> {
+  // Every Supabase Auth access token carries one; without it there is no session to key the check on.
+  if (typeof sessionId !== 'string' || !isUuid(sessionId)) return;
+  for (const [id, { at }] of checked) {
+    if (now - at < SESSION_TOUCH_EVERY_MS) break;
+    checked.delete(id);
+  }
+  const seen = checked.get(sessionId);
+  if (seen?.refused) throw unauthorized(SESSION_EXPIRED);
+  if (seen) return;
+
+  // A page load sends several requests at once: they share one check instead of one RPC each.
+  let check = inFlight.get(sessionId);
+  if (!check) {
+    check = checkSession(sessionId, userId, token, log, now).finally(() =>
+      inFlight.delete(sessionId),
+    );
+    inFlight.set(sessionId, check);
+  }
+  if ((await check) === 'refused') throw unauthorized(SESSION_EXPIRED);
+}
+
+/** One touch_session call and, for a refused session, its revoke. Records the outcome for the window. */
+async function checkSession(
+  sessionId: string,
+  userId: string,
+  token: string,
+  log: Logger,
+  now: number,
+): Promise<'ok' | 'refused'> {
+  const { data: active, error } = await supabaseAdmin.rpc('touch_session', {
+    p_session_id: sessionId,
+    p_user_id: userId,
+    p_idle: `${env.SESSION_IDLE_DAYS} days`,
+  });
+  if (error) {
+    // Counted as checked below, so a session asks again only after the window.
+    if (now - idleCheckErrorAt >= SESSION_TOUCH_EVERY_MS) {
+      log.error(
+        { err: error, userId, suppressed: idleCheckErrorsSuppressed },
+        'Session idle check failed',
+      );
+      idleCheckErrorAt = now;
+      idleCheckErrorsSuppressed = 0;
+    } else {
+      idleCheckErrorsSuppressed += 1;
+    }
+  } else if (!active) {
+    checked.set(sessionId, { at: now, refused: true });
+    const { error: signOutError } = await supabaseAdmin.auth.admin.signOut(token, 'local');
+    // A session already gone (signed out, or revoked by an earlier refusal) answers session_not_found, which auth-js
+    // turns into AuthSessionMissingError: nothing left to revoke. Any other failure leaves the refresh token alive.
+    if (signOutError && !isAuthSessionMissingError(signOutError)) {
+      log.warn({ err: signOutError, userId }, 'Idle session not revoked');
+    }
+    return 'refused';
+  }
+  checked.set(sessionId, { at: now, refused: false });
+  return 'ok';
+}
 
 /** Must run after `requireAuth`. */
 export const requireStaff: RequestHandler = (req, _res, next) => {
@@ -80,4 +178,10 @@ export const requireAdmin: RequestHandler = (req, _res, next) => {
 export function currentUser(req: { user?: AuthUser }): AuthUser {
   if (!req.user) throw unauthorized();
   return req.user;
+}
+
+/** Who is asking, and which request: a write records them with the event it emits and its audit row. */
+export function requestContext(req: Request): RequestContext {
+  const { id, role } = currentUser(req);
+  return { actor: { type: 'USER', id, role }, requestId: String(req.id) };
 }

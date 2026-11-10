@@ -81,8 +81,10 @@ export function StaffOrderCard({
 
         <p className="mt-4 flex items-start gap-1.5 text-sm font-semibold text-ink">
           <UserRound className="mt-0.5 h-4 w-4 shrink-0 text-muted" aria-hidden />
+          {/* <bdi>: a direction override typed into the name or note (U+202E) stays inside it instead of reversing the
+              phone or the rest of the line. */}
           <span className="min-w-0 wrap-anywhere">
-            {order.customerName}
+            <bdi>{order.customerName}</bdi>
             {order.customerPhone && (
               <span className="font-normal tabular-nums text-muted"> · {order.customerPhone}</span>
             )}
@@ -104,7 +106,7 @@ export function StaffOrderCard({
           <div className="mt-3 flex items-start gap-2 rounded-2xl bg-gold-50 px-3.5 py-2.5 text-sm text-gold-700">
             <MessageSquareText className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
             <p className="min-w-0 wrap-anywhere">
-              <span className="font-bold">Note:</span> {order.note}
+              <span className="font-bold">Note:</span> <bdi>{order.note}</bdi>
             </p>
           </div>
         )}

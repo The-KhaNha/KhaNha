@@ -10,15 +10,22 @@ configs; the client logger file is the only exception, set in `client/eslint.con
 
 ## Levels
 
-| Level   | Use it for                                                                 | Examples in this app                                                                                                                                                                                                                  |
-| ------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `error` | a 5xx, or anything unexpected. Server: always with `err` (gives the stack) | unhandled error in a route, JWKS fetch failure, database unreachable                                                                                                                                                                  |
-| `warn`  | expected but worth noticing; a degraded path                               | 401 / 403 / 429 responses (a 429 adds `limiter` and `keyedBy`: which limit refused, and whether it counted an account or an address); \"Menu truncated\" (`{ storeId, total, shown }`, when the menu passes `MENU_ITEMS_MAX`; at most once per cache load)                                                                                       |
-| `info`  | lifecycle and business events                                              | API listening / shutting down, `Order placed`, `Order placement replayed` (a retried `idempotencyKey`), `Order status changed`, 4xx such as `INSUFFICIENT_STOCK` or `INVALID_STATUS_TRANSITION`, access lines for writes and failures |
-| `debug` | tracing while developing                                                   | access lines for successful reads (the menu, polled order lists)                                                                                                                                                                      |
+| Level   | Use it for                                                                 | Examples in this app                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ------- | -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `error` | a 5xx, or anything unexpected. Server: always with `err` (gives the stack) | unhandled error in a route, JWKS fetch failure, database unreachable                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `warn`  | expected but worth noticing; a degraded path                               | 401 / 403 responses; a PostgREST `PGRST102` answered as a 400 (`{ status, code, dbCode }`: validation should have refused the value first, so it may be a server bug); the first 429 per key per window (it adds `limiter` and `keyedBy`: which limit refused, and whether it counted an account or an address; later 429s in that window are `debug`); "Feature flags unreadable, no features" (`{ err }`, `/api/config` answered with no features; once per outage per process); "Feature flag rules malformed, flag off" (`{ flag }`, at most once per flags cache load); \"Menu truncated\" (`{ storeId, total, shown }`, when the menu passes `MENU_ITEMS_MAX`; at most once per cache load); `Client error` (a browser's report, [below](#client-error-reports)) |
+| `info`  | lifecycle and business events                                              | API listening / shutting down, `Order placed`, `Order placement replayed` (a retried `idempotencyKey`), `Order status changed`, `Feature flag changed` (`{ key, enabled?, clientVisible?, rules?: [the rule names that changed], by }`), `Order status repeated` (a transition that had already happened: nothing changed, no event), 4xx such as `INSUFFICIENT_STOCK` or `INVALID_STATUS_TRANSITION`, access lines for writes and failures                                                                                                                                                                                                                                                                                                                            |
+| `debug` | tracing while developing                                                   | access lines for successful reads (the menu, polled order lists) and for a failure logged at `debug`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 
 Successful `GET`s are logged at `debug` on purpose: the staff board polls every 4 s and the customer screens every
-8 s, so at `info` they would flood production logs.
+8 s, so at `info` they would flood production logs. For the same reason, a failure the error handler logs at `debug`
+(a stale tab's 426, a 429 after the first in its window) takes its access line down to `debug` with it
+(`loggedAtDebug` in `middleware/errorHandler.ts`, read by `accessLevel` in `app.ts`): a client that keeps asking writes
+nothing above `debug`.
+
+`GET /api/config` is fetched on every app start, so a failure on it is counted per outage, not per request: `warn`
+"Feature flags unreadable, no features" (`{ err }`, `services/config.service.ts`) when the flags read fails and the
+response goes out with `features: {}`, once until a read succeeds again (per process). Recovery logs nothing; a later outage warns again.
 
 ## Tuning per environment
 
@@ -38,17 +45,31 @@ Successful `GET`s are logged at `debug` on purpose: the staff board polls every 
 
 - `pino-http` gives every request an id. It keeps a caller's `x-request-id` if it is 1–64 characters of
   `[A-Za-z0-9_.-]`; otherwise it generates a UUID. The id is echoed in the `x-request-id` response header.
+- A write also carries the id into the database, so the log line, the `domain_events` row and the `audit_log` row of one
+  request can be matched ([SCHEMA.md](SCHEMA.md#audit_row_change)).
+- Every access line logs the request's path only (`req.url` with no query string or hash, no parsed `query`, and the
+  `Referer` header cut the same way): a query can carry an email, a phone or a token, and redaction covers keys, never
+  the inside of a URL (`pathOnly` in `server/src/app.ts`; `server/test/api/client-errors.safe.test.ts` "request logs"
+  and "request log serializer").
 - Every access line also carries `clientVersion`: the request's `X-Client-Version` (`none` when it is missing or
   malformed; `server/src/middleware/clientVersion.ts`). It tells a stale browser tab from a current one.
 - Log through `req.log` inside a request (controllers, middleware, the error handler). Every line then carries
   `req.id`. Use the module `logger` only outside requests (startup, shutdown, `scripts/seed.ts`).
+- The server-side idle check (`middleware/auth.ts` `enforceSessionIdle`): `error` "Session idle check failed"
+  (`{ err, userId, suppressed }`, the `touch_session` call failed, so the request went on: at most once per 5 minutes
+  per process, whatever the number of sessions, with `suppressed` counting the failures it skipped since its last line) and `warn` "Idle session not revoked" (`{ err, userId }`, the sign-out after an idle 401 really failed, so the
+  refresh token may still work; a session already gone answers `AuthSessionMissingError` and logs nothing; the same
+  session is checked and revoked again after the 5-minute window). The 401 itself is the error handler's usual `warn`. The
+  session id is never logged.
 - The client logs `requestId` from the response header when an API call fails, so a browser report can be matched to
   the server line.
 - Other client events: `warn` "Session activity storage unavailable" (`features/auth/sessionActivity.ts`,
   `{ operation, error }`, once per session when `localStorage` refuses the write, so the client-side 7-day cap is off;
-  locally `inactivity_timeout` still applies, on hosted Supabase Free nothing does, see ADR-011); `warn` "Session expired from inactivity" (`features/auth/authStore.ts`, `{ idleDays }`, once when
+  locally `inactivity_timeout` still applies, on hosted Supabase Free only the API's idle check does, see ADR-011); `warn` "Session expired from inactivity" (`features/auth/authStore.ts`, `{ idleDays }`, once when
   an unused device is signed out after 7 days); `error` "Page chunk failed to load" (`components/PageBoundary.tsx`, once per failed lazy
-  route); `debug` "Resource cache unavailable" (`lib/useResource.ts`, once per key when `localStorage` is full or
+  route); `error` "Page render failed" (`components/PageBoundary.tsx`, `{ scope }`, once per caught render crash, no
+  message or stack); `error` "Sign-in module failed to load" (`services/api.ts` `loadSupabase`, `{ name }`, once per
+  page life after the retried import fails); `debug` "Resource cache unavailable" (`lib/useResource.ts`, once per key when `localStorage` is full or
   blocked).
 
 ## How to log
@@ -62,11 +83,14 @@ Successful `GET`s are logged at `debug` on purpose: the staff board polls every 
 
 ## Error classes
 
-| Error                                                        | Thrown by                                                                                                                             | Answer                                       | Logged                                            |
-| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- | ------------------------------------------------- |
-| `AppError` (factories in `utils/errors.ts`)                  | services, middleware                                                                                                                  | its status and code                          | 401/403/429 `warn`, 426 `debug`, other 4xx `info` |
-| `IntegrationError { provider, operation, retryable, cause }` | `utils/supabase.ts` `asDatabaseUnavailable` (the error handler applies it to every error), `middleware/auth.ts` (`JWKS_FETCH_FAILED`) | 503 `UPSTREAM_UNAVAILABLE`, `Retry-After: 5` | once, `error`                                     |
-| anything else                                                | –                                                                                                                                     | 500 `INTERNAL`                               | once, `error`                                     |
+| Error                                                                            | Thrown by                                                                                                                             | Answer                                                                      | Logged                                                                                                                             |
+| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `AppError` (factories in `utils/errors.ts`)                                      | services, middleware                                                                                                                  | its status and code                                                         | 401/403 and a first 429 `warn`; a repeat 429 (`AppError.logLevel`) and 426 `debug`; other 4xx `info`                               |
+| `IntegrationError { provider, operation, retryable, cause }`                     | `utils/supabase.ts` `asDatabaseUnavailable` (the error handler applies it to every error), `middleware/auth.ts` (`JWKS_FETCH_FAILED`) | 503 `UPSTREAM_UNAVAILABLE`, `Retry-After: 5`                                | once, `error`                                                                                                                      |
+| `RetryableError`, `PermanentError`                                               | job handlers (`server/src/jobs/`)                                                                                                     | a retry or a dead letter ([JOBS.md](JOBS.md#handlers-and-the-runner))       | see [Jobs](#jobs)                                                                                                                  |
+| `InvariantError` (a programmer error: a state assumed impossible)                | the job runner's impossible states; any code that asserts one                                                                         | a job is dead-lettered; in a request, 500 `INTERNAL` like any unknown error | once, `error`; the job runner and the request log (`Request failed`) add `invariant: true`                                         |
+| `PostgrestError` `22001`, `22021`, `22P05`, `PGRST102` (a value the client sent) | `.throwOnError()` on a write or RPC                                                                                                   | 400 `VALIDATION_ERROR` ([API.md](API.md#error-codes))                       | `info`; `PGRST102` `warn` with `dbCode` (validation refuses a lone surrogate first, so one reaching PostgREST may be a server bug) |
+| anything else                                                                    | –                                                                                                                                     | 500 `INTERNAL`                                                              | once, `error`                                                                                                                      |
 
 The database counts as unreachable when a call fails in transport: with `.throwOnError()`, postgrest-js retries an
 idempotent read three times (1, 2, 4 s) and then rethrows undici's own `TypeError: fetch failed`, whose `cause` is the
@@ -74,6 +98,73 @@ socket error; a non-throwing call returns an error with an empty `code` and that
 (`TimeoutError`, `AbortError`) count too. The `error` line carries `err` (serialized with `errWithCause`, so the
 whole chain appears: `err.cause.message`, `err.cause.cause.message`), `route`, `status`, `code` and `userId`.
 pino-http runs with `wrapSerializers: false` so its own `err` serializer cannot drop the cause.
+
+## Jobs
+
+The job runner (`server/src/jobs/runner.ts`) is the boundary for a job, as the error handler is for a request: it logs
+each outcome once. Every line about a message carries `queue`, `jobId`, `eventId`, `eventType` and `attempt` (a child
+logger, also handed to the handler); never the payload.
+
+| Line                       | Level   | Fields                            | When                                                                                                         |
+| -------------------------- | ------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| "Job handled"              | `debug` | `durationMs`                      | the handler resolved and the message was deleted                                                             |
+| "Job failed, retrying"     | `warn`  | `err`, `durationMs`, `retryInSec` | a retryable failure with attempts left                                                                       |
+| "Job dead-lettered"        | `error` | `err`, `durationMs`, `invariant`  | the failure was recorded in `job_failures`: once, and only when `queue_dead_letter` says it took the message |
+| "Job outcome not recorded" | `warn`  | `err`, `durationMs`               | the delete, retry or dead-letter call failed; the message comes back after its visibility timeout            |
+| "Queue read failed"        | `warn`  | `err`, `queue`                    | once per outage                                                                                              |
+| "Queue reachable again"    | `info`  | `queue`, `failedReads`            | the first good read after an outage                                                                          |
+
+An empty poll logs nothing.
+
+### The worker process
+
+| Line                         | Level   | Fields                                                  | When                                                                                     |
+| ---------------------------- | ------- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| "Food Pickup worker running" | `info`  | `healthPort`, `queues`, `logLevel`, `version`, `commit` | the health port is listening                                                             |
+| "Worker loop crashed"        | `error` | `err`                                                   | a `runQueue` loop threw (it should not); the process then exits 1                        |
+| "Shutting down"              | `info`  | `signal`                                                | SIGTERM or SIGINT, once: API and worker alike (`utils/shutdown.ts`); repeats are ignored |
+| "Shutdown failed"            | `error` | `err`                                                   | the stop function rejected; exit 1                                                       |
+
+`GET /health` and a failed `queue_metrics` read are deliberately not logged: it is a polling path, and the depth is
+`null` in the body when the read fails. A handler's own lines (`notifyHandler`'s `info` "Order event") use the logger it is
+given.
+
+## Client error reports
+
+`lib/errorReporter.ts` listens for browser `error` and `unhandledrejection` events; `PageBoundary` reports caught
+render bugs with kind `render` (component behavior: [COMPONENTS.md](COMPONENTS.md#layout-and-navigation)). The
+reporter draws one random sample per page load and compares it with `useConfig().clientErrors.samplePercent`,
+passed by `App` only after loaded or cached server configuration is available (`serverVersion !== 'unknown'`).
+Errors before that first server sampling value are buffered, so the fallback percentage cannot bypass a configured
+zero. With no cached configuration and a configuration outage, those reports stay unsent. A zero percentage
+discards them; later configuration updates reuse the same random draw. The same error object is reported once,
+with a pending browser report promoted to `render` when the boundary catches it.
+Chunk-import failures are excluded by the shared `CHUNK_FAILURE` matcher in both the boundary and global handlers;
+they retain the connection-error fallback and the boundary's constant client log message.
+
+At most five reports are queued over a page load. Each is at most 4096 bytes of UTF-8 JSON, including escaping,
+with message at most 500 characters, optional stack at most 3500, and route at most 200. The route comes only from
+`location.pathname`. Before those field cuts, the client scans at most 8000 characters and replaces URL query
+strings and fragments, JWTs, `sb_…` keys, `Bearer` values, email addresses (also `%40`-encoded, with `%` or `'` in
+the local part) and phone numbers (10 to 15 digits with up to three spaces, dashes, dots, slashes or parentheses
+between each two: `+91 - 98765 - 43210`, `98765/43210`; a lone date, time or order number stays, a date with its hour or a range of dates may not) with `[Redacted]`. A sensitive keyed value (`name=` or URL-encoded `name%3D`) is
+removed through the end of its line, including spaces and semicolon cookie fragments. This deliberately over-redacts
+rather than leaving a bearer token behind after removing its header name. `lib/errorReporter.test.ts` checks every
+field in the server's `REDACT_PATHS`, complete header values and the encoded shapes. The scrub uses no regex
+lookbehind: Safari before 16.4 cannot compile one, and the reporter would drop every report there
+(`lib/regexSupport.test.ts` fails on a lookbehind anywhere in client source).
+
+Reports are batched after 250 ms and flushed on `pagehide`. `services/clientErrors.ts` uses the normal `request()`
+transport with `auth: false` and `keepalive: true`, retaining `X-Client-Version` without loading auth. Sending never
+throws or retries and does not report its own failure. Startup installation and the app boundary are described in
+[FRONTEND_STRUCTURE.md](FRONTEND_STRUCTURE.md#lazy-routes).
+
+`POST /api/client-errors` ([API.md](API.md#post-client-errors)) writes one `warn` `Client error` line per report with
+`{ kind, message, stack, route, at }`, plus the `clientVersion` every request line carries. Never `error`: a browser
+cannot be allowed to page anyone. The body schema replaces anything shaped like a JWT, an `sb_…` key, a `Bearer`
+value, a token, code or password in a URL parameter, an email address or a phone number (each matched loosely: a cut-short JWT, an encoded `%3D` or `%40`, an apostrophe in an address, a bracketed, slashed or spaced-dash phone; a lone date, time or order number is left alone, a date with its hour or a range of dates may not be) in `message`, `stack` and `route` (cut to its path) with `[Redacted]` before the line is written (redaction below covers keys, not
+strings), behind the client's own scrub; `server/test/api/client-errors.safe.test.ts` fails if a token-shaped string
+reaches the log, and the same for an email or phone; `test/unit/client-errors-scrub.safe.test.ts` fails for each encoded or unusual shape and keeps the scrub linear on crafted input. `at` is the client's clock, as sent. At most 5 reports per request and `RATE_LIMIT_CLIENT_ERRORS_MAX` requests per address per window.
 
 ## Never logged
 
@@ -88,4 +179,5 @@ The server redacts these paths to `[Redacted]` (`REDACT_PATHS` in `server/src/ut
   `headers.authorization` (an outbound call's headers), each at the top level and one level down
 
 Redaction only covers object keys. Never put a token, password, email or phone number into a message string, and
-never log a whole request body. On the client there is no redaction at all: never pass tokens or PII to `logger`.
+never log a whole request body. The client `logger` does no redaction: never pass tokens or PII to it. The browser
+error reporter's separate scrub does not make arbitrary console logging safe.

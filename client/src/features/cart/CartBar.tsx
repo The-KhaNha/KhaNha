@@ -11,7 +11,11 @@ interface CartBarProps {
   widthClass?: string;
 }
 
-/** Floating ink "View cart" bar above the bottom nav. The total rolls whenever it changes. */
+/**
+ * Floating ink "View cart" bar above the bottom nav. The total rolls whenever it changes. Hidden on a short screen (a
+ * phone on its side, `short:`), where the bars together once covered every item: the TopBar's cart button, on every
+ * route that has this bar, still shows the count and opens the cart.
+ */
 export function CartBar({ widthClass = 'max-w-md md:max-w-lg' }: CartBarProps) {
   const count = useCartStore(selectCount);
   const total = useCartStore(selectTotal);
@@ -21,7 +25,7 @@ export function CartBar({ widthClass = 'max-w-md md:max-w-lg' }: CartBarProps) {
   if (count === 0) return null;
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-30">
+    <div className="pointer-events-none fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-30 short:hidden">
       <div className={cn('mx-auto px-4 pb-3', widthClass)}>
         <Link
           to="/cart"

@@ -6,7 +6,7 @@ interface VersionState {
   markOutdated: () => void;
 }
 
-/** Not persisted: a reload fetches the new build, which starts not outdated. */
+/** Not persisted: a reload fetches the new build which starts not outdated. */
 export const useVersionStore = create<VersionState>((set) => ({
   outdated: false,
   markOutdated: () => set({ outdated: true }),

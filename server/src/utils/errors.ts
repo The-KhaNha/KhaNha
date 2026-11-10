@@ -12,6 +12,7 @@ export type ErrorCode =
   | 'EMAIL_TAKEN'
   | 'INVALID_STATUS_TRANSITION'
   | 'IDEMPOTENCY_KEY_REUSED'
+  | 'PRICE_CHANGED'
   | 'CLIENT_OUTDATED'
   | 'RATE_LIMITED'
   | 'UPSTREAM_UNAVAILABLE'
@@ -38,6 +39,19 @@ export interface ReplayedOrderDetails {
   orderNumber: number;
 }
 
+/** How long until the window that refused the request resets: the Retry-After header's number, in the body. */
+export interface RateLimitDetails {
+  kind: 'rateLimit';
+  retryAfterSeconds: number;
+}
+
+/**
+ * Every shape `error.details` can take. The first three predate `kind` and stay untagged, because the deployed client
+ * reads them by `code`; every new shape carries a `kind` (docs/API.md "Error details").
+ */
+export type ErrorDetails =
+  ItemErrorDetails | ReplayedOrderDetails | FieldErrorDetails | RateLimitDetails;
+
 /**
  * A dependency (Supabase's database or Auth, later the payment provider) failed or could not be reached. The error
  * handler answers 503 UPSTREAM_UNAVAILABLE with Retry-After, and logs it once at error with the whole cause chain.
@@ -54,15 +68,44 @@ export class IntegrationError extends Error {
   }
 }
 
+/** A job failed in a way a later attempt may not (a timeout, a provider's 5xx): the runner retries it with backoff. */
+export class RetryableError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = 'RetryableError';
+  }
+}
+
+/** A job that can never succeed (bad input, a rule that forbids it): the runner dead-letters it at once. */
+export class PermanentError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = 'PermanentError';
+  }
+}
+
+/**
+ * A programmer error: a state the code assumes cannot happen. Logged at error with `invariant: true` so it stands
+ * apart from a failing dependency: a dead letter in a job, 500 INTERNAL in a request (like any unknown error).
+ */
+export class InvariantError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'InvariantError';
+  }
+}
+
 /** An expected failure that maps straight to an HTTP status and a user-friendly message. */
 export class AppError extends Error {
   constructor(
     public readonly status: number,
     public readonly code: ErrorCode,
     message: string,
-    public readonly details?: ItemErrorDetails | ReplayedOrderDetails | FieldErrorDetails,
+    public readonly details?: ErrorDetails,
     /** Extra fields for the error handler's log line only; never sent to the client. */
     public readonly logFields?: Record<string, string>,
+    /** Logs at debug instead of the status's usual level: a repeat nobody needs to read twice. */
+    public readonly logLevel?: 'debug',
   ) {
     super(message);
     this.name = 'AppError';
@@ -88,15 +131,22 @@ export const payloadTooLarge = (): AppError =>
 
 /**
  * Too many requests from one account or address in the window (middleware/rateLimit.ts). The log line says which
- * limiter refused and whether it counted an account or an address, so a burst can be told apart.
+ * limiter refused and whether it counted an account or an address, so a burst can be told apart. Only the first
+ * refusal per key per window logs at warn: a client hammering the limit would otherwise write a line per request.
  */
-export const rateLimited = (limiter: string, keyedBy: 'user' | 'ip'): AppError =>
+export const rateLimited = (
+  limiter: string,
+  keyedBy: 'user' | 'ip',
+  retryAfterSeconds: number,
+  firstInWindow: boolean,
+): AppError =>
   new AppError(
     429,
     'RATE_LIMITED',
     'Too many requests. Please wait a minute and try again.',
-    undefined,
+    { kind: 'rateLimit', retryAfterSeconds },
     { limiter, keyedBy },
+    firstInWindow ? undefined : 'debug',
   );
 
 /**
@@ -129,4 +179,39 @@ export const insufficientStock = (menuItemId: string, name: string, available: n
       ? `${name} just sold out.`
       : `Only ${available} ${name} left. Reduce the quantity in your cart.`,
     { menuItemId, name, available },
+  );
+
+/** An item switched off, by the API's check or by place_order's when it was switched off in between. */
+export const itemUnavailable = (menuItemId: string, name: string): AppError =>
+  new AppError(
+    400,
+    'ITEM_UNAVAILABLE',
+    `${name} is currently unavailable. Please remove it from your cart.`,
+    {
+      menuItemId,
+      name,
+      available: 0,
+    },
+  );
+
+/** The store is closed, by the API's check or by place_order's when it closed in between. */
+export const storeClosed = (storeName: string): AppError =>
+  new AppError(
+    400,
+    'STORE_CLOSED',
+    `${storeName} is closed right now. Please come back when it opens.`,
+  );
+
+/**
+ * An item's price is not the one the customer saw (a cart line's `expectedUnitPrice`), or it changed between the API's
+ * read (the amount charged) and place_order's, which refuses to store any other price. No `details`: the message
+ * names the item and its new price, and the cart reprices on the next menu read.
+ */
+export const priceChanged = (menuItemId: string, name: string, price: number): AppError =>
+  new AppError(
+    409,
+    'PRICE_CHANGED',
+    `The price of ${name} just changed to ₹${price}. Please review your order.`,
+    undefined,
+    { menuItemId },
   );

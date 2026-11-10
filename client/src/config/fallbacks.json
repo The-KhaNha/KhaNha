@@ -13,6 +13,9 @@
   "session": {
     "idleDays": 7
   },
+  "clientErrors": {
+    "samplePercent": 100
+  },
   "validation": {
     "nameMin": 2,
     "nameMax": 60,
@@ -28,6 +31,12 @@
     "pollMs": {
       "min": 2000,
       "max": 60000
+    },
+    "clientErrors": {
+      "reportsMax": 5,
+      "messageMax": 500,
+      "stackMax": 3500,
+      "routeMax": 200
     }
   }
 }

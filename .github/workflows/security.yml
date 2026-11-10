@@ -77,4 +77,7 @@ jobs:
         run: |
           curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
             | tar -xz -C "$RUNNER_TEMP" gitleaks
-      - run: '"$RUNNER_TEMP/gitleaks" detect --source . --redact --verbose'
+      # Every branch, not only the one checked out: the repository is public, so a secret on any branch is published.
+      # --diff-merges: git log -p prints no patch for a merge, so a secret added only in a merge's conflict resolution
+      # would pass (scripts/ci/gitleaks-merge-diffs.test.mjs).
+      - run: '"$RUNNER_TEMP/gitleaks" detect --source . --redact --verbose --log-opts="--diff-merges=first-parent --all"'

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { safeJSONStorage } from '../../lib/safeStorage';
 import type { MenuItem } from '../../types/api';
 import { availableQuantity, lineLimit } from './cartRules';
 
@@ -13,7 +14,7 @@ export interface CartLine {
   quantity: number;
   /**
    * How many the shop can sell right now, from the last menu the app saw or the server's answer at checkout:
-   * null = no stock limit, 0 = sold out / off the menu. Prices are deliberately never refreshed this way.
+   * null = no stock limit, 0 = sold out / off the menu. Prices are deliberately never refreshed this way (only `syncPrices`, after a PRICE_CHANGED refusal).
    */
   maxQuantity: number | null;
 }
@@ -34,6 +35,8 @@ interface CartState {
   setAvailability: (menuItemId: string, available: number | null) => void;
   /** Refreshes every line's limit from a freshly loaded menu. Prices, names and photos are left alone. */
   syncAvailability: (items: MenuItem[]) => void;
+  /** Sets every line's price to the menu's. Only after the server refused an order over a price change (PRICE_CHANGED). */
+  syncPrices: (items: MenuItem[]) => void;
 }
 
 /** What survives a reload; the actions are recreated by the store. */
@@ -168,10 +171,25 @@ export const useCartStore = create<CartState>()(
           return changed ? { lines } : state;
         });
       },
+
+      syncPrices(items) {
+        set((state) => {
+          const prices = new Map(items.map((item) => [item.id, item.price]));
+          let changed = false;
+          const lines = state.lines.map((line) => {
+            const price = prices.get(line.menuItemId);
+            if (price === undefined || price === line.unitPrice) return line;
+            changed = true;
+            return { ...line, unitPrice: price };
+          });
+          return changed ? { lines } : state;
+        });
+      },
     }),
     {
       name: 'fp_cart',
       version: 1,
+      storage: safeJSONStorage(),
       partialize: (state): PersistedCart => ({ lines: state.lines }),
       // Carts saved before stock limits existed have no maxQuantity: treat them as unlimited until a menu load says otherwise.
       migrate: (persisted) => {

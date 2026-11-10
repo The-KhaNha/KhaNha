@@ -22,6 +22,7 @@ import {
   describeProblems,
   isItemErrorCode,
   lineProblem,
+  orderItems,
   problemLabel,
 } from '../features/cart/cartRules';
 import { selectLines, selectTotal, useCartStore, type CartLine } from '../features/cart/cartStore';
@@ -51,10 +52,23 @@ export function CheckoutPage() {
   const clear = useCartStore((s) => s.clear);
   const fix = useCartStore((s) => s.fix);
   const setAvailability = useCartStore((s) => s.setAvailability);
+  const syncPrices = useCartStore((s) => s.syncPrices);
   const user = useAuthStore(selectUser);
   const navigate = useNavigate();
-  // Refreshes each line's stock limit from the live menu on arrival (prices are never touched).
-  useMenu();
+  // Refreshes each line's stock limit from the live menu on arrival. Prices are left alone, except on the load a
+  // PRICE_CHANGED refusal asks for: then the cart takes the new price, so the next Pay shows what it will charge.
+  // Until that load lands, Pay stays off: the price on screen is the one the server just refused.
+  const { menu, error: menuError, retry: reloadMenu } = useMenu();
+  const repriceOnLoad = useRef(false);
+  const [repricing, setRepricing] = useState(false);
+  useEffect(() => {
+    if (!menu || !repriceOnLoad.current) return;
+    repriceOnLoad.current = false;
+    setRepricing(false);
+    syncPrices(menu.categories.flatMap((category) => category.items));
+  }, [menu, syncPrices]);
+  // That load failed: the error card, already scrolled into view, says so and retries it.
+  const repriceError = repricing ? menuError : null;
 
   // The form lives in the session draft, so a refresh or Back mid-checkout keeps what was typed; the profile only
   // fills a field that was never touched.
@@ -72,13 +86,15 @@ export function CheckoutPage() {
   useEffect(() => () => window.clearTimeout(holdTimer.current), []);
 
   // A failed Pay puts its reason where the customer is looking: the error is scrolled into view and focused (a line
-  // error sits at the top of the form, far above the button that was pressed).
+  // error sits at the top of the form, far above the button that was pressed). Again whenever a price reload fails or
+  // is retried: its Try Again lives in that card and unmounts when pressed, so the card takes focus back and comes back
+  // into view if the retry fails while the customer has scrolled away.
   const errorRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!error) return;
     errorRef.current?.scrollIntoView?.({ block: 'center', behavior: scrollBehavior() });
     errorRef.current?.focus({ preventScroll: true });
-  }, [error]);
+  }, [error, repriceError]);
 
   const shownLines = receipt?.lines ?? lines;
   const shownTotal = receipt?.total ?? total;
@@ -86,6 +102,7 @@ export function CheckoutPage() {
   // Lines the shop can't fulfil as they stand: flagged by the menu refresh or by the server's refusal.
   const flagged = paid ? [] : lines.filter((line) => lineProblem(line) !== null);
   const blocked = flagged.length > 0;
+  const payDisabled = paid || blocked || repricing;
   // An error about one specific line; anything else gets the plain retry block.
   const itemError = error && isItemErrorCode(error.code) ? error : null;
 
@@ -120,7 +137,9 @@ export function CheckoutPage() {
       const trimmedNote = note.trim();
       // The same key on every retry of this attempt: a lost response can never turn into a second order.
       const order = await createOrder({
-        items: lines.map((line) => ({ menuItemId: line.menuItemId, quantity: line.quantity })),
+        // The price on screen goes with each line (orderItems): a price moved since it was added is refused
+        // (PRICE_CHANGED) instead of charged, and the cart reprices below.
+        items: orderItems(lines),
         customerName: name.trim(),
         ...(trimmedPhone ? { customerPhone: trimmedPhone } : {}),
         ...(trimmedNote ? { note: trimmedNote } : {}),
@@ -144,6 +163,11 @@ export function CheckoutPage() {
       // The key already placed an order for a different cart (a Pay whose answer was lost, then the cart changed):
       // that order stands, and the next Pay is a new attempt with a new key for what is in the cart now.
       if (apiError.code === 'IDEMPOTENCY_KEY_REUSED') draft.dropKey();
+      if (apiError.code === 'PRICE_CHANGED') {
+        repriceOnLoad.current = true;
+        setRepricing(true);
+        reloadMenu();
+      }
       // A rejected field (a phone the server will not take) is shown on that field, not in a banner above Pay.
       const apiField = apiError.details?.field;
       if (apiError.code === 'VALIDATION_ERROR' && apiField && apiField in FORM_FIELD) {
@@ -164,7 +188,7 @@ export function CheckoutPage() {
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    if (submitting || paid || blocked) return;
+    if (submitting || payDisabled) return;
     void placeOrder();
   }
 
@@ -293,14 +317,22 @@ export function CheckoutPage() {
         </div>
       )}
 
-      {/* No Retry of its own: Pay, right below, is the retry. */}
+      {/* No Retry of its own: Pay, right below, is the retry. Unless the new price failed to load: Pay is off until it
+          does, so this card retries that load (a second card below it would sit off screen on a phone). `code` turns
+          CLIENT_RELOAD_REQUIRED (sign-in failed to load) into a Reload, the one thing that can help. */}
       {error && !itemError && error.code !== 'IDEMPOTENCY_KEY_REUSED' && (
         <div ref={errorRef} tabIndex={-1} className="mt-4 focus:outline-none">
           <ErrorState
             compact
             title="Your order didn't go through."
-            message={error.message}
-            unreachable={error.isUnreachable}
+            message={
+              repriceError
+                ? `${error.message} We can't take payment until the new price loads.`
+                : error.message
+            }
+            unreachable={(repriceError ?? error).isUnreachable}
+            code={error.code}
+            onRetry={repriceError ? reloadMenu : undefined}
           />
         </div>
       )}
@@ -324,8 +356,8 @@ export function CheckoutPage() {
           fullWidth
           className="mt-5"
           variant={paid ? 'success' : 'primary'}
-          loading={submitting}
-          disabled={paid || blocked}
+          loading={submitting || (repricing && !menuError)}
+          disabled={payDisabled}
           iconLeft={
             paid ? (
               <Check className="h-5 w-5 animate-check-pop" strokeWidth={3} aria-hidden />
@@ -334,7 +366,13 @@ export function CheckoutPage() {
             )
           }
         >
-          {paid ? 'Paid' : submitting ? 'Processing payment…' : `Pay ${formatPrice(shownTotal)}`}
+          {paid
+            ? 'Paid'
+            : submitting
+              ? 'Processing payment…'
+              : repricing
+                ? 'Updating price…'
+                : `Pay ${formatPrice(shownTotal)}`}
         </Button>
         {blocked ? (
           <p

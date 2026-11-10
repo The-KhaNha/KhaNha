@@ -2,6 +2,7 @@
 export type Role = 'CUSTOMER' | 'STAFF' | 'ADMIN';
 export type OrderStatus = 'PLACED' | 'PREPARING' | 'READY' | 'COLLECTED' | 'CANCELLED';
 export type PaymentStatus = 'PENDING' | 'PAID';
+export type ActorType = 'USER' | 'WORKER' | 'RECONCILER' | 'WEBHOOK' | 'SCHEDULER' | 'SYSTEM';
 
 export interface User {
   id: string;
@@ -92,6 +93,10 @@ export interface ApiErrorDetails {
   /** IDEMPOTENCY_KEY_REUSED: the order the earlier attempt already placed. */
   orderId?: string;
   orderNumber?: number;
+  /** Shapes added since P1 carry a `kind`; the ones above predate it and are told apart by `code`. */
+  kind?: 'rateLimit';
+  /** RATE_LIMITED: seconds until the window resets, the same number as the Retry-After header. */
+  retryAfterSeconds?: number;
 }
 
 export interface ApiErrorEnvelope {
@@ -108,13 +113,16 @@ export interface SiteSettings {
   orderPollMs: number;
   ordersPollMs: number;
   staffBoardPollMs: number;
+  /** The share of page loads (0–100) whose errors the client reports. */
+  clientErrorSamplePercent: number;
   /** The oldest client version the API serves; older clients get 426 CLIENT_OUTDATED. */
   minClientVersion: string;
   updatedAt: string;
 }
 
 export interface CreateOrderInput {
-  items: { menuItemId: string; quantity: number }[];
+  /** `expectedUnitPrice`: the rupee price the cart shows; a different current price is 409 PRICE_CHANGED. */
+  items: { menuItemId: string; quantity: number; expectedUnitPrice?: number }[];
   customerName: string;
   customerPhone?: string;
   note?: string;
@@ -132,4 +140,39 @@ export interface Config {
   /** Poll intervals in ms: one order's page, the customer's order list, the staff board. */
   polling: { orderMs: number; ordersMs: number; staffBoardMs: number };
   session: { idleDays: number };
+  /** The share of page loads (0–100) that report their errors to POST /api/client-errors. */
+  clientErrors: { samplePercent: number };
+}
+
+/** One audit_log row (server AuditEntryDto). No screen reads it until the admin audit view (P7.4). */
+export interface AuditEntry {
+  id: number;
+  occurredAt: string;
+  actorType: ActorType;
+  actorId: string | null;
+  actorRole: string | null;
+  storeId: string | null;
+  action: string;
+  entityType: string;
+  entityId: string;
+  changes: Record<string, [unknown, unknown]> | null;
+  reason: string | null;
+  requestId: string | null;
+}
+
+/** GET /api/admin/audit (server AuditPageDto). */
+export interface AuditPage {
+  entries: AuditEntry[];
+  nextCursor: number | null;
+}
+
+/** One feature_flags row (server FeatureFlagDto). No screen reads it until the admin flags page (P7.4). */
+export interface FeatureFlag {
+  key: string;
+  description: string;
+  enabled: boolean;
+  clientVisible: boolean;
+  rules: { storeIds?: string[]; roles?: Role[]; percent?: number };
+  updatedAt: string;
+  updatedBy: string | null;
 }

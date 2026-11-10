@@ -27,7 +27,7 @@ beforeAll(async () => {
     category: CATEGORY,
     name: `Cap item ${i}`,
     description: '',
-    price: 10,
+    price_paise: 1000,
     image_url: '/images/cold-coffee.jpg',
     sort_order: 10_000 + i,
   }));

@@ -51,13 +51,15 @@ export function createRateLimiter({
     handler: (req, res, next, options) => {
       // The time left in this key's window, as the RateLimit header says, not the whole window: a client that honours
       // Retry-After would otherwise wait longer than it has to.
-      const resetTime = (req as AugmentedRequest).rateLimit?.resetTime;
+      const info = (req as AugmentedRequest).rateLimit;
+      const resetTime = info?.resetTime;
       const seconds = resetTime
         ? Math.max(1, Math.ceil((resetTime.getTime() - Date.now()) / 1000))
         : Math.ceil(options.windowMs / 1000);
       res.set('Retry-After', String(seconds));
-      const key = (req as AugmentedRequest).rateLimit?.key ?? '';
-      next(rateLimited(name, key.startsWith('user:') ? 'user' : 'ip'));
+      const keyedBy = info?.key.startsWith('user:') ? 'user' : 'ip';
+      // `used` counts this request too, so the first refusal in the window is the one just past the limit.
+      next(rateLimited(name, keyedBy, seconds, !info || info.used === info.limit + 1));
     },
   });
 }
@@ -86,5 +88,16 @@ export const registerLimiter = createRateLimiter({
   name: 'register',
   windowMs: env.RATE_LIMIT_WINDOW_MS,
   limit: env.RATE_LIMIT_REGISTER_MAX,
+  keyBy: 'ip',
+});
+
+/**
+ * Browser error reports, by address: they arrive before sign-in too (RATE_LIMIT_CLIENT_ERRORS_MAX). Counts requests,
+ * each carrying at most five reports.
+ */
+export const clientErrorLimiter = createRateLimiter({
+  name: 'clientErrors',
+  windowMs: env.RATE_LIMIT_WINDOW_MS,
+  limit: env.RATE_LIMIT_CLIENT_ERRORS_MAX,
   keyBy: 'ip',
 });

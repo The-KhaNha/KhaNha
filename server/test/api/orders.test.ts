@@ -3,6 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { MAX_QUANTITY_PER_ITEM } from '../../src/schemas/order.schema';
 import type { OrderStatus } from '../../src/types/enums';
 import { invalidate } from '../../src/utils/cache';
+import { paiseToRupees } from '../../src/utils/money';
 import { supabaseAdmin } from '../../src/utils/supabase';
 import {
   createTestUser,
@@ -44,10 +45,16 @@ beforeAll(async () => {
   storeId = store.id;
   const { data: rows } = await supabaseAdmin
     .from('menu_items')
-    .select('id, name, price, stock_quantity, is_available')
+    .select('id, name, price_paise, stock_quantity, is_available')
     .eq('store_id', storeId)
     .throwOnError();
-  items = Object.fromEntries(rows.map((row) => [row.name, row]));
+  // Rupees, as the API speaks them.
+  items = Object.fromEntries(
+    rows.map(({ price_paise, ...row }) => [
+      row.name,
+      { ...row, price: paiseToRupees(price_paise) },
+    ]),
+  );
 
   [customer1, customer2, staff] = await Promise.all([
     createTestUser('CUSTOMER'),
@@ -493,6 +500,12 @@ describe('business rules', () => {
       return ALLOWED.some(([f, t]) => f === from && t === to);
     }
 
+    // A repeat of a transition that already happened answers 200 with the order unchanged: every status some
+    // transition leads to, so all but PLACED (PLACED -> PLACED is not a transition, and stays 409).
+    function isRepeat(from: OrderStatus, to: OrderStatus): boolean {
+      return from === to && ALLOWED.some(([, t]) => t === to);
+    }
+
     async function createOrderInStatus(from: OrderStatus): Promise<string> {
       const placed = await placeOrder(customer1);
       const orderId = placed.body.order.id as string;
@@ -512,7 +525,7 @@ describe('business rules', () => {
     it.each(pairs)('%s -> %s', async (from, to) => {
       const orderId = await createOrderInStatus(from);
       const res = await patchStatus(orderId, to);
-      if (isAllowed(from, to)) {
+      if (isAllowed(from, to) || isRepeat(from, to)) {
         expect(res.status).toBe(200);
         expect(res.body.order.status).toBe(to);
       } else {
@@ -523,7 +536,7 @@ describe('business rules', () => {
   });
 
   describe('cancelling restores stock', () => {
-    it('restores tracked stock exactly once; a second cancel is 409 and stock is unchanged', async () => {
+    it('restores tracked stock exactly once; a second cancel is a repeat (200) and stock is unchanged', async () => {
       const item = menuItem('Blueberry Muffin');
       await supabaseAdmin
         .from('menu_items')
@@ -557,8 +570,8 @@ describe('business rules', () => {
         expect(afterCancel.stock_quantity).toBe(5);
 
         const secondCancel = await patchStatus(orderId, 'CANCELLED');
-        expect(secondCancel.status).toBe(409);
-        expect(secondCancel.body.error.code).toBe('INVALID_STATUS_TRANSITION');
+        expect(secondCancel.status).toBe(200);
+        expect(secondCancel.body.order.status).toBe('CANCELLED');
 
         const { data: afterSecond } = await supabaseAdmin
           .from('menu_items')
@@ -589,6 +602,39 @@ describe('business rules', () => {
         .single()
         .throwOnError();
       expect(data.stock_quantity).toBeNull();
+    });
+
+    // A cancel gives back only what its order took: an item that was untracked when ordered and is tracked (here:
+    // sold out) by the time the order is cancelled must not gain stock it never lost.
+    it('does not restock an item that was untracked when the order was placed', async () => {
+      const item = menuItem('Cold Coffee');
+      try {
+        const placed = await placeOrder(customer1, {
+          items: [{ menuItemId: item.id, quantity: 2 }],
+        });
+        expect(placed.status).toBe(201);
+        await supabaseAdmin
+          .from('menu_items')
+          .update({ stock_quantity: 0 })
+          .eq('id', item.id)
+          .throwOnError();
+
+        const cancelled = await patchStatus(placed.body.order.id as string, 'CANCELLED');
+        expect(cancelled.status).toBe(200);
+        const { data } = await supabaseAdmin
+          .from('menu_items')
+          .select('stock_quantity')
+          .eq('id', item.id)
+          .single()
+          .throwOnError();
+        expect(data.stock_quantity).toBe(0);
+      } finally {
+        await supabaseAdmin
+          .from('menu_items')
+          .update({ stock_quantity: null })
+          .eq('id', item.id)
+          .throwOnError();
+      }
     });
   });
 });

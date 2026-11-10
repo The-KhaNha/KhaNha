@@ -28,7 +28,15 @@ gets it from `supabase.auth.signInWithPassword` and supabase-js refreshes it (`j
    signature, expired, another project) is 401 `UNAUTHORIZED` "Your session has expired. Please sign in again."
 3. Loads `id, role` from `profiles`. No profile: 401 `UNAUTHORIZED` "That account no longer exists. Please sign in
    again."
-4. Sets `req.user = { id, role }`.
+4. Records the use of the sign-in (the token's `session_id`) with `touch_session`, at most once per session per
+   5 minutes per API process. A sign-in unused for `SESSION_IDLE_DAYS` is 401 `UNAUTHORIZED` "Your session has
+   expired. Please sign in again." and is revoked (`auth.admin.signOut(token, 'local')`), so its refresh token stops
+   working too ([PERMISSIONS.md](PERMISSIONS.md#session-lifetime)). The same 401 answers a sign-in no longer live in
+   Supabase Auth (signed out or revoked) whose access token has not expired yet; a process that already checked that
+   session in the last 5 minutes lets it through until its window ends. A refusal is remembered for 5 minutes per
+   process, so a replayed token is refused without a database call. If the check itself fails, the request goes on
+   (fail-open, logged `error` "Session idle check failed").
+5. Sets `req.user = { id, role }`.
 
 `requireStaff` must run after `requireAuth`. A role other than `STAFF` is 403 `FORBIDDEN` "Only staff can do that."
 
@@ -41,21 +49,24 @@ The API has no sign-in or sign-out route. The browser signs in and out with supa
 
 ## Routes
 
-| Method | Path                 | Auth         | Request                                                  | Success                                         |
-| ------ | -------------------- | ------------ | -------------------------------------------------------- | ----------------------------------------------- |
-| GET    | `/health`            | none         | none                                                     | 200 `{ ok: true, version, commit }`             |
-| GET    | `/ready`             | none         | none                                                     | 200 `{ ready: true }` or 503 `{ ready: false }` |
-| GET    | `/config`            | none         | none                                                     | 200 `ConfigDto`                                 |
-| POST   | `/auth/register`     | none         | body: [`registerSchema`](#post-authregister)             | 201 `{ user: UserDto }`                         |
-| GET    | `/auth/me`           | user         | none                                                     | 200 `{ user: UserDto }`                         |
-| GET    | `/store`             | none         | none                                                     | 200 `{ store: StoreDto }`                       |
-| GET    | `/menu`              | none         | none                                                     | 200 `MenuResponse`                              |
-| POST   | `/orders`            | user         | body: [`createOrderSchema`](#post-orders)                | 201 `{ order: OrderDto }`                       |
-| GET    | `/orders`            | user         | query: [`listOrdersQuerySchema`](#get-orders)            | 200 `{ orders: OrderDto[] }`                    |
-| GET    | `/orders/:id`        | user         | path: `id`                                               | 200 `{ order: OrderDto }`                       |
-| PATCH  | `/orders/:id/status` | user + STAFF | body: [`updateOrderStatusSchema`](#patch-ordersidstatus) | 200 `{ order: OrderDto }`                       |
-| GET    | `/admin/settings`    | user + ADMIN | none                                                     | 200 `{ settings: SiteSettingsDto }`             |
-| PATCH  | `/admin/settings`    | user + ADMIN | body: [`updateSettingsSchema`](#patch-adminsettings)     | 200 `{ settings: SiteSettingsDto }`             |
+| Method | Path                 | Auth         | Request                                                       | Success                                         |
+| ------ | -------------------- | ------------ | ------------------------------------------------------------- | ----------------------------------------------- |
+| GET    | `/health`            | none         | none                                                          | 200 `{ ok: true, version, commit }`             |
+| GET    | `/ready`             | none         | none                                                          | 200 `{ ready: true }` or 503 `{ ready: false }` |
+| GET    | `/config`            | none         | none                                                          | 200 `ConfigDto`                                 |
+| POST   | `/client-errors`     | none         | body: [`clientErrorsSchema`](#post-client-errors)             | 204, no body                                    |
+| POST   | `/auth/register`     | none         | body: [`registerSchema`](#post-authregister)                  | 201 `{ user: UserDto }`                         |
+| GET    | `/auth/me`           | user         | none                                                          | 200 `{ user: UserDto }`                         |
+| GET    | `/store`             | none         | none                                                          | 200 `{ store: StoreDto }`                       |
+| GET    | `/menu`              | none         | none                                                          | 200 `MenuResponse`                              |
+| POST   | `/orders`            | user         | body: [`createOrderSchema`](#post-orders)                     | 201 `{ order: OrderDto }`                       |
+| GET    | `/orders`            | user         | query: [`listOrdersQuerySchema`](#get-orders)                 | 200 `{ orders: OrderDto[] }`                    |
+| GET    | `/orders/:id`        | user         | path: `id`                                                    | 200 `{ order: OrderDto }`                       |
+| PATCH  | `/orders/:id/status` | user + STAFF | body: [`updateOrderStatusSchema`](#patch-ordersidstatus)      | 200 `{ order: OrderDto }`                       |
+| GET    | `/admin/settings`    | user + ADMIN | none                                                          | 200 `{ settings: SiteSettingsDto }`             |
+| PATCH  | `/admin/settings`    | user + ADMIN | body: [`updateSettingsSchema`](#patch-adminsettings)          | 200 `{ settings: SiteSettingsDto }`             |
+| GET    | `/admin/audit`       | user + ADMIN | query: [`auditQuerySchema`](#get-adminaudit)                  | 200 `AuditPageDto`                              |
+| PATCH  | `/admin/flags/:key`  | user + ADMIN | path: `key`; body: [`updateFlagSchema`](#patch-adminflagskey) | 200 `{ flag: FeatureFlagDto }`                  |
 
 `orderRouter.use(requireAuth)` runs before any `/orders` route matches. So any path under `/api/orders`, including
 one that matches no route, returns 401 without a valid token. `adminRouter.use(requireAuth, requireAdmin)` does the
@@ -73,7 +84,8 @@ database outage never restarts a healthy container.
 Code: `server/src/services/config.service.ts`. Public (no token), registered before the [client version
 gate](#client-version-gate) so an outdated client can still read the minimum it must reach. Derived from the cached
 site settings (no cache key of its own, so an admin's `PATCH /admin/settings` reaches it at once through
-`invalidate('site_settings')`) plus `SESSION_IDLE_DAYS`. `ConfigDto`:
+`invalidate('site_settings')`), the cached feature flags (a flip reaches it through `invalidate('feature_flags')`) and
+`SESSION_IDLE_DAYS`. `ConfigDto`:
 
 ```json
 {
@@ -83,13 +95,20 @@ site settings (no cache key of its own, so an admin's `PATCH /admin/settings` re
   "payment": null,
   "limits": { "maxLinesPerOrder": 30 },
   "polling": { "orderMs": 4000, "ordersMs": 8000, "staffBoardMs": 4000 },
-  "session": { "idleDays": 7 }
+  "session": { "idleDays": 7 },
+  "clientErrors": { "samplePercent": 100 }
 }
 ```
 
-`features` stays empty until P1.7 and `payment` null until P5. The client's defaults for this shape are
+`features` holds every `client_visible` [feature flag](CONFIGURATION.md#feature-flags) by key: an untargeted flag as
+its `enabled`, a targeted one (`storeIds`, `roles` or `percent`) as `false`, since it needs to know the caller; a flag
+that is not `client_visible` never appears. If the flags cannot be read, `features` is `{}` and the response is still
+200 (a feature the client cannot confirm stays off). `payment` stays null until P5. The client's defaults for this shape are
 `client/src/config/fallbacks.json`; `server/test/api/config.test.ts` fails when they differ from a freshly seeded
 database.
+
+`clientErrors.samplePercent` is `site_settings.client_error_sample_percent` (0–100): the share of page loads that send
+their errors to [`POST /client-errors`](#post-client-errors).
 
 ### GET /ready
 
@@ -98,18 +117,54 @@ Code: `server/src/controllers/health.controller.ts`. Readiness: one `site_settin
 answer, not an error: it never reaches the error handler or the error log. Load balancers and compose use this to
 hold traffic back from an instance that cannot reach the database.
 
+### POST /client-errors
+
+Code: `server/src/controllers/clientErrors.controller.ts`, schema `server/src/schemas/clientErrors.schema.ts`. The
+browser's own error reports (self-reported, not Sentry: P1 decision D5). Public (no token: errors happen before
+sign-in) and registered before the [client version gate](#client-version-gate), because a stale tab's errors are the
+ones worth seeing. `clientErrorLimiter` counts requests per address (`RATE_LIMIT_CLIENT_ERRORS_MAX`, 30 per window;
+[Headers and limits](#headers-and-limits)).
+
+```json
+{
+  "reports": [
+    {
+      "kind": "error",
+      "message": "Cannot read properties of undefined",
+      "stack": "TypeError: …",
+      "route": "/menu",
+      "at": "2026-11-02T10:00:00.000Z"
+    }
+  ]
+}
+```
+
+| Field     | Rules                                                                                                                           |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `reports` | 1–5 reports                                                                                                                     |
+| `kind`    | `error`, `unhandledrejection` or `render`                                                                                       |
+| `message` | string, at most 500 characters                                                                                                  |
+| `stack`   | optional string, at most 3500 characters                                                                                        |
+| `route`   | string, at most 4000 characters sent; its query string and hash are dropped, the rest scrubbed and cut to 200 (the page's path) |
+| `at`      | ISO 8601 date-time with `Z` or an offset: when it happened                                                                      |
+
+Both objects are strict: an unknown field is 400 `VALIDATION_ERROR`, as is a sixth report or a bound exceeded.
+Anything shaped like a JWT (also one cut short), an `sb_…` key, a `Bearer` value, a token, code or password in a URL parameter (`refresh_token=…`, also with the `=` encoded as `%3D`), an email address (also `%40`- or `%2B`-encoded, or with an apostrophe) or a phone number (10 to 15 digits, with up to three spaces, dashes, dots, slashes or parentheses between each two) in `message`, `stack` or `route` becomes `[Redacted]` before it is
+logged. Answers 204 with no body; each report is one `warn` `Client error` log line ([LOGGING.md](LOGGING.md#client-error-reports)).
+Five reports at their bounds fit a `keepalive` request's 64 KB.
+
 ### POST /auth/register
 
 Code: `auth.routes.ts` → `validate(registerSchema)` → `auth.controller.register` → `auth.service.register`.
 
 Body (`server/src/schemas/auth.schema.ts`):
 
-| Field      | Type   | Rules                                                                                                                                |
-| ---------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `name`     | string | required, trimmed, 2–60 characters                                                                                                   |
-| `email`    | string | required, trimmed, lowercased, must be an email                                                                                      |
-| `password` | string | required, 6–72 characters (bcrypt reads only the first 72 bytes), never trimmed, not only spaces ("Password cannot be only spaces.") |
-| `phone`    | string | optional; see [phone numbers](#shared-field-rules)                                                                                   |
+| Field      | Type   | Rules                                                                                                                                                   |
+| ---------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`     | string | required, typed text ([Shared field rules](#shared-field-rules)), 2–60 characters                                                                       |
+| `email`    | string | required, trimmed, lowercased, must be an email                                                                                                         |
+| `password` | string | required, 6–72 characters (bcrypt reads only the first 72 bytes), never trimmed, not only spaces ("Password cannot be only spaces."), no lone surrogate |
+| `phone`    | string | optional; see [phone numbers](#shared-field-rules)                                                                                                      |
 
 The service calls `auth.admin.createUser` with `email_confirm: true` and `user_metadata: { name, phone }`. The
 `on_auth_user_created` trigger creates a `CUSTOMER` profile (see [SCHEMA.md](SCHEMA.md#handle_new_user)). No email is
@@ -155,25 +210,29 @@ Code: `requireAuth` → `writeLimiter` → `validate(createOrderSchema)` → `or
 
 Body (`server/src/schemas/order.schema.ts`):
 
-| Field                | Type   | Rules                                                                                       |
-| -------------------- | ------ | ------------------------------------------------------------------------------------------- |
-| `items`              | array  | required, 1–30 entries (counted before duplicates are merged)                               |
-| `items[].menuItemId` | string | required, at least 1 character                                                              |
-| `items[].quantity`   | number | required, whole number, at least 1                                                          |
-| `customerName`       | string | optional, trimmed, at most 60 characters; blank or missing falls back to the profile name   |
-| `customerPhone`      | string | optional; see [phone numbers](#shared-field-rules)                                          |
-| `note`               | string | optional, trimmed, at most 200 characters                                                   |
-| `idempotencyKey`     | string | optional, a UUID; one per checkout attempt, resent unchanged on every retry of that attempt |
+| Field                       | Type   | Rules                                                                                                              |
+| --------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------ |
+| `items`                     | array  | required, 1–30 entries (counted before duplicates are merged)                                                      |
+| `items[].menuItemId`        | string | required, at least 1 character                                                                                     |
+| `items[].quantity`          | number | required, whole number, at least 1                                                                                 |
+| `items[].expectedUnitPrice` | number | optional, whole rupees, at least 1: the price the customer was shown for this line; never charged, only compared   |
+| `customerName`              | string | optional, typed text, at most 60 characters; blank (also invisible-only) or missing falls back to the profile name |
+| `customerPhone`             | string | optional; see [phone numbers](#shared-field-rules)                                                                 |
+| `note`                      | string | optional, typed text, at most 200 characters                                                                       |
+| `idempotencyKey`            | string | optional, a UUID; one per checkout attempt, resent unchanged on every retry of that attempt                        |
 
 - Entries with the same `menuItemId` are merged into one line with the quantities summed (`mergeDuplicateItems`).
-- Unknown keys (`price`, `unitPrice`, `total`, …) are dropped by `z.object`. Prices come from the database only.
+- Unknown keys (`price`, `unitPrice`, `total`, …) are dropped by `z.object`. Prices come from the database only;
+  `expectedUnitPrice` can only refuse an order, never change what is charged. Merged duplicates keep every
+  `expectedUnitPrice` sent, and each one is compared.
 - **Idempotency:** a request whose `idempotencyKey` already placed an order for this user is answered with that
   order again (201, the same body), without touching stock or payment: the service checks first, and `place_order`
   settles two simultaneous repeats under an advisory lock ([SCHEMA.md](SCHEMA.md#place_order)). The key is per
   user (two users may send the same value), never echoed back, and a request without one always places a new
   order (the deployed V0 client sends none). The client (`features/checkout/checkoutDraftStore.ts`) keeps one key
   per checkout attempt in `sessionStorage`, so a refresh during "Processing payment…" cannot create a second order.
-- **A repeated key must carry the same order:** the same merged items and quantities, name, phone and note. A
+- **A repeated key must carry the same order:** the same merged items and quantities, name, phone and note
+  (`expectedUnitPrice` is not compared: a replay answers the order placed, at the price it was placed at). A
   different request under a key that already placed an order (the cart changed after a Pay whose answer was lost) is
   409 `IDEMPOTENCY_KEY_REUSED` with `details: { orderId, orderNumber }`, never a silent replay, so the customer is
   never told they paid for items the kitchen will not see. The client then links to that order, keeps the cart, and
@@ -189,25 +248,36 @@ What the service checks, in this order:
    - `is_available` is true, else 400 `ITEM_UNAVAILABLE` "<name> is currently unavailable. Please remove it from your
      cart." with `details: { menuItemId, name, available: 0 }`;
    - the merged quantity is at most 10 (`MAX_QUANTITY_PER_ITEM`, a fixed constant — not a `site_settings` value), else
-     400 `VALIDATION_ERROR` "You can order at most 10 of <name>. Please reduce the quantity in your cart."
-3. `total = Σ unit_price × quantity` from the database prices, then `simulatePayment(total)` returns `PAID`
-   (`server/src/services/payment.service.ts`).
+     400 `VALIDATION_ERROR` "You can order at most 10 of <name>. Please reduce the quantity in your cart.";
+   - every `expectedUnitPrice` sent for the item equals its current price, else 409 `PRICE_CHANGED` (the message in
+     step 4) before any charge. A cart keeps the price an item was added at (`client/src/features/cart/cartStore.ts`),
+     so this is how a cart older than a price change is caught. The client sends each line's shown `unitPrice`.
+3. The total in paise, `Σ menu_items.price_paise × quantity`, then `simulatePayment(totalPaise)` returns `PAID`
+   (`server/src/services/payment.service.ts`; a total of 0 or less is 400 `BAD_REQUEST` "The order total must be
+   more than ₹0.", unreachable while `menu_items.price_paise > 0`). `place_order` prices the stored order itself from
+   `menu_items`, never from its arguments; the API sends each line's charged price only for `place_order` to compare.
 4. `place_order` reserves stock and writes the order in one transaction. Not enough stock: 400
    `INSUFFICIENT_STOCK` with `details: { menuItemId, name, available }` and the message "Only <n> <name> left. Reduce
    the quantity in your cart." or, when `available` is 0, "<name> just sold out." A refused order leaves no rows and
-   no stock changes behind (see [SCHEMA.md](SCHEMA.md#place_order)).
+   no stock changes behind (see [SCHEMA.md](SCHEMA.md#place_order)). `place_order` checks steps 1 and 2 again under
+   its own locks, so a store closed or an item switched off between step 1 and the order is the same 400
+   `STORE_CLOSED` or `ITEM_UNAVAILABLE` (same message and details) with nothing placed. A line whose price changed
+   after step 3 read it: 409 `PRICE_CHANGED` "The price of <name> just changed to ₹<price>. Please review your order." (no `details`), and
+   nothing is placed. The client shows the message, reloads the menu and takes the new price into the cart, so the
+   next Pay shows the amount it charges.
 
 A new order is `paymentStatus: "PAID"`, `status: "PLACED"`, `estimatedReadyAt = now() + store.prep_time_max_minutes`.
 
-| Status | Code                                                                                                     |
-| ------ | -------------------------------------------------------------------------------------------------------- |
-| 201    | `{ order: OrderDto }`                                                                                    |
-| 400    | `VALIDATION_ERROR`, `ITEM_NOT_FOUND`, `ITEM_UNAVAILABLE`, `INSUFFICIENT_STOCK`, `STORE_CLOSED`           |
-| 401    | `UNAUTHORIZED`                                                                                           |
-| 404    | `NOT_FOUND` (no store row)                                                                               |
-| 409    | `IDEMPOTENCY_KEY_REUSED` (the key already placed a different order; `details: { orderId, orderNumber }`) |
-| 413    | `PAYLOAD_TOO_LARGE`                                                                                      |
-| 429    | `RATE_LIMITED` (the per-user write limit, [Headers and limits](#headers-and-limits))                     |
+| Status | Code                                                                                                                          |
+| ------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| 201    | `{ order: OrderDto }`                                                                                                         |
+| 400    | `VALIDATION_ERROR`, `ITEM_NOT_FOUND`, `ITEM_UNAVAILABLE`, `INSUFFICIENT_STOCK`, `STORE_CLOSED`, `BAD_REQUEST` (a ₹0 total)    |
+| 401    | `UNAUTHORIZED`                                                                                                                |
+| 404    | `NOT_FOUND` (no store row)                                                                                                    |
+| 409    | `IDEMPOTENCY_KEY_REUSED` (the key already placed a different order; `details: { orderId, orderNumber }`)                      |
+| 409    | `PRICE_CHANGED` (a stale `expectedUnitPrice`, or a price changed after the charge; no `details`; the client reloads the menu) |
+| 413    | `PAYLOAD_TOO_LARGE`                                                                                                           |
+| 429    | `RATE_LIMITED` (the per-user write limit, [Headers and limits](#headers-and-limits))                                          |
 
 ### GET /orders
 
@@ -255,13 +325,19 @@ Allowed transitions (`ALLOWED_TRANSITIONS` in `server/src/services/order.service
 | `COLLECTED` | none                     |
 | `CANCELLED` | none                     |
 
-The service passes every status that may move to the requested one as `p_from_statuses`. The database does one
-conditional update, so two staff devices pressing at once get one 200 and one 409. Cancelling puts the order's
+The service passes every status that may move to the requested one as `p_from_statuses`. The database locks the
+order row, so two staff devices pressing at once are served one after the other. Cancelling puts the order's
 tracked stock back in the same transaction (see [SCHEMA.md](SCHEMA.md#update_order_status)).
+
+A repeat is not an error. When the order already has the requested status and some transition leads to that status
+(anything but `PLACED`), the answer is 200 with the order unchanged: nothing is written, no stock moves and no event is
+emitted. This makes a retry after a lost answer, and two devices pressing the same button, safe. Only a real invalid
+move is a 409, `PLACED` → `PLACED` included. The request's `x-request-id` is recorded with the event of a change
+([JOBS.md](JOBS.md#order-events)).
 
 | Status | Code                        | When                                                                                                                     |
 | ------ | --------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| 200    |                             | `{ order: OrderDto }` with the new status                                                                                |
+| 200    |                             | `{ order: OrderDto }` with the new status, or unchanged for a repeat of a transition that already happened               |
 | 400    | `VALIDATION_ERROR`          | `status` missing or not one of the five                                                                                  |
 | 401    | `UNAUTHORIZED`              | see [Authentication](#authentication)                                                                                    |
 | 403    | `FORBIDDEN`                 | caller is not `STAFF`                                                                                                    |
@@ -283,7 +359,8 @@ and store (key `'site_settings'`; see [Caching](#caching)).
 ### PATCH /admin/settings
 
 Code: `requireAuth` → `requireAdmin` → `validate(updateSettingsSchema)` → `admin.controller.updateSettings` →
-`settings.service.updateSettings`.
+`settings.service.updateSettings`. A save that changes a value writes one `audit_log` row naming the admin and the
+request id; a save of the same values writes none ([SCHEMA.md](SCHEMA.md#audit_row_change)).
 
 Body (`server/src/schemas/admin.schema.ts`), every field optional but at least one required:
 
@@ -293,6 +370,7 @@ Body (`server/src/schemas/admin.schema.ts`), every field optional but at least o
 | `staffOrderListLimit`                             | number | whole number, 1–500                                                                                  |
 | `maxLinesPerOrder`                                | number | whole number, 1–100 ("Items per order must be …")                                                    |
 | `orderPollMs`, `ordersPollMs`, `staffBoardPollMs` | number | whole number, 2000–60000 ("Order page refresh / Order list refresh / Staff board refresh must be …") |
+| `clientErrorSamplePercent`                        | number | whole number, 0–100 ("Error reporting sample must be …")                                             |
 | `minClientVersion`                                | string | `^\d+\.\d+\.\d+$` ("Minimum client version must look like 1.2.3.")                                   |
 
 - An out-of-range or non-integer value is 400 `VALIDATION_ERROR` ("Customer order history limit must be at least
@@ -312,10 +390,75 @@ Body (`server/src/schemas/admin.schema.ts`), every field optional but at least o
 | 401    | `UNAUTHORIZED`     | see [Authentication](#authentication)                    |
 | 403    | `FORBIDDEN`        | caller is not `ADMIN`                                    |
 
+### GET /admin/audit
+
+Code: `requireAuth` → `requireAdmin` → `validate(auditQuerySchema, 'query')` → `admin.controller.listAudit` →
+`audit.service.listAudit`. One page of the `audit_log` ([SCHEMA.md](SCHEMA.md#audit_log)), newest first, as
+`AuditPageDto`. Never read through the process cache: every request reads the table. Answered with
+`Cache-Control: no-store` instead of the global `no-cache`, so the log never stays in the browser's cache after the
+admin signs out (it is not polled, so an ETag would save nothing). No screen calls it yet (the admin
+audit view is P7.4).
+
+Query (`server/src/schemas/admin.schema.ts`), every parameter optional:
+
+| Param        | Type          | Rules                                                                                          |
+| ------------ | ------------- | ---------------------------------------------------------------------------------------------- |
+| `entityType` | string        | one of `site_settings`, `order`, `profile`, `menu_item`, `feature_flag` (the audited entities) |
+| `entityId`   | string        | 1–64 characters; needs `entityType` (the same id can belong to entities of different types)    |
+| `actorId`    | string (uuid) | the profile that made the change                                                               |
+| `from`       | ISO 8601      | date and time with an offset (`2026-11-02T10:00:00Z`); `occurredAt >= from`                    |
+| `to`         | ISO 8601      | same format; `occurredAt < to`                                                                 |
+| `before`     | number        | whole number ≥ 1: the previous page's `nextCursor`; only rows with a smaller `id`              |
+| `limit`      | number        | whole number, 1–100, default 50 (`AUDIT_PAGE`)                                                 |
+
+- `from` must be before `to` when both are sent (400 otherwise).
+- Paging is keyset on `id`: pass `nextCursor` back as `before` until it is `null`. `before` is the only cursor:
+  `occurredAt` is rounded to the millisecond, so echoing it back as `to` can skip rows from the same millisecond. A row written mid-walk lands
+  before the first page, so a walk never repeats or skips a row. `nextCursor` is `null` exactly on the last page.
+- An entity with no rows is 200 `{ entries: [], nextCursor: null }`, never 404.
+
+| Status | Code               | When                                                                                            |
+| ------ | ------------------ | ----------------------------------------------------------------------------------------------- |
+| 200    |                    | `AuditPageDto`                                                                                  |
+| 400    | `VALIDATION_ERROR` | a parameter out of bounds or malformed; `entityId` without `entityType`; `from` not before `to` |
+| 401    | `UNAUTHORIZED`     | see [Authentication](#authentication)                                                           |
+| 403    | `FORBIDDEN`        | caller is not `ADMIN`                                                                           |
+
+### PATCH /admin/flags/:key
+
+Code: `requireAuth` → `requireAdmin` → `writeLimiter` → `validate(updateFlagSchema)` → `admin.controller.updateFlag` →
+`flags.service.setFlag`. Flips one feature flag ([SCHEMA.md](SCHEMA.md#feature_flags)). A change writes one
+`audit_log` row (`feature_flag.changed`) naming the admin and the request id; a save of the same values writes none.
+There is no list endpoint and no screen until the flags page (P7.4); flags are created by migrations, never here.
+
+Body (`server/src/schemas/admin.schema.ts`), every field optional but at least one required:
+
+| Field           | Type    | Rules                                                                                                                                                                                                          |
+| --------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `enabled`       | boolean | off is off for everyone                                                                                                                                                                                        |
+| `clientVisible` | boolean | whether `GET /api/config` serves it (P1 PR 14)                                                                                                                                                                 |
+| `rules`         | object  | replaces the stored rules whole; only `storeIds` (1–100 distinct store uuids), `roles` (1–3 distinct of `CUSTOMER`, `STAFF`, `ADMIN`) and `percent` (whole number 0–100), each optional; `{}` clears targeting |
+
+- Any other key in `rules` is 400 (a misspelt `storeId` would otherwise turn a targeted flag on for everyone).
+- On success `updated_by` is the admin, and the process cache key `'feature_flags'` is invalidated at once, so the next
+  evaluation on this API instance sees the flip. The controller logs `Feature flag changed` at `info` with the key, the
+  fields sent and `by: admin.id`.
+
+| Status | Code               | When                                                         |
+| ------ | ------------------ | ------------------------------------------------------------ |
+| 200    |                    | `{ flag: FeatureFlagDto }`                                   |
+| 400    | `VALIDATION_ERROR` | a field of the wrong type, a malformed rule, or nothing sent |
+| 401    | `UNAUTHORIZED`     | see [Authentication](#authentication)                        |
+| 403    | `FORBIDDEN`        | caller is not `ADMIN`                                        |
+| 404    | `NOT_FOUND`        | no flag has that key                                         |
+
 ## Response DTOs
 
 From `server/src/types/api.ts`. The serializers in `server/src/utils/serializers.ts` turn snake_case rows into these
-camelCase shapes and every timestamp into ISO 8601 (`new Date(ts).toISOString()`). Money is whole rupees as integers.
+camelCase shapes and every timestamp into ISO 8601 (`new Date(ts).toISOString()`). Money is whole rupees as integers:
+it is stored in paise (`…_paise` columns, [SCHEMA.md](SCHEMA.md)) and converted by `server/src/utils/money.ts`, so
+nothing changes for clients. A new money field carries paise and says so in its name (`amountPaise`,
+[ADR-004](adr/004-rupees-and-paise.md)).
 
 `UserDto`
 
@@ -341,6 +484,7 @@ camelCase shapes and every timestamp into ISO 8601 (`new Date(ts).toISOString()`
 | `orderPollMs`               | number            | 2000–60000, default 4000; an open order's page poll interval (ms)                          |
 | `ordersPollMs`              | number            | 2000–60000, default 8000; the customer's order list poll interval (ms)                     |
 | `staffBoardPollMs`          | number            | 2000–60000, default 4000; the staff board poll interval (ms)                               |
+| `clientErrorSamplePercent`  | number            | 0–100, default 100; the share of page loads that report their errors                       |
 | `minClientVersion`          | string            | default `0.0.0`; clients below it get 426 `CLIENT_OUTDATED` ([gate](#client-version-gate)) |
 | `updatedAt`                 | string (ISO 8601) | set whenever a setting is saved                                                            |
 
@@ -389,27 +533,68 @@ camelCase shapes and every timestamp into ISO 8601 (`new Date(ts).toISOString()`
 | `estimatedReadyAt` | string (ISO 8601)              |                                            |
 | `createdAt`        | string (ISO 8601)              |                                            |
 | `updatedAt`        | string (ISO 8601)              | set by the `orders_set_updated_at` trigger |
-| `store`            | `{ id: string, name: string }` |                                            |
+| `store`            | `{ id: string, name: string }` | `name` is the store's name at order time   |
 | `items`            | `OrderItemDto[]`               | cart order                                 |
 
 `OrderItemDto`
 
-| Field        | Type          | Notes                                          |
-| ------------ | ------------- | ---------------------------------------------- |
-| `id`         | string (uuid) |                                                |
-| `menuItemId` | string (uuid) |                                                |
-| `name`       | string        | snapshot at order time                         |
-| `unitPrice`  | number        | snapshot at order time                         |
-| `quantity`   | number        |                                                |
-| `lineTotal`  | number        | `unitPrice × quantity`                         |
-| `imageUrl`   | string        | the menu item's current photo (not a snapshot) |
+| Field        | Type          | Notes                               |
+| ------------ | ------------- | ----------------------------------- |
+| `id`         | string (uuid) |                                     |
+| `menuItemId` | string (uuid) |                                     |
+| `name`       | string        | snapshot at order time              |
+| `unitPrice`  | number        | snapshot at order time              |
+| `quantity`   | number        |                                     |
+| `lineTotal`  | number        | `unitPrice × quantity`              |
+| `imageUrl`   | string        | the menu item's photo at order time |
+
+`AuditPageDto`: `{ entries: AuditEntryDto[], nextCursor: number | null }`.
+
+`AuditEntryDto`
+
+| Field        | Type                                                                       | Notes                                                                                        |
+| ------------ | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `id`         | number                                                                     | the keyset cursor                                                                            |
+| `occurredAt` | string (ISO 8601)                                                          |                                                                                              |
+| `actorType`  | `USER` \| `WORKER` \| `RECONCILER` \| `WEBHOOK` \| `SCHEDULER` \| `SYSTEM` |                                                                                              |
+| `actorId`    | string (uuid) \| null                                                      | the profile for `USER`, null for system actors                                               |
+| `actorRole`  | string \| null                                                             | the actor's role when the change happened                                                    |
+| `storeId`    | string (uuid) \| null                                                      | the row's store, when it has one                                                             |
+| `action`     | string                                                                     | `site_settings.changed`, `order.status_changed`, `profile.role_changed`, `menu_item.changed` |
+| `entityType` | string                                                                     | the first part of `action`                                                                   |
+| `entityId`   | string                                                                     | the changed row's id                                                                         |
+| `changes`    | `{ [column]: [old, new] }` \| null                                         | the watched columns that changed                                                             |
+| `reason`     | string \| null                                                             |                                                                                              |
+| `requestId`  | string \| null                                                             | the API request that made the change; null outside the API                                   |
+
+`FeatureFlagDto`
+
+| Field           | Type                                                        | Notes                                                                           |
+| --------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `key`           | string                                                      |                                                                                 |
+| `description`   | string                                                      |                                                                                 |
+| `enabled`       | boolean                                                     |                                                                                 |
+| `clientVisible` | boolean                                                     |                                                                                 |
+| `rules`         | `{ storeIds?: string[], roles?: Role[], percent?: number }` | as stored (a hand edit that does not parse is shown as is, and the flag is off) |
+| `updatedAt`     | string (ISO 8601)                                           |                                                                                 |
+| `updatedBy`     | string (uuid) \| null                                       | the admin who last changed it; null for a migration                             |
 
 ## Shared field rules
 
 From `server/src/schemas/common.ts` and `server/src/middleware/validate.ts`:
 
 - **NUL bytes** are removed from every string in the body or query before validation.
-- **Optional fields** (`optionalField`): a blank or whitespace-only string counts as not sent.
+- **Nesting:** a body nested deeper than 32 arrays or objects (`MAX_BODY_DEPTH`) is 400 `VALIDATION_ERROR` "The
+  request body is nested too deeply." The deepest real body is three levels.
+- **Typed text** (`typedText`: `name`, `customerName`, `note`): a lone UTF-16 surrogate is 400 `VALIDATION_ERROR`
+  "Invalid characters in input." (as it is in `password`); blank and invisible characters (format characters such as
+  the zero-width space, the Braille blank, the Hangul fillers) are trimmed from both ends, and stay inside the value
+  (a joiner builds an emoji sequence); tag characters and variation selectors are never trimmed, since they end a
+  subdivision flag or a red heart ("❤️"); a minimum counts visible characters only, leaving out whitespace, invisible
+  characters and marks that draw nothing on their own (variation selectors, the combining grapheme joiner); lengths
+  are UTF-16 units, as a form's `maxLength` counts them (31 emoji are 62 units, over a limit of 60).
+- **Optional fields** (`optionalField`): a blank string, or one with no visible character (only whitespace, invisible
+  characters or variation selectors), counts as not sent.
 - **Phone numbers** (`phone`, `customerPhone`): spaces, dashes and parentheses are stripped, then the value must match
   `^\+?\d{10,15}$` ("Enter a valid phone number."). The normalised value is stored.
 - **Validation messages** name the field: a missing field gives "<Field label> is required.", a wrong type gives
@@ -431,36 +616,45 @@ Every error response has this shape (`server/src/middleware/errorHandler.ts`):
 ```
 
 - `message` is always safe to show to the user. No stack trace or SQL text is sent.
-- `details` takes one of three shapes. On the three cart-line errors (`INSUFFICIENT_STOCK`, `ITEM_UNAVAILABLE`,
-  `ITEM_NOT_FOUND`): `{ menuItemId: string, name?: string, available: number }` (`ItemErrorDetails`), where
-  `available` is 0 for a sold-out, unavailable or missing item. On `IDEMPOTENCY_KEY_REUSED`: `{ orderId, orderNumber }`
-  (`ReplayedOrderDetails`). On a `VALIDATION_ERROR` about one request field, and on `EMAIL_TAKEN`: `{ field }`, the
-  top-level field at fault (`customerPhone`, `email`, `items` for `items[2].quantity`) (`FieldErrorDetails`), so a
-  form shows the message on that field; a rule with no single field (the lines limit) carries no `details`.
+- `details` is present only on the errors below.
+
+### Error details
+
+`details` takes one of the shapes in `ErrorDetails` (`server/src/utils/errors.ts`; the client's `ApiErrorDetails`).
+**Rule:** the three shapes that predate P1 stay untagged, because the deployed client reads them by `code`; every new
+shape carries a `kind`, and the client narrows on it.
+
+| Shape                  | On                                                          | Fields                                                                                                                                                                                           |
+| ---------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ItemErrorDetails`     | `INSUFFICIENT_STOCK`, `ITEM_UNAVAILABLE`, `ITEM_NOT_FOUND`  | `{ menuItemId: string, name?: string, available: number }`; `available` is 0 for a sold-out, unavailable or missing item                                                                         |
+| `ReplayedOrderDetails` | `IDEMPOTENCY_KEY_REUSED`                                    | `{ orderId, orderNumber }`                                                                                                                                                                       |
+| `FieldErrorDetails`    | a `VALIDATION_ERROR` about one request field, `EMAIL_TAKEN` | `{ field }`: the top-level field at fault (`customerPhone`, `email`, `items` for `items[2].quantity`), so a form shows the message on it; a rule with no single field (the lines limit) has none |
+| `RateLimitDetails`     | `RATE_LIMITED`                                              | `{ kind: 'rateLimit', retryAfterSeconds }`: the same number as the `Retry-After` header, the seconds until that key's window resets                                                              |
 
 ### Error codes
 
-| Status | Code                        | Raised by                                                                                                                                                                                                                                                                                                  |
-| ------ | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 400    | `VALIDATION_ERROR`          | zod schemas; the 10-per-item cap; the `site_settings` bounds (`GET`/`PATCH /admin/settings`); malformed JSON ("Malformed request body."); Postgres `22001` ("One of the values is too long."), `22021` / `22P05` ("Invalid characters in input."); Supabase Auth `email_address_invalid` / `weak_password` |
-| 400    | `BAD_REQUEST`               | bad percent-encoding in the URL ("The request URL is malformed."); any other 4xx from body-parser ("The request could not be processed.")                                                                                                                                                                  |
-| 400    | `ITEM_NOT_FOUND`            | `POST /orders`                                                                                                                                                                                                                                                                                             |
-| 400    | `ITEM_UNAVAILABLE`          | `POST /orders`                                                                                                                                                                                                                                                                                             |
-| 400    | `INSUFFICIENT_STOCK`        | `POST /orders` (from `place_order`)                                                                                                                                                                                                                                                                        |
-| 400    | `STORE_CLOSED`              | `POST /orders`                                                                                                                                                                                                                                                                                             |
-| 401    | `UNAUTHORIZED`              | `requireAuth`                                                                                                                                                                                                                                                                                              |
-| 403    | `FORBIDDEN`                 | `requireStaff`, `requireAdmin`                                                                                                                                                                                                                                                                             |
-| 429    | `RATE_LIMITED`              | `middleware/rateLimit.ts`: more requests than the window allows from one account (writes) or one address (all of `/api`, `POST /auth/register`); "Too many requests. Please wait a minute and try again." with `Retry-After`, `RateLimit-Policy` and `RateLimit` headers. Logged at `warn`                 |
-| 426    | `CLIENT_OUTDATED`           | every route mounted after the [client version gate](#client-version-gate): the client's `X-Client-Version` is below `site_settings.min_client_version`. "A new version of Food Pickup is available. Refresh the page to continue." Logged at `debug`                                                       |
-| 404    | `NOT_FOUND`                 | missing store, order or profile; an unmatched route ("No route matches <METHOD> <path>.")                                                                                                                                                                                                                  |
-| 409    | `EMAIL_TAKEN`               | `POST /auth/register`                                                                                                                                                                                                                                                                                      |
-| 409    | `INVALID_STATUS_TRANSITION` | `PATCH /orders/:id/status` (from `update_order_status`)                                                                                                                                                                                                                                                    |
-| 409    | `IDEMPOTENCY_KEY_REUSED`    | `POST /orders`: the `idempotencyKey` already placed an order that differs from this request. "Your earlier order #<n> already went through. Pay again to order what is in your cart now." with `details: { orderId, orderNumber }` (`ReplayedOrderDetails`)                                                |
-| 413    | `PAYLOAD_TOO_LARGE`         | JSON body over 100 kB (`JSON_BODY_LIMIT_BYTES`), refused on the declared `Content-Length` before the body is read, with `Connection: close`; a chunked body when it passes the limit ("The request body is too large.")                                                                                    |
-| 500    | `INTERNAL`                  | anything else ("Something went wrong. Please try again."), logged with its stack                                                                                                                                                                                                                           |
-| 503    | `UPSTREAM_UNAVAILABLE`      | any route when the database or Supabase Auth cannot be reached (an `IntegrationError`): "The service is temporarily unavailable. Please try again in a moment.", with `Retry-After: 5`; logged once at `error` with the cause chain                                                                        |
+| Status | Code                        | Raised by                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ------ | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 400    | `VALIDATION_ERROR`          | zod schemas; the 10-per-item cap; the `site_settings` bounds (`GET`/`PATCH /admin/settings`); malformed JSON ("Malformed request body."); Postgres `22001` ("One of the values is too long."), `22021` / `22P05` and PostgREST `PGRST102` ("Invalid characters in input."); a body nested too deeply; Supabase Auth `email_address_invalid` / `weak_password`                                                                      |
+| 400    | `BAD_REQUEST`               | bad percent-encoding in the URL ("The request URL is malformed."); any other 4xx from body-parser ("The request could not be processed."); `simulatePayment` for a total of 0 or less ("The order total must be more than ₹0.")                                                                                                                                                                                                    |
+| 400    | `ITEM_NOT_FOUND`            | `POST /orders`                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| 400    | `ITEM_UNAVAILABLE`          | `POST /orders` (the API's check, or `place_order`'s)                                                                                                                                                                                                                                                                                                                                                                               |
+| 400    | `INSUFFICIENT_STOCK`        | `POST /orders` (from `place_order`)                                                                                                                                                                                                                                                                                                                                                                                                |
+| 400    | `STORE_CLOSED`              | `POST /orders` (the API's check, or `place_order`'s)                                                                                                                                                                                                                                                                                                                                                                               |
+| 401    | `UNAUTHORIZED`              | `requireAuth`                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| 403    | `FORBIDDEN`                 | `requireStaff`, `requireAdmin`                                                                                                                                                                                                                                                                                                                                                                                                     |
+| 429    | `RATE_LIMITED`              | `middleware/rateLimit.ts`: more requests than the window allows from one account (writes) or one address (all of `/api`, `POST /auth/register`); "Too many requests. Please wait a minute and try again." with `Retry-After`, `RateLimit-Policy` and `RateLimit` headers and `details: { kind: 'rateLimit', retryAfterSeconds }` (`RateLimitDetails`). Logged at `warn` for the first refusal per key per window, `debug` after it |
+| 426    | `CLIENT_OUTDATED`           | every route mounted after the [client version gate](#client-version-gate): the client's `X-Client-Version` is below `site_settings.min_client_version`. "A new version of Food Pickup is available. Refresh the page to continue." Logged at `debug`                                                                                                                                                                               |
+| 404    | `NOT_FOUND`                 | missing store, order or profile; an unmatched route ("No route matches <METHOD> <path>.")                                                                                                                                                                                                                                                                                                                                          |
+| 409    | `EMAIL_TAKEN`               | `POST /auth/register`                                                                                                                                                                                                                                                                                                                                                                                                              |
+| 409    | `INVALID_STATUS_TRANSITION` | `PATCH /orders/:id/status` (from `update_order_status`)                                                                                                                                                                                                                                                                                                                                                                            |
+| 409    | `IDEMPOTENCY_KEY_REUSED`    | `POST /orders`: the `idempotencyKey` already placed an order that differs from this request. "Your earlier order #<n> already went through. Pay again to order what is in your cart now." with `details: { orderId, orderNumber }` (`ReplayedOrderDetails`)                                                                                                                                                                        |
+| 409    | `PRICE_CHANGED`             | `POST /orders`: an `expectedUnitPrice` is not the item's current price, or (from `place_order`) an item's price changed after the API charged for it. "The price of <name> just changed to ₹<price>. Please review your order.", no `details`; nothing is placed                                                                                                                                                                   |
+| 413    | `PAYLOAD_TOO_LARGE`         | JSON body over 100 kB (`JSON_BODY_LIMIT_BYTES`), refused on the declared `Content-Length` before auth runs: the rest of the upload is read and thrown away (at most 1 MB or 2 s), then 413 with `Connection: close`; a chunked body when it passes the limit ("The request body is too large.")                                                                                                                                    |
+| 500    | `INTERNAL`                  | anything else ("Something went wrong. Please try again."), logged with its stack                                                                                                                                                                                                                                                                                                                                                   |
+| 503    | `UPSTREAM_UNAVAILABLE`      | any route when the database or Supabase Auth cannot be reached (an `IntegrationError`): "The service is temporarily unavailable. Please try again in a moment.", with `Retry-After: 5`; logged once at `error` with the cause chain                                                                                                                                                                                                |
 
-The client also creates codes the server never sends: `INVALID_CREDENTIALS` for a failed Supabase sign-in, together with `UNREACHABLE` and `UNKNOWN` (and `RATE_LIMITED` for Supabase Auth's own 429, the same code the API uses)
+The client also creates codes the server never sends: `INVALID_CREDENTIALS` for a failed Supabase sign-in, together with `UNREACHABLE`, `UNKNOWN` and `CLIENT_RELOAD_REQUIRED` (the sign-in code failed to load; only a page reload helps, see [FRONTEND_STRUCTURE.md](FRONTEND_STRUCTURE.md#services)) (and `RATE_LIMITED` for Supabase Auth's own 429, the same code the API uses)
 (`client/src/services/auth.ts`, `client/src/services/api.ts`, `client/src/lib/useResource.ts`). The client treats
 `ApiError.code` as a plain string.
 
@@ -473,6 +667,9 @@ SQLSTATE `P0001` and that message. `order.service.ts` maps them:
 | Function              | Message                     | Detail                            | API response                       |
 | --------------------- | --------------------------- | --------------------------------- | ---------------------------------- |
 | `place_order`         | `INSUFFICIENT_STOCK`        | `{ menuItemId, name, available }` | 400 `INSUFFICIENT_STOCK` + details |
+| `place_order`         | `PRICE_CHANGED`             | `{ menuItemId, name, price }`     | 409 `PRICE_CHANGED`, no details    |
+| `place_order`         | `ITEM_UNAVAILABLE`          | `{ menuItemId, name, available }` | 400 `ITEM_UNAVAILABLE` + details   |
+| `place_order`         | `STORE_CLOSED`              | `{ storeId }`                     | 400 `STORE_CLOSED`, no details     |
 | `update_order_status` | `NOT_FOUND`                 | none                              | 404 `NOT_FOUND` "Order not found." |
 | `update_order_status` | `INVALID_STATUS_TRANSITION` | `{ orderNumber, status }`         | 409 `INVALID_STATUS_TRANSITION`    |
 
@@ -486,8 +683,8 @@ client that sends none), compares its numeric triple with `site_settings.min_cli
 settings cache: no database round trip per request) and answers 426 `CLIENT_OUTDATED` when it is lower. A prerelease
 label is ignored, so a staging build is never older than its own release.
 
-- **Exempt by mount order, not a path list:** `/health` and `/ready` are registered before the gate (later
-  `/config` and the payment webhooks join them). CORS preflights never reach the router (`cors()` answers them), and
+- **Exempt by mount order, not a path list:** `/health`, `/ready`, `/config` and `POST /client-errors` are
+  registered before the gate (later the payment webhooks join them). CORS preflights never reach the router (`cors()` answers them), and
   the same-origin client sends none.
 - **Before auth:** the gate runs before any router's `requireAuth`, so a stale tab gets 426, not 401.
 - **The client:** `services/api.ts` sets the `outdated` flag on any 426 and `App` shows a "New version available"
@@ -498,23 +695,23 @@ label is ignored, so a staging build is never older than its own release.
 
 ## Headers and limits
 
-| Item                   | Value                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Source                                                                 |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `X-Client-Version`     | sent by the client on every request (`client/package.json` version); logged as `clientVersion` on the access line (`none` when missing, or not `^\d+\.\d+\.\d+(-[\w.]+)?$` up to 32 chars)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | `client/src/services/api.ts`, `server/src/middleware/clientVersion.ts` |
-| `x-request-id`         | echoed on every response; a caller's value is kept if it matches `^[\w.-]{1,64}$`, else a new UUID                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | `server/src/app.ts`                                                    |
-| CORS                   | one allowed origin, `CLIENT_ORIGIN` (default `http://localhost:5173`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | `server/src/app.ts`, `utils/env.ts`                                    |
-| `x-powered-by`         | disabled                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | `server/src/app.ts`                                                    |
-| Security headers       | every response: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`; `Strict-Transport-Security: max-age=86400` only on a request that arrived over TLS (`req.secure`, honouring `X-Forwarded-Proto` through `trust proxy`). The web image's nginx adds the page's own headers ([DEPLOYMENT.md](DEPLOYMENT.md#web-image-headers))                                                                                                                                                                                                                                                                                                                                                                      | `server/src/middleware/securityHeaders.ts`                             |
-| Rate limits            | fixed windows of `RATE_LIMIT_WINDOW_MS` (default 60 s), counted per process: `RATE_LIMIT_IP_MAX` (600) requests on all of `/api`, per signed-in account when the request carries a valid token and per address otherwise (a forged or expired token counts against the address); `RATE_LIMIT_WRITE_MAX` (30) per signed-in user on `POST /orders`, `PATCH /orders/:id/status`, `PATCH /admin/settings`; `RATE_LIMIT_REGISTER_MAX` (10) per address on `POST /auth/register`. Over the limit: 429 `RATE_LIMITED` with `Retry-After` (the seconds left in that key's window, matching `RateLimit`'s `reset`) and the draft-7 `RateLimit-Policy` / `RateLimit` headers; 0 turns a limit off. CORS preflights count against that limit too. The 429 log line names the limiter (`limiter`: `flood`, `write`, `register`) and whether it counted an account or an address (`keyedBy`); neither is sent to the client. Per user, not per address, because campus Wi-Fi puts many customers behind one address ([CONFIGURATION.md](CONFIGURATION.md#deployment-settings), [ADR-009](adr/009-rate-limiting-token-buckets.md)) | `server/src/middleware/rateLimit.ts`, `utils/env.ts`                   |
-| JSON body size         | 100 kB (`JSON_BODY_LIMIT_BYTES`); larger is 413, refused on the declared `Content-Length` before the body is read (`Connection: close`), so a slow phone learns at once. The web image's nginx caps bodies at the same 100 kB with the same JSON envelope and drops a client silent mid-body for 15 s (`client_body_timeout`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | `server/src/app.ts`                                                    |
-| Lines per order        | site setting `max_lines_per_order`, default 30 (1–100, `PATCH /admin/settings`), counted before merging duplicates; enforced by `createOrder` ("An order can have at most N items."); the schema's hard cap is 100 (`MAX_ITEM_LINES_HARD`). Through the settings cache, another instance may apply a new value up to 10 s late                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | `order.service.ts`, `order.schema.ts`, `site_settings`                 |
-| Quantity per item      | 1–10 after merging duplicates, a fixed constant (`MAX_QUANTITY_PER_ITEM`), not editable                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | `order.schema.ts`, `order.service.ts`                                  |
-| Customer order history | site setting, default 20 (1–200), editable at `PATCH /admin/settings`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | `settings.service.ts`, `site_settings`                                 |
-| Staff order list       | site setting, default 100 (1–500), editable at `PATCH /admin/settings`: how many **finished** orders the board keeps; every active order always shows                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | `settings.service.ts`, `site_settings`                                 |
-| Name                   | 2–60 (register); at most 60 (`customerName`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | `auth.schema.ts`, `order.schema.ts`                                    |
-| Note                   | at most 200                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | `order.schema.ts`                                                      |
-| Password               | 6–72                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | `auth.schema.ts`                                                       |
-| Phone                  | optional `+` and 10–15 digits after stripping spaces, dashes, parentheses                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | `common.ts`                                                            |
+| Item                   | Value                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Source                                                                 |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `X-Client-Version`     | sent by the client on every request (`client/package.json` version); logged as `clientVersion` on the access line (`none` when missing, or not `^\d+\.\d+\.\d+(-[\w.]+)?$` up to 32 chars)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | `client/src/services/api.ts`, `server/src/middleware/clientVersion.ts` |
+| `x-request-id`         | echoed on every response; a caller's value is kept if it matches `^[\w.-]{1,64}$`, else a new UUID                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | `server/src/app.ts`                                                    |
+| CORS                   | one allowed origin, `CLIENT_ORIGIN` (default `http://localhost:5173`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | `server/src/app.ts`, `utils/env.ts`                                    |
+| `x-powered-by`         | disabled                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | `server/src/app.ts`                                                    |
+| Security headers       | every response: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`; `Strict-Transport-Security: max-age=86400` only on a request that arrived over TLS (`req.secure`, honouring `X-Forwarded-Proto` through `trust proxy`). The web image's nginx adds the page's own headers ([DEPLOYMENT.md](DEPLOYMENT.md#web-image-headers))                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | `server/src/middleware/securityHeaders.ts`                             |
+| Rate limits            | fixed windows of `RATE_LIMIT_WINDOW_MS` (default 60 s), counted per process: `RATE_LIMIT_IP_MAX` (600) requests on all of `/api`, per signed-in account when the request carries a valid token and per address otherwise (a forged or expired token counts against the address); `RATE_LIMIT_WRITE_MAX` (30) per signed-in user on `POST /orders`, `PATCH /orders/:id/status`, `PATCH /admin/settings`, `PATCH /admin/flags/:key`; `RATE_LIMIT_REGISTER_MAX` (10) per address on `POST /auth/register`; `RATE_LIMIT_CLIENT_ERRORS_MAX` (30) per address on `POST /client-errors`. Over the limit: 429 `RATE_LIMITED` with `Retry-After` (the seconds left in that key's window, matching `RateLimit`'s `reset`) and the draft-7 `RateLimit-Policy` / `RateLimit` headers; 0 turns a limit off. CORS preflights count against that limit too. The body repeats the wait as `details.retryAfterSeconds`. The 429 log line names the limiter (`limiter`: `flood`, `write`, `register`, `clientErrors`) and whether it counted an account or an address (`keyedBy`); neither is sent to the client. Only the first refusal per key per window logs at `warn`; the rest log at `debug`, so a client hammering the limit writes one line, not one per request. Per user, not per address, because campus Wi-Fi puts many customers behind one address ([CONFIGURATION.md](CONFIGURATION.md#deployment-settings), [ADR-009](adr/009-rate-limiting-token-buckets.md)) | `server/src/middleware/rateLimit.ts`, `utils/env.ts`                   |
+| JSON body size         | 100 kB (`JSON_BODY_LIMIT_BYTES`); larger is 413, refused on the declared `Content-Length` before auth runs. The rest of the upload is read and thrown away first (at most 1 MB or 2 s, then cut), and the 413 goes out with `Connection: close`: closing with the upload unread made the OS reset the connection, and a client still sending could lose the 413 to the reset. The web image's nginx caps bodies at the same 100 kB with the same JSON envelope and drops a client silent mid-body for 15 s (`client_body_timeout`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | `server/src/app.ts`                                                    |
+| Lines per order        | site setting `max_lines_per_order`, default 30 (1–100, `PATCH /admin/settings`), counted before merging duplicates; enforced by `createOrder` ("An order can have at most N items."); the schema's hard cap is 100 (`MAX_ITEM_LINES_HARD`). Through the settings cache, another instance may apply a new value up to 10 s late                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | `order.service.ts`, `order.schema.ts`, `site_settings`                 |
+| Quantity per item      | 1–10 after merging duplicates, a fixed constant (`MAX_QUANTITY_PER_ITEM`), not editable                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | `order.schema.ts`, `order.service.ts`                                  |
+| Customer order history | site setting, default 20 (1–200), editable at `PATCH /admin/settings`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | `settings.service.ts`, `site_settings`                                 |
+| Staff order list       | site setting, default 100 (1–500), editable at `PATCH /admin/settings`: how many **finished** orders the board keeps; every active order always shows                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | `settings.service.ts`, `site_settings`                                 |
+| Name                   | 2–60 UTF-16 units (register); at most 60 UTF-16 units (`customerName`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | `auth.schema.ts`, `order.schema.ts`                                    |
+| Note                   | at most 200 UTF-16 units                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | `order.schema.ts`                                                      |
+| Password               | 6–72                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | `auth.schema.ts`                                                       |
+| Phone                  | optional `+` and 10–15 digits after stripping spaces, dashes, parentheses                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | `common.ts`                                                            |
 
 The client logs the `x-request-id` of a failed call so it can be matched to the server's log line. See
 [LOGGING.md](LOGGING.md#request-ids).
@@ -551,11 +748,12 @@ share one database round-trip instead of repeating it:
 | `invalidate(key?)`            | drops one key, or every key with no argument                                                                                                                                                                                                                                                                          |
 | `PUBLIC_READ_TTL_MS`          | the TTL used by the reads below: env `PUBLIC_READ_TTL_MS`, default 10000 ms (0 turns the cache off)                                                                                                                                                                                                                   |
 
-| Cached endpoint                                                 | Key               | Loader                                      | Invalidated by                                                                                                                                                        |
-| --------------------------------------------------------------- | ----------------- | ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/menu`                                                 | `'menu'`          | `menu.service.getMenu` → `loadMenu`         | `order.service.createOrder` (in a `finally`, so a placed order and a stock-refused one both invalidate it) and `updateOrderStatus` when the new status is `CANCELLED` |
-| `GET /api/store`                                                | `'store'`         | `store.service.getCachedStore` → `getStore` | nothing today; a future store-editing endpoint must call `invalidate('store')`                                                                                        |
-| `GET /api/orders`, `GET /api/admin/settings`, `GET /api/config` | `'site_settings'` | `settings.service.getSettings`              | `settings.service.updateSettings` (`PATCH /api/admin/settings`), at once                                                                                              |
+| Cached endpoint                                                      | Key               | Loader                                                                                             | Invalidated by                                                                                                                                                        |
+| -------------------------------------------------------------------- | ----------------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/menu`                                                      | `'menu'`          | `menu.service.getMenu` → `loadMenu`                                                                | `order.service.createOrder` (in a `finally`, so a placed order and a stock-refused one both invalidate it) and `updateOrderStatus` when the new status is `CANCELLED` |
+| `GET /api/store`                                                     | `'store'`         | `store.service.getCachedStore` → `getStore`                                                        | nothing today; a future store-editing endpoint must call `invalidate('store')`                                                                                        |
+| `GET /api/orders`, `GET /api/admin/settings`, `GET /api/config`      | `'site_settings'` | `settings.service.getSettings`                                                                     | `settings.service.updateSettings` (`PATCH /api/admin/settings`), at once                                                                                              |
+| `GET /api/config` (`features`), every `flags.service.isEnabled` call | `'feature_flags'` | `flags.service.getFlags` (every flag, rules parsed; evaluated per caller, never cached per caller) | `flags.service.setFlag` (`PATCH /api/admin/flags/:key`), at once                                                                                                      |
 
 `createOrder`'s own `is_open` check calls the uncached `getStore()` directly, never `getCachedStore()` — a write
 path never trusts a stale read of the data it is about to act on. Nothing user-specific (orders, profiles) is ever
@@ -566,4 +764,5 @@ Supabase dashboard ever need to show up faster than the TTL).
 Tests: `server/test/unit/cache.safe.test.ts` (the cache primitive), `server/test/api/caching.safe.test.ts` (the HTTP
 headers and the 304), `server/test/api/menu-cache.test.ts` (the menu cache tracks a real order and its
 cancellation), `server/test/api/admin.test.ts` (settings bounds, `requireAdmin`, and the cache invalidation on
-save). See also [TESTING.md](TESTING.md).
+save), `server/test/api/flags.test.ts` (a flip shows on the next evaluation after a cached read). See also
+[TESTING.md](TESTING.md).

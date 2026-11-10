@@ -37,23 +37,24 @@ Read from `server/.env` (copy `server/.env.example`) or the host's environment. 
 `server/src/utils/env.ts`: on any problem the process prints `Invalid environment configuration. Check server/.env
 (see .env.example):` with one line per variable and exits with code 1.
 
-| Variable                                                                                       | Required        | Default                         | Rule                                                         | Purpose                                                                                                                                                                                                                                                                                    |
-| ---------------------------------------------------------------------------------------------- | --------------- | ------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `APP_ENV`                                                                                      | yes             |                                 | `local`, `staging` or `production`                           | which project this process talks to; `start.sh` picks the client mode from it; `npm run seed` refuses the demo reset on `production`; logger output and default level                                                                                                                      |
-| `SUPABASE_URL`                                                                                 | yes             |                                 | a URL                                                        | the project URL, e.g. `http://127.0.0.1:54321` or `https://<ref>.supabase.co`                                                                                                                                                                                                              |
-| `SUPABASE_SECRET_KEY`                                                                          | yes             |                                 | starts with `sb_secret_` (legacy JWT keys are rejected)      | the project's secret key (Project Settings → API Keys). Bypasses RLS. Never in the client or git                                                                                                                                                                                           |
-| `NODE_ENV`                                                                                     | no              |                                 | any                                                          | `production` in the API image (set by the Dockerfile): turns the pretty log transport off, so logs are JSON lines                                                                                                                                                                          |
-| `SUPABASE_JWKS_URL`                                                                            | no              | derived from `SUPABASE_URL`     | a URL                                                        | where to fetch the token signing keys when `SUPABASE_URL` is plain `http` on a host other than localhost (a container reaching the local stack at `host.docker.internal`); see [Containers](#signed-in-requests-from-a-container-supabase_jwks_url)                                        |
-| `SESSION_IDLE_DAYS`                                                                            | no              | `7`                             | integer 1–90                                                 | days a sign-in survives without use, served as `session.idleDays` by `GET /api/config`; must equal `auth.sessions.inactivity_timeout` in `supabase/config.toml` (hosted Supabase Free has none, ADR-011) ([CONFIGURATION.md](CONFIGURATION.md#deployment-settings))                        |
-| `PORT`                                                                                         | no              | `8000`                          | positive integer                                             | API port. `start.sh` reads it for its probes and passes it to the web app's dev proxy (`VITE_API_PROXY_TARGET`)                                                                                                                                                                            |
-| `PUBLIC_READ_TTL_MS`                                                                           | no              | `10000`                         | integer 0–600000                                             | how long public reads (menu, store, site settings) stay in the per-process cache (`utils/cache.ts`); 0 turns it off. Another instance may serve an admin's change up to this late                                                                                                          |
-| `TRUST_PROXY_HOPS`                                                                             | no              | `0`                             | integer 0–10                                                 | proxies in front of the API whose `X-Forwarded-For` Express trusts for `req.ip` (`app.set('trust proxy', …)`); compose sets 1 for its nginx. 0 means `req.ip` is the socket peer and cannot be spoofed                                                                                     |
-| `CLIENT_ORIGIN`                                                                                | no              | `http://localhost:5173`         | a URL                                                        | the one origin CORS allows                                                                                                                                                                                                                                                                 |
-| `RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_IP_MAX`, `RATE_LIMIT_WRITE_MAX`, `RATE_LIMIT_REGISTER_MAX` | no              | `60000`, `600`, `30`, `10`      | integers; window 1000–3600000, limits ≥ 0 (0 = off)          | the API's rate limits per fixed window: per signed-in account (else per address) on all of `/api`, per signed-in user on writes, per address on `POST /auth/register` ([CONFIGURATION.md](CONFIGURATION.md#deployment-settings), [API.md](API.md#headers-and-limits)). Counted per process |
-| `GIT_COMMIT`                                                                                   | no              | `unknown`                       | non-empty string                                             | the commit the build came from; reported by `GET /api/health`. Set by the image build (`--build-arg GIT_COMMIT`)                                                                                                                                                                           |
-| `KEEP_ALIVE_TIMEOUT_MS`                                                                        | no              | `65000`                         | positive integer                                             | idle keep-alive timeout; must exceed the load balancer's idle timeout (60 s on an ALB), or Node closes a connection the balancer is about to reuse and the request fails with a 502. `headersTimeout` is set 1 s above it                                                                  |
-| `LOG_LEVEL`                                                                                    | no              | `debug` on `local`, else `info` | `fatal`, `error`, `warn`, `info`, `debug`, `trace`, `silent` | minimum log level (see [LOGGING.md](LOGGING.md#tuning-per-environment))                                                                                                                                                                                                                    |
-| `SEED_STAFF_PASSWORD`, `SEED_ADMIN_PASSWORD`, `SEED_CUSTOMER_PASSWORD`                         | seed on staging |                                 | 12+ characters each                                          | read only by `npm run seed` (the API never needs them): the staging passwords of the three demo accounts; local uses the ones published in [README.md](../README.md#test-accounts). On staging the seed refuses to run (before wiping anything) and names the missing ones                 |
+| Variable                                                                                                                       | Required        | Default                          | Rule                                                         | Purpose                                                                                                                                                                                                                                                                                                                 |
+| ------------------------------------------------------------------------------------------------------------------------------ | --------------- | -------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `APP_ENV`                                                                                                                      | yes             |                                  | `local`, `staging` or `production`                           | which project this process talks to; `start.sh` picks the client mode from it; `npm run seed` refuses the demo reset on `production`; logger output and default level                                                                                                                                                   |
+| `SUPABASE_URL`                                                                                                                 | yes             |                                  | a URL                                                        | the project URL, e.g. `http://127.0.0.1:54321` or `https://<ref>.supabase.co`                                                                                                                                                                                                                                           |
+| `SUPABASE_SECRET_KEY`                                                                                                          | yes             |                                  | starts with `sb_secret_` (legacy JWT keys are rejected)      | the project's secret key (Project Settings → API Keys). Bypasses RLS. Never in the client or git                                                                                                                                                                                                                        |
+| `NODE_ENV`                                                                                                                     | no              |                                  | any                                                          | `production` in the API image (set by the Dockerfile): turns the pretty log transport off, so logs are JSON lines                                                                                                                                                                                                       |
+| `SUPABASE_JWKS_URL`                                                                                                            | no              | derived from `SUPABASE_URL`      | a URL                                                        | where to fetch the token signing keys when `SUPABASE_URL` is plain `http` on a host other than localhost (a container reaching the local stack at `host.docker.internal`); see [Containers](#signed-in-requests-from-a-container-supabase_jwks_url)                                                                     |
+| `SESSION_IDLE_DAYS`                                                                                                            | no              | `7`                              | integer 1–90                                                 | days a sign-in survives without use, served as `session.idleDays` by `GET /api/config`; must equal `auth.sessions.inactivity_timeout` in `supabase/config.toml` (hosted Supabase Free has none, ADR-011) ([CONFIGURATION.md](CONFIGURATION.md#deployment-settings))                                                     |
+| `PORT`                                                                                                                         | no              | `8000`                           | positive integer                                             | API port. `start.sh` reads it for its probes and passes it to the web app's dev proxy (`VITE_API_PROXY_TARGET`)                                                                                                                                                                                                         |
+| `WORKER_HEALTH_PORT`                                                                                                           | no              | `8001`                           | positive integer                                             | The worker process's `GET /health` port ([JOBS.md](JOBS.md#the-worker-process)); the API never listens on it. `start.sh` probes and frees it like `PORT`                                                                                                                                                                |
+| `PUBLIC_READ_TTL_MS`                                                                                                           | no              | `10000`                          | integer 0–600000                                             | how long public reads (menu, store, site settings) stay in the per-process cache (`utils/cache.ts`); 0 turns it off. Another instance may serve an admin's change up to this late                                                                                                                                       |
+| `TRUST_PROXY_HOPS`                                                                                                             | no              | `0`                              | integer 0–10                                                 | proxies in front of the API whose `X-Forwarded-For` Express trusts for `req.ip` (`app.set('trust proxy', …)`); compose sets 1 for its nginx. 0 means `req.ip` is the socket peer and cannot be spoofed                                                                                                                  |
+| `CLIENT_ORIGIN`                                                                                                                | no              | `http://localhost:5173`          | a URL                                                        | the one origin CORS allows                                                                                                                                                                                                                                                                                              |
+| `RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_IP_MAX`, `RATE_LIMIT_WRITE_MAX`, `RATE_LIMIT_REGISTER_MAX`, `RATE_LIMIT_CLIENT_ERRORS_MAX` | no              | `60000`, `600`, `30`, `10`, `30` | integers; window 1000–3600000, limits ≥ 0 (0 = off)          | the API's rate limits per fixed window: per signed-in account (else per address) on all of `/api`, per signed-in user on writes, per address on `POST /auth/register` and on `POST /client-errors` ([CONFIGURATION.md](CONFIGURATION.md#deployment-settings), [API.md](API.md#headers-and-limits)). Counted per process |
+| `GIT_COMMIT`                                                                                                                   | no              | `unknown`                        | non-empty string                                             | the commit the build came from; reported by `GET /api/health`. Set by the image build (`--build-arg GIT_COMMIT`)                                                                                                                                                                                                        |
+| `KEEP_ALIVE_TIMEOUT_MS`                                                                                                        | no              | `65000`                          | positive integer                                             | idle keep-alive timeout; must exceed the load balancer's idle timeout (60 s on an ALB), or Node closes a connection the balancer is about to reuse and the request fails with a 502. `headersTimeout` is set 1 s above it                                                                                               |
+| `LOG_LEVEL`                                                                                                                    | no              | `debug` on `local`, else `info`  | `fatal`, `error`, `warn`, `info`, `debug`, `trace`, `silent` | minimum log level (see [LOGGING.md](LOGGING.md#tuning-per-environment))                                                                                                                                                                                                                                                 |
+| `SEED_STAFF_PASSWORD`, `SEED_ADMIN_PASSWORD`, `SEED_CUSTOMER_PASSWORD`                                                         | seed on staging |                                  | 12+ characters each                                          | read only by `npm run seed` (the API never needs them): the staging passwords of the three demo accounts; local uses the ones published in [README.md](../README.md#test-accounts). On staging the seed refuses to run (before wiping anything) and names the missing ones                                              |
 
 `server/.env.example` holds the local stack's default values; the local secret key there is the Supabase CLI's
 fixed local default, printed by `npm run db:start`. Hosted keys go in `server/.env` (staging) or the host's
@@ -152,6 +153,14 @@ flowchart TD
 applied locally by `db:reset` already; staging needs `npm run db:push:staging` run once before a staging build (which
 ships the renamed status and the admin dashboard) can be pointed at it.
 
+`20261101131925_transitions_emit_events.sql` adds defaulted parameters (`p_actor`, `p_request_id`) to `place_order`
+and `update_order_status`, so the API already deployed keeps working against it (its events carry no actor). Push the
+migration first, then deploy the new API.
+
+`20261101201251_audit_log.sql` is additive: the new table and triggers need no new API. An API deployed before it
+updates `site_settings` without the `x-actor` headers, so those audit rows are recorded as `SYSTEM`. Push the
+migration first, then deploy the new API.
+
 ### Applying migrations
 
 `server/scripts/db-push.sh <staging|production>`:
@@ -222,16 +231,16 @@ flowchart TD
   App -->|"anything else"| X4["Exit: set APP_ENV"]
   ModeL --> Deps
   ModeS --> Deps
-  Deps["npm install where node_modules is missing"] --> Ports["Kill anything listening on 8000 and 5173"]
+  Deps["npm install where node_modules is missing"] --> Ports["Kill anything listening on 8000, 8001 and 5173"]
   Ports --> Seed{"--seed?"}
   Seed -->|"yes"| RunSeed["cd server && npm run seed"]
   Seed -->|"no"| Start
   RunSeed -->|"fails"| X5["Exit: database not migrated?"]
   RunSeed -->|"ok"| Start
-  Start["Start API (tsx watch) and Vite in the chosen mode<br/>logs → .logs/server.log, .logs/client.log"] --> Wait{"/api/health and :5173 return 200<br/>within 45 s?"}
-  Wait -->|"no"| X6["Stop both, point at the logs"]
+  Start["Start API and worker (tsx watch) and Vite in the chosen mode<br/>logs → .logs/server.log, .logs/worker.log, .logs/client.log"] --> Wait{"/api/health, :8001/health and :5173 return 200<br/>within 45 s?"}
+  Wait -->|"no"| X6["Stop all three, point at the logs"]
   Wait -->|"yes"| Menu{"/api/menu returns 200?"}
-  Menu -->|"no"| X7["Stop both: database empty or unreachable, run --seed"]
+  Menu -->|"no"| X7["Stop all three: database empty or unreachable, run --seed"]
   Menu -->|"yes"| Ready["Print URLs, test logins and APP_ENV, wait for Ctrl+C"]
 ```
 
@@ -252,9 +261,12 @@ Run by the user, once.
    editor: `update public.profiles set role = 'STAFF' where email = '…';` for staff, or
    `update public.profiles set role = 'ADMIN' where email = '…';` for the site-wide developer/operator role (the
    `/admin` dashboard — see [PERMISSIONS.md#roles](PERMISSIONS.md#roles)).
-7. Recommended in the dashboard (Authentication → Sign In / Providers): turn off **Allow new users to sign up**.
-   Accounts are created by the API's `/auth/register` with the secret key, which still works; this closes direct
-   sign-ups with the publishable key.
+7. Required in the dashboard (Authentication → Sign In / Providers): turn off **Allow new users to sign up**.
+   Accounts are created by the API's `/auth/register` with the secret key, which still works. Left on, anyone can
+   sign up directly with the publishable key (it ships in the bundle) and skip the API's checks on name, phone and
+   password; local Supabase has it off already (`enable_signup = false`). The `handle_new_user` trigger bounds the
+   profile either way ([SCHEMA.md](SCHEMA.md#profile_name-and-profile_phone)), but the setting is what keeps
+   unchecked accounts out.
 8. Recommended in the dashboard (Authentication → Sessions): set the same idle-session limit as local
    (see [Hosted session timeout](#hosted-session-timeout) below).
 
@@ -289,9 +301,12 @@ A sign-in lasts 7 days without use (`client/src/features/auth/sessionActivity.ts
 [PERMISSIONS.md#session-lifetime](PERMISSIONS.md#session-lifetime)). `config.toml` only configures the local Docker
 stack. On a hosted project the same limit is **`inactivity_timeout`, a Pro-plan setting** (Authentication → Sessions),
 not a config file. The project runs on Supabase Free ([ADR-011](adr/011-free-tiers.md)), so hosted staging and
-production do not have it: the client's own 7-day check runs, but Supabase's refresh token does not expire on
-inactivity, and a copied refresh token stays valid until the user signs out. A server-side idle check is the planned
-fix (ADR-011). `jwt_expiry` (the 1 h access token lifetime) is a project setting whose default already matches
+production do not have it, and Supabase's refresh token does not expire on inactivity. The API enforces the limit
+instead: `requireAuth` refuses a sign-in unused for `SESSION_IDLE_DAYS` and revokes it, so a copied refresh token
+stops working on its next use, and refuses a signed-out or revoked sign-in whose access token has not expired
+([PERMISSIONS.md](PERMISSIONS.md#session-lifetime)). It needs the
+`session_activity` migration on the project; until it is pushed the check fails open and logs `error` "Session idle
+check failed". `jwt_expiry` (the 1 h access token lifetime) is a project setting whose default already matches
 `config.toml`'s `3600`.
 
 ## Containers
@@ -390,19 +405,19 @@ Desktop, where "host" is Docker's VM.)
 ```bash
 cd server && npm run db:start && npm run seed && cd ..
 export SUPABASE_PUBLISHABLE_KEY=$(grep VITE_SUPABASE_PUBLISHABLE_KEY client/.env.development | cut -d= -f2)
-GIT_COMMIT=$(git rev-parse --short HEAD) docker compose up --build web api     # http://localhost:8080
-docker compose ps                                                             # both (healthy)
+GIT_COMMIT=$(git rev-parse --short HEAD) docker compose up --build web api worker     # http://localhost:8080
+docker compose ps                                                             # all three (healthy)
 ```
 
-| Service | Image     | Port   | Environment (on top of `server/.env` for `api`)                                                                                                                                                    |
-| ------- | --------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `api`   | `server/` | –      | `SUPABASE_URL=http://host.docker.internal:54321`, `SUPABASE_JWKS_URL` ([why](#signed-in-requests-from-a-container-supabase_jwks_url)), `CLIENT_ORIGIN=http://localhost:8080`, `TRUST_PROXY_HOPS=1` |
-| `web`   | `client/` | `8080` | `API_UPSTREAM=http://api:8000`, `SUPABASE_URL=http://127.0.0.1:54321` (the browser's view), `SUPABASE_PUBLISHABLE_KEY` from your shell                                                             |
+| Service  | Image     | Port   | Environment (on top of `server/.env` for `api`)                                                                                                                                                    |
+| -------- | --------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `api`    | `server/` | –      | `SUPABASE_URL=http://host.docker.internal:54321`, `SUPABASE_JWKS_URL` ([why](#signed-in-requests-from-a-container-supabase_jwks_url)), `CLIENT_ORIGIN=http://localhost:8080`, `TRUST_PROXY_HOPS=1` |
+| `worker` | `server/` | –      | the `api` image with `command: node dist/src/worker.js` and the same environment; its own healthcheck on `GET /health` (`$WORKER_HEALTH_PORT`, default 8001) replaces the image's API one          |
+| `web`    | `client/` | `8080` | `API_UPSTREAM=http://api:8000`, `SUPABASE_URL=http://127.0.0.1:54321` (the browser's view), `SUPABASE_PUBLISHABLE_KEY` from your shell                                                             |
 
 `web` waits for `api` to be healthy (`depends_on: condition: service_healthy`), because nginx resolves the upstream
 when it starts. The web container refuses to start without `SUPABASE_PUBLISHABLE_KEY`. Seed through the image with
-`docker compose run --rm api node dist/scripts/seed.js`. `worker`, `reconciler` and `minio` are commented placeholders
-for P1 and P3.
+`docker compose run --rm api node dist/scripts/seed.js`. The worker ([JOBS.md](JOBS.md#the-worker-process)) runs wherever the API runs; more than one replica is safe. `reconciler` and `minio` are commented placeholders for later phases.
 
 ### Running the images by hand
 

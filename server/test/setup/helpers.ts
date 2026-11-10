@@ -35,17 +35,36 @@ export async function createTestUser(role: Role = 'CUSTOMER'): Promise<TestUser>
     await supabaseAdmin.from('profiles').update({ role }).eq('id', data.user.id).throwOnError();
   }
 
-  // A throwaway client so the shared admin client never holds a user session.
-  const auth = createClient(env.SUPABASE_URL, env.SUPABASE_SECRET_KEY, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-  const { data: session, error: signInError } = await auth.auth.signInWithPassword({
+  const { data: session, error: signInError } = await throwawayClient().auth.signInWithPassword({
     email,
     password,
   });
   if (signInError) throw signInError;
 
   return { id: data.user.id, email, password, token: session.session.access_token };
+}
+
+/** A client that never holds a session past its call, so the shared admin client stays signed out. */
+export function throwawayClient() {
+  return createClient(env.SUPABASE_URL, env.SUPABASE_SECRET_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
+
+/** Signs `user` in once more: a new auth session (its own `session_id` claim) and refresh token. */
+export async function signInAgain(
+  user: TestUser,
+): Promise<{ token: string; refresh: string; sessionId: string }> {
+  const { data, error } = await throwawayClient().auth.signInWithPassword({
+    email: user.email,
+    password: user.password,
+  });
+  if (error) throw error;
+  const token = data.session.access_token;
+  const claims = JSON.parse(Buffer.from(token.split('.')[1] ?? '', 'base64url').toString()) as {
+    session_id: string;
+  };
+  return { token, refresh: data.session.refresh_token, sessionId: claims.session_id };
 }
 
 export async function deleteTestUser(user: TestUser | undefined): Promise<void> {
@@ -60,6 +79,29 @@ export function resetDemoData(): void {
   execFileSync('npx', ['tsx', 'scripts/seed.ts'], { stdio: 'ignore' });
   // The seed rewrote the menu behind the API's back; drop the in-process read cache (utils/cache.ts).
   invalidate();
+}
+
+/**
+ * Runs one row-returning SQL statement on the local database as `postgres`, for what the API cannot reach: pgmq,
+ * `cron.job`, the catalogs. Local only.
+ */
+export function localSql<Row>(sql: string): Row[] {
+  if (resolveTestTarget() !== 'local')
+    throw new Error('localSql reaches past the API: local only.');
+  const out = execFileSync(
+    'npx',
+    ['supabase', 'db', 'query', '--local', '--output-format', 'json', sql],
+    {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    },
+  );
+  // A bare array, or `{ rows, boundary, warning }` in some local shells. Anything else throws: an empty fallback let
+  // the lockdown test pass in CI without checking anything.
+  const parsed = JSON.parse(out) as Row[] | { rows?: Row[] };
+  const rows = Array.isArray(parsed) ? parsed : parsed.rows;
+  if (!rows) throw new Error(`localSql: no rows in the CLI's output: ${out.slice(0, 200)}`);
+  return rows;
 }
 
 /** Deletes an account created through `POST /api/auth/register` (not `createTestUser`), by email. */

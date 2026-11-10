@@ -37,16 +37,22 @@ function topLevelField(issue: z.core.$ZodIssue | undefined): string | undefined 
   return typeof first === 'string' ? first : undefined;
 }
 
+/**
+ * How deep a request may nest arrays and objects. The deepest real body is three levels (`items[0].quantity`,
+ * `rules.storeIds[0]`); a 10 KB body nested thousands deep would overflow the stack of the walk below and turn an
+ * unauthenticated request into a 500, so anything past this is refused before the walk goes further.
+ */
+export const MAX_BODY_DEPTH = 32;
+
 /** Postgres text columns reject the NUL character, so it is dropped from every string before validation. */
-function stripNullBytes(value: unknown): unknown {
+function stripNullBytes(value: unknown, depth = 0): unknown {
   if (typeof value === 'string') return value.replaceAll('\0', '');
-  if (Array.isArray(value)) return value.map(stripNullBytes);
-  if (typeof value === 'object' && value !== null) {
-    return Object.fromEntries(
-      Object.entries(value).map(([key, entry]) => [key, stripNullBytes(entry)]),
-    );
-  }
-  return value;
+  if (typeof value !== 'object' || value === null) return value;
+  if (depth >= MAX_BODY_DEPTH) throw validationError('The request body is nested too deeply.');
+  if (Array.isArray(value)) return value.map((entry) => stripNullBytes(entry, depth + 1));
+  return Object.fromEntries(
+    Object.entries(value).map(([key, entry]) => [key, stripNullBytes(entry, depth + 1)]),
+  );
 }
 
 /** Turns a zod issue into a sentence a customer can read, e.g. "Customer name is required." */

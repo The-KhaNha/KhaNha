@@ -144,6 +144,11 @@ Every API call sends `X-Client-Version` (the gate answers 426 without a parsable
   success → `/orders/:id`): every wait has a visible loading state, nothing hangs past the request timeout, and
   dropping the network mid-request (`setOffline(true)` while a request is in flight) ends in the unreachable state
   with a working retry.
+- **E5 Clean stop.** Only when 8000, 8001 and 5173 all answer `000` (`start.sh` kills whatever holds them; otherwise
+  UNTESTED, servers in use): run `./start.sh` in the background, wait for "Food Pickup is running", send it SIGINT.
+  Then no `tsx watch`, `src/server.ts`, `src/worker.ts` or `vite` process is left (`ps`), the three ports answer
+  `000`, and `.logs/server.log` and `.logs/worker.log` both end in "Shutting down". A leftover watcher restarts a
+  hidden API or worker on the next save; a missing line means a second signal killed the process mid-stop.
 
 ## Output format
 

@@ -9,4 +9,11 @@ regexes = [
   '''sb_publishable_[A-Za-z0-9_-]+''',
   # The Supabase CLI's fixed local-stack secret key (server/.env.example); it only opens 127.0.0.1:54321.
   '''sb_secret_N7UND0UgjKTVK-Uodkm0Hg_xSvEMPvz''',
+  # Fakes in server/test/api/client-errors.safe.test.ts that the scrubber must redact: a JWT of {"sub":"user"} signed
+  # "signature-value", and the CLI key above, shortened. Allowlisted rather than rewritten: they are in history.
+  '''eyJhbGciOiJIUzI1NiJ9\.eyJzdWIiOiJ1c2VyIn0\.c2lnbmF0dXJlLXZhbHVl''',
+  '''sb_secret_N7UND0UgjKTVKUodkm0Hg''',
+  # A made-up refresh token in client/src/lib/errorReporter.test.ts, URL-encoded (`refresh_token%3D…`) so the
+  # reporter's scrub must catch it; gitleaks decodes it. In history since the PR 12 scrub fix.
+  '''brk7q2xw9zle''',
 ]

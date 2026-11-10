@@ -5,10 +5,12 @@ file says in which order, in which pull requests, with which files, tests, docs 
 builds less than the roadmap describes (each with its reason and the phase that picks it up). When a PR merges, tick
 its box here and in the roadmap.
 
-> **Status: decisions answered, nothing built yet** (24 October 2026). P1 is sized **L** for a team of two or three.
-> Every [decision](#decisions) is answered, and ADR-001, 004, 005, 006, 008, 009 and 010 are accepted (001, 004, 006
-> and 009 with amendments). Two agents build it in parallel lanes on the `feat/P1` feature branch
-> ([P1_WORK_SPLIT.md](P1_WORK_SPLIT.md)); work starts once PR 00 is on `dev` and `feat/P1` exists.
+> **Status: done** (10 November 2026). PRs 01–16 and 02b are merged into `feat/P1`, PR 16 last (#35). The closing
+> `/break` run's fixes landed as three more PRs: order integrity (#36), client resilience (#37) and path-only request
+> logs with a wider phone scrub (#38). Next is the phase PR `feat/P1` → `dev` (user decision of 9 November 2026:
+> nothing reaches production until P8; P1 is tested on staging). Every
+> [decision](#decisions) is answered, and ADR-001, 004, 005, 006, 008, 009 and 010 are accepted (001, 004, 006 and 009
+> with amendments). One agent builds P1 on the `feat/P1` feature branch, one PR at a time, in the order below.
 
 ## How the team works P1
 
@@ -17,12 +19,16 @@ that arrived after P0 and the phase feature branch:
 
 - **Every P1 PR goes into `feat/P1`**, the phase feature branch (CLAUDE.md §21), which goes into `dev` as one PR when
   P1 is done. CI and CodeRabbit run on every PR into `feat/P1` and on every push to it.
-- **At most 25 changed files or 500 changed lines per PR** against `origin/feat/P1` (`package-lock.json` and
-  `server/src/types/database.ts` do not count; tests and docs do), one theme each. Every PR below carries a size
-  estimate; one that grows past the limit splits at the seam its section names.
-- **Two agents, one PR at a time each.** [P1_WORK_SPLIT.md](P1_WORK_SPLIT.md) gives lane A and lane B their PRs, the
-  waits between them and who edits which files. Each agent finishes a PR (gate, `/post-change`, intent, owning docs),
-  opens it into `feat/P1` and stops until the user says it merged.
+- **At most 38 changed files or 750 changed lines per PR** against `origin/feat/P1` (`package-lock.json`,
+  `server/src/types/database.ts` and docs do not count; tests do), one theme each. Every PR below carries a size
+  estimate, written when docs still counted; one that grows past the limit splits at the seam its section names.
+- **One agent, one PR at a time,** in the [build order](#build-order). Each PR branches as `feat/p1-<NN>-<slug>` from a
+  fresh `origin/feat/P1`, is finished (gate, `/post-change`, intent, owning docs, its box ticked here), opened into
+  `feat/P1` as `P1 PR <NN> — <title>`, and then the agent stops until the user says it merged.
+- **Migrations and staging.** A new migration must be newer than the newest on `feat/P1`. Staging takes migrations from
+  `feat/P1` only while P1 is open (`npm run db:push:staging` needs `supabase login` and the database password): staging
+  already holds `feat/P1`'s migrations, so a push from `dev` would be refused. When `dev` moves (Dependabot, a hotfix
+  back-merge), merge `dev` into `feat/P1` before the next PR, so a migration on `dev` never lands out of order.
 - **`/before-write` first** for every new table, function, endpoint, module or component, with the verdict in the PR
   description. The expected verdicts are noted per PR; a different verdict changes the PR, not the other way round.
 - **Every bug fix ships with its guard** (CLAUDE.md §13): each PR names the test that fails without it.
@@ -45,28 +51,28 @@ P0 already shipped parts of P1. The plan builds on them instead of rebuilding th
 
 ## Build order
 
-| #   | PR                                                                         | Step       | Depends on                                      | Size (files / lines) |
-| --- | -------------------------------------------------------------------------- | ---------- | ----------------------------------------------- | -------------------- |
-| 01  | The 429 contract and one error-details union                               | P1.1, P1.6 | –                                               | 8 / 180              |
-| 02  | Outbox schema: events, subscriptions, queue wrappers, the first schedule   | P1.2       | –                                               | 7 / 450              |
-| 03  | The job runner                                                             | P1.2       | 02                                              | 9 / 450              |
-| 04  | The worker process                                                         | P1.2       | 03                                              | 14 / 300             |
-| 05  | Today's transitions emit events and carry their actor; retry-safe statuses | P1.2, P1.4 | 03                                              | 10 / 490             |
-| 06  | Audit log                                                                  | P1.3       | 05                                              | 7 / 380              |
-| 07  | `GET /api/admin/audit`                                                     | P1.3       | 06                                              | 12 / 400             |
-| 08  | Order snapshots v2                                                         | P1.5       | 05                                              | 9 / 300              |
-| 09  | Money in paise: expand                                                     | ADR-004    | 08                                              | 14 / 420             |
-| 10  | `POST /api/client-errors`                                                  | P1.6       | 01                                              | 13 / 380             |
-| 11  | `client_error_sample_percent` through to `/api/config`                     | P1.6       | 10                                              | 16 / 250             |
-| 12  | The error reporter, and render errors told apart from chunk failures       | P1.6       | 11                                              | 11 / 420             |
-| 13  | Feature flags: table, evaluation, the admin flip                           | P1.7       | 06                                              | 16 / 470             |
-| 14  | Client-visible flags in `/api/config`                                      | P1.7       | 13                                              | 6 / 150              |
-| 15  | Server-side idle sign-out                                                  | ADR-011    | 02                                              | 9 / 380              |
-| 16  | Money in paise: contract                                                   | ADR-004    | P1 merged into `dev` and released to production | 7 / 220              |
+| #   | PR                                                                         | Step       | Depends on                                   | Size (files / lines) |
+| --- | -------------------------------------------------------------------------- | ---------- | -------------------------------------------- | -------------------- |
+| 01  | The 429 contract and one error-details union                               | P1.1, P1.6 | –                                            | 8 / 180              |
+| 02  | Outbox schema: events, subscriptions, the first schedule                   | P1.2       | –                                            | 11 / 470             |
+| 02b | Queue wrappers and dead letters                                            | P1.2       | 02                                           | 6 / 300              |
+| 03  | The job runner                                                             | P1.2       | 02b                                          | 9 / 450              |
+| 04  | The worker process                                                         | P1.2       | 03                                           | 14 / 300             |
+| 05  | Today's transitions emit events and carry their actor; retry-safe statuses | P1.2, P1.4 | 03                                           | 10 / 490             |
+| 06  | Audit log                                                                  | P1.3       | 05                                           | 7 / 380              |
+| 07  | `GET /api/admin/audit`                                                     | P1.3       | 06                                           | 12 / 400             |
+| 08  | Order snapshots v2                                                         | P1.5       | 05                                           | 9 / 300              |
+| 09  | Money in paise: expand                                                     | ADR-004    | 08                                           | 14 / 420             |
+| 10  | `POST /api/client-errors`                                                  | P1.6       | 01                                           | 13 / 380             |
+| 11  | `client_error_sample_percent` through to `/api/config`                     | P1.6       | 10                                           | 16 / 250             |
+| 12  | The error reporter, and render errors told apart from chunk failures       | P1.6       | 11                                           | 11 / 420             |
+| 13  | Feature flags: table, evaluation, the admin flip                           | P1.7       | 06                                           | 16 / 470             |
+| 14  | Client-visible flags in `/api/config`                                      | P1.7       | 13                                           | 6 / 150              |
+| 15  | Server-side idle sign-out                                                  | ADR-011    | 02                                           | 9 / 380              |
+| 16  | Money in paise: contract                                                   | ADR-004    | 09; last into `feat/P1`, before the phase PR | 7 / 220              |
 
-Who builds what, and when: [P1_WORK_SPLIT.md](P1_WORK_SPLIT.md) (lane A 02 → 03 → 04 → 05 → 06 → 08 → 09; lane B
-01 → 10 → 11 → 12 → 15 → 07 → 13 → 14). PR 16 is not part of `feat/P1`: it goes into `dev` once the release
-containing P1 runs in production.
+The table gives the dependency order; every PR in it is merged. PR 16 also went into `feat/P1`, as its last
+implementation PR before the phase PR into `dev` (user decision of 9 November 2026: nothing reaches production until P8, so no production API still reads the rupee columns).
 
 Why this order: the 429 contract first because it is small and every later 429 (P5, P6, P7 buckets) inherits it; the
 outbox schema before the runner and the runner before the process, so each lands testable on its own; today's
@@ -132,7 +138,7 @@ preamble).
 
 ### PR 01 — The 429 contract and one error-details union (P1.1, P1.6)
 
-- [ ] Merged
+- [x] Merged
 
 | File                                    | Change                                                                                                                                                                                                                                                                                                          |
 | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -154,24 +160,24 @@ window). Intent: `--server minor --client patch`.
 Verify: with `RATE_LIMIT_WRITE_MAX=2`, three `PATCH /api/admin/settings` calls give a 429 with `details`, and the log
 holds one `warn`.
 
-### PR 02 — Outbox schema: events, subscriptions, queue wrappers, the first schedule (P1.2)
+### PR 02 — Outbox schema: events, subscriptions, the first schedule (P1.2)
 
-- [ ] Merged
+- [x] Merged
 
-`/before-write`: schema-guard, expected NEW TABLE ×3 (nothing stores events today).
+Split at 692 lines: the queue wrappers and `job_failures` moved to [PR 02b](#pr-02b--queue-wrappers-and-dead-letters-p12).
+
+`/before-write`: schema-guard, NEW TABLE ×3 (nothing stores events today; `job_failures` lands in 02b).
 
 Migration `<ts>_outbox.sql`:
 
 - `create extension if not exists pgmq; create extension if not exists pg_cron;` in the schemas ADR-002 verified. The
   `pgmq` schema is not added to `api.schemas` in `config.toml`, and `pgmq_public` is not enabled.
-- `domain_events`, `event_subscriptions`, `job_failures` as in the roadmap (no `event_handled`).
+- `domain_events`, `event_subscriptions` as in the roadmap (no `event_handled`); only the aggregate index on
+  `domain_events` (nothing reads by type yet).
 - `emit_event(p_type, p_aggregate_type, p_aggregate_id, p_store_id, p_payload, p_actor, p_request_id)` inserts the
   event and sends `{ eventId, type, aggregateId, storeId, payload, actor, requestId, occurredAt }` to every queue
-  subscribed to the exact type or its family (`split_part(p_type, '.', 1) || '.*'`). Returns the event id.
-- Queue wrappers, `security definer`, `search_path = ''`, fully qualified `pgmq.*` calls: `queue_read(p_queue,
-p_vt_seconds, p_qty, p_poll_seconds)` (`pgmq.read_with_poll`), `queue_delete`, `queue_retry(p_queue, p_msg_id,
-p_delay_seconds)` (`pgmq.set_vt`), `queue_dead_letter(p_queue, p_msg_id, p_message, p_attempts, p_error)` (inserts
-  `job_failures`, then deletes), `queue_metrics(p_queue)` (depth and oldest age, for the worker's health).
+  subscribed to the exact type or its family (`split_part(p_type, '.', 1) || '.*'`), once per distinct queue.
+  Returns the event id. `security definer`: the queue tables are not `service_role`'s.
 - `select pgmq.create('q_notifications')`; subscription `('order.*', 'q_notifications')`.
 - `purge_domain_events(p_now timestamptz default now(), p_keep interval default '30 days')`, scheduled
   `cron.schedule('purge-domain-events', '17 21 * * *', …)` (21:17 UTC, 02:47 IST: off-peak).
@@ -179,28 +185,58 @@ p_delay_seconds)` (`pgmq.set_vt`), `queue_dead_letter(p_queue, p_msg_id, p_messa
   functions to `service_role` only. Then `npm run db:types`.
 
 Tests (`test/api/outbox.test.ts`): an event goes to an exact and a family subscription, once each; an unsubscribed
-type leaves only the event row; the publishable key can neither read the tables nor call any function;
-`purge_domain_events(p_now => now() + interval '31 days')` deletes and `'29 days'` keeps; `cron.job` lists the
-schedule.
+type leaves only the event row; `purge_domain_events(p_now => now() + interval '31 days')` deletes and `'29 days'`
+keeps; `cron.job` lists the schedule. `test/api/database-lockdown.test.ts` (with the `localSql` helper) checks from the
+catalogs that every `public` table has RLS on and grants nothing to `anon`/`authenticated`, that neither can execute a
+`public` function or use the `pgmq` or `cron` schema: the guard for every later migration.
 
 Docs: `docs/SCHEMA.md` (tables, functions, extensions, the schedule); **new `docs/JOBS.md`** (the outbox model,
-queues and subscriptions, schedules, retention, a runbook: inspect with `pgmq.metrics`, purge a queue, replay from
-`job_failures`) with its CLAUDE.md §6 row; `docs/CONFIGURATION.md` (the 30-day retention as a platform constant in
-the migration). Intent: `--server minor`.
+queues and subscriptions, schedules, retention, a runbook) with its CLAUDE.md §6 row; `docs/PERMISSIONS.md`;
+`docs/TESTING.md` (`localSql`, the lockdown test); `docs/CONFIGURATION.md` (the 30-day retention as a platform constant
+in the migration). Intent: `--server minor`.
 
-Verify: `npm run db:reset`, the gate, `select * from cron.job`; once merged, lane A pushes `feat/P1` to staging
+Verify: `npm run db:reset`, the gate, `select * from cron.job`; once merged, `feat/P1` is pushed to staging
 (`npm run db:push:staging`) and confirms both extensions appear under the project's Integrations.
+
+### PR 02b — Queue wrappers and dead letters (P1.2)
+
+- [x] Merged
+
+`/before-write`: schema-guard, NEW TABLE (`job_failures`, in PR 02's verdict for all three tables).
+
+Migration `<ts>_queue_wrappers.sql`:
+
+- `job_failures` as in the roadmap; RLS on, revoked from `anon` and `authenticated`.
+- Queue wrappers, `security definer`, `search_path = ''`, fully qualified `pgmq.*` calls, `EXECUTE` to `service_role`
+  only:
+  - `queue_read(p_queue, p_vt_seconds, p_qty, p_poll_seconds)` returns `(msg_id, read_ct, enqueued_at, message)`:
+    `pgmq.read_with_poll` when `p_poll_seconds > 0`, else `pgmq.read` (read_with_poll checks its deadline before
+    reading, so `0` there would never read anything);
+  - `queue_delete`; `queue_retry(p_queue, p_msg_id, p_delay_seconds)` (`pgmq.set_vt`);
+  - `queue_dead_letter(p_queue, p_msg_id, p_message, p_attempts, p_error)` deletes, and inserts `job_failures` only if
+    the delete took the message, returning whether it did;
+  - `queue_metrics(p_queue)`: depth and oldest age, for the worker's health.
+
+  Then `npm run db:types`.
+
+Tests (`test/api/queue.test.ts`): a read hides a message for its visibility timeout; `p_poll_seconds` `0` and `1` both
+read a waiting message; a retry brings it back with `read_ct + 1`; a dead letter writes `job_failures` and empties the
+queue; `queue_metrics` counts the depth. The lockdown test covers the new grants.
+
+Docs: `docs/SCHEMA.md` (`job_failures`, the wrappers); `docs/JOBS.md` (how the worker reaches the queues; the runbook's
+dead-letter rows: list open ones, replay one, close it). Intent: `--server minor`.
 
 ### PR 03 — The job runner (P1.2)
 
-- [ ] Merged
+- [x] Merged
 
-| File                                    | Change                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `server/src/jobs/runner.ts`             | the `JobHandler<T>` / `QueueMessage<T>` / `JobContext` types (the roadmap's, with `concurrency` as a field); pure `backoffSeconds(attempt, { baseSec, maxSec }, random)` = `min(max, base·2^(attempt−1))` ±20%; `runQueue(handler, { signal, log, now, random })`: long-poll `queue_read` → a child logger `{ queue, jobId, eventId, eventType, attempt }` per message → handle → `queue_delete`; `RetryableError` → `queue_retry` with the backoff; `PermanentError`, any other error, or the last attempt → `queue_dead_letter` and one `error` line. A failing queue RPC (database unreachable) logs `warn` once and backs off 1 s → 5 s. The abort signal stops reading; in-flight handlers finish |
-| `server/src/jobs/notify.ts`             | the `q_notifications` handler: one `info` `Order event` with `{ eventType, orderId }`. P6.3 replaces the body                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `server/src/utils/errors.ts`            | `RetryableError`, `PermanentError`; `InvariantError` (P0.5's deferred class, a programmer error) with its first throwers, the loop's impossible states (a message the database reports as never read)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `server/src/middleware/errorHandler.ts` | `InvariantError` → 500 `INTERNAL`, logged with `invariant: true`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+Split at 786 lines: the error handler's `invariant: true` on a request's 500 moved to PR 04 (the plan's seam).
+
+| File                         | Change                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `server/src/jobs/runner.ts`  | the `JobHandler<T>` / `QueueMessage<T>` / `JobContext` types (the roadmap's, with `concurrency` as a field); pure `backoffSeconds(attempt, { baseSec, maxSec }, random)` = `min(max, base·2^(attempt−1))` ±20%; `runQueue(handler, { signal, log, now, random })`: long-poll `queue_read` → a child logger `{ queue, jobId, eventId, eventType, attempt }` per message → handle → `queue_delete`; `RetryableError` → `queue_retry` with the backoff; `PermanentError`, any other error, or the last attempt → `queue_dead_letter` and one `error` line. A failing queue RPC (database unreachable) logs `warn` once and backs off 1 s → 5 s. The abort signal stops reading; in-flight handlers finish |
+| `server/src/jobs/notify.ts`  | the `q_notifications` handler: one `info` `Order event` with `{ eventType, orderId }`. P6.3 replaces the body                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `server/src/utils/errors.ts` | `RetryableError`, `PermanentError`; `InvariantError` (P0.5's deferred class, a programmer error) with its first throwers, the loop's impossible states (a message the database reports as never read)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 
 `/before-write`: reuse-scout, expected NO MATCH (nothing loops over work today).
 
@@ -214,11 +250,25 @@ Docs: `docs/JOBS.md` (the handler contract, the retry policy, "handlers are idem
 fields); `docs/LOGGING.md` (handled = `debug` with `durationMs`, retry = `warn`, dead letter = `error`, empty polls
 never logged); `docs/BACKEND_STRUCTURE.md` (`jobs/`). Intent: `--server patch` (no process runs it yet).
 
-Split seam if over 500 lines: the `InvariantError` mapping moves to PR 04.
+Split seam if over 750 lines: the `InvariantError` mapping moves to PR 04.
 
 ### PR 04 — The worker process (P1.2)
 
-- [ ] Merged
+- [x] Merged
+
+As built, the health rule counts progress rather than polls: a queue is healthy while its loop made progress
+(a read returned, a failed one too, or a job finished; `runQueue`'s `onActive`) within
+`max(3 × POLL_SECONDS, visibilityTimeoutSec)`. With every slot busy the loop does not read, and a database outage
+must not restart the worker: liveness only, like the API's `/api/health`. Depth and age come from `queue_metrics`
+(1 s, `null` when it does not answer). Two fixes found while verifying: `onShutdown` keeps catching repeat signals
+(tsx and a terminal's Ctrl+C deliver two, and an uncaught second one killed the process mid-stop), and `start.sh`
+stops whole process trees (it left `tsx watch` behind). The shutdown is shared as `utils/shutdown.ts`
+(`onShutdown`, `SHUTDOWN_DEADLINE_MS`). The runner's 5 s long-poll is replaced by quick reads and a 2 s wait in the
+worker (`POLL_SECONDS`), so an idle worker holds no database connection (risk "Waiting in the database"; JOBS.md
+"Capacity").
+
+Also carries PR 03's split-off: `server/src/middleware/errorHandler.ts` logs an `InvariantError`'s 500 with
+`invariant: true`, with its case in `test/unit/errors.safe.test.ts`.
 
 Implements [ADR-005](../docs/adr/005-modular-monolith-three-processes.md) (accepted 24 October 2026).
 
@@ -232,8 +282,9 @@ Implements [ADR-005](../docs/adr/005-modular-monolith-three-processes.md) (accep
 | `compose.yaml`                                   | `worker`: the api image, `command: ["node", "dist/src/worker.js"]`, healthcheck on `/health`; the `reconciler` placeholder comment says P5.10 (scheduled jobs are pg_cron)                                                                                                                                                                  |
 | `.claude/hooks/major-change-gate.js`             | `server/src/jobs/` and `server/src/worker.ts` are major-change paths (its `--self-test` covers them)                                                                                                                                                                                                                                        |
 
-Tests: `test/unit/worker-health.safe.test.ts` (healthy, then 503 once a queue's last poll is stale, with an injected
-clock).
+Tests: `test/unit/worker-health.safe.test.ts` (healthy, then 503 once a queue's loop is quiet past its limit, with an
+injected clock), `test/unit/shutdown.safe.test.ts` (one stop, repeats still caught, the deadline, a failed stop), a
+`runner.test.ts` case for `onActive`, and `app-breaker` E5 (`start.sh` stops cleanly and leaves nothing behind).
 
 Docs: CLAUDE.md §3 (scripts), §4 (`jobs/`, the `worker.ts` entry), §17 (paths), §18 (the worker is long-running;
 `start.sh` runs it); `docs/DEPLOYMENT.md` (env, the compose row, "the worker runs wherever the API runs");
@@ -245,7 +296,13 @@ healthy; `kill -TERM` during a slow handler logs a clean stop.
 
 ### PR 05 — Today's transitions emit events and carry their actor; retry-safe statuses (P1.2, P1.4)
 
-- [ ] Merged
+- [x] Merged
+
+As built: the new parameters default to null on both functions, so the API already deployed (which calls them by
+name without them) keeps working between the migration and the new API; push the migration first. The repeat
+rule needs no list of staff targets in SQL: a repeat counts when the current status equals `p_next_status` and
+`p_from_statuses` (the API's `ALLOWED_TRANSITIONS`) is not empty, so `PLACED → PLACED` stays 409.
+`update_order_status` now locks the row (`for update`) before deciding, which also gives the event's `from`.
 
 Migration `<ts>_transitions_emit_events.sql`, both functions dropped and recreated (a new parameter changes the
 signature; re-granted to `service_role` only, as the idempotency migration did):
@@ -273,12 +330,19 @@ Docs: `docs/API.md` (`PATCH /orders/:id/status`: a repeat answers 200); `docs/SC
 CLAUDE.md §10 ("every transition function sets `app.actor` and `app.request_id` and calls `emit_event`"), §14 (the
 lifecycle walk checks `domain_events`; a repeated transition is 200). Intent: `--server minor`.
 
-Split seam if over 500 lines: the retry-safe repeat becomes its own PR with a second `create or replace` of
+Split seam if over 750 lines: the retry-safe repeat becomes its own PR with a second `create or replace` of
 `update_order_status` (same signature, so no re-grant).
 
 ### PR 06 — Audit log (P1.3)
 
-- [ ] Merged
+- [x] Merged
+
+As built: the actor never comes from `updated_by`. A later SQL edit leaves the last admin's id there, so that
+fallback would have pinned the edit on them. A table write through the Data API names its actor with the `x-actor`
+and `x-request-id` headers instead (PostgREST hands them to the transaction as `request.headers`); settings rows now
+carry their request id too. `actor_role` comes from the actor itself (the API read it from `profiles` on that
+request), so the trigger reads no other table. `service_role` gets `select` only: the trigger writes as the owner, so
+the secret key cannot insert, edit or remove a row (it still vouches for the actor it sends). The publishable-key check is the lockdown test's, which covers every table.
 
 `/before-write`: schema-guard, expected NEW TABLE (`domain_events` is trimmed at 30 days; the audit record is kept
 13 months and covers changes that are not events).
@@ -305,13 +369,21 @@ Docs: `docs/SCHEMA.md`; `docs/PERMISSIONS.md` (append-only, who reads); `docs/AR
 audit: three records, three purposes, three retentions); CLAUDE.md §10 ("an audited table is written through an RPC
 that sets `app.actor`, or carries `updated_by`"). Intent: `--server minor`.
 
-Verify: once merged and pushed to staging from `feat/P1` (lane A), an `update` on `audit_log` with the staging secret
+Verify: once merged and pushed to staging from `feat/P1`, an `update` on `audit_log` with the staging secret
 key fails (the roadmap's
 "verify service_role's privileges on hosted Supabase").
 
 ### PR 07 — `GET /api/admin/audit` (P1.3)
 
-- [ ] Merged
+- [x] Merged
+
+As built: `limit` is defaulted in `listAudit`, not by zod: a required key would not fit Express's `ParsedQs`-typed
+handlers. `entityId` needs `entityType` (ids repeat across types, and the entity index leads with the type). `from` is
+inclusive and `to` exclusive, and `from` must be before `to`. The service reads one row past the page, so `nextCursor`
+is null exactly on the last page. The response is `no-store` (it must not outlive the admin's sign-out).
+Migration `20261102101707_audit_log_id_indexes.sql`: PR 06's indexes ended in `occurred_at desc`, so every filtered
+page sorted all its matches; they now end in `id desc`, plus `(entity_type, id desc)` for a type filter alone. The
+P9.5 purge will want its own `occurred_at` index. Push it to staging (`npm run db:push:staging`) before the API ships.
 
 Recipe: `/new-endpoint`. `/before-write`: reuse-scout, expected NO MATCH for the service, REUSE for the admin
 router, `requireAdmin` and the serializer pattern.
@@ -330,7 +402,11 @@ Docs: `docs/API.md`, `docs/PERMISSIONS.md`, `docs/BACKEND_STRUCTURE.md`. Intent:
 
 ### PR 08 — Order snapshots v2 (P1.5)
 
-- [ ] Merged
+- [x] Merged
+
+> **As built:** the backfill runs with `orders_set_updated_at` disabled, so past orders keep their `updatedAt`.
+> `admin.test.ts` and `caching-gaps.test.ts`, which insert orders directly, now pass a `store_name`. `selectOrders()`
+> joins only `order_items` now.
 
 Migration `<ts>_order_snapshots.sql`: `order_items.image_url`, `order_items.category`, `orders.store_name`; backfill
 from today's `menu_items` and `stores` (the best copy left); then `set not null`. `create or replace place_order`
@@ -353,7 +429,25 @@ untouched; the new API needs the migration first, as always.
 
 ### PR 09 — Money in paise: expand (ADR-004)
 
-- [ ] Merged
+- [x] Merged
+
+> **As built:** `place_order` reads every line's `menu_items` row once (into a jsonb array) and takes the total and
+> the lines from that one read, so an item without a stock count (not locked by the stock loop) cannot change price
+> between the two. The API no longer sends a price in `p_lines`. Tests that write `orders` or `menu_items` directly
+> (`admin`, `caching-gaps`, `menu-cap`, `order-snapshots`) now write the paise columns too; `audit.test.ts` checks that a
+> `price_paise`-only edit is audited. The class guard also scans `server/scripts`. `docs/ARCHITECTURE.md` (the
+> checkout diagrams and the ER diagram) is updated with the owning docs.
+>
+> Two additions, approved during review. **Expected price check:** the API charged from its own read and
+> `place_order` stored from a later one, so a price change in between charged one amount and stored another. The API
+> now sends each line's charged price as `unit_price_paise`; `place_order` compares it with the same read it stores
+> from and raises `PRICE_CHANGED` (`{ menuItemId, name, price }`, rolling back the stock), which the API answers 409
+> `PRICE_CHANGED`, no `details`, the message naming the item and its new price. A deployed-API call without
+> `unit_price_paise` is not checked. **Sync trigger:** `menu_items_sync_price` (before insert or update of `price`,
+> `price_paise`; executable by nobody) derives whichever price column was not written and refuses both written and
+> disagreeing, so the deployed API's rupee-only writes keep working and the columns cannot drift. PR 16 drops the
+> trigger with the rupee column. **Client:** on `PRICE_CHANGED` the checkout reloads the menu and takes the new prices into
+> the cart (`cartStore.syncPrices`), so the next Pay shows the amount it charges.
 
 [ADR-004](../docs/adr/004-rupees-and-paise.md) as amended (D8). `/before-write`: schema-guard, expected EXTEND
 (`_paise` columns beside the rupee ones, expand → migrate → contract).
@@ -387,7 +481,15 @@ the database; `utils/money.ts` is the only converter"). Intent: `--server minor`
 
 ### PR 10 — `POST /api/client-errors` (P1.6)
 
-- [ ] Merged
+- [x] Merged
+
+As built: a blank env value now counts as unset (`utils/env.ts`), found while adding `RATE_LIMIT_CLIENT_ERRORS_MAX`:
+`z.coerce` read `RATE_LIMIT_IP_MAX=` as 0, which turned the limit off; `env-blank.safe.test.ts` guards it. `clientVersion` is not passed to the `warn` call, because `req.log` already carries it (pino-http
+`customProps` in `app.ts`), so it is written once rather than as a duplicate key; the line adds `at`, so a report
+sent late (a batch after an outage) still says when it happened. The limiter counts requests (each up to 5 reports),
+so the test's 31st report is the 31st one-report request. The test's own app copy stubs `getSettings` with
+`min_client_version` 9.0.0: the seeded `0.0.0` gates nothing, so it could not tell a mount after the gate apart.
+No route file: the route sits in `routes/index.ts` next to `/config`, which it shares the gate exemption with.
 
 Recipe: `/new-endpoint`. Self-reported, not Sentry (D5); Sentry is a later, low-priority roadmap item (P10.4).
 
@@ -411,7 +513,7 @@ Docs: `docs/API.md`; `docs/LOGGING.md` ("Client error reports") and CLAUDE.md §
 
 ### PR 11 — `client_error_sample_percent` through to `/api/config` (P1.6)
 
-- [ ] Merged
+- [x] Merged
 
 The P0.4 pattern (P0 PRs 13 and 14): migration column `client_error_sample_percent integer not null default 100
 check (… between 0 and 100)`; `npm run db:types`; `settings.service.ts` `COLUMN`, `updateSettingsSchema`,
@@ -426,7 +528,49 @@ Docs: `docs/SCHEMA.md`, `docs/API.md`, `docs/CONFIGURATION.md`. Intent: `--serve
 
 ### PR 12 — The error reporter, and render errors told apart from chunk failures (P1.6)
 
-- [ ] Merged
+- [x] Merged
+
+Implementation completed on `feat/p1-12-error-reporter` (3 November 2026). Client typecheck, lint, 378 unit tests,
+the container build, bundle and dist-secret checks passed. Full Chromium and WebKit smokes passed (35 and 27
+cases, with existing font/engine skips); the final three reporter cases passed separately in both engines.
+Page, shell and chunk fallbacks passed the throttled phone/desktop visual gate, 320–1440 px, 200% text and 44 px
+controls. The local API accepted scrubbed render reports and logged route, stack and client version.
+Refactor, logging, test/docs, performance and independent code/security reviews found no remaining blockers.
+Verification completed the same day on `0040f5d`, in a fresh macOS environment:
+
+- **Security scan** of `git diff origin/feat/P1...HEAD` (the `security-review` scan, which stands in for the
+  `claude-security` plugin that is not installed): no findings. Crash reports go out with `auth: false`, the client
+  and the server each scrub tokens, keys, emails and phones on their own, and no error text reaches the page.
+- **Web Vitals A/B**, production build, 360×640, Slow 4G, 4× CPU, median of 3, against the base `572a359`: `/` LCP
+  1456 → 1432 ms, `/menu` LCP 1536 → 1552 ms, CLS 0 / 0.0001 unchanged, `/menu` INP 48 → 48 ms; all within
+  `client/perf-budget.json` and within noise of the base
+  ([`docs/PERF_BASELINE.md`](../docs/PERF_BASELINE.md#web-vitals-ab-2026-11-03-0040f5d-against-its-base-572a359)).
+- **Closing `/break` follow-ups in this PR:** the scrub had regex lookbehind, which Safari before 16.4 cannot compile, so
+  every report from those phones was dropped (now a captured head character, guarded by `lib/regexSupport.test.ts`
+  over all client source); URL-encoded tokens (`refresh_token%3D…`) and emails with `%` or `'` are scrubbed; the
+  report bounds live in `LIMITS.clientErrors` (CodeRabbit). A production build sends exactly one report per render
+  crash (the dev build's three come from React's development double render).
+- **Gate:** client typecheck, lint and 378 unit tests; Chromium and WebKit smokes, 68 passed with the 12 existing
+  engine/font skips; `build:container`, `check:bundle` (89.8 KB initial) and `check:dist-secrets` passed.
+
+#### PR 12 handoff
+
+Branch: `feat/p1-12-error-reporter`. PR target: `feat/P1`. Implementation and verification are complete; the PR is
+in review. No migration, server version bump or minimum-client-version bump is needed.
+
+Remaining work, in order:
+
+1. Address review findings. The user merges into `feat/P1`; tick PR 12's Merged box only after that merge is
+   confirmed.
+2. After P12 merges, follow [Closing P1](#closing-p1): on the updated phase branch, validate both packages, run
+   Chromium e2e and `/break`, and resolve failures before the phase PR into `dev`. PR 16 goes into `feat/P1` before
+   that phase PR (user decision of 9 November 2026: nothing reaches production until P8). The separate pnpm migration follows the phase merge
+   ([roadmap P1.8](ROADMAP.md#p18-tooling-pnpm-after-the-phase-merges)). Never apply production migrations here.
+
+Preserve the regression guards for complete Authorization/Cookie redaction, delayed zero-percent sampling,
+chunk failures excluded from the global handler, and bounded classification of oversized error messages. Those
+four bugs were reproduced before their fixes. The temporary fault injection, screenshots, traces and local test
+servers have been removed or stopped; no deliberate branch-intent flags were found.
 
 `/before-write`: reuse-scout, expected **EXTEND `PageBoundary`** rather than the roadmap's new `AppErrorBoundary`
 (CLAUDE.md §5). The file list assumes EXTEND.
@@ -455,7 +599,15 @@ the client version, the route and a stack.
 
 ### PR 13 — Feature flags: table, evaluation, the admin flip (P1.7)
 
-- [ ] Merged
+- [x] Merged
+
+As built: `audit_row_change()` took `entity_id` from the row's `id`, and `feature_flags` is keyed by `key`, so the
+migration redefines it (`create or replace`, same body) with `coalesce(id, key)`; `AUDIT_ENTITY_TYPES` gains
+`feature_flag`. `rules` is a strict zod object, both on the PATCH and when read: a misspelt key (`storeId`) is a 400,
+or turns a hand-edited flag off, instead of being stripped into "everyone". Lists need at least one entry (`{}` clears
+targeting). The percentage reads the first four bytes of the hash, mod 100. `setFlag(key, input, ctx)` takes the
+request context, like `updateSettings`. Nothing calls `isEnabled` yet, so the store-only done-when is tested on
+`isEnabled` directly. Push the migration to staging before the API ships.
 
 `/before-write`: schema-guard, expected NEW TABLE; reuse-scout, expected REUSE `cached()` / `invalidate()` and the
 admin router.
@@ -480,11 +632,19 @@ Docs: `docs/SCHEMA.md`; `docs/API.md`; `docs/PERMISSIONS.md`; `docs/CONFIGURATIO
 setting); `docs/BACKEND_STRUCTURE.md`; CLAUDE.md §2c (flags read through `cached()`, invalidated by the flip). Intent:
 `--server minor --client patch`.
 
-Split seam if over 500 lines: the admin PATCH and its matrix move to their own PR, and the cache test waits for it.
+Split seam if over 750 lines: the admin PATCH and its matrix move to their own PR, and the cache test waits for it.
 
 ### PR 14 — Client-visible flags in `/api/config` (P1.7)
 
-- [ ] Merged
+- [x] Merged
+
+As built: `Flag` gains `clientVisible` (`getFlags()` selects `client_visible`), and `features[key]` is
+`evaluateFlag(flag, {})`: a caller-less evaluation, which is `enabled` for an untargeted flag and `false` for a targeted
+one. The flags read fails closed inside `config.service.ts` (`features: {}`, still 200), with one `warn` per outage per
+process ([LOGGING.md](../docs/LOGGING.md)), not one per app start.
+
+Carried from PR 13's review: `isEnabled` and `getFlags` throw when the flags read fails. The first caller (this PR's
+`getConfig()`) must fail closed (no flags, never a 500 on `/api/config`), with its test.
 
 `config.service.ts`: `features` holds every `client_visible` flag without targeting rules, as `enabled`; a targeted
 client-visible flag is `false` here (it needs `/api/me/config`, built with the first such flag). `ConfigDto` does
@@ -498,7 +658,36 @@ Docs: `docs/API.md` (`features`). Intent: `--server minor`.
 
 ### PR 15 — Server-side idle sign-out (ADR-011 follow-up)
 
-- [ ] Merged
+- [x] Merged
+
+As built (perf review): concurrent first requests of a session (a page load) share one in-flight check, so a
+session costs one `touch_session` call per window per process, not one per parallel request. As built: schema-guard NEW TABLE `session_activity`, as expected (`auth.sessions` is GoTrue's, outside the Data API,
+and moves on token refresh, not on API use). `verifyCredentials` exposes the claim as `jwtClaims.session_id`
+(`unknown`, so it is checked as a UUID; a token without one skips the check). The 401 reuses the existing "Your
+session has expired. Please sign in again." rather than a near-duplicate. The check runs after the profile lookup (the
+row references `profiles`) in `enforceSessionIdle`, which `requireAuth` calls. **Fail-open:** if `touch_session` fails
+(the migration not yet on an environment, a dropped connection) the request goes on and `error` "Session idle check
+failed" is logged at most once per 5 minutes per process (with a `suppressed` count; a missing function would
+otherwise log once per active session); the token is verified and the client cap still holds, while
+fail-closed would sign every user out whenever the call fails. **A live session is required** (user decision, from
+code review): sign-out revokes the refresh token, but the access token (checked locally) stays valid for up to 1 h;
+`touch_session` therefore also refuses a session gone from `auth.sessions`, row or no row, so a replay is not let back
+in as "never seen" once the purge drops its row. It is security definer for that read, like the purge. A refusal is
+remembered in-process for the 5-minute window, so a replayed token costs no RPC and no sign-out call; after the
+window it is checked (and revoked) again. A sign-out that answers session_not_found (auth-js:
+`AuthSessionMissingError`, status 400, no code) counts as already revoked and logs nothing; any other failure is
+`warn` "Idle session not revoked". A process that checked a session within the last 5 minutes lets its token through
+until the window ends, so a sign-out takes effect within 5 minutes.
+`last_seen_at` has no index, so a touch stays a HOT update. **Purge by session end, not age** (user decision):
+`purge_session_activity()` deletes a row only when its session is gone from `auth.sessions`, so it can never be
+refreshed again. The planned 90-day purge would have let a stolen refresh token held unused for 90+ days back in (an
+unknown session counts as never seen). It is security definer (owner `postgres`, as pg_cron runs it), because
+`service_role` cannot read `auth.sessions`; confirmed locally through a real pg_cron run. **Staging must confirm the
+same** after the migration lands: `select status, return_message from cron.job_run_details` for
+`purge-session-activity` reads `succeeded` (hosted Supabase lets the `postgres` role read `auth`), and
+`touch_session`, which reads `auth.sessions` the same way, answers true for a live session: a signed-in request on
+staging must not log `error` "Session idle check failed" (a permission error there fails open, so it would not show as
+a 401).
 
 D3: in P1, per session. `/before-write`: schema-guard, expected NEW TABLE (activity is per session, which no table
 holds; a `profiles` column would let a phone in use keep a stolen laptop session alive).
@@ -507,19 +696,23 @@ holds; a `profiles` column would let a phone in use keep a stolen laptop session
 references profiles on delete cascade, last_seen_at timestamptz not null)`; RLS on, `service_role` only.
   `touch_session(p_session_id, p_user_id, p_idle interval, p_now timestamptz default now()) returns boolean`: true
   and `last_seen_at = p_now` for a session seen within `p_idle` or never seen (sessions older than the deploy start
-  their clock then); false, untouched, for one idle longer. A daily `purge-session-activity` job deletes rows older
-  than 90 days (`SESSION_IDLE_DAYS`' upper bound, so any setting is safe).
+  their clock then); false, untouched, for one idle longer. A daily `purge-session-activity` job deletes the rows
+  whose session is gone from `auth.sessions` (never by age, see As built).
 - `middleware/auth.ts` `requireAuth`: reads the token's `session_id` claim (confirm `verifyCredentials` exposes it);
   calls `touch_session` at most once per session per 5 minutes per process (a module-level map); an idle session is
-  401 `UNAUTHORIZED` "Your session expired. Please sign in again." and is revoked with
+  401 `UNAUTHORIZED` "Your session has expired. Please sign in again." and is revoked with
   `supabaseAdmin.auth.admin.signOut(token, 'local')`, so its refresh token stops working. The client already clears
   its session on a 401.
 
 Cost: one RPC per active session per 5 minutes per API instance.
 
-Tests: `test/api/session-activity.test.ts` (the SQL through `p_now`: fresh, within the window, past it, never seen);
+Tests: `test/api/session-activity.test.ts` (the SQL through `p_now`: fresh, within the window, past it, never seen
+but live, gone from `auth.sessions` with or without a row; the purge drops an ended session's row and keeps a live
+one's however old); `test/api/session-idle.test.ts` (an idle session is 401 and revoked; a signed-out session's
+still-valid access token is 401);
 `test/unit/auth.safe.test.ts` (with the RPC stubbed: the throttle skips a second call within 5 minutes; false means
-401 and one sign-out call).
+401 and one sign-out call, and a replay within the window is 401 with no second RPC or sign-out; session_not_found
+from the sign-out logs no warn, another failure does).
 
 Docs: `docs/PERMISSIONS.md` (sessions); `docs/DEPLOYMENT.md` "Hosted session timeout" (the server now enforces it);
 `docs/SCHEMA.md`; `docs/API.md` (the 401); `docs/JOBS.md` (the schedule); CLAUDE.md §10 sessions bullet; a link in
@@ -527,14 +720,18 @@ ADR-011's Links to this PR (the decision itself is not rewritten). Intent: `--se
 
 ### PR 16 — Money in paise: contract (ADR-004)
 
-- [ ] Merged
+- [x] Merged
 
-Not part of `feat/P1`. It goes into `dev` from `feat/p1-16-paise-contract` once `feat/P1` has merged into `dev` and
-the release containing it runs in production (the user confirms): until then the deployed API still reads the rupee
-columns.
+Branch `feat/p1-16-paise-contract`, PR target `feat/P1`, before the phase PR into `dev` (user decision of 9 November 2026: nothing reaches production until P8, so no deployed API
+still reads the rupee columns when this migration runs anywhere).
+
+**Staging order.** Staging's database takes `feat/P1`'s migrations while its API still runs `dev`, which predates PR 09
+and reads the rupee columns. So this migration reaches staging only after `feat/P1` has merged into `dev` and staging
+runs that API: push it then (`npm run db:push:staging`), and stop or update any other API process connected to the
+staging database first.
 
 Migration `<ts>_money_paise_contract.sql`: `create or replace place_order` without the rupee writes; the audit trigger
-stops watching `price`; drop `menu_items.price`, `orders.total`, `order_items.unit_price` and
+stops watching `price`; drop the `menu_items_sync_price` trigger and its function (PR 09) before the column; drop `menu_items.price`, `orders.total`, `order_items.unit_price` and
 `order_items.line_total`; `npm run db:types`. The seed stops writing them. The whole-rupee checks stay until a paise
 API field replaces each rupee field (ADR-004).
 
@@ -562,41 +759,52 @@ Docs: `docs/SCHEMA.md`. Intent: `--server patch`.
 
 Answered by the user on 24 October 2026.
 
-| #   | Decision                                                                                | Answer                                                                                               | Applies to |
-| --- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ---------- |
-| D1  | Rate limiter: keep `express-rate-limit`, or move to `rate-limiter-flexible` now         | keep it; ADR-009 accepted with that amendment (`rate-limiter-flexible` arrives with the Redis store) | PR 01      |
-| D2  | A staff status change repeated after a lost answer: 200 with the order, or 409 as today | 200; other invalid transitions stay 409                                                              | PR 05      |
-| D3  | The server-side idle sign-out in P1                                                     | yes, keyed per session                                                                               | PR 15      |
-| D4  | The generic idempotency table and middleware                                            | built in P5.3 with `POST /api/checkout`, its first consumer                                          | P5.3       |
-| D5  | Error tracking: self-reported or Sentry (roadmap decision 8)                            | self-reported in P1; Sentry later as a low-priority roadmap item (P10.4)                             | PR 10–12   |
-| D6  | How long `domain_events` are kept                                                       | 30 days; the audit log is the long-term record                                                       | PR 02      |
-| D7  | ADR-005 (three processes)                                                               | accepted as written                                                                                  | PR 04      |
-| D8  | When money moves to paise (ADR-004 as amended)                                          | in P1, right after the snapshots: expand in PR 09, contract in PR 16 once PR 09 runs in production   | PR 09, 16  |
-| D9  | How two agents work P1 at once                                                          | lanes A and B, each PR into the `feat/P1` feature branch, which goes into `dev` at the end           | all        |
+| #   | Decision                                                                                | Answer                                                                                                                                                                  | Applies to |
+| --- | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| D1  | Rate limiter: keep `express-rate-limit`, or move to `rate-limiter-flexible` now         | keep it; ADR-009 accepted with that amendment (`rate-limiter-flexible` arrives with the Redis store)                                                                    | PR 01      |
+| D2  | A staff status change repeated after a lost answer: 200 with the order, or 409 as today | 200; other invalid transitions stay 409                                                                                                                                 | PR 05      |
+| D3  | The server-side idle sign-out in P1                                                     | yes, keyed per session                                                                                                                                                  | PR 15      |
+| D4  | The generic idempotency table and middleware                                            | built in P5.3 with `POST /api/checkout`, its first consumer                                                                                                             | P5.3       |
+| D5  | Error tracking: self-reported or Sentry (roadmap decision 8)                            | self-reported in P1; Sentry later as a low-priority roadmap item (P10.4)                                                                                                | PR 10–12   |
+| D6  | How long `domain_events` are kept                                                       | 30 days; the audit log is the long-term record                                                                                                                          | PR 02      |
+| D7  | ADR-005 (three processes)                                                               | accepted as written                                                                                                                                                     | PR 04      |
+| D8  | When money moves to paise (ADR-004 as amended)                                          | in P1, right after the snapshots: expand in PR 09, contract in PR 16, into `feat/P1` before the phase PR (amended 9 November 2026: nothing reaches production until P8) | PR 09, 16  |
+| D9  | Who builds P1, and where                                                                | one agent, PR by PR, each into the `feat/P1` feature branch, which goes into `dev` at the end (two parallel lanes until 1 November 2026)                                | all        |
+
+## Closing P1
+
+Once every box is ticked (PR 16 included, since 9 November 2026): on a fresh `origin/feat/P1`, the gate in both packages, `npm run e2e:chromium`
+and `/break` (P1 changes auth, orders, money and the request pipeline), with fixes as normal PRs into `feat/P1`. Then
+the PR `feat/P1` → `dev` ("P1 — platform core", exempt from the size limit, linking the plan's PRs); the user merges
+it. No release into `main` and no production migration until P8 (D8 as amended 9 November 2026): P1 is tested on
+staging.
 
 ## User steps (cannot be done from the repository)
 
 - Merge PR 00 into `dev` (the docs PR needs an exemption from the size limit), then create `feat/P1` from `dev`.
-- Merge each lane's PRs into `feat/P1`, merge `dev` into `feat/P1` between rounds when `dev` has moved, and merge
-  `feat/P1` into `dev` when P1 is done ([P1_WORK_SPLIT.md](P1_WORK_SPLIT.md)).
-- After P1 reaches `main`: `npm run db:push:production` (user only), then check that pgmq and pg_cron show under the
-  production project's Integrations.
-- Confirm when the release containing P1 runs in production, so PR 16 can start.
+- Merge each PR into `feat/P1`, merge `dev` into `feat/P1` when `dev` has moved, push `feat/P1`'s migrations to
+  staging (`npm run db:push:staging`), and merge `feat/P1` into `dev` when P1 is done ([closing P1](#closing-p1)).
+  PR 16's contract migration is the exception: push it to staging only once `feat/P1` is in `dev` and staging runs
+  that API ([PR 16](#pr-16--money-in-paise-contract-adr-004)).
+- At P8, when P1 first reaches `main` (not before, D8): `npm run db:push:production` (user only), then check that
+  pgmq and pg_cron show under the production project's Integrations.
 - Run the worker wherever the API runs. Until P8.4 there is no hosted API, so on staging `q_notifications` fills
   while no worker runs; `docs/JOBS.md` has the purge command.
 - Flip flags in production with `PATCH /api/admin/flags/:key` and an admin token, so the audit names you.
 
 ## Risks and gotchas
 
-- **A long poll holds a PostgREST connection.** One per queue is fine for one queue; Supabase Free's pool is small.
-  Past three or four queues, read them in one multi-queue call or move the worker to a pooled direct connection.
-  Keep `pollSeconds` under the role's statement timeout.
+- **Waiting in the database holds a connection.** PR 03's long-poll held a PostgREST connection per queue per replica,
+  and the roadmap's seven queues would have taken most of a pool of about 10 that the API shares. PR 04 replaced it:
+  quick `pgmq.read` calls, and a 2 s wait in the worker when a queue is empty. Do not bring the long-poll back;
+  LISTEN/NOTIFY on a direct connection is the upgrade if a consumer needs sub-second pickup.
 - **Redefining a transition function.** A new parameter needs drop + create and the grants again (the idempotency
   migration's pattern); `create or replace` with the same signature keeps them. PRs 05, 08, 09 and 16 all touch
   `place_order`: each body starts from the previously merged body, never from an older copy.
 - **The paise expand window.** Between PR 09's migration and the new API reaching every environment, the old API
-  still passes rupee prices in `p_lines`; `place_order` ignores them and prices from `menu_items.price_paise`. PR 16
-  must not run before production runs PR 09's API.
+  still passes rupee prices in `p_lines` (no `unit_price_paise`, so no price check) and writes `menu_items.price`
+  alone; `place_order` ignores those prices and prices from `menu_items.price_paise`, and `menu_items_sync_price`
+  keeps the two columns in step. PR 16 must not run anywhere an older API is deployed; it lands in `feat/P1` with PR 09's API (user decision of 9 November 2026: nothing reaches production until P8).
 - **Visibility timeout shorter than a slow handler** means a second delivery while the first still runs. Handlers are
   idempotent anyway; set each timeout to at least twice its slowest expected run.
 - **pg_cron on Supabase:** at most 8 concurrent jobs of at most 10 minutes; schedules are UTC; a paused staging

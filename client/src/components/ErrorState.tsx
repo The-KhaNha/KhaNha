@@ -17,6 +17,10 @@ interface ErrorStateProps {
   compact?: boolean;
   /** Custom buttons rendered instead of the single retry button. */
   actions?: ReactNode;
+  /** 1 when the failure is the whole page (a full-screen page has no TopBar title), so the page keeps its one <h1>. */
+  headingLevel?: 1 | 2;
+  /** The shown error's code: CLIENT_RELOAD_REQUIRED turns the retry into a Reload. */
+  code?: string;
   className?: string;
 }
 
@@ -30,11 +34,18 @@ export function ErrorState({
   unreachable = false,
   compact = false,
   actions,
+  headingLevel = 2,
+  code,
   className,
 }: ErrorStateProps) {
   // This build is too old (426): retrying would only fail again, so the one useful action is loading the new build.
   const outdated = useVersionStore((s) => s.outdated);
+  // This error is the sign-in code failing to load (CLIENT_RELOAD_REQUIRED): only a page reload can load it again. Other
+  // errors on the same page (a public menu load) keep their own retry.
+  const reloadRequired = code === 'CLIENT_RELOAD_REQUIRED';
+  const mustReload = outdated || reloadRequired;
   const Icon = unreachable ? WifiOff : CircleAlert;
+  const Heading = headingLevel === 1 ? 'h1' : 'h2';
   return (
     <div
       role="alert"
@@ -52,20 +63,22 @@ export function ErrorState({
       >
         <Icon className={compact ? 'h-6 w-6' : 'h-9 w-9'} strokeWidth={1.75} aria-hidden />
       </div>
-      <h2 className={cn('mt-5 font-extrabold', compact ? 'text-lg' : 'text-xl')}>{title}</h2>
+      <Heading className={cn('mt-5 font-extrabold', compact ? 'text-lg' : 'text-xl')}>
+        {title}
+      </Heading>
       <p className="mt-2 max-w-xs text-body leading-relaxed text-muted">{message}</p>
       {actions && (
         <div className="mt-6 flex w-full max-w-xs flex-col items-stretch gap-2">{actions}</div>
       )}
-      {!actions && (outdated || onRetry) && (
+      {!actions && (mustReload || onRetry) && (
         <Button
           variant="secondary"
           className="mt-6 min-w-40"
-          onClick={outdated ? () => window.location.reload() : onRetry}
-          loading={!outdated && retrying}
+          onClick={mustReload ? () => window.location.reload() : onRetry}
+          loading={!mustReload && retrying}
           iconLeft={<RefreshCw className="h-4 w-4" aria-hidden />}
         >
-          {outdated ? 'Refresh' : retryLabel}
+          {outdated ? 'Refresh' : reloadRequired ? 'Reload' : retryLabel}
         </Button>
       )}
     </div>

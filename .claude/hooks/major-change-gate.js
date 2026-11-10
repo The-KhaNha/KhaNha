@@ -3,9 +3,9 @@
 //   1. Classifies the files changed since the last /post-change (working tree vs HEAD, minus files whose content
 //      is unchanged since the mark). A major change is recorded in .claude/.state/pending.json and announced once.
 //   2. Reminds once per set of files when package source changed but no .changes/*.md intent was added
-//      (CLAUDE.md "Versioning and branches").
+//      (.claude/rules/workflow.md §21).
 //   3. Refreshes the graphify graph when source files are newer than graphify-out/graph.json.
-//   4. Reminds once per branch when the branch has outgrown a reviewable PR (CLAUDE.md "PR size").
+//   4. Reminds once per branch when the branch has outgrown a reviewable PR (.claude/rules/workflow.md "PR size").
 //
 //   node .claude/hooks/major-change-gate.js            the Stop hook
 //   node .claude/hooks/major-change-gate.js --mark     /post-change finished: record the current state as verified
@@ -23,15 +23,16 @@ const PENDING = path.join(STATE, 'pending.json');
 const INTENT_REMINDED = path.join(STATE, 'intent-reminded.json');
 const PR_REMINDED = path.join(STATE, 'pr-size-reminded.json');
 
-// Keep in sync with CLAUDE.md "PR size": a PR stays reviewable at up to 25 files and 500 changed lines against its
-// base. The lockfiles and the generated database types are not counted; tests and docs are.
-const PR_MAX_FILES = 25;
-const PR_MAX_LINES = 500;
-const PR_UNCOUNTED = /(^|\/)package-lock\.json$|^server\/src\/types\/database\.ts$/;
+// Keep in sync with .claude/rules/workflow.md "PR size": a PR stays reviewable at up to 38 files and 750 changed lines against its
+// base. The lockfiles, the generated database types and docs (every Markdown file) are not counted; tests are.
+const PR_MAX_FILES = 38;
+const PR_MAX_LINES = 750;
+const PR_UNCOUNTED = /(^|\/)package-lock\.json$|^server\/src\/types\/database\.ts$|\.md$/;
 
-// Keep in sync with CLAUDE.md "What counts as a major change".
+// Keep in sync with .claude/rules/workflow.md "What counts as a major change".
 const MAJOR_PATHS = [
-  /^server\/src\/(routes|controllers|services|schemas|middleware)\//,
+  /^server\/src\/(routes|controllers|services|schemas|middleware|jobs)\//,
+  /^server\/src\/worker\.ts$/,
   /^server\/supabase\/migrations\//,
   /^client\/src\/(pages|services|components)\//,
   /^client\/src\/App\.tsx$/,
@@ -129,7 +130,7 @@ function unverifiedChanges() {
   return { changes: changes.filter((c) => verified[c.file] !== hashes[c.file]), hashes };
 }
 
-/** The base a branch's PR merges into (CLAUDE.md "Versioning and branches"): origin/main for hotfix/*, the phase
+/** The base a branch's PR merges into (.claude/rules/workflow.md §21): origin/main for hotfix/*, the phase
  *  branch for a phase PR (feat/p1-05-… → origin/feat/P1), else origin/dev. null for branches whose PR is not sized:
  *  dev, main, release/* and a phase branch itself (each bundles work already reviewed in its own PRs). */
 function prBase(branch) {
@@ -188,6 +189,9 @@ function selfTest() {
   assert.equal(classify([c('client/src/lib/format.ts', 3)]).major, false);
   assert.equal(classify([c('client/src/index.css', 20)]).major, false);
   assert.equal(classify([c('server/src/routes/index.ts')]).major, true);
+  assert.equal(classify([c('server/src/jobs/notify.ts')]).major, true);
+  assert.equal(classify([c('server/src/worker.ts')]).major, true);
+  assert.equal(classify([c('server/src/utils/shutdown.ts', 20)]).major, false);
   assert.equal(classify([c('server/supabase/migrations/2026_x.sql')]).major, true);
   assert.equal(classify([c('client/src/App.tsx')]).major, true);
   assert.equal(classify([c('client/package.json')]).major, true);
@@ -205,13 +209,21 @@ function selfTest() {
   assert.equal(needsIntent(['server/src/app.ts', '.changes/README.md']), true);
   const files = (n, lines = 1) => Array.from({ length: n }, (_, i) => c(`client/src/lib/f${i}.ts`, lines));
   assert.equal(prSize([]).over, false);
-  assert.equal(prSize(files(25)).over, false, '25 files is within the limit');
-  assert.equal(prSize(files(26)).over, true, '26 files is over');
-  assert.equal(prSize([c('server/src/app.ts', 500)]).over, false, '500 lines is within the limit');
-  assert.equal(prSize([c('server/src/app.ts', 501)]).over, true, '501 lines is over');
-  const uncounted = [c('package-lock.json', 9000), c('client/package-lock.json', 900), c('server/src/types/database.ts', 800)];
-  assert.deepEqual(prSize(uncounted), { files: 0, lines: 0, over: false }, 'lockfiles and generated types do not count');
-  assert.equal(prSize([...uncounted, c('docs/API.md', 501)]).over, true, 'docs count');
+  assert.equal(prSize(files(38)).over, false, '38 files is within the limit');
+  assert.equal(prSize(files(39)).over, true, '39 files is over');
+  assert.equal(prSize([c('server/src/app.ts', 750)]).over, false, '750 lines is within the limit');
+  assert.equal(prSize([c('server/src/app.ts', 751)]).over, true, '751 lines is over');
+  const uncounted = [
+    c('package-lock.json', 9000),
+    c('client/package-lock.json', 900),
+    c('server/src/types/database.ts', 800),
+    c('docs/API.md', 900),
+    c('plans/P1_PLATFORM_CORE.md', 900),
+    c('README.md', 50),
+    c('.changes/20261101-090000-abcd.md', 5),
+  ];
+  assert.deepEqual(prSize(uncounted), { files: 0, lines: 0, over: false }, 'lockfiles, generated types and docs do not count');
+  assert.equal(prSize([...uncounted, c('server/test/api/orders.test.ts', 751)]).over, true, 'tests count');
   assert.equal(prBase('feat/store-hours'), 'origin/dev');
   assert.equal(prBase('hotfix/stock-race'), 'origin/main');
   assert.equal(prBase('feat/p1-05-transitions-emit-events'), 'origin/feat/P1', 'a phase PR is sized against its phase');
@@ -274,10 +286,10 @@ function testMarkSurvivesCommit() {
     // Unstaged new files count toward the PR size (a plain `git diff` would report zero).
     g('update-ref', 'refs/remotes/origin/dev', 'HEAD~1');
     g('checkout', '-q', '-b', 'feat/x');
-    for (let i = 0; i < 26; i++) fs.writeFileSync(path.join(tmp, `docs${i}.md`), 'x\n');
+    for (let i = 0; i <= PR_MAX_FILES; i++) fs.writeFileSync(path.join(tmp, `lib${i}.ts`), 'x\n');
     const sized = JSON.parse(run('--status')).pr;
     assert.equal(sized.over, true, 'untracked files count toward the PR size');
-    // A release branch bundles PRs already reviewed one by one: it gets no size (CLAUDE.md "PR size").
+    // A release branch bundles PRs already reviewed one by one: it gets no size (.claude/rules/workflow.md "PR size").
     g('checkout', '-q', '-b', 'release/2026-09-30');
     assert.equal(JSON.parse(run('--status')).pr, null, 'release/* branches are exempt from the PR size');
   } finally {
@@ -343,7 +355,7 @@ function main() {
       writeJson(PR_REMINDED, { at: new Date().toISOString(), branch: pr.branch });
       messages.push(
         `[pr-size] ${pr.branch} is at ${size.files} files / ${size.lines} lines against ${pr.base} ` +
-          `(limit ${PR_MAX_FILES} / ${PR_MAX_LINES}, CLAUDE.md "PR size"): finish the change in hand, raise the PR, ` +
+          `(limit ${PR_MAX_FILES} / ${PR_MAX_LINES}, .claude/rules/workflow.md "PR size"): finish the change in hand, raise the PR, ` +
           'tell the user, and stop until they say it is merged.',
       );
     }

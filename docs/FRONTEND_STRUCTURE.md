@@ -19,7 +19,13 @@ client/
 ├── vitest.config.ts        unit tests (jsdom), separate from vite.config.ts
 ├── playwright.config.ts    the WebKit smoke (npm run e2e:webkit; e2e:chromium where WebKit cannot launch): 360px, every /api call mocked
 ├── tsconfig.e2e.json       typechecks e2e/ and the Playwright config with Node types (part of npm run typecheck)
-├── e2e/smoke.spec.ts       home, menu, add to cart, cart; 44px targets and 200% text on the signed-out routes; no backend
+├── e2e/                    no backend; every /api call mocked (fixtures.ts)
+│   ├── fixtures.ts         shared mocks and helpers (mockApi, signIn, seedCart, watchConsole, …)
+│   ├── smoke.spec.ts       home, menu, add to cart, cart; the core path
+│   ├── layout.spec.ts      every route at 320px and 200% text, 44px targets, layout shift
+│   ├── forms.spec.ts       blur-then-submit on each form, checkout
+│   ├── resilience.spec.ts  storage, cache, failed chunk and device-clock failures
+│   └── error-reporting.spec.ts  browser crash reports
 ├── eslint.config.js
 ├── .env.example            documents the client env vars (see DEPLOYMENT.md)
 ├── .env.development        Vite mode "development" (npm run dev)
@@ -33,8 +39,8 @@ client/
 │                           installable app icons; rendered from icon.svg by scripts/make-icons.mjs
 ├── public/robots.txt       menu and home crawlable; carts, orders, accounts, staff and admin disallowed
 └── src/
-    ├── main.tsx            applies the preloaded webfont, prefetches the landing data, starts supabase-js when signed in, createRoot
-    ├── App.tsx             routes, route guards, the shell (top bar, main, cart bar, bottom nav)
+    ├── main.tsx            installs browser error reporting, applies the preloaded webfont, prefetches landing data, starts supabase-js when signed in, createRoot
+    ├── App.tsx             routes, route guards, the shell, app error boundary and reporting sample from useConfig
     ├── appShell.ts         SHELL_BY_ROUTE + getShellConfig: which chrome and title each route gets
     ├── index.css           Tailwind import, design tokens (@theme), keyframes, utilities, reduced-motion rules
     ├── vite-env.d.ts       typed import.meta.env
@@ -50,7 +56,7 @@ client/
     │   ├── menu/           useMenu, useStore, CategoryChips, ItemDetailSheet
     │   ├── version/        versionStore (the 426 "outdated" flag), OutdatedBanner
     │   └── orders/         orderStatus, useOrder, useOrders, OrderHero, StaffHeader, StaffFilters, StaffBoard, StaffOrderCard
-    ├── lib/                framework-free helpers and generic hooks (supabase, logger, useResource, format, uuid, sessionDraft, ...)
+    ├── lib/                framework-free helpers and generic hooks (supabase, logger, useResource, format, uuid, sessionDraft, safeStorage, ...)
     ├── pages/              one component per route
     ├── services/           the only modules that call the API
     ├── types/api.ts        the API contract types (mirror of server/src/types/api.ts)
@@ -87,7 +93,10 @@ How the shell works (`App.tsx`, with the route table in `appShell.ts`):
 
 - `SHELL_BY_ROUTE` (`appShell.ts`) maps a path pattern to a `ShellConfig`: `topBar` (`{ title?, backTo?, tone? }` or `null`),
   `bottomNav`, `cartButton`, `cartBar`, `layout` (`'column'` or `'full'`) and `width` (`'default'` or `'wide'`).
-  `getShellConfig` returns the first pattern that `matchPath` matches exactly, else `NOT_FOUND_SHELL`. The customer
+  `getShellConfig` returns the first pattern that `matchPath` matches exactly, else `NOT_FOUND_SHELL`. Each config's
+  `title` names the tab (through `documentTitle`) and is announced on arrival, before the page has loaded anything, so
+  it must hold whatever the page turns out to show (`/orders/:id/success` is "Order confirmation", not "Order placed");
+  a page whose state outgrows it sets `document.title` itself and restores it on the way out (`OrderSuccess`, `Order`). The customer
   tabs (`bottomNav`) never show on the operator screens, `/staff` and `/admin` (`App.test.tsx`).
 - `layout: 'full'` renders the page alone; it owns its whole layout.
 - `layout: 'column'` renders `TopBar` (with `CartButton` on the right when `cartButton`), a centred `<main>`, the
@@ -106,21 +115,21 @@ Not found shell.
 
 ## Pages
 
-| Page                 | Data                                                                    | Notes                                                                                                                                                               |
-| -------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Home.tsx`           | `useStore()`                                                            | paprika hero with `StoreCard`                                                                                                                                       |
-| `Menu.tsx`           | `useMenu()`                                                             | `CategoryChips`, `PopularRail`, `FoodCard` list, `ItemDetailSheet`                                                                                                  |
-| `Cart.tsx`           | `useMenu()` (refreshes stock limits), `cartStore`                       | shows the Order Again notice from router state (`readReorderNotice`)                                                                                                |
-| `Checkout.tsx`       | `useMenu()`, `createOrder()`                                            | holds a green "Paid" state for 500 ms, then navigates to success with the order in router state                                                                     |
-| `OrderSuccess.tsx`   | `useOrder(id, passedOrder)`                                             | renders the passed order at once, then polls                                                                                                                        |
-| `Order.tsx`          | `useOrder(id)`, `useReorder()`                                          | tracking page with `OrderHero` and `StatusTracker`                                                                                                                  |
-| `Orders.tsx`         | `useOrders()`, `useReorder()`                                           | In progress / Past orders, Order Again                                                                                                                              |
-| `Profile.tsx`        | `authStore`                                                             | sign-out; a "Staff dashboard" row for `STAFF`, an "Admin dashboard" row for `ADMIN`; a footer "Food Pickup v0.1.0 (1a2b3c4)" from `lib/appVersion.ts`               |
-| `Login.tsx`          | `authStore.login`                                                       | `AuthCard`, `useAuthRedirect`                                                                                                                                       |
-| `Register.tsx`       | `authStore.register`                                                    | `AuthCard`, `useAuthRedirect`, `validation.ts`                                                                                                                      |
-| `StaffDashboard.tsx` | `useOrders({ audience: 'staff' })`, `useStore()`, `updateOrderStatus()` | owns polling, filters and status changes; the `Staff*` components are presentational                                                                                |
-| `Admin.tsx`          | `useSiteSettings()`                                                     | `AdminPage` + `SettingsForm`; edits every `site_settings` field from the `SETTING_FIELDS` registry (see [COMPONENTS.md#featuresadmin](COMPONENTS.md#featuresadmin)) |
-| `NotFound.tsx`       | none                                                                    |                                                                                                                                                                     |
+| Page                 | Data                                                                    | Notes                                                                                                                                                                                                                                                                                            |
+| -------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `Home.tsx`           | `useStore()`                                                            | paprika hero with `StoreCard`                                                                                                                                                                                                                                                                    |
+| `Menu.tsx`           | `useMenu()`                                                             | `CategoryChips`, `PopularRail`, `FoodCard` list, `ItemDetailSheet`                                                                                                                                                                                                                               |
+| `Cart.tsx`           | `useMenu()` (refreshes stock limits), `cartStore`                       | shows the Order Again notice from router state (`readReorderNotice`)                                                                                                                                                                                                                             |
+| `Checkout.tsx`       | `useMenu()`, `createOrder()`                                            | holds a green "Paid" state for 500 ms, then navigates to success with the order in router state                                                                                                                                                                                                  |
+| `OrderSuccess.tsx`   | `useOrder(id, passedOrder)`                                             | renders the passed order at once, then polls; with nothing passed in, a neutral skeleton (no celebration) until the order loads; a 404 is an `<h1>` not-found state titled "Order not found"; a failed fetch with no checkout handoff is a neutral retryable `<h1>` error, never "Order placed!" |
+| `Order.tsx`          | `useOrder(id)`, `useReorder()`                                          | tracking page with `OrderHero` and `StatusTracker`                                                                                                                                                                                                                                               |
+| `Orders.tsx`         | `useOrders()`, `useReorder()`                                           | In progress / Past orders, Order Again                                                                                                                                                                                                                                                           |
+| `Profile.tsx`        | `authStore`                                                             | sign-out; a "Staff dashboard" row for `STAFF`, an "Admin dashboard" row for `ADMIN`; a footer "Food Pickup v0.1.0 (1a2b3c4)" from `lib/appVersion.ts`                                                                                                                                            |
+| `Login.tsx`          | `authStore.login`                                                       | `AuthCard`, `useAuthRedirect`                                                                                                                                                                                                                                                                    |
+| `Register.tsx`       | `authStore.register`                                                    | `AuthCard`, `useAuthRedirect`, `validation.ts`                                                                                                                                                                                                                                                   |
+| `StaffDashboard.tsx` | `useOrders({ audience: 'staff' })`, `useStore()`, `updateOrderStatus()` | owns polling, filters and status changes; the `Staff*` components are presentational                                                                                                                                                                                                             |
+| `Admin.tsx`          | `useSiteSettings()`                                                     | `AdminPage` + `SettingsForm`; edits every `site_settings` field from the `SETTING_FIELDS` registry (see [COMPONENTS.md#featuresadmin](COMPONENTS.md#featuresadmin))                                                                                                                              |
+| `NotFound.tsx`       | none                                                                    |                                                                                                                                                                                                                                                                                                  |
 
 Polling intervals and the `useResource` engine are drawn in
 [ARCHITECTURE.md](ARCHITECTURE.md#72-the-polling-engine-useresource).
@@ -128,14 +137,16 @@ Polling intervals and the `useResource` engine are drawn in
 ## Stores
 
 The auth and cart stores are zustand with the `persist` middleware (localStorage); the checkout draft persists to
-sessionStorage; the version store is in memory.
+sessionStorage; the version store is in memory. Every persisted store passes `storage: safeJSONStorage(...)`
+(`lib/safeStorage.ts`): zustand writes inside each `set()` without a catch, so on full storage an ordinary action (the
+menu's cart sync, a sign-in) threw; with it the store carries on in memory and only stops surviving a reload.
 
 | Store                   | File                                                 | localStorage key                          | Persisted                                 | Holds                                                                                                                                                                                                                                                                                                                                                              |
 | ----------------------- | ---------------------------------------------------- | ----------------------------------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `useAuthStore`          | `client/src/features/auth/authStore.ts`              | `fp_auth`                                 | `user`, `token`                           | the profile and a mirror of the Supabase access token; `login`, `register`, `logout`, `hydrate`, `clearSession`                                                                                                                                                                                                                                                    |
 | `useCartStore`          | `client/src/features/cart/cartStore.ts`              | `fp_cart` (version 1)                     | `lines`                                   | cart lines; `add`, `increment`, `decrement`, `remove`, `clear`, `fix`, `setAvailability`, `syncAvailability`                                                                                                                                                                                                                                                       |
 | `useCheckoutDraftStore` | `client/src/features/checkout/checkoutDraftStore.ts` | `fp_checkout` (sessionStorage, version 1) | `name`, `phone`, `note`, `idempotencyKey` | the checkout form as typed (a refresh or Back keeps it; `null` = never touched, so the profile fills it) and one idempotency key per attempt (`ensureKey`); `reset` after the order is placed; `dropKey` after a 409 `IDEMPOTENCY_KEY_REUSED`; reset on every sign-in and sign-out by `authStore.ts` (always loaded), so typed data never reaches the next account |
-| `useVersionStore`       | `client/src/features/version/versionStore.ts`        | –                                         | nothing                                   | `outdated` (set by `services/api.ts` on a 426 `CLIENT_OUTDATED`), `markOutdated`; `OutdatedBanner` in `App.tsx` shows "New version available" with Refresh on every screen while it is set                                                                                                                                                                         |
+| `useVersionStore`       | `client/src/features/version/versionStore.ts`        | –                                         | nothing                                   | `outdated` (set by `services/api.ts` on a 426 `CLIENT_OUTDATED`), `markOutdated`; `OutdatedBanner` in `App.tsx` shows "New version available" with Refresh on every screen while it is set.                                                                                                                                                                        |
 
 - supabase-js keeps the real session in localStorage under its own key (`sb-<project-ref>-auth-token`) and refreshes
   it. `authStore` subscribes to `supabase.auth.onAuthStateChange` to keep `token` in step, and `services/api.ts` reads
@@ -154,15 +165,16 @@ sessionStorage; the version store is in memory.
 
 Only these modules call `request()` from `services/api.ts`. Components and hooks call the service functions.
 
-| File                 | Functions                                                                                | Endpoints                                                                    |
-| -------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `services/api.ts`    | `request<T>(path, { method, body, auth, signal })`, `ApiError`                           | base `/api`; attaches the bearer token when `auth` (default true)            |
-| `services/auth.ts`   | `signIn`, `signOut` (supabase-js), `register`, `fetchMe`                                 | `POST /auth/register`, `GET /auth/me`                                        |
-| `services/store.ts`  | `fetchStore`, `prefetchStore`                                                            | `GET /store`                                                                 |
-| `services/config.ts` | `fetchConfig`                                                                            | `GET /config` without a token; concurrent callers share one request          |
-| `services/menu.ts`   | `fetchMenu`, `prefetchMenu`                                                              | `GET /menu`                                                                  |
-| `services/orders.ts` | `createOrder`, `fetchOrders(status?)`, `fetchOrder(id)`, `updateOrderStatus(id, status)` | `POST /orders`, `GET /orders`, `GET /orders/:id`, `PATCH /orders/:id/status` |
-| `services/admin.ts`  | `fetchSiteSettings()`, `updateSiteSettings(changes)`                                     | `GET /admin/settings`, `PATCH /admin/settings`                               |
+| File                       | Functions                                                                                | Endpoints                                                                                                                                                                                 |
+| -------------------------- | ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `services/api.ts`          | `request<T>(path, { method, body, auth, signal, keepalive })`, `ApiError`                | base `/api`; attaches the bearer token when `auth` (default true); forwards `keepalive` to `fetch`                                                                                        |
+| `services/auth.ts`         | `signIn`, `signOut` (supabase-js), `register`, `fetchMe`                                 | `POST /auth/register`, `GET /auth/me`                                                                                                                                                     |
+| `services/store.ts`        | `fetchStore`, `prefetchStore`                                                            | `GET /store`                                                                                                                                                                              |
+| `services/config.ts`       | `fetchConfig`                                                                            | `GET /config` without a token; concurrent callers share one request                                                                                                                       |
+| `services/clientErrors.ts` | `sendClientErrors(reports)`, `ClientErrorReport`                                         | `POST /client-errors` without auth, with `keepalive` and `X-Client-Version`; failures are swallowed with no retry; see [LOGGING.md#client-error-reports](LOGGING.md#client-error-reports) |
+| `services/menu.ts`         | `fetchMenu`, `prefetchMenu`                                                              | `GET /menu`                                                                                                                                                                               |
+| `services/orders.ts`       | `createOrder`, `fetchOrders(status?)`, `fetchOrder(id)`, `updateOrderStatus(id, status)` | `POST /orders`, `GET /orders`, `GET /orders/:id`, `PATCH /orders/:id/status`                                                                                                              |
+| `services/admin.ts`        | `fetchSiteSettings()`, `updateSiteSettings(changes)`                                     | `GET /admin/settings`, `PATCH /admin/settings`                                                                                                                                            |
 
 `request()`:
 
@@ -175,6 +187,17 @@ Only these modules call `request()` from `services/api.ts`. Components and hooks
 - logs 5xx at `error` and 4xx at `debug`, with the response's `x-request-id`.
 
 `ApiError.isUnreachable` is true for status 0 or code `UNREACHABLE`.
+
+`CLIENT_RELOAD_REQUIRED` is a client-only code (status 0, so also unreachable), never sent by the server: an
+authenticated `request()` or `signIn` throws it when the supabase-js chunk failed to load (`loadSupabase()`
+in `services/api.ts`); `signOut` then removes the stored session itself (`clearStoredSession()`), so the reload cannot
+sign the user back in. `getSupabase()` retries a failed `import()` once first (Firefox and Safari fetch it again);
+Chromium keeps a failed `import()` for the page's life, so there only a reload helps. The code logs "Sign-in module failed to load" once per page life. An `ErrorState` given `code` =
+`CLIENT_RELOAD_REQUIRED` shows "Reload" (`window.location.reload()`) instead of its retry, including Checkout's Pay
+error, which otherwise has none; errors from public loads (menu, store) keep their retry. The auth store loads
+supabase-js through `loadSupabase()` as well: on app start `hydrate()` keeps the persisted session and resolves (a
+network condition, not a crash report), and `login()` shows the code's message in the form. The cart, the checkout draft and its idempotency key are
+persisted, so the reload loses nothing.
 
 ## Feature folders
 
@@ -222,6 +245,9 @@ orders are user-specific and must never survive a sign-out on a shared device.
 If a refresh fails while a saved copy is showing, `MenuPage` and `HomePage` keep the saved copy and add a compact
 `ErrorState` ("Showing your saved menu" + Retry) instead of hiding it; checkout re-checks stock and prices anyway.
 
+A render crash clears every persisted copy (`PageBoundary` calls `clearPersistedCache()`), so one malformed 200 that
+was cached cannot crash every later load: Reload starts clean.
+
 Bump `CACHE_PREFIX` (`fp_cache:v1:` → `fp_cache:v2:`, …) whenever a persisted response's shape changes, so old code
 never hands new code a shape it no longer expects. Reading or writing the cache never throws: private-mode or a full
 quota just means no head start, not a crash.
@@ -235,7 +261,7 @@ produced by `python3 client/scripts/optimize-images.py` (see
 srcset. `components/FoodPhoto.tsx` renders it with a `sizes` prop that must match the photo's real rendered width so
 the browser downloads the small file: the default is `112px` (menu and cart list photos), `PopularRail` passes
 `188px`, `ItemDetailSheet` passes `"(min-width: 768px) 480px, 100vw"`. `lib/photo.test.ts` fails if a bundled photo
-is missing its `-400` thumbnail or is over the ~80 KB budget (CLAUDE.md §2b; `optimize-images.py --refit` fixes it).
+is missing its `-400` thumbnail or is over the ~80 KB budget (`.claude/rules/frontend.md` §2b; `optimize-images.py --refit` fixes it).
 
 ### The largest paint
 
@@ -255,14 +281,23 @@ first request does not wait for it after the page's own lazy chunk (e2e "supabas
 ### Lazy routes
 
 The screens a customer does not need to browse the menu and fill a cart are code-split in `App.tsx`: `CheckoutPage`,
-`OrderSuccessPage`, `LoginPage`, `RegisterPage` and `StaffDashboardPage` are `lazy()` imports (see the [route
-table](#routes)). `components/PageBoundary.tsx` wraps the whole `<Routes>` list: a `Skeleton` (padded, not
-margined, so the page does not move) while a chunk
-downloads (`Suspense`), and if the download itself fails (offline, or a stale deploy whose old chunk was removed) an
-`ErrorState` with a reload button instead of a blank screen (`getDerivedStateFromError`).
+`OrderSuccessPage`, `LoginPage`, `RegisterPage`, `AdminPage` and `StaffDashboardPage` are `lazy()` imports (see the
+[route table](#routes)). `PageBoundary` in page scope wraps the whole `<Routes>` list and owns its loading skeleton;
+an outer app scope wraps the router and shell without adding another skeleton. The boundary distinguishes a failed
+chunk download from a render bug, so a lost connection and a crash get different fallback copy and reports (props
+and fallback behavior: [COMPONENTS.md](COMPONENTS.md#layout-and-navigation)).
+
+`main.tsx` installs `lib/errorReporter.ts` before startup work and rendering. `App` passes
+`useConfig().clientErrors.samplePercent` to `setSamplePercent` once loaded or cached server configuration replaces
+the `serverVersion: 'unknown'` fallback. The effect (`ClientErrorSampling`) sits in its own app boundary beside the
+shell's, so reporting still gets configured when the shell crashes on its first render, and a config that crashes its
+reader is reported and renders nothing (`PageBoundary silent`) instead of a blank page. Then `setSamplePercent` never
+runs and reports stay buffered, unsent: the safe side of a 0% sample. Startup errors wait for that first server sampling value.
+The reporter sends through `services/clientErrors.ts`; its limits and privacy rules live in
+[LOGGING.md](LOGGING.md#client-error-reports).
 
 ## Tests
 
 Client unit tests live next to the code as `src/**/<name>.test.ts(x)`, for example `lib/format.test.ts`,
-`lib/photo.test.ts` and `lib/useResource.test.ts`. The WebKit smoke is `e2e/smoke.spec.ts` (`npm run e2e:webkit`,
+`lib/photo.test.ts` and `lib/useResource.test.ts`. The e2e suite is `e2e/*.spec.ts` (core path in `smoke.spec.ts`; `npm run e2e:webkit`,
 after `npm run e2e:install` once). See [TESTING.md](TESTING.md).

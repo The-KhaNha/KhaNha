@@ -33,6 +33,8 @@ const envSchema = z
     // from GET /api/config.
     SESSION_IDLE_DAYS: z.coerce.number().int().min(1).max(90).default(7),
     PORT: z.coerce.number().int().positive().default(8000),
+    /** The worker process's GET /health (src/worker.ts); the API never listens on it. */
+    WORKER_HEALTH_PORT: z.coerce.number().int().positive().default(8001),
     /** How long public reads (menu, store, site settings) stay in the per-process cache. 0 turns it off. */
     PUBLIC_READ_TTL_MS: z.coerce.number().int().min(0).max(600_000).default(10_000),
     // Proxies in front of the API whose X-Forwarded-For Express should trust (compose's nginx: 1). 0 trusts none, so
@@ -44,6 +46,7 @@ const envSchema = z
     RATE_LIMIT_IP_MAX: z.coerce.number().int().min(0).default(600),
     RATE_LIMIT_WRITE_MAX: z.coerce.number().int().min(0).default(30),
     RATE_LIMIT_REGISTER_MAX: z.coerce.number().int().min(0).default(10),
+    RATE_LIMIT_CLIENT_ERRORS_MAX: z.coerce.number().int().min(0).default(30),
     CLIENT_ORIGIN: z
       .string()
       .url('CLIENT_ORIGIN must be a URL such as http://localhost:5173.')
@@ -74,7 +77,12 @@ const envSchema = z
 type Env = z.infer<typeof envSchema>;
 
 function loadEnv(): Env {
-  const result = envSchema.safeParse(process.env);
+  // A blank value (`RATE_LIMIT_IP_MAX=` in .env or a host's settings) means unset. Coerced as is it would be 0, which
+  // silently turns a rate limit or the read cache off instead of falling back to its default.
+  const set = Object.fromEntries(
+    Object.entries(process.env).filter(([, value]) => value?.trim() !== ''),
+  );
+  const result = envSchema.safeParse(set);
   if (result.success) return result.data;
 
   const problems = result.error.issues

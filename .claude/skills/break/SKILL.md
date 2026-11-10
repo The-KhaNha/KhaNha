@@ -18,6 +18,9 @@ need the shared Playwright browser, so they never run at the same time.
 2. Confirm the API points at local Supabase: `curl -s localhost:8000/api/config | jq -r .` and
    `grep -c 127.0.0.1 server/.env` (never print the file). If either names a hosted project, stop and ask.
 3. `mkdir -p <scratchpad>/break` for the reports.
+4. Run `claude-security:claude-security` first (a scan of the branch's changes after a change; the full codebase
+   before a release) and save its findings as `<scratchpad>/break/static.md`. Pass them to the `security` group as
+   leads to confirm live; the live run decides whether something is a BREAK.
 
 ## 1. Run the groups
 
