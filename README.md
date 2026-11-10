@@ -52,6 +52,8 @@ docker compose up --build web api
 ```
 
 Then open http://localhost:8080 and run the demo below. Details: [Local compose](docs/DEPLOYMENT.md#local-compose).
+Or `./build.sh dev && ./run.sh dev` (`staging` for the staging project, on http://localhost:8081): see
+[build.sh and run.sh](docs/DEPLOYMENT.md#buildsh-and-runsh).
 
 ## Quick start
 

@@ -419,6 +419,30 @@ docker compose ps                                                             # 
 when it starts. The web container refuses to start without `SUPABASE_PUBLISHABLE_KEY`. Seed through the image with
 `docker compose run --rm api node dist/scripts/seed.js`. The worker ([JOBS.md](JOBS.md#the-worker-process)) runs wherever the API runs; more than one replica is safe. `reconciler` and `minio` are commented placeholders for later phases.
 
+### build.sh and run.sh
+
+The same compose file, one command per step, for the local stack (`dev`) or the staging project (`staging`):
+
+```bash
+./build.sh dev|staging            # builds fp-api:<env> and fp-web:<env> (GIT_COMMIT = short sha, -dirty if uncommitted)
+./run.sh dev|staging              # api + worker + web, waits until all three are healthy
+./run.sh dev|staging down|logs|ps|seed
+```
+
+|          | `dev`                                         | `staging`                                             |
+| -------- | --------------------------------------------- | ----------------------------------------------------- |
+| API env  | `server/.env` (`APP_ENV=local`)               | `server/.env.staging` (`APP_ENV=staging`, gitignored) |
+| Web env  | `client/.env.development`                     | `client/.env.staging`                                 |
+| Supabase | the host stack (`run.sh` starts it if needed) | the staging project; apply migrations first           |
+| URL      | http://localhost:8080                         | http://localhost:8081                                 |
+
+`scripts/docker-env.sh` (sourced by both) refuses a missing env file, a wrong `APP_ENV`, any `REPLACE_…` placeholder
+left in the API env file, and a staging API and web pointed at different projects. Each environment is its own compose
+project (`fp-dev`, `fp-staging`) with its own network, so both can run at once. It sets the variables `compose.yaml`
+reads (`FP_ENV`, `API_ENV_FILE`, `API_SUPABASE_URL`, `API_SUPABASE_JWKS_URL`, `BROWSER_SUPABASE_URL`, `WEB_PORT`,
+`SUPABASE_PUBLISHABLE_KEY`); unset, they default to the local stack above. `run.sh staging seed` asks before it
+wipes the staging orders. Production is not a target: its images run on the production host.
+
 ### Running the images by hand
 
 ```bash
