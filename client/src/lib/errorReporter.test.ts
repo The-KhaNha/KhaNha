@@ -239,3 +239,63 @@ describe('browser error reporter', () => {
     expect(sent()).not.toContain('private-preferences');
   });
 });
+
+// Phone numbers written with wider separators slipped past the first pattern (up to two of space, dash, dot or
+// parenthesis). Ordinary short numbers must survive. `#1002` is not listed: the `#…` fragment rule already drops it.
+describe('browser error reporter: phone numbers', () => {
+  const report = (text: string) => {
+    reporter.installErrorReporter();
+    reporter.setSamplePercent(100);
+    reporter.reportError(new Error(text), 'error');
+    flush();
+    return sent();
+  };
+
+  it.each([
+    ['spaced dashes', '+91 - 98765 - 43210', '43210'],
+    ['a slash', '98765/43210', '43210'],
+    ['brackets and a dash', '(987) 654-3210', '3210'],
+    ['a space', '98765 43210', '43210'],
+    ['dots', '+91.98765.43210', '43210'],
+  ])('scrubs a phone with %s', (_label, phone, leftover) => {
+    const body = report(`call ${phone} failed`);
+    expect(body).not.toContain(leftover);
+    expect(body).toContain('call [Redacted] failed');
+  });
+
+  it.each([
+    ['an order number', 'Order 1002 not found'],
+    ['a price', 'Total ₹270 does not match'],
+    ['a time', 'Pickup at 12:30 is closed'],
+    ['an ISO date', 'No slots on 2026-11-09'],
+    ['an ISO timestamp', 'Stale at 2026-11-09T12:30:00.000Z'],
+    ['a quantity and a stack position', 'Only 3 left at checkout.js:120:7'],
+  ])('leaves %s alone', (_label, text) => {
+    expect(report(text)).toContain(text);
+  });
+
+  it('stays linear on long runs of digits and phone separators', async () => {
+    for (const run of [
+      '1 - '.repeat(2000),
+      `${'1/'.repeat(9)}x`.repeat(400),
+      '( -/'.repeat(2000),
+    ]) {
+      // Best of three absorbs a noisy CI neighbour; a fresh module each time resets the dedup and report cap,
+      // and the flushed report proves every timed call really went through the scrub.
+      let best = Infinity;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        vi.resetModules();
+        sendClientErrors.mockClear();
+        reporter = await import('./errorReporter');
+        reporter.installErrorReporter();
+        reporter.setSamplePercent(100);
+        const start = performance.now();
+        reporter.reportError(new Error(run), 'error');
+        best = Math.min(best, performance.now() - start);
+        flush();
+        expect(sendClientErrors).toHaveBeenCalledOnce();
+      }
+      expect(best).toBeLessThan(50);
+    }
+  });
+});

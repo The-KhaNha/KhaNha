@@ -61,6 +61,26 @@ export function accessLevel(req: IncomingMessage, res: ServerResponse): 'debug' 
   return (read && res.statusCode < 400) || loggedAtDebug.has(res) ? 'debug' : 'info';
 }
 
+const QUERY_AND_HASH = /[?#][\s\S]*$/;
+
+/**
+ * The access line's request, as a path only. A query string can carry an email, a phone or a token, and REDACT_PATHS
+ * blanks keys, never the inside of a URL; the parsed `query` the standard serializer adds is dropped for the same
+ * reason (`req.query.email` sits deeper than `*.email` reaches). The `Referer` header is the page's full URL (same
+ * origin, so the browser sends its query), and is cut the same way; the headers are copied, never edited in place.
+ */
+function pathOnly(req: IncomingMessage) {
+  const { query: _query, ...rest } = pino.stdSerializers.req(req);
+  const { referer } = rest.headers;
+  return {
+    ...rest,
+    url: rest.url.replace(QUERY_AND_HASH, ''),
+    headers: referer
+      ? { ...rest.headers, referer: referer.replace(QUERY_AND_HASH, '') }
+      : rest.headers,
+  };
+}
+
 /** The whole request pipeline, without `listen`, so tests can drive it with Supertest. */
 export function createApp(): Express {
   const app = express();
@@ -90,7 +110,7 @@ export function createApp(): Express {
       wrapSerializers: false,
       serializers: {
         ...LOG_SERIALIZERS,
-        req: pino.stdSerializers.req,
+        req: pathOnly,
         res: pino.stdSerializers.res,
       },
       customLogLevel: accessLevel,
