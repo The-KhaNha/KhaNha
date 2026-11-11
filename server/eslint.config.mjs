@@ -20,7 +20,8 @@ const forbidTables = (file) => [
   ...Object.entries(TABLE_OWNERS)
     .filter(([, owners]) => !owners.includes(file))
     .map(([table, owners]) => ({
-      selector: `CallExpression[callee.property.name='from'][arguments.0.value='${table}']`,
+      // The second form is a no-substitution template literal, `.from(\`orders\`)`, which has no `.value`.
+      selector: `CallExpression[callee.property.name='from'][arguments.0.value='${table}'], CallExpression[callee.property.name='from'][arguments.0.type='TemplateLiteral'][arguments.0.expressions.length=0][arguments.0.quasis.0.value.cooked='${table}']`,
       message: `\`${table}\` is store-scoped: query it only in ${owners.join(', ') || 'its future owning service'} and call that from here.`,
     })),
 ];

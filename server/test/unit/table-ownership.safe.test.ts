@@ -25,6 +25,13 @@ describe('table ownership lint rule', () => {
     expect(await ownershipErrors('src/jobs/runner.ts', 'order_items')).toHaveLength(1);
   });
 
+  it('flags a table named with a template literal', async () => {
+    const [result] = await eslint.lintText('supabaseAdmin.from(`orders`).select();\n', {
+      filePath: 'src/services/menu.service.ts',
+    });
+    expect(result?.messages.filter((m) => m.ruleId === 'no-restricted-syntax')).toHaveLength(1);
+  });
+
   it('flags a table with no owner yet in every source file', async () => {
     expect(
       await ownershipErrors('src/services/order.service.ts', 'store_memberships'),
