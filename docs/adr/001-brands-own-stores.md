@@ -5,9 +5,13 @@
 Accepted with amendments (2026-10-24), by the user: a brand is a template its stores copy, not a live catalog they
 override; staff memberships are per store only; the brand owner is the one role that sees across stores.
 
+Amended (2026-11-11), by the user: the brand template is stored as a store that is never public, not in tables of
+its own; and the single-store endpoints are removed inside P2, with no configured default store, because nothing is
+deployed before P8.
+
 ## Date
 
-2026-09-28 (proposed), 2026-10-24 (accepted)
+2026-09-28 (proposed), 2026-10-24 (accepted), 2026-11-11 (amended)
 
 ## Context
 
@@ -31,6 +35,10 @@ A brand is the business. It holds a **template**: everything a store is configur
 with its categories, items, prices and photos, and the store settings). Each store is created as a copy of its
 brand's template and from then on is its own entity: it can change anything.
 
+- **The template is a store that is never public** (amended 2026-11-11). A brand points at one `stores` row marked
+  as its template, which can never become `ACTIVE`. The template's menu and settings live in the same tables as any
+  store's, so there is no second set of template tables, and the owner edits the template with the same screens as a
+  store. Only the brand's owner reaches it.
 - **Copy at creation, push on demand.** A template edit reaches only stores created after it, unless the owner pushes
   it to chosen stores. A push overwrites the pushed fields in those stores' copies and is audited.
 - **Lineage for analytics.** Each copied menu item keeps `template_item_id`, the template item it came from, so
@@ -51,14 +59,17 @@ brand's template and from then on is its own entity: it can change anything.
 - Each outlet runs independently day to day, with no override layer to reason about.
 - Template and stores drift apart by design; bringing them back together is an explicit, audited push.
 - Cross-branch analytics roll up by brand and by template item.
-- New tables (`brands` with its owner, the brand template, store memberships), `menu_items.template_item_id`, and an
-  expand/backfill/contract migration of `stores`.
-- The legacy endpoints (`GET /api/store`, `GET /api/menu`, `POST /api/orders`, `PATCH /api/orders/:id/status`) serve
-  a configured default store until the contract step, so the deployed client keeps working.
+- New tables (`brands` with its owner, store memberships), a template marker on `stores` with the brand's pointer to
+  it, `menu_items.template_item_id`, and an expand/backfill/contract migration of `stores`.
+- The legacy endpoints (`GET /api/store`, `GET /api/menu`, `POST /api/orders` without a store,
+  `PATCH /api/orders/:id/status`) keep working while P2 is built, serving the oldest store, and are removed in P2's
+  last PR (amended 2026-11-11). Nothing is deployed before P8, so no released client depends on them, and there is
+  no configured default store and no contract release.
 - A missed store filter becomes a cross-tenant leak risk, mitigated by the scoping helper, a lint rule and a tenant
   isolation test matrix on every store endpoint; the brand analytics endpoints are scoped by the brand owner.
 - The roadmap's P2 and P3.1 sections still describe the live catalog with per-store overrides and brand-scoped
-  memberships; they are rewritten to this model before P2 is planned.
+  memberships; they are rewritten to this model in the first PR of the [P2 plan][p2-plan], which, with the
+  [P3 plan][p3-plan], is built on this ADR.
 
 ## Links
 
@@ -68,7 +79,10 @@ brand's template and from then on is its own entity: it can change anything.
 - [P2.7 Compatibility and contract][p2.7]
 - [P3.1 Catalog for multi-branch brands][p3.1]
 - [Roles and permissions (target)][roles-and-permissions-target]
+- [P2 plan][p2-plan], [P3 plan][p3-plan]
 
+[p2-plan]: ../../plans/P2_MULTI_STORE.md
+[p3-plan]: ../../plans/P3_CATALOG_AND_MEDIA.md
 [p2--multi-store-and-multi-branch]: ../../plans/ROADMAP.md#p2--multi-store-and-multi-branch
 [design-hld]: ../../plans/ROADMAP.md#design-hld
 [p2.1]: ../../plans/ROADMAP.md#p21-brands-and-stores-v2

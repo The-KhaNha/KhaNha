@@ -1512,6 +1512,9 @@ it.
 
 ### P1.8 Tooling: pnpm (after the phase merges)
 
+> **How it is built:** [P1_8_PNPM.md](P1_8_PNPM.md), two PRs into `dev`, on pnpm 12. Where the plan and this
+> section disagree (settings live in `pnpm-workspace.yaml`, commands are `pnpm run <script>`), the plan is newer.
+
 Not part of the `feat/P1` branch: its own PR into `dev`, once `feat/P1` is in, so it never conflicts with phase PRs.
 
 **Why.** Three independent package roots (root, `client/`, `server/`) each install their own `node_modules`. pnpm
@@ -1550,6 +1553,11 @@ green, both images build and pass `/healthz`, `pnpm release:dry` prints the same
 **Goal:** many restaurants, some of them chains with several branches, each with its own staff, hours, stock and
 settings, served by one app. **Items:** R1, R3 (store settings), R26, R31, and the role split R11 depends on.
 **Depends on:** P1. **Size:** L. **Flag:** `multi_store_ui`.
+
+> **How it is built:** [P2_MULTI_STORE.md](P2_MULTI_STORE.md), PR by PR on the `feat/P2` branch. This section
+> predates [ADR-001](../docs/adr/001-brands-own-stores.md) as amended (per-store memberships, the owner on the
+> brand, brand templates): where they disagree, the ADR and the plan win until the plan's PR 00 rewrites this
+> section.
 
 ### Design (HLD)
 
@@ -1682,7 +1690,8 @@ as a matrix:
 - **Where users land.** `homeFor(user)` sends platform admins to `/admin`, owners and managers to `/manage`, staff to
   `/staff`, and customers to `/`. With several stores, the page opens with a store switcher.
 - **Team API** (`team.manage`). `GET /api/stores/:storeId/members` and `POST .../invites` (email or phone, role).
-  `DELETE .../members/:membershipId`. Invites are accepted through `POST /api/me/invites/:token/accept`. Every change
+  `DELETE .../members/:membershipId`. Invites are accepted through `POST /api/me/invites/accept`, with the token in the body, never in a path that is
+  logged. Every change
   is audited, and nobody can remove the brand's last owner.
 
 ### P2.3 Store-scoped orders and settings
@@ -1894,6 +1903,11 @@ variant), CONFIGURATION (store settings), README (demo script for two stores).
 **Goal:** restaurants run their own menus (items, photos, customisations, stock, deals) from the dashboard, and chains
 edit an item once for every branch. **Items:** R1 (multi-branch catalog), R4.2.1, R11.2 (menu and stock), R17, R24.
 **Depends on:** P2, and P8.3 for the staging bucket. **Size:** L. **Flag:** `modifiers`.
+
+> **How it is built:** [P3_CATALOG_AND_MEDIA.md](P3_CATALOG_AND_MEDIA.md), PR by PR on the `feat/P3` branch. P3.1
+> below (a live brand catalog with per-store overrides) was rejected in
+> [ADR-001](../docs/adr/001-brands-own-stores.md) as amended; the plan builds the brand template instead, and P2's
+> PR 00 rewrites P3.1. The plan also moves P3.6 behind P5.9 (an open decision there).
 
 ### P3.1 Catalog for multi-branch brands
 
@@ -3593,6 +3607,11 @@ and `main` deploys production (P8.5). This is a parallel track. P8.1–P8.5 for 
 pilot. **Items:** R16, R17, R18, R21, R3 (secrets), R6 (observability), R14 (usage load). **Depends on:** P0.6.
 **Size:** L.
 
+> **How it is built:** [P8_INFRASTRUCTURE.md](P8_INFRASTRUCTURE.md), PR by PR straight into `dev`. Decided on
+> 11 November 2026 (ADR-007 and ADR-011 as amended): production only to start, on one small host with no load
+> balancer, inside a budget of about $35 a month; a staging on AWS follows one to two months after the first
+> release. Where the plan and this section disagree, the plan is newer.
+
 ### P8.1 AWS foundation with Terraform
 
 - **Accounts.** Separate AWS accounts for staging and production under AWS Organizations (the blast radius stops at
@@ -4666,7 +4685,7 @@ Everything new or changed, with the step that adds it. Legacy endpoints stay unt
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------- |
 | Platform        | `GET /api/config`, `GET /api/ready`, `GET /api/health` (+version) (P0); `GET /api/me/config` (P1.7); `POST /api/client-errors` (P1.6); `POST /api/client-metrics` (P8.7)                                                                                                                                                             | P0               |
 | Stores          | `GET /api/stores`, `GET /api/stores/:storeRef`, `GET /api/stores/:storeRef/menu`, `GET/PUT /api/stores/:storeId/hours`, `POST/DELETE /api/stores/:storeId/schedule-exceptions`, `POST /api/stores/:storeId/pause`, `POST /api/stores/:storeId/resume`, `PATCH /api/stores/:storeId`, `PATCH /api/stores/:storeId/settings`           | P2               |
-| Team            | `GET /api/stores/:storeId/members`, `POST /api/stores/:storeId/invites`, `DELETE /api/stores/:storeId/members/:membershipId`, `POST /api/me/invites/:token/accept`                                                                                                                                                                   | P2.2             |
+| Team            | `GET /api/stores/:storeId/members`, `POST /api/stores/:storeId/invites`, `DELETE /api/stores/:storeId/members/:membershipId`, `POST /api/me/invites/accept` (token in the body)                                                                                                                                                      | P2.2             |
 | Catalog         | `GET /api/brands/:brandId/catalog`, `POST/PATCH/DELETE /api/brands/:brandId/catalog-items[/:itemId]`, `PUT /api/brands/:brandId/categories/order`, modifier groups CRUD, `GET/PATCH /api/stores/:storeId/listings[/:menuItemId]`, `POST /api/stores/:storeId/listings/bulk`, `PATCH /api/stores/:storeId/listings/:menuItemId/stock` | P3               |
 | Media           | `POST /api/brands/:brandId/media/uploads`, `POST /api/brands/:brandId/media/uploads/:uploadId/complete`                                                                                                                                                                                                                              | P3.3             |
 | Deals           | `GET/POST/DELETE /api/stores/:storeId/deals`, `POST /api/stores/:storeId/orders/:orderId/use-surplus`                                                                                                                                                                                                                                | P3.6             |

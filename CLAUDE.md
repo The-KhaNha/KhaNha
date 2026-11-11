@@ -180,6 +180,27 @@ Agents live in `.claude/agents/`, skills in `.claude/skills/`. The agents table,
 `/post-change` once a major piece of work is finished, not after every edit; on CodeRabbit content, delegate to
 `coderabbit-fixer` without waiting to be asked.
 
+### Orchestrator and implementers
+
+On a phase plan the main agent orchestrates: it decides who implements each PR, reviews the result, and keeps the
+branch, `/post-change`, the commit, the push and the PR (§12 forbids them to a subagent).
+
+- **A `sonnet` implementer** (`general-purpose` with `model: "sonnet"`) when the plan's PR section already names the
+  files, the tests and the verify step, and the PR touches none of the areas in the next bullet. One implementer at
+  a time (one shared working tree, §12), a fresh one per PR.
+- **The main agent itself** when the PR changes auth or permissions, who may read or move an order, `place_order` or
+  any price, stock or money path, file uploads, or anything that reaches production (Terraform, IAM, secrets, deploy
+  workflows); or when the plan leaves a design choice open.
+
+The brief names the plan file and the PR heading to read, the branch, the rule files for the packages touched, and
+the done-check (the §13 gate green, its output in the report). It points at the plan instead of repeating it.
+
+The review is quick but real: read the whole diff against the PR's section (every file, test and doc it names is
+there, nothing outside its theme), then run the §13 gate yourself; an implementer's "passing" is not evidence. A
+small fix you apply yourself; a larger one goes to a fresh implementer with the findings; after a second failed
+round you take the PR over. When the session itself runs on Sonnet, implement directly: a hand-off to the same model
+only adds cost.
+
 ### Verdict handoff
 
 A subagent's report is the start of action, not the end of the turn. Classify every item and act in the same turn:

@@ -124,6 +124,9 @@ on the spawn:
 - `opus` when it has to design, choose between approaches, find an unknown cause, or decide something about auth,
   orders, money or a migration's shape.
 
+Who implements a phase plan's PR (a `sonnet` implementer or the main agent), the brief and the review are
+`CLAUDE.md` §17 "Orchestrator and implementers".
+
 ## 18. Long-running processes
 
 - **Always background:** `./start.sh`, dev servers, `docker compose up` (or run it with `-d`; stop with
