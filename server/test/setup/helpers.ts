@@ -73,10 +73,10 @@ export async function deleteTestUser(user: TestUser | undefined): Promise<void> 
   if (error) throw error;
 }
 
-/** Wipes orders and restores the demo store, menu and accounts (`npm run seed`). Local only. */
+/** Wipes orders and restores the demo store, menu and accounts (`pnpm run seed`). Local only. */
 export function resetDemoData(): void {
   if (resolveTestTarget() !== 'local') throw new Error('resetDemoData is destructive: local only.');
-  execFileSync('npx', ['tsx', 'scripts/seed.ts'], { stdio: 'ignore' });
+  execFileSync('pnpm', ['exec', 'tsx', 'scripts/seed.ts'], { stdio: 'ignore' });
   // The seed rewrote the menu behind the API's back; drop the in-process read cache (utils/cache.ts).
   invalidate();
 }
@@ -89,8 +89,8 @@ export function localSql<Row>(sql: string): Row[] {
   if (resolveTestTarget() !== 'local')
     throw new Error('localSql reaches past the API: local only.');
   const out = execFileSync(
-    'npx',
-    ['supabase', 'db', 'query', '--local', '--output-format', 'json', sql],
+    'pnpm',
+    ['exec', 'supabase', 'db', 'query', '--local', '--output-format', 'json', sql],
     {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],

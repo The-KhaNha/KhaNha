@@ -9,8 +9,8 @@ function importEnv(seedStaffPassword: string): { status: number; output: string 
   const childEnv = { ...process.env, LOG_LEVEL: 'info', SEED_STAFF_PASSWORD: seedStaffPassword };
   try {
     const output = execFileSync(
-      'npx',
-      ['tsx', '-e', "import('./src/utils/env.ts').then(() => console.log('OK'))"],
+      'pnpm',
+      ['exec', 'tsx', '-e', "import('./src/utils/env.ts').then(() => console.log('OK'))"],
       { cwd: CWD, env: childEnv, encoding: 'utf8', timeout: 15_000 },
     );
     return { status: 0, output };

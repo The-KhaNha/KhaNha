@@ -78,3 +78,19 @@ test('no .npmrc holds a setting pnpm would ignore', () => {
     );
   assert.deepEqual(ignored, []);
 });
+
+test('no npm command (or spawned npx) in app code, scripts, tests, compose or .env files', () => {
+  const files = tracked().filter((f) =>
+    /^(client\/src|server\/src|server\/scripts|server\/test|client\/scripts)\/|^compose\.yaml$|^(client|server)\/\.env/.test(
+      f,
+    ),
+  );
+  assert.ok(files.length > 50, 'the file list is not empty');
+  const hits = files.flatMap((f) =>
+    read(f)
+      .split('\n')
+      .map((line, i) => [f, i + 1, line.trim()])
+      .filter(([, , line]) => NPM_COMMAND.test(line) || /['"`]npx['"`]/.test(line)),
+  );
+  assert.deepEqual(hits, []);
+});

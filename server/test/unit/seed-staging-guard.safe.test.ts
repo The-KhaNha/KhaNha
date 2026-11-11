@@ -16,7 +16,7 @@ function runSeed(env: Record<string, string>): { status: number; output: string 
   Object.assign(childEnv, env);
 
   try {
-    const output = execFileSync('npx', ['tsx', 'scripts/seed.ts'], {
+    const output = execFileSync('pnpm', ['exec', 'tsx', 'scripts/seed.ts'], {
       cwd: CWD,
       env: childEnv,
       encoding: 'utf8',

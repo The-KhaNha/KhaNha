@@ -5,7 +5,7 @@ repository root, `client/` and `server/`) move from npm to pnpm. They stay three
 later, with the first shared package. The roadmap says what changes and why; this file says in which pull requests,
 with which files, checks and user steps, and where the step does something different from the roadmap's wording.
 
-> **Status: PR 01 built** (11 November 2026; [as built](#as-built)). Was: proposal (11 November 2026). The precondition holds: `feat/P1` is in `dev` (#40). Two PRs into `dev`,
+> **Status: PR 01 merged (#43), PR 02 built** (11 November 2026; [as built](#as-built)). Was: proposal (11 November 2026). The precondition holds: `feat/P1` is in `dev` (#40). Two PRs into `dev`,
 > both before `feat/P2` is cut, so no phase PR ever conflicts with a lockfile swap. The version is decided (D1, the
 > user, 11 November 2026): **pnpm 12, or 11 if 12 is blocked**. The other [decisions](#decisions) are open; each has
 > a default, and the plan is written for the defaults.
@@ -88,7 +88,7 @@ not count, and CLAUDE.md §6 wants docs in the same change). PR 02 holds strings
 
 ### PR 01 — The swap
 
-- [ ] Merged
+- [x] Merged (#43, 11 November 2026)
 
 | File                                                                     | Change                                                                                                                                                                                                                                                                                                                                                                                    |
 | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -215,6 +215,9 @@ shared store at work. Then tick P1.8 in the roadmap.
 | D4  | pnpm in CI                             | corepack, not the `pnpm/action-setup` action                                                                                                                           |
 
 ## As built
+
+PR 02, 11 November 2026: as planned, plus the review's addition (the test spawns now run `pnpm exec tsx` and
+`pnpm exec supabase`). The init migration's `npm run seed` comment stays: migrations are append-only once pushed.
 
 PR 01, 11 November 2026, with the defaults for D2–D4:
 

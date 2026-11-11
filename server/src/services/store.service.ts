@@ -3,7 +3,7 @@ import { cached, PUBLIC_READ_TTL_MS } from '../utils/cache';
 import { notFound } from '../utils/errors';
 import { supabaseAdmin } from '../utils/supabase';
 
-/** V0 has exactly one store, created by `npm run seed`. */
+/** V0 has exactly one store, created by `pnpm run seed`. */
 export async function getStore(): Promise<Tables<'stores'>> {
   const { data: store } = await supabaseAdmin
     .from('stores')
@@ -11,7 +11,7 @@ export async function getStore(): Promise<Tables<'stores'>> {
     .limit(1)
     .maybeSingle()
     .throwOnError();
-  if (!store) throw notFound('The store has not been set up yet. Run `npm run seed` in server/.');
+  if (!store) throw notFound('The store has not been set up yet. Run `pnpm run seed` in server/.');
   return store;
 }
 

@@ -4,8 +4,9 @@ import { describe, expect, it } from 'vitest';
 
 function importEnvWith(overrides: Record<string, string>): Record<string, unknown> {
   const output = execFileSync(
-    'npx',
+    'pnpm',
     [
+      'exec',
       'tsx',
       '-e',
       "import('./src/utils/env.ts').then(({ env }) => process.stdout.write(JSON.stringify(env)))",

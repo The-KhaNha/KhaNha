@@ -1,4 +1,4 @@
-# Local containers: the API and web images against the Supabase stack on the host (`npm run db:start` in server/).
+# Local containers: the API and web images against the Supabase stack on the host (`pnpm run db:start` in server/).
 #   docker compose up --build web api worker        then http://localhost:8080
 # See docs/DEPLOYMENT.md "Local compose". The variables below default to that local stack; ./run.sh staging sets
 # them to run the same images against the staging project instead.
