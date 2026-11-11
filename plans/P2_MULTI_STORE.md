@@ -17,14 +17,15 @@ picks it up). When a PR merges, tick its box here and in the roadmap.
 
 The P1 rules stand ([P1 plan](P1_PLATFORM_CORE.md#how-the-team-works-p1), CLAUDE.md §13–§21):
 
-- **Every P2 PR goes into `feat/P2`**, cut from `dev` after PR 00, and added by its exact name to the
-  `ci-ok required` ruleset. `feat/P2` goes into `dev` as one PR when P2 is done; the user merges it.
+- **Every P2 PR, PR 00 included, goes into `feat/P2`**, cut from `dev` on 11 November 2026 and added by its exact
+  name to the `ci-ok required` ruleset. `feat/P2` goes into `dev` as one PR when P2 is done; the user merges it.
 - **At most 38 changed files or 750 changed lines per PR** against `origin/feat/P2` (lockfiles,
   `server/src/types/database.ts` and Markdown do not count; tests do), one theme each. A PR that grows past the limit
   splits at the seam its section names.
 - **One agent, one PR at a time,** in the [build order](#build-order). Each PR branches as `feat/p2-<NN>-<slug>` from
   a fresh `origin/feat/P2`, is finished (gate, `/post-change`, intent, owning docs, its box ticked here), opened as
-  `P2 PR <NN> — <title>`, and then the agent merges it into `feat/P2` itself once `ci-ok` is green and CodeRabbit is clear (D7).
+  `P2 PR <NN> — <title>`, and then the agent merges it into `feat/P2` itself once `ci-ok` is green and CodeRabbit is
+  clear (D7).
 - **Migrations.** A new migration is newer than the newest on `feat/P2`. Staging takes migrations from `feat/P2`
   while P2 is open (`pnpm run db:push:staging`, a user step). When `dev` moves, merge `dev` into `feat/P2` before
   the next PR.
@@ -212,7 +213,7 @@ Approved with the plan. PR 00 updates the roadmap to match.
 
 ### PR 00 — The roadmap says what ADR-001 decided
 
-- [ ] Merged (into `dev`, before `feat/P2` is cut)
+- [ ] Merged (into `feat/P2`, like every P2 PR)
 
 Docs only (`no-release`). `plans/ROADMAP.md`: the P2 design, P2.1, P2.2 and P2.7 follow
 [the model above](#the-model-p2-builds) and the [differences table](#where-p2-differs-from-the-roadmap); P3.1
@@ -711,9 +712,10 @@ branch cannot see the other; a cart cannot mix stores.
 ## User steps (cannot be done from the repository)
 
 - Answer the [decisions](#decisions), or accept the defaults.
-- Merge PR 00 into `dev`, create `feat/P2` from `dev`, and add `feat/P2` by its exact name to the `ci-ok required`
-  ruleset (Settings → Rules).
-- Merge `feat/P2` into `dev` when P2 is done (D7; the agent merges the PRs into `feat/P2`), and merge `dev` into `feat/P2` when `dev` has moved.
+- Add `feat/P2` (cut from `dev` by the agent on 11 November 2026) by its exact name to the `ci-ok required` ruleset
+  (Settings → Rules).
+- Merge `feat/P2` into `dev` when P2 is done (D7; the agent merges the PRs into `feat/P2`), and merge `dev` into
+  `feat/P2` when `dev` has moved.
 - Push `feat/P2`'s migrations to staging (`pnpm run db:push:staging`), then re-seed it (D8). PR 16's migration goes
   to staging only when every client pointed at staging is on `feat/P2` (there is no hosted staging app before P8).
 - Optional, once P2 is on staging: set `min_client_version` (Admin → site settings) to P2's client version, so a

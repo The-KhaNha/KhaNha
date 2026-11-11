@@ -220,6 +220,9 @@ is a signal only: the ruleset requires `ci-ok`, not reviews, and the user still 
 CodeRabbit's Advanced plan, so no limit is set on it; `security_risk_instructions` are in place for when the plan
 changes.
 
+- **Until 17 November 2026 the repository is on CodeRabbit Pro** (a one-week trial): no hourly review limit, so open
+  each PR as soon as it is ready and skip the draft-and-ready pacing below. From 18 November the free-plan limits
+  above apply again.
 - Open a PR once, complete (the flow above). With several ready at once, open the first, open the rest as drafts
   (`gh pr create --draft`), and mark the next one ready (`gh pr ready <n>`) only when a review is free again: a posted
   review does not free one, time does. `@coderabbitai rate limit` on an open PR says when, without spending a review.
