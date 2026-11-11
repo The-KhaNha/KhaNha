@@ -44,8 +44,10 @@ chain has several stores, and one person may work one of them. Decision: a `stor
 Consequence: a person's standing is per store; `profiles.role` stays `STAFF` for the demo accounts until P2 PR 16, so the
 old `/staff` routes still admit them.
 
-The caller's access at a store is, first match wins: `OWNER` (owns the store's brand), their membership role, `ADMIN`
-(profile role), else none. The map is `MATRIX` in `server/src/domain/permissions.ts` (`can(access, capability)`,
+The caller's standings at a store are `OWNER` (owns the store's brand), their membership role and `ADMIN` (profile
+role), in that order. `accessFor` picks the first standing that holds the requested capability, else the first standing
+it has (so a visible store answers 403), else none. An ADMIN who is also a STAFF member therefore uses STAFF for
+`orders.view` and ADMIN for `team.manageManagers`. The map is `MATRIX` in `server/src/domain/permissions.ts` (`can(access, capability)`,
 `accessFor(user, store)`); a capability is added with the route that checks it.
 
 | Capability            | STAFF | MANAGER | OWNER | ADMIN |
@@ -59,7 +61,7 @@ The caller's access at a store is, first match wins: `OWNER` (owns the store's b
 | `team.manageManagers` |       |         | yes   | yes   |
 | `audit.store`         |       | yes     | yes   | yes   |
 
-`ADMIN` holds only `store.pause`, `team.*` and `audit.store`: no kitchen power (it never sees or moves orders).
+`ADMIN` holds only `store.pause`, `team.*` and `audit.store`: no kitchen power of its own (an ADMIN with a store membership still has that membership's kitchen access).
 
 `requireStore(capability)` (`server/src/middleware/auth.ts`, after `requireAuth`) guards a route with `:storeId`:
 

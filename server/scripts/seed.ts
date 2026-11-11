@@ -135,7 +135,13 @@ async function seedAccounts(): Promise<Map<string, string>> {
 
 /** Each demo account's store membership; any other membership of a demo account (a test's) is removed. */
 async function seedMemberships(accountIds: Map<string, string>): Promise<void> {
-  const { data: stores } = await db.from('stores').select('id, slug').throwOnError();
+  // Only the demo slugs: an unfiltered read is capped at 1000 rows, so a demo store could be missing.
+  const slugs = DEMO_ACCOUNTS.flatMap(({ store }) => (store ? [store.slug] : []));
+  const { data: stores } = await db
+    .from('stores')
+    .select('id, slug')
+    .in('slug', slugs)
+    .throwOnError();
   const storeIds = new Map(stores.map((store) => [store.slug, store.id]));
   const rows: TablesInsert<'store_memberships'>[] = [];
   for (const { email, store } of DEMO_ACCOUNTS) {
@@ -152,14 +158,13 @@ async function seedMemberships(accountIds: Map<string, string>): Promise<void> {
     .upsert(rows, { onConflict: 'user_id,store_id' })
     .throwOnError();
 
-  const keep = new Set(rows.map((row) => `${row.user_id}:${row.store_id}`));
-  const { data: existing } = await db
-    .from('store_memberships')
-    .select('id, user_id, store_id')
-    .in('user_id', [...accountIds.values()])
-    .throwOnError();
-  const stale = existing.filter((m) => !keep.has(`${m.user_id}:${m.store_id}`)).map((m) => m.id);
-  if (stale.length > 0) await db.from('store_memberships').delete().in('id', stale).throwOnError();
+  // Deleted by predicate per account: a read of every membership would be capped by the Data API.
+  const kept = new Map(rows.map((row) => [row.user_id, row.store_id]));
+  for (const userId of accountIds.values()) {
+    const stale = db.from('store_memberships').delete().eq('user_id', userId);
+    const storeId = kept.get(userId);
+    await (storeId ? stale.neq('store_id', storeId) : stale).throwOnError();
+  }
 }
 
 function describeMenu(store: Tables<'stores'>, menuItems: Tables<'menu_items'>[]): string {

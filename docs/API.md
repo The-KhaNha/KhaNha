@@ -489,7 +489,7 @@ nothing changes for clients. A new money field carries paise and says so in its 
 | `memberships` | `{ storeId, storeSlug, storeName, role: 'MANAGER' \| 'STAFF' }[]` |
 | `ownedBrands` | `{ id, name, slug }[]`                                            |
 
-`memberships` are the stores the account works at; `ownedBrands` are the brands it owns (OWNER of every store of each, no membership row). Both are `[]` for a customer, and returned by `GET /auth/me` and `POST /auth/register`. See [PERMISSIONS.md](PERMISSIONS.md#store-roles).
+`memberships` are the stores the account works at; `ownedBrands` are the brands it owns (OWNER of every store of each, no membership row). Each is `[]` only when the account has no corresponding membership or owned brand (a CUSTOMER profile can have either), and both are returned by `GET /auth/me` and `POST /auth/register`. See [PERMISSIONS.md](PERMISSIONS.md#store-roles).
 
 `ADMIN` is the site-wide developer/operator role (the `/admin` dashboard), not a restaurant role — see
 [PERMISSIONS.md](PERMISSIONS.md#roles).
