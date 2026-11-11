@@ -59,10 +59,16 @@ If the guard throws, the whole run stops before a single request is made. `vites
 ## Helpers (`server/test/setup/helpers.ts`)
 
 - `createTestUser(role?)` creates a confirmed user through the admin API, sets the role on the profile (the trigger
-  always makes a CUSTOMER) and signs in. It returns `{ id, email, password, token }`. Send the token as
+  always makes a CUSTOMER) and signs in; a `STAFF` one is also a STAFF member of the oldest store, as the memberships
+  migration made every STAFF profile. It returns `{ id, email, password, token }`. Send the token as
   `Authorization: Bearer <token>`.
 - `createStoreMember(storeId, role)` creates a customer account and a `store_memberships` row for it; `createBrandOwner(brandId)` makes a new account the owner of a brand the test created. Both return the `createTestUser` shape.
 - `deleteTestUser(user)` deletes the auth user; the profile goes with it through the cascade. Call it in `afterAll`.
+- `testStoreIsolation(label, send, resource?)` is the tenant matrix every store route runs (P2.3), on two stores of
+  two brands it makes: store A's staff on store B's route 403, A's staff reaching B's resource through A's route 404
+  (when the route addresses one: `resource(storeId)` makes it), the other brand's owner 403, a customer 403, anonymous
+  401, and A's staff on A's own route through. `deleteTestStores(storeIds, brandIds, users)` removes a test's own
+  stores with their events and orders.
 - `testAuthMatrix(...)` runs the shared 401 cases (no header, malformed scheme, foreign JWT, deleted user) against a
   route; `foreignJwt()` makes a well-formed JWT with a random signature (fails JWKS verification like a foreign or tampered
   token); `deleteAccountByEmail(email)` removes an account a test

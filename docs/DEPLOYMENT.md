@@ -258,7 +258,8 @@ Run by the user, once.
    only works while production has no store, and creates no accounts. The plain `pnpm run seed` refuses to run
    against production.
 6. Create staff and admin accounts in the dashboard (Authentication → Add user, with auto-confirm), then in the SQL
-   editor: `update public.profiles set role = 'STAFF' where email = '…';` for staff, or
+   editor: `update public.profiles set role = 'STAFF' where email = '…';` for staff, plus their store's membership
+   (`insert into public.store_memberships (user_id, store_id, role) select id, '<store id>', 'STAFF' from public.profiles where email = '…';`; without it their board is empty, [PERMISSIONS.md#store-roles](PERMISSIONS.md#store-roles)), or
    `update public.profiles set role = 'ADMIN' where email = '…';` for the site-wide developer/operator role (the
    `/admin` dashboard — see [PERMISSIONS.md#roles](PERMISSIONS.md#roles)).
 7. Required in the dashboard (Authentication → Sign In / Providers): turn off **Allow new users to sign up**.
@@ -290,6 +291,7 @@ sequenceDiagram
   Seed->>Prod: store + menu only (refuses if a store exists)
   Dev->>Dash: Authentication → Add user for each staff/admin member (auto-confirm)
   Dev->>Dash: SQL editor: update public.profiles set role = 'STAFF'/'ADMIN' where email = ...
+  Dev->>Dash: SQL editor: insert a store_memberships row for each staff member
   Dev->>Dash: turn off Allow new users to sign up (the API's /auth/register still works)
   Dev->>Dash: Authentication → Sessions: set the inactivity timeout to 168h (7 days), matching local
 ```

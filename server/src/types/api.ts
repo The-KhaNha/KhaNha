@@ -103,8 +103,8 @@ export interface OrderDto {
   estimatedReadyAt: string;
   createdAt: string;
   updatedAt: string;
-  /** The store's name when the order was placed. */
-  store: { id: string; name: string };
+  /** The store's name when the order was placed; its slug is the live one, for a link to the store. */
+  store: { id: string; name: string; slug: string };
   items: OrderItemDto[];
 }
 

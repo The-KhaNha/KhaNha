@@ -72,7 +72,8 @@ gzip on. See `docs/DEPLOYMENT.md` "Containers".
 - **Store routes** take `/:storeId` and run `requireAuth, requireStore(capability)`: a store the caller may not know
   about (not `ACTIVE`, no access there) is 404, a visible one without the capability is 403. A new capability is a
   row in `domain/permissions.ts` with its cells in `permissions.safe.test.ts`; `requestContext` then records the
-  caller's `storeRole`, which the audit row keeps as `actor_role` (docs/PERMISSIONS.md).
+  caller's `storeRole`, which the audit row keeps as `actor_role` (docs/PERMISSIONS.md). A resource of another store
+  addressed through a store route is 404; every store route runs `testStoreIsolation` (docs/TESTING.md).
 - **`supabaseAdmin` bypasses RLS,** so every query scopes by user explicitly.
 - Public reads are cached with `cached()` and invalidated by the writes that change them (§2c).
 - Sessions: access tokens stay 1 h (refreshed by supabase-js). A sign-in ends after 7 days without use; each use

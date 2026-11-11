@@ -178,7 +178,7 @@ export async function signIn(
     estimatedReadyAt: now,
     createdAt: now,
     updatedAt: now,
-    store: { id: store.id, name: store.name },
+    store: { id: store.id, name: store.name, slug: store.slug },
     items: [
       {
         id: 'l1',

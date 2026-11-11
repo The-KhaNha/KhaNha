@@ -132,17 +132,14 @@ describe('menu:<storeId> stays in step with orders', () => {
     expect(placed.status).toBe(201);
     expect(await stockOf('Blueberry Muffin')).toBe(0); // menu:<id> now holds the sold-out copy
 
-    // The cancel commits, then the only `orders` read on that path (the re-read) fails once.
+    // The cancel commits, then the second `orders` read on that path (the re-read, after the store check) fails once.
     // `from` is an overloaded generic; the fake only needs the table name, hence the casts through unknown.
     const realFrom = supabaseAdmin.from.bind(supabaseAdmin) as unknown as (
       table: string,
     ) => unknown;
-    let failed = false;
+    let ordersReads = 0;
     const fake = (table: string) => {
-      if (table === 'orders' && !failed) {
-        failed = true;
-        throw new Error('re-read failed');
-      }
+      if (table === 'orders' && ++ordersReads === 2) throw new Error('re-read failed');
       return realFrom(table);
     };
     const spy = vi

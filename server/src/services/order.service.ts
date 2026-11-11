@@ -1,3 +1,4 @@
+import { accessFor, can, type Capability } from '../domain/permissions';
 import { LIMITS } from '../schemas/limits';
 import { MAX_QUANTITY_PER_ITEM, type CreateOrderInput } from '../schemas/order.schema';
 import type { AuthUser, RequestContext } from '../types/auth';
@@ -98,7 +99,7 @@ export async function createOrder(
     // A site setting, read through the cache: an admin's change can take up to the 10 s TTL on other instances, which
     // is harmless for a cap this generous.
     getSettings(),
-    getStore(),
+    getStore(input.storeId),
     input.customerName ?? lookupUserName(user.id),
     supabaseAdmin
       .from('menu_items')
@@ -108,12 +109,14 @@ export async function createOrder(
       .then(({ data }) => data),
   ]);
 
-  if (existing) {
-    if (!matchesRequest(existing, input)) {
-      throw idempotencyKeyReused(existing.id, existing.order_number);
-    }
+  // A replay answers the order the key placed, even at a store that has stopped trading since.
+  if (existing && existing.store_id === store.id && matchesRequest(existing, input))
     return { order: existing, replayed: true };
-  }
+  // A store that is not trading (a draft, suspended, archived) takes no orders and is not there to the public: refused
+  // before any other check, so no answer tells it apart from an unknown id.
+  if (store.status !== 'ACTIVE') throw notFound('Store not found.');
+  // The same key at another store, or for another order, is never a replay.
+  if (existing) throw idempotencyKeyReused(existing.id, existing.order_number);
 
   const maxLines = settings.max_lines_per_order;
   if (input.lineCount > maxLines)
@@ -202,17 +205,18 @@ function matchesRequest(
 }
 
 /**
- * Both lists are polled, so both are bounded to the newest orders. The sizes are site settings (admin dashboard):
- * a customer sees their newest `customer_order_history_limit`, staff the newest `staff_order_list_limit` across
- * everyone. Newest first.
+ * GET /api/orders. Both lists are polled, so both are bounded to the newest orders. The sizes are site settings (admin
+ * dashboard): a customer sees their newest `customer_order_history_limit`; a STAFF profile, until P2 PR 16, the board
+ * of every store they work at, as a member or as its brand's owner (listStoreOrders), so the list matches the orders
+ * getOrder and updateOrderStatus let them reach. Newest first.
  */
 export async function listOrders(
   user: AuthUser,
   status?: OrderStatus,
 ): Promise<OrderWithDetails[]> {
-  const settings = await getSettings();
-  if (user.role === 'STAFF') return listStaffOrders(settings.staff_order_list_limit, status);
+  if (user.role === 'STAFF') return listStoreOrders(await storesWorkedAt(user), status);
 
+  const settings = await getSettings();
   let query = selectOrders()
     .order('created_at', { ascending: false })
     .eq('user_id', user.id)
@@ -222,18 +226,34 @@ export async function listOrders(
   return orders;
 }
 
+/** The stores where the caller has a store standing: their memberships, and every store of a brand they own. */
+async function storesWorkedAt(user: AuthUser): Promise<string[]> {
+  const ids = user.memberships.map((m) => m.storeId);
+  if (user.ownedBrandIds.length === 0) return ids;
+  const { data: owned } = await supabaseAdmin
+    .from('stores')
+    .select('id')
+    .in('brand_id', user.ownedBrandIds)
+    .throwOnError();
+  return [...new Set([...ids, ...owned.map((store) => store.id)])];
+}
+
 /**
- * The kitchen board: every active order, and the newest `finishedLimit` finished ones (collected, cancelled) as
- * history. One limit over every status used to cut the orders that had waited longest as soon as enough newer orders
- * existed, collected ones included, with nothing on the board to say so. Newest first, as before; the board sorts.
+ * The kitchen board of `storeIds` (the caller was admitted to each): every active order, and the newest
+ * `staff_order_list_limit` finished ones (collected, cancelled) as history. One limit over every status used to cut the
+ * orders that had waited longest as soon as enough newer orders existed, collected ones included, with nothing on the
+ * board to say so. Newest first, as before; the board sorts.
  */
-async function listStaffOrders(
-  finishedLimit: number,
+export async function listStoreOrders(
+  storeIds: string[],
   status?: OrderStatus,
 ): Promise<OrderWithDetails[]> {
+  if (storeIds.length === 0) return [];
+  const finishedLimit = (await getSettings()).staff_order_list_limit;
   const active = async (statuses: OrderStatus[]) =>
     (
       await selectOrders()
+        .in('store_id', storeIds)
         .in('status', statuses)
         .order('created_at', { ascending: true })
         .limit(ACTIVE_ORDERS_HARD_MAX)
@@ -242,6 +262,7 @@ async function listStaffOrders(
   const finished = async (statuses: OrderStatus[]) =>
     (
       await selectOrders()
+        .in('store_id', storeIds)
         .in('status', statuses)
         .order('created_at', { ascending: false })
         .limit(finishedLimit)
@@ -256,16 +277,30 @@ async function listStaffOrders(
   return [...open, ...done].sort((a, b) => b.created_at.localeCompare(a.created_at));
 }
 
-/** Someone else's order looks exactly like a missing one (404), so ids cannot be probed. */
+/**
+ * The customer who placed it, or a caller whose access at its store holds `orders.view`. Any other order looks exactly
+ * like a missing one (404), so ids cannot be probed.
+ */
 export async function getOrder(user: AuthUser, id: string): Promise<OrderWithDetails> {
   if (!isUuid(id)) throw notFound('Order not found.');
-
-  let query = selectOrders().eq('id', id);
-  if (user.role !== 'STAFF') query = query.eq('user_id', user.id);
-
-  const { data: order } = await query.maybeSingle().throwOnError();
+  const { data: order } = await selectOrders().eq('id', id).maybeSingle().throwOnError();
   if (!order) throw notFound('Order not found.');
+  if (order.user_id !== user.id) accessToOrder(user, order, 'orders.view');
   return order;
+}
+
+/**
+ * The caller's access at the order's store, when it holds `capability`; otherwise the order is not theirs to know
+ * about, 404 like a missing one (CLAUDE.md §10), even where the store itself would answer 403.
+ */
+function accessToOrder(
+  user: AuthUser,
+  order: { store_id: string; store: { brand_id: string } },
+  capability: Capability,
+) {
+  const access = accessFor(user, { id: order.store_id, brandId: order.store.brand_id }, capability);
+  if (access === null || !can(access, capability)) throw notFound('Order not found.');
+  return access;
 }
 
 /**
@@ -276,11 +311,26 @@ export async function getOrder(user: AuthUser, id: string): Promise<OrderWithDet
  * same transaction.
  */
 export async function updateOrderStatus(
+  user: AuthUser,
   id: string,
   nextStatus: OrderStatus,
-  ctx: RequestContext,
+  requestCtx: RequestContext,
+  /** The store route's store: an order of any other store is 404 there. */
+  storeId?: string,
 ): Promise<UpdatedOrder> {
   if (!isUuid(id)) throw notFound('Order not found.');
+  // The order's store decides who may move it. Its store never changes, so reading it first leaves no race.
+  const { data: placed } = await supabaseAdmin
+    .from('orders')
+    .select('store_id, store:stores!inner (brand_id)')
+    .eq('id', id)
+    .maybeSingle()
+    .throwOnError();
+  if (!placed || (storeId !== undefined && placed.store_id !== storeId))
+    throw notFound('Order not found.');
+  const access = accessToOrder(user, placed, 'orders.transition');
+  // The old route has no requireStore: the audit row and the event still record the caller's standing at the store.
+  const ctx = { ...requestCtx, actor: { ...requestCtx.actor, storeRole: access } };
 
   let changed: boolean;
   try {

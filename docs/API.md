@@ -49,27 +49,29 @@ The API has no sign-in or sign-out route. The browser signs in and out with supa
 
 ## Routes
 
-| Method | Path                     | Auth         | Request                                                       | Success                                         |
-| ------ | ------------------------ | ------------ | ------------------------------------------------------------- | ----------------------------------------------- |
-| GET    | `/health`                | none         | none                                                          | 200 `{ ok: true, version, commit }`             |
-| GET    | `/ready`                 | none         | none                                                          | 200 `{ ready: true }` or 503 `{ ready: false }` |
-| GET    | `/config`                | none         | none                                                          | 200 `ConfigDto`                                 |
-| POST   | `/client-errors`         | none         | body: [`clientErrorsSchema`](#post-client-errors)             | 204, no body                                    |
-| POST   | `/auth/register`         | none         | body: [`registerSchema`](#post-authregister)                  | 201 `{ user: UserDto }`                         |
-| GET    | `/auth/me`               | user         | none                                                          | 200 `{ user: UserDto }`                         |
-| GET    | `/store`                 | none         | none                                                          | 200 `{ store: StoreDto }`                       |
-| GET    | `/stores`                | none         | query `area?`                                                 | 200 `{ stores: StoreSummaryDto[] }`             |
-| GET    | `/stores/:storeRef`      | none         | none                                                          | 200 `{ store: StoreDto }`                       |
-| GET    | `/stores/:storeRef/menu` | none         | none                                                          | 200 `MenuResponse`                              |
-| GET    | `/menu`                  | none         | none                                                          | 200 `MenuResponse`                              |
-| POST   | `/orders`                | user         | body: [`createOrderSchema`](#post-orders)                     | 201 `{ order: OrderDto }`                       |
-| GET    | `/orders`                | user         | query: [`listOrdersQuerySchema`](#get-orders)                 | 200 `{ orders: OrderDto[] }`                    |
-| GET    | `/orders/:id`            | user         | path: `id`                                                    | 200 `{ order: OrderDto }`                       |
-| PATCH  | `/orders/:id/status`     | user + STAFF | body: [`updateOrderStatusSchema`](#patch-ordersidstatus)      | 200 `{ order: OrderDto }`                       |
-| GET    | `/admin/settings`        | user + ADMIN | none                                                          | 200 `{ settings: SiteSettingsDto }`             |
-| PATCH  | `/admin/settings`        | user + ADMIN | body: [`updateSettingsSchema`](#patch-adminsettings)          | 200 `{ settings: SiteSettingsDto }`             |
-| GET    | `/admin/audit`           | user + ADMIN | query: [`auditQuerySchema`](#get-adminaudit)                  | 200 `AuditPageDto`                              |
-| PATCH  | `/admin/flags/:key`      | user + ADMIN | path: `key`; body: [`updateFlagSchema`](#patch-adminflagskey) | 200 `{ flag: FeatureFlagDto }`                  |
+| Method | Path                                      | Auth                       | Request                                                                    | Success                                         |
+| ------ | ----------------------------------------- | -------------------------- | -------------------------------------------------------------------------- | ----------------------------------------------- |
+| GET    | `/health`                                 | none                       | none                                                                       | 200 `{ ok: true, version, commit }`             |
+| GET    | `/ready`                                  | none                       | none                                                                       | 200 `{ ready: true }` or 503 `{ ready: false }` |
+| GET    | `/config`                                 | none                       | none                                                                       | 200 `ConfigDto`                                 |
+| POST   | `/client-errors`                          | none                       | body: [`clientErrorsSchema`](#post-client-errors)                          | 204, no body                                    |
+| POST   | `/auth/register`                          | none                       | body: [`registerSchema`](#post-authregister)                               | 201 `{ user: UserDto }`                         |
+| GET    | `/auth/me`                                | user                       | none                                                                       | 200 `{ user: UserDto }`                         |
+| GET    | `/store`                                  | none                       | none                                                                       | 200 `{ store: StoreDto }`                       |
+| GET    | `/stores`                                 | none                       | query `area?`                                                              | 200 `{ stores: StoreSummaryDto[] }`             |
+| GET    | `/stores/:storeRef`                       | none                       | none                                                                       | 200 `{ store: StoreDto }`                       |
+| GET    | `/stores/:storeRef/menu`                  | none                       | none                                                                       | 200 `MenuResponse`                              |
+| GET    | `/menu`                                   | none                       | none                                                                       | 200 `MenuResponse`                              |
+| POST   | `/orders`                                 | user                       | body: [`createOrderSchema`](#post-orders)                                  | 201 `{ order: OrderDto }`                       |
+| GET    | `/orders`                                 | user                       | query: [`listOrdersQuerySchema`](#get-orders)                              | 200 `{ orders: OrderDto[] }`                    |
+| GET    | `/orders/:id`                             | user                       | path: `id`                                                                 | 200 `{ order: OrderDto }`                       |
+| PATCH  | `/orders/:id/status`                      | user + STAFF               | body: [`updateOrderStatusSchema`](#patch-ordersidstatus)                   | 200 `{ order: OrderDto }`                       |
+| GET    | `/stores/:storeId/orders`                 | user + `orders.view`       | query: [`listOrdersQuerySchema`](#get-storesstoreidorders)                 | 200 `{ orders: OrderDto[] }`                    |
+| PATCH  | `/stores/:storeId/orders/:orderId/status` | user + `orders.transition` | body: [`updateOrderStatusSchema`](#patch-storesstoreidordersorderidstatus) | 200 `{ order: OrderDto }`                       |
+| GET    | `/admin/settings`                         | user + ADMIN               | none                                                                       | 200 `{ settings: SiteSettingsDto }`             |
+| PATCH  | `/admin/settings`                         | user + ADMIN               | body: [`updateSettingsSchema`](#patch-adminsettings)                       | 200 `{ settings: SiteSettingsDto }`             |
+| GET    | `/admin/audit`                            | user + ADMIN               | query: [`auditQuerySchema`](#get-adminaudit)                               | 200 `AuditPageDto`                              |
+| PATCH  | `/admin/flags/:key`                       | user + ADMIN               | path: `key`; body: [`updateFlagSchema`](#patch-adminflagskey)              | 200 `{ flag: FeatureFlagDto }`                  |
 
 `orderRouter.use(requireAuth)` runs before any `/orders` route matches. So any path under `/api/orders`, including
 one that matches no route, returns 401 without a valid token. `adminRouter.use(requireAuth, requireAdmin)` does the
@@ -235,6 +237,7 @@ Body (`server/src/schemas/order.schema.ts`):
 | `customerPhone`             | string | optional; see [phone numbers](#shared-field-rules)                                                                 |
 | `note`                      | string | optional, typed text, at most 200 characters                                                                       |
 | `idempotencyKey`            | string | optional, a UUID; one per checkout attempt, resent unchanged on every retry of that attempt                        |
+| `storeId`                   | string | optional until P2 PR 16, a UUID: the store the order is for; without it, the oldest store                          |
 
 - Entries with the same `menuItemId` are merged into one line with the quantities summed (`mergeDuplicateItems`).
 - Unknown keys (`price`, `unitPrice`, `total`, …) are dropped by `z.object`. Prices come from the database only;
@@ -255,7 +258,9 @@ Body (`server/src/schemas/order.schema.ts`):
 
 What the service checks, in this order:
 
-1. The store is open (`stores.is_open`), else 400 `STORE_CLOSED` "<store name> is closed right now. Please come back
+1. The store (`storeId`, read uncached) exists and is `ACTIVE`, else 404 `NOT_FOUND` "Store not found.". Only a
+   replay of the same order at the same store is answered before this check, so no other answer (a reused key, too
+   many lines) tells a store that is not trading from an unknown id. Then it is open (`stores.is_open`), else 400 `STORE_CLOSED` "<store name> is closed right now. Please come back
    when it opens."
 2. For each line, in cart order (`priceLines`):
    - the item exists **at the order's store** (ids that are not UUIDs are never queried and count as missing; another
@@ -275,9 +280,10 @@ What the service checks, in this order:
 4. `place_order` reserves stock and writes the order in one transaction. Not enough stock: 400
    `INSUFFICIENT_STOCK` with `details: { menuItemId, name, available }` and the message "Only <n> <name> left. Reduce
    the quantity in your cart." or, when `available` is 0, "<name> just sold out." A refused order leaves no rows and
-   no stock changes behind (see [SCHEMA.md](SCHEMA.md#place_order)). `place_order` checks steps 1 and 2 again under
-   its own locks, so a store closed or an item switched off between step 1 and the order is the same 400
-   `STORE_CLOSED` or `ITEM_UNAVAILABLE` (same message and details) with nothing placed. A line whose price changed
+   no stock changes behind (see [SCHEMA.md](SCHEMA.md#place_order)). `place_order` checks the store's `is_open` flag and
+   step 2's items again under its own locks, so a store closed or an item switched off between step 1 and the order
+   is the same 400 `STORE_CLOSED` or `ITEM_UNAVAILABLE` (same message and details) with nothing placed. The store's
+   `status` (the ACTIVE check of step 1) is not repeated under the lock until P2 PR 08. A line whose price changed
    after step 3 read it: 409 `PRICE_CHANGED` "The price of <name> just changed to ₹<price>. Please review your order." (no `details`), and
    nothing is placed. The client shows the message, reloads the menu and takes the new price into the cart, so the
    next Pay shows the amount it charges.
@@ -289,7 +295,7 @@ A new order is `paymentStatus: "PAID"`, `status: "PLACED"`, `estimatedReadyAt = 
 | 201    | `{ order: OrderDto }`                                                                                                         |
 | 400    | `VALIDATION_ERROR`, `ITEM_NOT_FOUND`, `ITEM_UNAVAILABLE`, `INSUFFICIENT_STOCK`, `STORE_CLOSED`, `BAD_REQUEST` (a ₹0 total)    |
 | 401    | `UNAUTHORIZED`                                                                                                                |
-| 404    | `NOT_FOUND` (no store row)                                                                                                    |
+| 404    | `NOT_FOUND` (no such store, or it is not `ACTIVE`)                                                                            |
 | 409    | `IDEMPOTENCY_KEY_REUSED` (the key already placed a different order; `details: { orderId, orderNumber }`)                      |
 | 409    | `PRICE_CHANGED` (a stale `expectedUnitPrice`, or a price changed after the charge; no `details`; the client reloads the menu) |
 | 413    | `PAYLOAD_TOO_LARGE`                                                                                                           |
@@ -304,7 +310,10 @@ Query: `status` (optional), one of `PLACED`, `PREPARING`, `READY`, `COLLECTED`, 
 `VALIDATION_ERROR` "Status must be one of PLACED, PREPARING, READY, COLLECTED, CANCELLED."
 
 - Customers get their newest `customerOrderHistoryLimit` orders (a `site_settings` row, default 20).
-- Staff get **every active order** (`PLACED`, `PREPARING`, `READY`) across all customers, oldest first up to a safety
+- A `STAFF` profile (until P2 PR 16) gets the board of **every store they work at** (their `store_memberships`, and every store of a brand they own;
+  none, an empty list), as [GET /stores/:storeId/orders](#get-storesstoreidorders) gives one store. Before P2 PR 04
+  it was every store's orders.
+- The board is **every active order** (`PLACED`, `PREPARING`, `READY`) across all customers, oldest first up to a safety
   bound of 500 (`ACTIVE_ORDERS_HARD_MAX`), plus the newest `staffOrderListLimit` finished ones (`COLLECTED`,
   `CANCELLED`; a `site_settings` row, default 100), newest first overall. One limit over every status used to drop
   the orders that had waited longest once enough newer orders existed. With `?status=`, an active status returns all
@@ -319,8 +328,9 @@ Query: `status` (optional), one of `PLACED`, `PREPARING`, `READY`, `COLLECTED`, 
 Code: `requireAuth` → `order.controller.getOrder` → `order.service.getOrder`.
 
 - `id` that is not a UUID: 404 `NOT_FOUND` "Order not found."
-- Customers only see their own orders. Someone else's order returns the same 404 as a missing one.
-- Staff see any order.
+- The customer who placed it sees it, and so does a caller whose access at the order's store holds `orders.view`
+  (its staff and managers, the brand's owner; [PERMISSIONS.md](PERMISSIONS.md#store-roles)). Anyone else gets the same
+  404 as a missing order.
 - A path segment with bad percent-encoding (for example `/api/orders/%E0`) is 400 `BAD_REQUEST`.
 
 ### PATCH /orders/:id/status
@@ -329,7 +339,9 @@ Code: `requireAuth` → `requireStaff` → `validate(updateOrderStatusSchema)` �
 `order.service.updateOrderStatus` → `update_order_status` RPC.
 
 Body: `{ status }`, one of the five statuses (same message as the list filter). `requireStaff` runs before
-validation, so a customer gets 403 whatever the body.
+validation, so a customer gets 403 whatever the body. The service then reads the order's store: an order of a store
+where the caller's access does not hold `orders.transition` is 404, like a missing one. The caller's standing there
+is recorded as the actor's `storeRole` with the event and the audit row.
 
 Allowed transitions (`ALLOWED_TRANSITIONS` in `server/src/services/order.service.ts`, the single source of truth):
 
@@ -357,8 +369,27 @@ move is a 409, `PLACED` → `PLACED` included. The request's `x-request-id` is r
 | 400    | `VALIDATION_ERROR`          | `status` missing or not one of the five                                                                                  |
 | 401    | `UNAUTHORIZED`              | see [Authentication](#authentication)                                                                                    |
 | 403    | `FORBIDDEN`                 | caller is not `STAFF`                                                                                                    |
-| 404    | `NOT_FOUND`                 | `id` not a UUID, or no such order                                                                                        |
+| 404    | `NOT_FOUND`                 | `id` not a UUID, no such order, or an order of a store the caller does not work at                                       |
 | 409    | `INVALID_STATUS_TRANSITION` | "Order #<number> cannot move from <current status> to <requested status>." The status quoted is the order's current one. |
+
+### GET /stores/:storeId/orders
+
+Code: `requireAuth` → `requireStore('orders.view')` → `validate(listOrdersQuerySchema, 'query')` →
+`order.controller.listStoreOrders` → `order.service.listStoreOrders`.
+
+One store's board: the same lists, limits and `?status=` as a `STAFF` profile's [GET /orders](#get-orders), for
+this store only. `requireStore` answers 404 for a store the caller may not know about (unknown, or not `ACTIVE` with
+no access there) and 403 `FORBIDDEN` for a visible store where their access does not hold `orders.view`
+([PERMISSIONS.md](PERMISSIONS.md#store-roles)). A `:storeId` that is not a UUID is 404.
+
+### PATCH /stores/:storeId/orders/:orderId/status
+
+Code: `requireAuth` → `requireStore('orders.transition')` → `writeLimiter` → `validate(updateOrderStatusSchema)` →
+`order.controller.updateStoreOrderStatus` → `order.service.updateOrderStatus` → `update_order_status` RPC.
+
+The same body, transitions, repeats and answers as [PATCH /orders/:id/status](#patch-ordersidstatus), with the store
+check of `requireStore` first (404 or 403, as above). An order of another store is 404 through this store's route,
+even for a member of both stores.
 
 ### GET /admin/settings
 
@@ -547,21 +578,21 @@ fields of `StoreDto` a store picker needs (client: `StoreSummary`).
 
 `OrderDto`
 
-| Field              | Type                           | Notes                                      |
-| ------------------ | ------------------------------ | ------------------------------------------ |
-| `id`               | string (uuid)                  |                                            |
-| `orderNumber`      | number                         | starts at 1001                             |
-| `status`           | `OrderStatus`                  |                                            |
-| `paymentStatus`    | `'PENDING'` \| `'PAID'`        | new orders are `PAID`                      |
-| `total`            | number                         | whole rupees                               |
-| `customerName`     | string                         |                                            |
-| `customerPhone`    | string \| null                 |                                            |
-| `note`             | string \| null                 |                                            |
-| `estimatedReadyAt` | string (ISO 8601)              |                                            |
-| `createdAt`        | string (ISO 8601)              |                                            |
-| `updatedAt`        | string (ISO 8601)              | set by the `orders_set_updated_at` trigger |
-| `store`            | `{ id: string, name: string }` | `name` is the store's name at order time   |
-| `items`            | `OrderItemDto[]`               | cart order                                 |
+| Field              | Type                                         | Notes                                                               |
+| ------------------ | -------------------------------------------- | ------------------------------------------------------------------- |
+| `id`               | string (uuid)                                |                                                                     |
+| `orderNumber`      | number                                       | starts at 1001                                                      |
+| `status`           | `OrderStatus`                                |                                                                     |
+| `paymentStatus`    | `'PENDING'` \| `'PAID'`                      | new orders are `PAID`                                               |
+| `total`            | number                                       | whole rupees                                                        |
+| `customerName`     | string                                       |                                                                     |
+| `customerPhone`    | string \| null                               |                                                                     |
+| `note`             | string \| null                               |                                                                     |
+| `estimatedReadyAt` | string (ISO 8601)                            |                                                                     |
+| `createdAt`        | string (ISO 8601)                            |                                                                     |
+| `updatedAt`        | string (ISO 8601)                            | set by the `orders_set_updated_at` trigger                          |
+| `store`            | `{ id: string, name: string, slug: string }` | `name` is the store's name at order time; `slug` is its current one |
+| `items`            | `OrderItemDto[]`                             | cart order                                                          |
 
 `OrderItemDto`
 
