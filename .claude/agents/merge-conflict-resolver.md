@@ -165,10 +165,12 @@ instance with prefilled decisions trusts them, skips Steps 2–5 and runs Steps 
 2. Generated files are regenerated, never hand-merged:
    - **`pnpm-lock.yaml` / `client/pnpm-lock.yaml` / `server/pnpm-lock.yaml`:** resolve that root's `package.json`
      and `pnpm-workspace.yaml` first (union of dependencies and `allowBuilds`; the same dependency at different
-     versions is a patch/minor bump → take the higher, a major difference → FLAGGED). Then take the base's lockfile
-     (`git show $BASE:<pkg>/pnpm-lock.yaml > <pkg>/pnpm-lock.yaml`) and run `pnpm install` in that root (background)
-     so the lock matches the merged `package.json`. Never edit a lockfile by hand. Report any version pnpm resolved
-     differently from either side.
+     versions is a patch/minor bump → take the higher, a major difference → FLAGGED). Then, if the base has that
+     lockfile (`git cat-file -e "$BASE:<pkg>/pnpm-lock.yaml"` succeeds), take the base's copy
+     (`git show $BASE:<pkg>/pnpm-lock.yaml > <pkg>/pnpm-lock.yaml`); if it does not (a base cut before the pnpm
+     swap), leave the branch's lockfile as it is, because redirecting a failed `git show` would empty it. Either way
+     run `pnpm install` in that root (background) so the lock matches the merged `package.json`. Never edit a
+     lockfile by hand. Report any version pnpm resolved differently from either side.
    - **`server/src/types/database.ts`:** see Step 7c.
 3. Confirm no markers remain anywhere: `git grep -nE '^(<<<<<<<|=======|>>>>>>>)( |$)'`.
 4. Run the verification gate in each touched package.

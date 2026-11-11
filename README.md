@@ -93,7 +93,7 @@ It prints the URLs and logins when both servers answer. Press **Ctrl+C** once to
 
 - Reads `APP_ENV` from `server/.env` and starts the web app in the matching mode (`local` → `pnpm run dev`, `staging` → `pnpm run dev:staging`), so the browser signs in to the same Supabase project the API uses. Refuses `APP_ENV=production`.
 - Stops with a clear message if `server/.env` is missing, or (for `local`) the Supabase stack is not running.
-- Runs `pnpm install --frozen-lockfile` in `server/` and `client/` if `node_modules` is missing.
+- Runs `pnpm install --frozen-lockfile` in `server/` and `client/` if `node_modules` is missing. An existing checkout built with npm keeps its old `node_modules`, so migrate it once: delete `node_modules` in the repository root, `client/` and `server/`, make sure Corepack is enabled (see Prerequisites), then run `pnpm install` in each of the three.
 - **Frees the API, worker and web ports first** (8000, 8001 and 5173 unless configured) — anything still listening on them (a stray `pnpm run dev`, an earlier `start.sh`) is killed. Don't run it while another copy of the project is deliberately serving those ports.
 - `--seed` runs `pnpm run seed` before starting (see [Re-seeding wipes orders](#re-seeding-wipes-orders)).
 - Starts the API and the job worker (`tsx watch`, auto-reload on server edits) and the web app (Vite, hot reloads client edits). Their output goes to **`.logs/server.log`**, **`.logs/worker.log`** and **`.logs/client.log`** (gitignored) — look there when something misbehaves.
