@@ -13,7 +13,7 @@ product roadmap (`Roadmap.pdf`, 33 items), plus two added on 2026-11-01. It cove
 > models, the model A vs B requirements and trade-offs, the fallback ladder and the switching options.
 
 Roadmap items are cited as **R1**–**R33** in the PDF's order, with sub-items such as **R4.1** and **R11.2**; **R34** and
-**R35** were added on 2026-11-01 and are not in the PDF. Phases are **P0**–**P12** and steps are numbered like **P5.3**. [Traceability](#traceability) maps every item to the steps that
+**R35** were added on 2026-11-01 and are not in the PDF. Phases are **P0**–**P13** and steps are numbered like **P5.3**. [Traceability](#traceability) maps every item to the steps that
 deliver it.
 
 ## Contents
@@ -37,6 +37,7 @@ deliver it.
 - [P10 — Scale after the pilot](#p10--scale-after-the-pilot)
 - [P11 — In-restaurant QR ordering and dine-in](#p11--in-restaurant-qr-ordering-and-dine-in)
 - [P12 — Restaurant discovery and My restaurants](#p12--restaurant-discovery-and-my-restaurants)
+- [P13 — State machine audit](#p13--state-machine-audit)
 - [Testing strategy](#testing-strategy)
 - [Docs and rule changes](#docs-and-rule-changes)
 - [Risks](#risks)
@@ -56,6 +57,9 @@ deliver it.
 
   **P11** and **P12** were added after the pilot plan, so they sit at the end, but they need only P6 (P11) and P2 plus
   P7 (P12); either can start once those ship.
+
+  **P13** is a clean-up to remember, not a feature phase: it runs once when P8 merges and again after the last
+  phase.
 
   Within a phase the steps are in build order, and each one is sized to be roughly one pull request.
 
@@ -1512,7 +1516,7 @@ it.
 
 ### P1.8 Tooling: pnpm (after the phase merges)
 
-> **Done** (#43 and the wording PR after it; [as built](P1_8_PNPM.md#as-built)): two PRs into `dev`, pinned to pnpm
+> **Done** (#43 and #44; [as built](P1_8_PNPM.md#as-built)): two PRs into `dev`, pinned to pnpm
 > 12.17.0. Three places differ from this section: the version is named (pnpm 12, the newest at least 7 days old); the settings
 > (`engineStrict`, the release age, `overrides`, `allowBuilds`) live in a settings-only `pnpm-workspace.yaml` per root,
 > not in `.npmrc`, which pnpm 12 reads only for registry and auth; and commands are `pnpm run <script>`, not the bare
@@ -4424,6 +4428,33 @@ create table public.favourite_stores (
 
 **Docs:** API, SCHEMA, COMPONENTS (search field, rails, heart toggle), FRONTEND_STRUCTURE (home v2), CONFIGURATION
 (the three settings), PERMISSIONS (favourites are own-only).
+
+## P13 — State machine audit
+
+> **A reminder, not yet a plan** (added 2026-11-11). Nothing has been searched or designed; each pass starts with the
+> search, and gets its own plan file then.
+
+**Goal:** every lifecycle in the codebase is one explicit state machine, or it is gone. **Depends on:** P8 for the
+first pass, the last phase for the second. **Size:** set once the first inventory exists.
+
+**It runs twice:**
+
+- **Pass 1, when the last P8 PR merges:** everything in `dev` at that point.
+- **Pass 2, after the last phase to ship** (P12 in this file's order; a phase added later moves this pass behind
+  it): everything added since pass 1.
+
+Each pass:
+
+1. **Find** every implicit state machine in the client, the server and the database: state spread over booleans,
+   nullable timestamps and scattered `if`s, or one lifecycle written in more than one place.
+2. **Review** each one with the user: is it needed, and is it a copy of another?
+3. **Remove** the unnecessary ones and merge the duplicates.
+4. **Convert** the essential ones to explicit state machines, in the pattern of
+   [design principle 5](#design-principles): one transition table, tested for every from/to pair. Behaviour does
+   not change, and the tests pass before and after.
+
+**Done when** every machine found has been removed, merged, converted and tested, or left as it is with the reason
+written down.
 
 ## Testing strategy
 
