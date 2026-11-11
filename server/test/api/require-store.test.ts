@@ -1,6 +1,6 @@
 // Local only: requireStore's 404-or-403 rule on throwaway routes, against its own brands and stores (A, B, DRAFT D).
 import { randomUUID } from 'node:crypto';
-import express from 'express';
+import express, { type RequestHandler } from 'express';
 import { pinoHttp } from 'pino-http';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -20,19 +20,15 @@ import {
 
 const CAPABILITIES: Capability[] = ['orders.view', 'store.pause', 'team.manageManagers'];
 
+const echo: RequestHandler = (req, res) => {
+  res.json({ store: req.store, access: req.storeAccess, actor: requestContext(req).actor });
+};
+
 function app() {
   const server = express();
   server.use(pinoHttp({ logger }));
-  for (const capability of CAPABILITIES) {
-    server.get(
-      `/stores/:storeId/${capability}`,
-      requireAuth,
-      requireStore(capability),
-      (req, res) => {
-        res.json({ store: req.store, access: req.storeAccess, actor: requestContext(req).actor });
-      },
-    );
-  }
+  for (const capability of CAPABILITIES)
+    server.get(`/stores/:storeId/${capability}`, requireAuth, requireStore(capability), echo);
   server.use(errorHandler);
   return request(server);
 }

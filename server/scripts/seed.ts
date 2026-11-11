@@ -157,7 +157,6 @@ async function seedMemberships(accountIds: Map<string, string>): Promise<void> {
     .from('store_memberships')
     .upsert(rows, { onConflict: 'user_id,store_id' })
     .throwOnError();
-
   // Deleted by predicate per account: a read of every membership would be capped by the Data API.
   const kept = new Map(rows.map((row) => [row.user_id, row.store_id]));
   for (const userId of accountIds.values()) {
