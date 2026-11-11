@@ -74,7 +74,7 @@ gzip on. See `docs/DEPLOYMENT.md` "Containers".
   `requireAuth` enforces it per session through `touch_session`, revokes an idle sign-in and refuses a signed-out one,
   `docs/PERMISSIONS.md` "Session lifetime"). Never raise `jwt_expiry` to get longer
   sign-ins: a long-lived bearer token cannot be revoked.
-- Env is read only through `utils/env.ts`. `src/types/database.ts` is generated (`npm run db:types`); never
+- Env is read only through `utils/env.ts`. `src/types/database.ts` is generated (`pnpm run db:types`); never
   hand-edit it.
 - Recipes: `/new-endpoint`, `/db-migration`.
 

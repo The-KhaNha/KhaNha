@@ -4,17 +4,17 @@ Environments, configuration, database changes and production setup. The environm
 [ARCHITECTURE.md](ARCHITECTURE.md#2-environments-and-configuration). Day-to-day local start-up is in the
 [README](../README.md#quick-start).
 
-> Production is changed by a person, never by an agent or a test run: `npm run db:push:production` and
-> `npm run seed -- --production` are run by the user only. Tests run against local Supabase only
+> Production is changed by a person, never by an agent or a test run: `pnpm run db:push:production` and
+> `pnpm run seed --production` are run by the user only. Tests run against local Supabase only
 > ([TESTING.md](TESTING.md#the-test-target-guard-server)).
 
 ## Environments
 
-| Environment  | Supabase project                                                                                       | Used by                                          |
-| ------------ | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------ |
-| `local`      | Docker stack from `npm run db:start` (`http://127.0.0.1:54321`)                                        | day-to-day development, `./start.sh`, `npm test` |
-| `staging`    | `xkddnlxeeizaqpefhqlv` (`https://xkddnlxeeizaqpefhqlv.supabase.co`)                                    | shared testing before release                    |
-| `production` | a second hosted project; its ref goes in `PRODUCTION_REF` in `server/scripts/db-push.sh` (empty today) | the live app                                     |
+| Environment  | Supabase project                                                                                       | Used by                                           |
+| ------------ | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------- |
+| `local`      | Docker stack from `pnpm run db:start` (`http://127.0.0.1:54321`)                                       | day-to-day development, `./start.sh`, `pnpm test` |
+| `staging`    | `xkddnlxeeizaqpefhqlv` (`https://xkddnlxeeizaqpefhqlv.supabase.co`)                                    | shared testing before release                     |
+| `production` | a second hosted project; its ref goes in `PRODUCTION_REF` in `server/scripts/db-push.sh` (empty today) | the live app                                      |
 
 Each environment is a separate Supabase project with its own database, users and keys. Project refs are not secret:
 they are the subdomain of the project URL (`server/scripts/db-push.sh`).
@@ -28,7 +28,7 @@ the user sees "Your session has expired. Please sign in again." So:
 - `client/.env.<mode>` → `VITE_SUPABASE_URL`
 
 must name the same project. `start.sh` enforces this for local and staging by reading `APP_ENV` from `server/.env`
-and starting Vite in the matching mode (`local` → `npm run dev`, `staging` → `npm run dev:staging`). It refuses
+and starting Vite in the matching mode (`local` → `pnpm run dev`, `staging` → `pnpm run dev:staging`). It refuses
 `APP_ENV=production`.
 
 ## Server environment variables
@@ -39,7 +39,7 @@ Read from `server/.env` (copy `server/.env.example`) or the host's environment. 
 
 | Variable                                                                                                                       | Required        | Default                          | Rule                                                         | Purpose                                                                                                                                                                                                                                                                                                                 |
 | ------------------------------------------------------------------------------------------------------------------------------ | --------------- | -------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `APP_ENV`                                                                                                                      | yes             |                                  | `local`, `staging` or `production`                           | which project this process talks to; `start.sh` picks the client mode from it; `npm run seed` refuses the demo reset on `production`; logger output and default level                                                                                                                                                   |
+| `APP_ENV`                                                                                                                      | yes             |                                  | `local`, `staging` or `production`                           | which project this process talks to; `start.sh` picks the client mode from it; `pnpm run seed` refuses the demo reset on `production`; logger output and default level                                                                                                                                                  |
 | `SUPABASE_URL`                                                                                                                 | yes             |                                  | a URL                                                        | the project URL, e.g. `http://127.0.0.1:54321` or `https://<ref>.supabase.co`                                                                                                                                                                                                                                           |
 | `SUPABASE_SECRET_KEY`                                                                                                          | yes             |                                  | starts with `sb_secret_` (legacy JWT keys are rejected)      | the project's secret key (Project Settings → API Keys). Bypasses RLS. Never in the client or git                                                                                                                                                                                                                        |
 | `NODE_ENV`                                                                                                                     | no              |                                  | any                                                          | `production` in the API image (set by the Dockerfile): turns the pretty log transport off, so logs are JSON lines                                                                                                                                                                                                       |
@@ -54,10 +54,10 @@ Read from `server/.env` (copy `server/.env.example`) or the host's environment. 
 | `GIT_COMMIT`                                                                                                                   | no              | `unknown`                        | non-empty string                                             | the commit the build came from; reported by `GET /api/health`. Set by the image build (`--build-arg GIT_COMMIT`)                                                                                                                                                                                                        |
 | `KEEP_ALIVE_TIMEOUT_MS`                                                                                                        | no              | `65000`                          | positive integer                                             | idle keep-alive timeout; must exceed the load balancer's idle timeout (60 s on an ALB), or Node closes a connection the balancer is about to reuse and the request fails with a 502. `headersTimeout` is set 1 s above it                                                                                               |
 | `LOG_LEVEL`                                                                                                                    | no              | `debug` on `local`, else `info`  | `fatal`, `error`, `warn`, `info`, `debug`, `trace`, `silent` | minimum log level (see [LOGGING.md](LOGGING.md#tuning-per-environment))                                                                                                                                                                                                                                                 |
-| `SEED_STAFF_PASSWORD`, `SEED_ADMIN_PASSWORD`, `SEED_CUSTOMER_PASSWORD`                                                         | seed on staging |                                  | 12+ characters each                                          | read only by `npm run seed` (the API never needs them): the staging passwords of the three demo accounts; local uses the ones published in [README.md](../README.md#test-accounts). On staging the seed refuses to run (before wiping anything) and names the missing ones                                              |
+| `SEED_STAFF_PASSWORD`, `SEED_ADMIN_PASSWORD`, `SEED_CUSTOMER_PASSWORD`                                                         | seed on staging |                                  | 12+ characters each                                          | read only by `pnpm run seed` (the API never needs them): the staging passwords of the three demo accounts; local uses the ones published in [README.md](../README.md#test-accounts). On staging the seed refuses to run (before wiping anything) and names the missing ones                                             |
 
 `server/.env.example` holds the local stack's default values; the local secret key there is the Supabase CLI's
-fixed local default, printed by `npm run db:start`. Hosted keys go in `server/.env` (staging) or the host's
+fixed local default, printed by `pnpm run db:start`. Hosted keys go in `server/.env` (staging) or the host's
 environment (production), never in git.
 
 Other variables read outside `env.ts`:
@@ -83,11 +83,11 @@ committed. Never put a secret key (`sb_secret_…`) in any client file.
 
 Types: `client/src/vite-env.d.ts`. Template: `client/.env.example`.
 
-| File                      | Mode          | Used by                                        | In the repo                                      |
-| ------------------------- | ------------- | ---------------------------------------------- | ------------------------------------------------ |
-| `client/.env.development` | `development` | `npm run dev`                                  | yes                                              |
-| `client/.env.staging`     | `staging`     | `npm run dev:staging`, `npm run build:staging` | yes                                              |
-| `client/.env.production`  | `production`  | `npm run build`                                | **no**, create it for the first production build |
+| File                      | Mode          | Used by                                          | In the repo                                      |
+| ------------------------- | ------------- | ------------------------------------------------ | ------------------------------------------------ |
+| `client/.env.development` | `development` | `pnpm run dev`                                   | yes                                              |
+| `client/.env.staging`     | `staging`     | `pnpm run dev:staging`, `pnpm run build:staging` | yes                                              |
+| `client/.env.production`  | `production`  | `pnpm run build`                                 | **no**, create it for the first production build |
 
 `client/vite.config.ts` throws `Missing VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY for mode "<mode>". Create
 client/.env.<mode> (see client/.env.example).` when either required variable is missing, for the dev server and for
@@ -100,13 +100,13 @@ In the web image, each of these values can also be set at start ([runtime enviro
 
 ## Builds
 
-| Package | Command                 | Output         | Notes                                                                                                                         |
-| ------- | ----------------------- | -------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| server  | `npm run build`         | `server/dist/` | `tsc -p tsconfig.build.json` (`src/` and `scripts/` only, tests never ship); run with `npm start` (`node dist/src/server.js`) |
-| client  | `npm run build`         | `client/dist/` | `tsc --noEmit` then `vite build` in production mode; **requires `client/.env.production`**                                    |
-| client  | `npm run build:staging` | `client/dist/` | same, with `client/.env.staging`                                                                                              |
+| Package | Command                  | Output         | Notes                                                                                                                          |
+| ------- | ------------------------ | -------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| server  | `pnpm run build`         | `server/dist/` | `tsc -p tsconfig.build.json` (`src/` and `scripts/` only, tests never ship); run with `pnpm start` (`node dist/src/server.js`) |
+| client  | `pnpm run build`         | `client/dist/` | `tsc --noEmit` then `vite build` in production mode; **requires `client/.env.production`**                                     |
+| client  | `pnpm run build:staging` | `client/dist/` | same, with `client/.env.staging`                                                                                               |
 
-`npm start` does not load `tsx`; it needs `npm run build` first. `server.ts` loads `dotenv/config`, so a
+`pnpm start` does not load `tsx`; it needs `pnpm run build` first. `server.ts` loads `dotenv/config`, so a
 `server/.env` is read if present; on a host, set the variables in its environment instead.
 
 ### Compressing photos before a build
@@ -129,28 +129,28 @@ explicitly (see [PERMISSIONS.md](PERMISSIONS.md#database)).
 
 ```bash
 cd server
-npm run db:new add_something       # creates supabase/migrations/<timestamp>_add_something.sql
-npm run db:reset                   # local: rebuild the local database from all migrations (wipes local data)
-npm run db:types                   # regenerate src/types/database.ts from the local database
-npm run db:push:staging            # apply new migrations to staging
-npm run db:push:production         # the same for production (user only)
+pnpm run db:new add_something       # creates supabase/migrations/<timestamp>_add_something.sql
+pnpm run db:reset                   # local: rebuild the local database from all migrations (wipes local data)
+pnpm run db:types                   # regenerate src/types/database.ts from the local database
+pnpm run db:push:staging            # apply new migrations to staging
+pnpm run db:push:production         # the same for production (user only)
 ```
 
 ```mermaid
 flowchart TD
-  New["npm run db:new add_something<br/>→ supabase/migrations/timestamp_add_something.sql"] --> Write["Write the SQL<br/>(enable RLS + grant explicitly for anything new)"]
-  Write --> Reset["npm run db:reset<br/>rebuild the local database from all migrations"]
-  Reset --> Types["npm run db:types<br/>regenerate src/types/database.ts"]
-  Types --> Code["Update services, run npm run typecheck,<br/>npm run seed, try it with ./start.sh"]
+  New["pnpm run db:new add_something<br/>→ supabase/migrations/timestamp_add_something.sql"] --> Write["Write the SQL<br/>(enable RLS + grant explicitly for anything new)"]
+  Write --> Reset["pnpm run db:reset<br/>rebuild the local database from all migrations"]
+  Reset --> Types["pnpm run db:types<br/>regenerate src/types/database.ts"]
+  Types --> Code["Update services, run pnpm run typecheck,<br/>pnpm run seed, try it with ./start.sh"]
   Code --> PR["Commit migration + types + code"]
-  PR --> Stg["npm run db:push:staging<br/>(supabase login once, DB password)"]
+  PR --> Stg["pnpm run db:push:staging<br/>(supabase login once, DB password)"]
   Stg --> Verify["Point server/.env at staging (APP_ENV=staging), run ./start.sh, check"]
-  Verify --> Prod["npm run db:push:production<br/>type 'production' to confirm, CLI lists migrations and asks again"]
+  Verify --> Prod["pnpm run db:push:production<br/>type 'production' to confirm, CLI lists migrations and asks again"]
   Prod --> Deploy["Deploy the API and web app build that expect the new schema"]
 ```
 
 `20260927094610_admin_settings_collected.sql` (the `ADMIN` role, `COMPLETED` → `COLLECTED`, `site_settings`) is
-applied locally by `db:reset` already; staging needs `npm run db:push:staging` run once before a staging build (which
+applied locally by `db:reset` already; staging needs `pnpm run db:push:staging` run once before a staging build (which
 ships the renamed status and the admin dashboard) can be pointed at it.
 
 `20261101131925_transitions_emit_events.sql` adds defaulted parameters (`p_actor`, `p_request_id`) to `place_order`
@@ -169,10 +169,10 @@ migration first, then deploy the new API.
 2. An empty ref (today: `PRODUCTION_REF`) stops with "PRODUCTION_REF is empty. Create the production project, then
    set it in server/scripts/db-push.sh."
 3. For `production` it asks you to type `production`; anything else prints "Cancelled." and exits 1.
-4. Runs `npx supabase db push --project-ref <ref>`. The CLI asks for the database password (or reads
+4. Runs `pnpm exec supabase db push --project-ref <ref>`. The CLI asks for the database password (or reads
    `SUPABASE_DB_PASSWORD`), lists the migrations it will apply, and asks before applying them.
 
-One-time: `npx supabase login` (opens the browser).
+One-time: `pnpm exec supabase login` (opens the browser).
 
 ## Seeding
 
@@ -180,7 +180,7 @@ Code: `server/scripts/seed.ts`. It seeds whichever project `server/.env` points 
 
 ```mermaid
 flowchart TD
-  Run["npm run seed [-- --production]"] --> E{"APP_ENV"}
+  Run["pnpm run seed [-- --production]"] --> E{"APP_ENV"}
   E -->|"local / staging"| F1{"--production passed?"}
   F1 -->|"yes"| Err1["Fail: flag does not match APP_ENV"]
   F1 -->|"no"| Demo
@@ -201,20 +201,20 @@ flowchart TD
   end
 ```
 
-- **Demo reset** (`npm run seed`, `APP_ENV` local or staging): deletes every order, restarts numbering at #1001,
+- **Demo reset** (`pnpm run seed`, `APP_ENV` local or staging): deletes every order, restarts numbering at #1001,
   updates the store, the 11 menu items and the three test accounts (staff, admin, customer) in place (their ids
   survive, so open browsers keep working), resets `site_settings` to its defaults (20 / 100), and deletes every
   other account.
-- **Production setup** (`npm run seed -- --production`, `APP_ENV=production`): creates the store and menu only while
+- **Production setup** (`pnpm run seed --production`, `APP_ENV=production`): creates the store and menu only while
   production has no store. It creates no accounts and wipes nothing.
 
 ## Local and staging
 
-- **Local**: `cd server && npm run db:start` (Docker) applies every migration. `cp server/.env.example server/.env`
+- **Local**: `cd server && pnpm run db:start` (Docker) applies every migration. `cp server/.env.example server/.env`
   needs no edits. Then `./start.sh --seed` once, `./start.sh` after that. See the [README](../README.md#quick-start).
-- **Staging, once**: `npm run db:push:staging`, then put the staging URL and secret key in `server/.env` with
+- **Staging, once**: `pnpm run db:push:staging`, then put the staging URL and secret key in `server/.env` with
   `APP_ENV=staging` and the three `SEED_*_PASSWORD`s (never the published demo passwords; see [server environment
-  variables](#server-environment-variables)), and run `npm run seed` for the demo data.
+  variables](#server-environment-variables)), and run `pnpm run seed` for the demo data.
 
 ### start.sh
 
@@ -224,16 +224,16 @@ flowchart TD
   Env -->|"no"| X1["Exit: cp server/.env.example server/.env"]
   Env -->|"yes"| App{"APP_ENV"}
   App -->|"local"| Up{"http://127.0.0.1:54321 answers?"}
-  Up -->|"no"| X2["Exit: cd server && npm run db:start"]
+  Up -->|"no"| X2["Exit: cd server && pnpm run db:start"]
   Up -->|"yes"| ModeL["client script = dev"]
   App -->|"staging"| ModeS["client script = dev:staging"]
   App -->|"production"| X3["Exit: start.sh is for local and staging only"]
   App -->|"anything else"| X4["Exit: set APP_ENV"]
   ModeL --> Deps
   ModeS --> Deps
-  Deps["npm install where node_modules is missing"] --> Ports["Kill anything listening on 8000, 8001 and 5173"]
+  Deps["pnpm install where node_modules is missing"] --> Ports["Kill anything listening on 8000, 8001 and 5173"]
   Ports --> Seed{"--seed?"}
-  Seed -->|"yes"| RunSeed["cd server && npm run seed"]
+  Seed -->|"yes"| RunSeed["cd server && pnpm run seed"]
   Seed -->|"no"| Start
   RunSeed -->|"fails"| X5["Exit: database not migrated?"]
   RunSeed -->|"ok"| Start
@@ -249,13 +249,13 @@ flowchart TD
 Run by the user, once.
 
 1. Create a new project in the Supabase dashboard (a region near your users; save the database password).
-2. Put its ref in `PRODUCTION_REF` in `server/scripts/db-push.sh`, then `npm run db:push:production`.
+2. Put its ref in `PRODUCTION_REF` in `server/scripts/db-push.sh`, then `pnpm run db:push:production`.
 3. Create `client/.env.production` with its `VITE_SUPABASE_URL` and publishable key (see `client/.env.example`).
-   `npm run build` refuses to run without it.
+   `pnpm run build` refuses to run without it.
 4. On the production API host set `APP_ENV=production`, `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `PORT`,
    `CLIENT_ORIGIN` and optionally `LOG_LEVEL`.
-5. Load the store and menu once, with the production values in the environment: `npm run seed -- --production`. It
-   only works while production has no store, and creates no accounts. The plain `npm run seed` refuses to run
+5. Load the store and menu once, with the production values in the environment: `pnpm run seed --production`. It
+   only works while production has no store, and creates no accounts. The plain `pnpm run seed` refuses to run
    against production.
 6. Create staff and admin accounts in the dashboard (Authentication → Add user, with auto-confirm), then in the SQL
    editor: `update public.profiles set role = 'STAFF' where email = '…';` for staff, or
@@ -278,15 +278,15 @@ sequenceDiagram
   participant CLI as Supabase CLI (db-push.sh)
   participant Prod as Production project
   participant Host as API host
-  participant Seed as npm run seed
+  participant Seed as pnpm run seed
 
   Dev->>Dash: create project (region, DB password)
   Dev->>Dev: PRODUCTION_REF in server/scripts/db-push.sh
-  Dev->>CLI: npm run db:push:production
+  Dev->>CLI: pnpm run db:push:production
   CLI->>Prod: apply all migrations
-  Dev->>Dev: client/.env.production (URL + publishable key), npm run build
+  Dev->>Dev: client/.env.production (URL + publishable key), pnpm run build
   Dev->>Host: set APP_ENV=production, SUPABASE_URL, SUPABASE_SECRET_KEY, PORT, CLIENT_ORIGIN
-  Dev->>Seed: npm run seed -- --production (production env vars)
+  Dev->>Seed: pnpm run seed --production (production env vars)
   Seed->>Prod: store + menu only (refuses if a store exists)
   Dev->>Dash: Authentication → Add user for each staff/admin member (auto-confirm)
   Dev->>Dash: SQL editor: update public.profiles set role = 'STAFF'/'ADMIN' where email = ...
@@ -329,13 +329,13 @@ docker build -t fp-web --build-arg GIT_COMMIT=$(git rev-parse --short HEAD) clie
   52), and `security.yml` fails on any fixable CVE left in an image. The upgrade replaces only the outdated packages
   (under 2 MB). Both run as a non-root user named in the Dockerfile. The `images` CI job holds the sizes to the budgets
   above.
-- **`fp-api`** installs with `npm ci --ignore-scripts` (no Supabase CLI binary), keeps `dist/scripts` so staging can
+- **`fp-api`** installs with `pnpm install --frozen-lockfile --ignore-scripts` (corepack fetches the pinned pnpm; no install script runs, and the runtime stage has no package manager), keeps `dist/scripts` so staging can
   be seeded with `node dist/scripts/seed.js` (it refuses `APP_ENV=production`), and sets `NODE_ENV=production` and
   `GIT_COMMIT` from the build arg. Its runtime is plain Alpine with `libstdc++` and the `node` binary copied from the
-  Node image, so npm, npx, corepack and yarn never ship (260 MB instead of 309 MB, and their advisories with them);
+  Node image, so npm, npx, corepack, pnpm and yarn never ship (260 MB instead of 309 MB, and their advisories with them);
   every `node:24-alpine3.24` and `alpine:3.24` in the Dockerfile must name the same Alpine release. Its environment is
   the [server table above](#server-environment-variables).
-- **`fp-web`** builds with `npm run build:container` (`vite build --mode container`, placeholders from the committed
+- **`fp-web`** builds with `pnpm run build:container` (`vite build --mode container`, placeholders from the committed
   `client/.env.container`; `vite.config.ts` skips its required-env check in that mode). At start the image's
   entrypoint renders `nginx/default.conf.template` and `nginx/security.conf.template` (substituting only variables
   that are set, so nginx's `$uri` survives), then `nginx/runtime-env.sh` writes `/runtime-env.js`.
@@ -403,7 +403,7 @@ Desktop, where "host" is Docker's VM.)
 `compose.yaml` at the root runs both images against the Supabase stack on the host (Supabase itself stays on the host):
 
 ```bash
-cd server && npm run db:start && npm run seed && cd ..
+cd server && pnpm run db:start && pnpm run seed && cd ..
 export SUPABASE_PUBLISHABLE_KEY=$(grep VITE_SUPABASE_PUBLISHABLE_KEY client/.env.development | cut -d= -f2)
 GIT_COMMIT=$(git rev-parse --short HEAD) docker compose up --build web api worker     # http://localhost:8080
 docker compose ps                                                             # all three (healthy)

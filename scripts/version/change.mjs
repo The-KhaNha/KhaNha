@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Records a change intent: npm run change -- --client minor --server patch "summary" [--dry-run]
+// Records a change intent: pnpm run change --client minor --server patch "summary" [--dry-run]
 // One file per change, so two branches never conflict on the same lines (.changes/README.md).
 import { randomBytes } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';

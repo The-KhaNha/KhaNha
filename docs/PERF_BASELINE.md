@@ -212,7 +212,7 @@ None of the above were introduced by this change (the semantic diff is server-si
 no-cache` and `Vary: Authorization, Origin`; normal `GET` 304 revalidation on `/api/menu`, `/api/store`,
   `/api/orders` (customer) and `/api/orders/:id` all still return `304` with `0B` body. `cached()`/`invalidate()`
   usage unchanged (`menu`, `store`, `site_settings` cached; `persist: true` still only on `useMenu`/`useStore`, never
-  on orders/profile). `server npm run build` (now via `tsconfig.build.json`) emits `dist/src/**` and `dist/scripts/**`
+  on orders/profile). `server pnpm run build` (now via `tsconfig.build.json`) emits `dist/src/**` and `dist/scripts/**`
   only — no `dist/test/**`, no `*.test.js` anywhere in `dist` (confirmed by `find dist -iname "*test*"` returning
   nothing); `dist/` is gitignored and was removed after the check. No regressions found; nothing newly over budget.
 - **2026-09-29 (feat/P0 final, `c68f0e0`)** · comparison run on Intel i9-14900HX (WSL2 Linux, Node v24.21.0, local Supabase, preview build, Playwright

@@ -19,10 +19,10 @@ Roles: CUSTOMER, STAFF (the restaurant's order board, `/staff`), ADMIN (site-wid
 settings; no staff powers). Site-wide limits live in the one-row `site_settings` table, edited by admins.
 - Client `client/`: React 18 + Vite + Tailwind v4 (tokens in the `@theme` block of `client/src/index.css`) + zustand + react-router 7, icons `lucide-react` only.
 - API `server/`: Express 5 + zod + Supabase (Postgres RPCs `place_order` / `update_order_status`, JWKS-verified auth; `supabaseAdmin` bypasses RLS, so every query scopes by user explicitly).
-- npm in both packages. Gate per package: `npm run typecheck && npm run lint && npm test`.
+- pnpm in both packages (and the repository root). Gate per package: `pnpm run typecheck && pnpm run lint && pnpm test`.
 - **Primary target: low- to mid-range Android phones (360–412px wide, ~4× slower CPU) on slow or flaky networks.** Desktop and staff screens are secondary.
 - Real users and real concurrency: stock races are settled inside the `place_order` transaction. Security and accessibility matter.
-- **Never touch production**: never run `npm run db:push:production` or `npm run seed -- --production`; tests run against local Supabase only (see `docs/TESTING.md`).
+- **Never touch production**: never run `pnpm run db:push:production` or `pnpm run seed --production`; tests run against local Supabase only (see `docs/TESTING.md`).
 - Migrations in `server/supabase/migrations/` are append-only once pushed. API changes stay backward-compatible with the deployed client.
 - Orient with `graphify query "<question>"` (the graph is in `graphify-out/`) before grepping or reading raw files.
 
@@ -45,8 +45,8 @@ messages mentioning disable / hide / experiment / feature flag (`git log $BASE..
 3. Record the decision in your final summary.
 
 ## Verification gate
-After your last edit, in every package you touched (`client/`, `server/`): `npm run typecheck && npm run lint && npm test`.
-Run `npx prettier --write <files you touched>` first. A failure in a file you did not touch is reported, not fixed.
+After your last edit, in every package you touched (`client/`, `server/`): `pnpm run typecheck && pnpm run lint && pnpm test`.
+Run `pnpm exec prettier --write <files you touched>` first. A failure in a file you did not touch is reported, not fixed.
 Never weaken a test, add `any`, `@ts-ignore`, `@ts-expect-error` or `eslint-disable` to get to green.
 You edit logging lines only: a logger call, its import, its fields, `REDACT_PATHS`, and the matching assertion in
 `server/test/logging.safe.test.ts`. Any other change you think is needed is a CONFIRM item.
@@ -74,7 +74,7 @@ functions around them. Check 1 also runs repo-wide, because it is cheap.
 2. Run checks 1–10 on the scope. Record each finding with its file:line and whether it is SAFE or CONFIRM.
 3. Before applying anything, check the branch-intent guardrail.
 4. Apply the SAFE fixes (listed after the checks). Keep each edit to the logging line.
-5. If you changed `REDACT_PATHS`, the error handler or `app.ts`, run `cd server && LOG_LEVEL=debug npm test -- test/logging.safe.test.ts`
+5. If you changed `REDACT_PATHS`, the error handler or `app.ts`, run `cd server && LOG_LEVEL=debug pnpm test test/logging.safe.test.ts`
    and confirm that the redaction and request-id assertions pass.
 6. Gate, then report.
 

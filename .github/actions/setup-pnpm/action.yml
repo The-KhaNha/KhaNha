@@ -1,0 +1,25 @@
+name: setup-pnpm
+description: Node from .node-version, then pnpm (the packageManager pin) through that Node's corepack, then the store cache.
+
+inputs:
+  cache-dependency-path:
+    description: The pnpm-lock.yaml whose hash keys the pnpm store cache; leave empty for a job that installs nothing.
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      with:
+        node-version-file: .node-version
+    # After setup-node, so it is Node 24's corepack: the runner's default Node ships an older corepack that cannot run
+    # pnpm 12 (a native binary, not a pnpm.cjs).
+    - shell: bash
+      run: corepack enable
+    # Again, now that pnpm exists: cache: pnpm asks pnpm for its store path. The Node download is a tool-cache hit.
+    - if: inputs.cache-dependency-path != ''
+      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      with:
+        node-version-file: .node-version
+        cache: pnpm
+        cache-dependency-path: ${{ inputs.cache-dependency-path }}

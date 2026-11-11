@@ -17,8 +17,8 @@ client/
 │                           or build without VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY for the mode
 │                           (except mode "container")
 ├── vitest.config.ts        unit tests (jsdom), separate from vite.config.ts
-├── playwright.config.ts    the WebKit smoke (npm run e2e:webkit; e2e:chromium where WebKit cannot launch): 360px, every /api call mocked
-├── tsconfig.e2e.json       typechecks e2e/ and the Playwright config with Node types (part of npm run typecheck)
+├── playwright.config.ts    the WebKit smoke (pnpm run e2e:webkit; e2e:chromium where WebKit cannot launch): 360px, every /api call mocked
+├── tsconfig.e2e.json       typechecks e2e/ and the Playwright config with Node types (part of pnpm run typecheck)
 ├── e2e/                    no backend; every /api call mocked (fixtures.ts)
 │   ├── fixtures.ts         shared mocks and helpers (mockApi, signIn, seedCart, watchConsole, …)
 │   ├── smoke.spec.ts       home, menu, add to cart, cart; the core path
@@ -28,8 +28,8 @@ client/
 │   └── error-reporting.spec.ts  browser crash reports
 ├── eslint.config.js
 ├── .env.example            documents the client env vars (see DEPLOYMENT.md)
-├── .env.development        Vite mode "development" (npm run dev)
-├── .env.staging            Vite mode "staging" (npm run dev:staging, build:staging)
+├── .env.development        Vite mode "development" (pnpm run dev)
+├── .env.staging            Vite mode "staging" (pnpm run dev:staging, build:staging)
 ├── .env.container          Vite mode "container" (build:container): placeholders, replaced at start
 ├── Dockerfile              the web image (build → nginx-unprivileged); DEPLOYMENT.md "Containers"
 ├── nginx/                  default.conf.template, security.conf.template (headers, CSP), runtime-env.sh
@@ -63,7 +63,7 @@ client/
     └── test/setup.ts       jest-dom matchers + cleanup for Vitest
 ```
 
-`client/.env.production` does not exist in the repo yet. `npm run build` needs it (see
+`client/.env.production` does not exist in the repo yet. `pnpm run build` needs it (see
 [DEPLOYMENT.md](DEPLOYMENT.md#builds)).
 
 ## Routes
@@ -299,5 +299,5 @@ The reporter sends through `services/clientErrors.ts`; its limits and privacy ru
 ## Tests
 
 Client unit tests live next to the code as `src/**/<name>.test.ts(x)`, for example `lib/format.test.ts`,
-`lib/photo.test.ts` and `lib/useResource.test.ts`. The e2e suite is `e2e/*.spec.ts` (core path in `smoke.spec.ts`; `npm run e2e:webkit`,
-after `npm run e2e:install` once). See [TESTING.md](TESTING.md).
+`lib/photo.test.ts` and `lib/useResource.test.ts`. The e2e suite is `e2e/*.spec.ts` (core path in `smoke.spec.ts`; `pnpm run e2e:webkit`,
+after `pnpm run e2e:install` once). See [TESTING.md](TESTING.md).

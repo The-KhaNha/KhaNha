@@ -6,7 +6,7 @@
 #   ./run.sh dev|staging ps       status
 #   ./run.sh dev|staging seed     reset the demo data through the image (wipes every order; asks first on staging)
 # dev starts the local Supabase stack when it is not running. staging needs its migrations applied first
-# (cd server && npm run db:push:staging).
+# (cd server && pnpm run db:push:staging).
 set -euo pipefail
 cd "$(dirname "$0")"
 USAGE_EXTRA=' [up|down|logs|ps|seed]'
@@ -20,7 +20,7 @@ case "${2:-up}" in
     if [ "$FP_ENV" = dev ] &&
       [ "$(curl -s --max-time 3 -o /dev/null -w '%{http_code}' http://127.0.0.1:54321/rest/v1/)" = 000 ]; then
       echo "Starting the local Supabase stack…"
-      (cd server && npm run db:start)
+      (cd server && pnpm run db:start)
     fi
     "${COMPOSE[@]}" up -d --no-build --wait api worker web
     echo "Ready: http://localhost:$WEB_PORT (Supabase: $APP_ENV). Stop with: ./run.sh $FP_ENV down"

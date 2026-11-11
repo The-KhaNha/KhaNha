@@ -12,7 +12,7 @@ graphify-out/
 # Claude Code hook state (post-change marker, pending major change)
 .claude/.state/
 
-# npm run release output, read by release.yml
+# pnpm run release output, read by release.yml
 release.json
 
 # Per-machine Claude Code overrides; the shared hooks and plugins live in .claude/settings.json

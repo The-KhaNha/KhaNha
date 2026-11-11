@@ -1512,8 +1512,11 @@ it.
 
 ### P1.8 Tooling: pnpm (after the phase merges)
 
-> **How it is built:** [P1_8_PNPM.md](P1_8_PNPM.md), two PRs into `dev`, on pnpm 12. Where the plan and this
-> section disagree (settings live in `pnpm-workspace.yaml`, commands are `pnpm run <script>`), the plan is newer.
+> **As built** ([P1_8_PNPM.md](P1_8_PNPM.md#as-built)): two PRs into `dev`, pinned to pnpm 12.17.0. Three places
+> differ from this section: the version is named (pnpm 12, the newest at least 7 days old); the settings
+> (`engineStrict`, the release age, `overrides`, `allowBuilds`) live in a settings-only `pnpm-workspace.yaml` per root,
+> not in `.npmrc`, which pnpm 12 reads only for registry and auth; and commands are `pnpm run <script>`, not the bare
+> `pnpm <script>`.
 
 Not part of the `feat/P1` branch: its own PR into `dev`, once `feat/P1` is in, so it never conflicts with phase PRs.
 

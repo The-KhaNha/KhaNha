@@ -19,15 +19,15 @@ later ones must check the final state. Report progress one line per stage as you
    whether UI changed (`client/src/**/*.tsx`, `client/src/index.css`) and which packages are touched.
 2. If the scope is not major (the gate says `minor`) and the user did not ask explicitly, say so and stop.
 3. Probe services; start only what is down, in the background, and remember what you started:
-   - `curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:54321/rest/v1/` → down: `cd server && npm run db:start`
+   - `curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:54321/rest/v1/` → down: `cd server && pnpm run db:start`
      (needs Docker; `open -a Docker` first if the daemon is off)
-   - `http://localhost:8000/api/health` → down: `cd server && npm run dev`
-   - `http://localhost:5173` → down: `cd client && npm run dev`
+   - `http://localhost:8000/api/health` → down: `cd server && pnpm run dev`
+   - `http://localhost:5173` → down: `cd client && pnpm run dev`
    Never run `start.sh` while the user's servers are up: it kills whatever holds 8000/5173.
 
 ## 1. Gate
 
-In every touched package: `npm run typecheck && npm run lint && npm test` (and `npm run e2e:chromium` in `client/`). Fix failures inside the scope before
+In every touched package: `pnpm run typecheck && pnpm run lint && pnpm test` (and `pnpm run e2e:chromium` in `client/`). Fix failures inside the scope before
 going on; the agents assume a green baseline. A failure outside the scope is reported, not fixed.
 
 ## 2. Source editors — one at a time
@@ -78,7 +78,7 @@ same class of bug returns. Run it once with the fix reverted to see it fail, the
 1. Record the change intent if missing: when `git diff --name-status $BASE...HEAD` plus `git status --porcelain`
    touch `client/src`, `server/src`, `server/scripts`, `server/supabase/migrations` or a `package.json` and add no
    `.changes/*.md`, pick the levels from `.changes/README.md` and run
-   `npm run change -- --client <level> --server <level> "summary"` (`.claude/rules/workflow.md` §21).
+   `pnpm run change --client <level> --server <level> "summary"` (`.claude/rules/workflow.md` §21).
 2. `graphify update .`
 3. `node .claude/hooks/major-change-gate.js --mark` — records the verified state so the Stop hook and the prompt
    reminder go quiet.

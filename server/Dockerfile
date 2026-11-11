@@ -6,24 +6,26 @@
 
 FROM node:24-alpine3.24 AS deps
 WORKDIR /app
-COPY package.json package-lock.json .npmrc ./
-# --ignore-scripts skips the Supabase CLI binary: the image never runs it.
-RUN npm ci --ignore-scripts
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+# corepack (shipped with Node 24) fetches the pnpm that package.json's packageManager pins. No dependency script runs
+# (pnpm-workspace.yaml allows none); --ignore-scripts also skips the project's own.
+RUN corepack enable && pnpm install --frozen-lockfile --ignore-scripts
 
 FROM deps AS build
 COPY tsconfig.json tsconfig.build.json ./
 COPY src ./src
 COPY scripts ./scripts
 # dist/scripts stays, so staging can be seeded with `node dist/scripts/seed.js` (it refuses APP_ENV=production).
-RUN npm run build
+RUN pnpm run build
 
 FROM node:24-alpine3.24 AS prod-deps
 WORKDIR /app
-COPY package.json package-lock.json .npmrc ./
-RUN npm ci --omit=dev --ignore-scripts
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+# pnpm's node_modules holds relative symlinks into node_modules/.pnpm, so the runtime copies the folder whole.
+RUN corepack enable && pnpm install --frozen-lockfile --prod --ignore-scripts
 
-# Plain Alpine and the node binary: npm, npx, corepack and yarn (24 MB, with advisories of their own) never ship, and
-# apk upgrade takes Alpine's fixes at build time, which a base image can lag by weeks.
+# Plain Alpine and the node binary: npm, npx, corepack, pnpm and yarn (24 MB, with advisories of their own) never
+# ship, and apk upgrade takes Alpine's fixes at build time, which a base image can lag by weeks.
 FROM alpine:3.24 AS runtime
 # libstdc++ is unpinned on purpose: Alpine drops old versions from its index, so a pinned one breaks the build.
 # hadolint ignore=DL3018

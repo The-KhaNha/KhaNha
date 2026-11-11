@@ -1,0 +1,22 @@
+# Settings only: no `packages:` list, so this root is not a workspace. pnpm reads project settings only from this
+# file (an .npmrc holds nothing but registry, auth, TLS and proxy settings), and it looks upward for the nearest one,
+# so each of the three roots keeps its own.
+
+# Refuse to install on a Node version outside package.json's engines.node.
+engineStrict: true
+
+# Resolve only versions published at least 7 days ago (in minutes): a hijacked release is usually caught and pulled
+# by then. An urgent security fix younger than that: name it in minimumReleaseAgeExclude, in its own reviewed PR.
+minimumReleaseAge: 10080
+
+# Dependency install scripts never run. A dependency with a script not listed here fails the install until someone
+# decides; allow one by name (true) only in the PR that needs it.
+strictDepBuilds: true
+allowBuilds:
+  # The platform binary comes as an optional dependency; the script only verifies it.
+  esbuild: false
+  # macOS only; ships a prebuilt binary.
+  fsevents: false
+
+overrides:
+  minimatch: ^11.0.3

@@ -17,10 +17,10 @@ Roles: CUSTOMER, STAFF (the restaurant's order board, `/staff`), ADMIN (site-wid
 settings; no staff powers). Site-wide limits live in the one-row `site_settings` table, edited by admins.
 - Client `client/`: React 18 + Vite + Tailwind v4 (tokens in the `@theme` block of `client/src/index.css`) + zustand + react-router 7, icons `lucide-react` only.
 - API `server/`: Express 5 + zod + Supabase (Postgres RPCs `place_order` / `update_order_status`, JWKS-verified auth; `supabaseAdmin` bypasses RLS, so every query scopes by user explicitly).
-- npm in both packages. Gate per package: `npm run typecheck && npm run lint && npm test`.
+- pnpm in both packages (and the repository root). Gate per package: `pnpm run typecheck && pnpm run lint && pnpm test`.
 - **Primary target: low- to mid-range Android phones (360–412px wide, ~4× slower CPU) on slow or flaky networks.** Desktop and staff screens are secondary.
 - Real users and real concurrency: stock races are settled inside the `place_order` transaction. Security and accessibility matter.
-- **Never touch production**: never run `npm run db:push:production` or `npm run seed -- --production`; tests run against local Supabase only (see `docs/TESTING.md`).
+- **Never touch production**: never run `pnpm run db:push:production` or `pnpm run seed --production`; tests run against local Supabase only (see `docs/TESTING.md`).
 - Migrations in `server/supabase/migrations/` are append-only once pushed. API changes stay backward-compatible with the deployed client.
 - Orient with `graphify query "<question>"` (the graph is in `graphify-out/`) before grepping or reading raw files.
 
@@ -43,8 +43,8 @@ messages mentioning disable / hide / experiment / feature flag (`git log $BASE..
 3. Record the decision in your final summary.
 
 ## Verification gate
-After your last edit, in `client/`: `npm run typecheck && npm run lint && npm test`.
-Run `npx prettier --write <files you touched>` first. A failure in a file you did not touch is reported, not fixed.
+After your last edit, in `client/`: `pnpm run typecheck && pnpm run lint && pnpm test`.
+Run `pnpm exec prettier --write <files you touched>` first. A failure in a file you did not touch is reported, not fixed.
 Never weaken a test, add `any`, `@ts-ignore`, `@ts-expect-error` or `eslint-disable` to get to green.
 Then re-run the live checks at every viewport on every route you edited. A fix that breaks another width is not a fix.
 
@@ -80,7 +80,7 @@ curl -s -o /dev/null -w 'api %{http_code}\n'      http://localhost:8000/api/heal
 curl -s -o /dev/null -w 'client %{http_code}\n'   http://localhost:5173/
 ```
 `000` means down. Start what is down in the background and poll the probe until it answers:
-`cd server && npm run db:start`, `cd server && npm run dev`, or `cd client && npm run dev`. Never use `start.sh` while
+`cd server && pnpm run db:start`, `cd server && pnpm run dev`, or `cd client && pnpm run dev`. Never use `start.sh` while
 any of them is up, because it kills ports 8000/5173. Before you rely on the client, confirm it points at local Supabase:
 `grep '^VITE_SUPABASE_URL=' client/.env.development` must show `127.0.0.1` or `localhost`. At the end, stop only the
 processes you started. Leave local Supabase up if a later /post-change stage needs it, and list everything you started

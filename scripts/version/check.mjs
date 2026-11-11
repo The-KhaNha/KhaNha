@@ -33,7 +33,7 @@ export function checkRelease(cwd) {
   const left = readIntents(cwd);
   if (left.length > 0)
     problems.push(
-      `.changes/ still holds ${left.map((i) => i.name).join(', ')}: run npm run release`,
+      `.changes/ still holds ${left.map((i) => i.name).join(', ')}: run pnpm run release`,
     );
   for (const pkg of PACKAGES) {
     const version = JSON.parse(readFileSync(join(cwd, pkg, 'package.json'), 'utf8')).version;
@@ -57,7 +57,7 @@ export function checkFeature(cwd, base, { allowMissing = false } = {}) {
   if (rows.some((row) => row.status === 'A' && isIntentFile(row.file))) return [];
   if (allowMissing) return [];
   return [
-    'Package source changed but no change intent was added. Run `npm run change -- --client <level> --server <level> "summary"`, or label the PR no-release if nothing ships.',
+    'Package source changed but no change intent was added. Run `pnpm run change --client <level> --server <level> "summary"`, or label the PR no-release if nothing ships.',
   ];
 }
 

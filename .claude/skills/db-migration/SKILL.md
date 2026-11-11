@@ -1,6 +1,6 @@
 ---
 name: db-migration
-description: Recipe for any database change in food-pickup (Supabase Postgres) — new table, column, enum value, index, trigger or SQL function — from `npm run db:new` through grants, RLS, indexes, reset, seed, regenerated types, docs and schema-guard. Use it whenever the schema must change, when a feature needs to store something new, when an atomic multi-step write needs a SQL function, or when the user says "add a column", "new table", "migration", "change the RPC".
+description: Recipe for any database change in food-pickup (Supabase Postgres) — new table, column, enum value, index, trigger or SQL function — from `pnpm run db:new` through grants, RLS, indexes, reset, seed, regenerated types, docs and schema-guard. Use it whenever the schema must change, when a feature needs to store something new, when an atomic multi-step write needs a SQL function, or when the user says "add a column", "new table", "migration", "change the RPC".
 ---
 
 # Database migration
@@ -13,7 +13,7 @@ they are history. So check first, write carefully, and verify locally.
 
 1. **Check** — run `/before-write` (schema-guard) with the intent. Prefer a column or enum value on an existing table
    over a new table.
-2. **Create** — `cd server && npm run db:new <snake_case_name>`. This writes
+2. **Create** — `cd server && pnpm run db:new <snake_case_name>`. This writes
    `server/supabase/migrations/<timestamp>_<name>.sql`. Never edit a migration that already exists on `$BASE`
    (`git ls-tree -r --name-only $BASE -- server/supabase/migrations/`); write a new one instead.
 3. **Write the SQL**, following the init migration's patterns:
@@ -26,14 +26,14 @@ they are history. So check first, write carefully, and verify locally.
      `revoke execute … from public, anon, authenticated` and `grant execute … to service_role`.
    - An index on every foreign key and every column used to filter or sort.
    - `updated_at` columns use the existing `set_updated_at()` trigger.
-4. **Apply locally** — `npm run db:reset` (reapplies every migration), then `npm run seed`. Both are local-only and
+4. **Apply locally** — `pnpm run db:reset` (reapplies every migration), then `pnpm run seed`. Both are local-only and
    destructive; never point them at staging or production.
-5. **Types** — `npm run db:types` regenerates `server/src/types/database.ts`. Never hand-edit that file.
+5. **Types** — `pnpm run db:types` regenerates `server/src/types/database.ts`. Never hand-edit that file.
 6. **Code** — update services, `utils/serializers.ts` and DTOs as needed (use `/new-endpoint` for API changes). Decode
    new P0001 errors with `raisedByDatabase(err, 'CODE')` and map them to `AppError`s.
 7. **Docs** — `docs/SCHEMA.md` (tables, columns, enums, indexes, functions and their errors, migration list) and
    `docs/PERMISSIONS.md` (grants, RLS, who may call the function).
-8. **Verify** — `npm run typecheck && npm run lint && npm test` in `server/`; run schema-guard on the new migration.
-9. **Ship** — the user runs `npm run db:push:staging` when ready. `db:push:production` is only ever run by the user.
+8. **Verify** — `pnpm run typecheck && pnpm run lint && pnpm test` in `server/`; run schema-guard on the new migration.
+9. **Ship** — the user runs `pnpm run db:push:staging` when ready. `db:push:production` is only ever run by the user.
 
 This is a major change: finish with `/post-change`.

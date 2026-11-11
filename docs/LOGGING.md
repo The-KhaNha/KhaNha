@@ -29,15 +29,15 @@ response goes out with `features: {}`, once until a read succeeds again (per pro
 
 ## Tuning per environment
 
-| Environment           | Server `LOG_LEVEL` default | Server output          | Client `VITE_LOG_LEVEL` default |
-| --------------------- | -------------------------- | ---------------------- | ------------------------------- |
-| local (`npm run dev`) | `debug`                    | pretty (`pino-pretty`) | `debug`                         |
-| staging               | `info`                     | JSON lines             | `warn`                          |
-| production            | `info`                     | JSON lines             | `warn`                          |
+| Environment            | Server `LOG_LEVEL` default | Server output          | Client `VITE_LOG_LEVEL` default |
+| ---------------------- | -------------------------- | ---------------------- | ------------------------------- |
+| local (`pnpm run dev`) | `debug`                    | pretty (`pino-pretty`) | `debug`                         |
+| staging                | `info`                     | JSON lines             | `warn`                          |
+| production             | `info`                     | JSON lines             | `warn`                          |
 
 - Server: set `LOG_LEVEL` in `server/.env` or the host's env: one of `fatal`, `error`, `warn`, `info`, `debug`,
-  `trace`, `silent`. `utils/env.ts` validates it and fills in the default. `npm test` runs with `silent` unless
-  `LOG_LEVEL` is set (`LOG_LEVEL=debug npm test`).
+  `trace`, `silent`. `utils/env.ts` validates it and fills in the default. `pnpm test` runs with `silent` unless
+  `LOG_LEVEL` is set (`LOG_LEVEL=debug pnpm test`).
 - Client: set `VITE_LOG_LEVEL` in `client/.env.<mode>`: one of `debug`, `info`, `warn`, `error`, `silent`. It is read
   at build time. In a production build `logger.debug` and `logger.info` are no-ops whatever the level says.
 

@@ -5,7 +5,7 @@ repository root, `client/` and `server/`) move from npm to pnpm. They stay three
 later, with the first shared package. The roadmap says what changes and why; this file says in which pull requests,
 with which files, checks and user steps, and where the step does something different from the roadmap's wording.
 
-> **Status: proposal** (11 November 2026). The precondition holds: `feat/P1` is in `dev` (#40). Two PRs into `dev`,
+> **Status: PR 01 built** (11 November 2026; [as built](#as-built)). Was: proposal (11 November 2026). The precondition holds: `feat/P1` is in `dev` (#40). Two PRs into `dev`,
 > both before `feat/P2` is cut, so no phase PR ever conflicts with a lockfile swap. The version is decided (D1, the
 > user, 11 November 2026): **pnpm 12, or 11 if 12 is blocked**. The other [decisions](#decisions) are open; each has
 > a default, and the plan is written for the defaults.
@@ -150,8 +150,10 @@ Verify:
 Strings only; no behaviour changes. `server/src/services/store.service.ts` (the "run the seed" message),
 `server/src/utils/env.ts`, `server/vitest.config.mts`, `server/test/setup/helpers.ts`, `server/scripts/seed.ts`,
 `server/scripts/seed-data.ts`, `client/scripts/make-icons.mjs`, `compose.yaml`, `server/.env.example`,
-`client/.env.example`, `client/.env.container`, `client/.env.development`. The guard from PR 01 gains one assertion:
-no file under `client/src`, `server/src`, `server/scripts` or `client/scripts` contains `npm run` or `npx`.
+`client/.env.example`, `client/.env.container`, `client/.env.development`, and (found by PR 01's review) the
+`execFileSync('npx', ['tsx', …])` calls in `server/test/setup/helpers.ts` and four `server/test/unit/*.safe.test.ts`,
+which become `pnpm exec tsx`. The guard from PR 01 gains one assertion: no file under `client/src`, `server/src`,
+`server/scripts`, `server/test` or `client/scripts` contains `npm run`, `npx` or a spawned `'npx'`.
 
 Tests: the suite that asserts the store-missing message, if one does, follows the new text.
 
@@ -211,6 +213,35 @@ shared store at work. Then tick P1.8 in the roadmap.
 | D2  | `pnpm run <script>` or `pnpm <script>` | `pnpm run <script>` everywhere (the roadmap wrote the bare form)                                                                                                       |
 | D3  | Dependency build scripts               | none allowed, and an unreviewed one fails the install (`strictDepBuilds`)                                                                                              |
 | D4  | pnpm in CI                             | corepack, not the `pnpm/action-setup` action                                                                                                                           |
+
+## As built
+
+PR 01, 11 November 2026, with the defaults for D2–D4:
+
+- **pnpm 12.17.0**, not 12.18.0: 12.18.0 was 6 days old on the day, under the 7-day rule. Pinned with corepack's
+  `+sha512.<hash>` (from `corepack use pnpm@12.17.0`), so the pnpm that installs everything is pinned by content; the
+  guard requires the hash.
+- **`pnpm-workspace.yaml` counts as package source**, like `package.json`: a change to it needs a change intent
+  (`needsIntent` in `scripts/version/lib.mjs`) and is a major change (`.claude/hooks/major-change-gate.js`), because
+  `overrides` and `allowBuilds` change what is installed into the images.
+- **CI: a local composite action**, `.github/actions/setup-pnpm`, not `corepack enable` before `actions/setup-node`.
+  The runner's default Node carries an older corepack that cannot run pnpm 12 (it ships as a native binary; corepack
+  0.31 fails with `Cannot find module …/bin/pnpm.cjs`), so `corepack enable` has to run on the Node that setup-node
+  installs, and `cache: pnpm` needs pnpm to exist, which takes a second setup-node call (a tool-cache hit). The action
+  holds that order once for the eight jobs. Dependabot's `github-actions` entry covers its directory.
+- **Dockerfiles: no `pnpm fetch`.** `pnpm install --frozen-lockfile` straight after copying the three files, as `npm ci`
+  did. `pnpm fetch` saves a reinstall only when `package.json` changes without the lockfile (a release's version
+  bump), which is not worth a second step per stage.
+- **`server-static` installs without `--ignore-scripts`**: pnpm runs no dependency script anyway (`allowBuilds`), and
+  the flag's comment (skips the Supabase CLI download) was stale.
+- **One undeclared import**, found by the strict layout as expected: `server/src/types/http.ts` imports
+  `express-serve-static-core`. `@types/express-serve-static-core` is now a server devDependency, at the version
+  already locked (5.1.3).
+- **`--` before script arguments.** `parseArgs` in `scripts/version/lib.mjs` (shared by all three version scripts)
+  skips it, with a test. The docs drop it everywhere: `pnpm test -- <file>` hands vitest `run -- <file>`, which
+  silently runs the whole suite.
+- `minimumReleaseAge` is in minutes (10080). `pnpm audit --audit-level moderate` reads only the lockfile and exits 1
+  on a moderate advisory and 0 on a low one (checked on scratch projects), so `security.yml` installs nothing.
 
 ## Later: the workspace
 

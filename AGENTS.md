@@ -19,6 +19,6 @@ Reading notes for non-Claude agents:
   Where you have no such tool, do the same step yourself or ask the user; the rule behind it still applies.
 - Never touch production, never commit, tag or merge unless asked, and no destructive git (`CLAUDE.md` §2, §12).
 - Never mention an AI or an assistant in commits, PRs, comments or docs, and add no `Co-Authored-By` line (§12b).
-- Validate every app package you touched (`client/`, `server/`) with `npm run typecheck && npm run lint && npm test`
+- Validate every app package you touched (`client/`, `server/`) with `pnpm run typecheck && pnpm run lint && pnpm test`
   (§13). Root and tooling changes (`scripts/`, `.github/`, `plans/`, root `package.json`) use the root gate,
-  `npm run format:check && npm test`: the root has no `typecheck` or `lint` script (`docs/CODEX.md`).
+  `pnpm run format:check && pnpm test`: the root has no `typecheck` or `lint` script (`docs/CODEX.md`).

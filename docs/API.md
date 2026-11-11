@@ -185,7 +185,7 @@ Code: `requireAuth` → `auth.controller.me` → `auth.service.getProfile`. Retu
 ### GET /store
 
 Code: `store.controller.getStore` → `store.service.getStore`. Returns the first row of `stores` (V0 has exactly one)
-as `{ store: StoreDto }`. With no store row: 404 `NOT_FOUND` "The store has not been set up yet. Run `npm run seed` in
+as `{ store: StoreDto }`. With no store row: 404 `NOT_FOUND` "The store has not been set up yet. Run `pnpm run seed` in
 server/."
 
 ### GET /menu

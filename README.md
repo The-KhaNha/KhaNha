@@ -34,7 +34,11 @@ Repository workflow setup for Codex: [docs/CODEX.md](docs/CODEX.md). Run `node s
 project skill entry files and role adapters, and `node scripts/codex/sync.mjs --plugins` to expose locally installed plugin
 prompts. The existing shared instructions and tooling remain authoritative.
 
-- **Node 24.15 or later 24.x** with any installer (`.nvmrc` / `.node-version` pin it; `npm ci` refuses other majors with `EBADENGINE`)
+- **Node 24.15 or later 24.x** with any installer (`.nvmrc` / `.node-version` pin it; `pnpm install` refuses any other version with `ERR_PNPM_UNSUPPORTED_ENGINE`)
+- **pnpm**, through the corepack that ships with Node 24: run `corepack enable` once. It then gives every root the pnpm
+  that `packageManager` in its `package.json` pins. The three roots (`.`, `client/`, `server/`) are independent: install
+  in each one you use. Scripts run as `pnpm run <script> <args>`, with no `--` before the arguments: pnpm passes a `--`
+  through, and `pnpm test -- <file>` runs the whole suite instead of `<file>`.
 - **Docker** (Docker Desktop, OrbStack or Colima) for the local Supabase stack. Not needed if you develop against staging.
 
 ## Containers
@@ -62,7 +66,8 @@ The one-time setup is three commands; after that `./start.sh` runs everything.
 **1. Install and start the local Supabase stack**
 
 ```bash
-cd server && npm install && npm run db:start && cd ..
+corepack enable
+cd server && pnpm install && pnpm run db:start && cd ..
 ```
 
 `db:start` runs Supabase (Postgres, Auth, the REST API) in Docker and applies everything in `server/supabase/migrations/`. The first run downloads the images and takes a few minutes. It prints the local URL and keys; they are fixed defaults and already filled in below.
@@ -82,18 +87,18 @@ The defaults point at the local stack (`APP_ENV=local`) and need no editing. To 
 ./start.sh                 # every time after that
 ```
 
-It prints the URLs and logins when both servers answer. Press **Ctrl+C** once to stop both. The Supabase stack keeps running in Docker; stop it with `cd server && npm run db:stop`.
+It prints the URLs and logins when both servers answer. Press **Ctrl+C** once to stop both. The Supabase stack keeps running in Docker; stop it with `cd server && pnpm run db:stop`.
 
 ### What `start.sh` does
 
-- Reads `APP_ENV` from `server/.env` and starts the web app in the matching mode (`local` → `npm run dev`, `staging` → `npm run dev:staging`), so the browser signs in to the same Supabase project the API uses. Refuses `APP_ENV=production`.
+- Reads `APP_ENV` from `server/.env` and starts the web app in the matching mode (`local` → `pnpm run dev`, `staging` → `pnpm run dev:staging`), so the browser signs in to the same Supabase project the API uses. Refuses `APP_ENV=production`.
 - Stops with a clear message if `server/.env` is missing, or (for `local`) the Supabase stack is not running.
-- Runs `npm install` in `server/` and `client/` if `node_modules` is missing.
-- **Frees the API, worker and web ports first** (8000, 8001 and 5173 unless configured) — anything still listening on them (a stray `npm run dev`, an earlier `start.sh`) is killed. Don't run it while another copy of the project is deliberately serving those ports.
-- `--seed` runs `npm run seed` before starting (see [Re-seeding wipes orders](#re-seeding-wipes-orders)).
+- Runs `pnpm install --frozen-lockfile` in `server/` and `client/` if `node_modules` is missing. An existing checkout built with npm keeps its old `node_modules`, so migrate it once: delete `node_modules` in the repository root, `client/` and `server/`, make sure Corepack is enabled (see Prerequisites), then run `pnpm install` in each of the three.
+- **Frees the API, worker and web ports first** (8000, 8001 and 5173 unless configured) — anything still listening on them (a stray `pnpm run dev`, an earlier `start.sh`) is killed. Don't run it while another copy of the project is deliberately serving those ports.
+- `--seed` runs `pnpm run seed` before starting (see [Re-seeding wipes orders](#re-seeding-wipes-orders)).
 - Starts the API and the job worker (`tsx watch`, auto-reload on server edits) and the web app (Vite, hot reloads client edits). Their output goes to **`.logs/server.log`**, **`.logs/worker.log`** and **`.logs/client.log`** (gitignored) — look there when something misbehaves.
 - Waits until `GET /api/health`, the worker's `http://localhost:8001/health`, the web app and `GET /api/menu` all return 200. If the API is up but the menu isn't, it says **"Database looks empty or unreachable — run ./start.sh --seed"** and stops.
-- Does _not_ start Supabase or apply migrations — that is step 1 above (or `npm run db:push:staging` for staging).
+- Does _not_ start Supabase or apply migrations — that is step 1 above (or `pnpm run db:push:staging` for staging).
 
 ### Manual start (two terminals)
 
@@ -102,13 +107,13 @@ If you would rather see the servers' output directly:
 ```bash
 # terminal 1 — API on http://localhost:8000/api
 cd server
-npm run seed               # first time only
-npm run dev
+pnpm run seed               # first time only
+pnpm run dev
 
 # terminal 2 — web app on http://localhost:5173
 cd client
-npm install                # first time only
-npm run dev                # or `npm run dev:staging` when server/.env has APP_ENV=staging
+pnpm install               # first time only
+pnpm run dev                # or `pnpm run dev:staging` when server/.env has APP_ENV=staging
 ```
 
 The Vite dev server proxies `/api/*` to `http://localhost:8000`. The only client configuration is which Supabase project to sign in to, in `client/.env.<mode>` (see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#client-environment-variables)).
@@ -188,11 +193,11 @@ Menu items can carry a `stockQuantity` (`null` = not tracked, which is the defau
 - Placing an order decrements stock atomically; at 0 the item shows as **Sold out** and cannot be added. Staff cancelling an order (**PLACED/PREPARING → CANCELLED**) puts its items back.
 - If stock changes while something sits in a cart (someone else bought the last one), the cart and checkout ring the exact line in paprika, label it ("Only 1 left" / "Sold out"), block the pay button with a reason that names the item, and offer a one-tap **Fix** that trims the line to what is available or removes it. The server error (`INSUFFICIENT_STOCK`) names the item too — never "some item is not available".
 - **Order Again** adds a past order on top of the current cart, capped by current stock, and lists anything it could not add in full ("Cheese Toast: only 1 left, added 1", "Berry Smoothie is sold out, skipped").
-- `npm run seed` resets the three counts above (and clears every order).
+- `pnpm run seed` resets the three counts above (and clears every order).
 
 ## Re-seeding wipes orders
 
-`npm run seed` (in `server/`, or `./start.sh --seed`) deletes **every order** and restarts numbering at **#1001**. The store, menu items and the two test accounts are updated in place and keep their ids, so logins and saved carts in an open browser keep working. Accounts registered while testing are removed. It seeds whichever project `server/.env` points at, and refuses `APP_ENV=production`.
+`pnpm run seed` (in `server/`, or `./start.sh --seed`) deletes **every order** and restarts numbering at **#1001**. The store, menu items and the two test accounts are updated in place and keep their ids, so logins and saved carts in an open browser keep working. Accounts registered while testing are removed. It seeds whichever project `server/.env` points at, and refuses `APP_ENV=production`.
 
 ## Ports
 
@@ -202,50 +207,50 @@ Client `5173` (`VITE_DEV_PORT`), API `8000` (`PORT`), worker health `8001` (`WOR
 
 ## Useful scripts
 
-| Where   | Command                                                                                | What it does                                                                                                                                                                                          |
-| ------- | -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| root    | `./start.sh [--seed]`                                                                  | Start (and optionally reseed) everything                                                                                                                                                              |
-| server/ | `npm run dev`                                                                          | API with reload (tsx watch) on :8000                                                                                                                                                                  |
-| server/ | `npm run dev:worker` / `start:worker`                                                  | The job worker (tsx watch / built) with `GET /health` on :8001                                                                                                                                        |
-| server/ | `npm run seed`                                                                         | Reset demo data (see above)                                                                                                                                                                           |
-| server/ | `npm run typecheck`                                                                    | `tsc --noEmit`                                                                                                                                                                                        |
-| server/ | `npm run lint`                                                                         | ESLint                                                                                                                                                                                                |
-| server/ | `npm test` / `test:watch`                                                              | Vitest against the local Supabase stack (see [docs/TESTING.md](docs/TESTING.md))                                                                                                                      |
-| server/ | `npm run format` / `format:check`                                                      | Prettier write / check                                                                                                                                                                                |
-| server/ | `npm run db:start` / `db:stop`                                                         | Start / stop the local Supabase stack (Docker)                                                                                                                                                        |
-| server/ | `npm run db:reset`                                                                     | Rebuild the local database from the migrations (wipes local data)                                                                                                                                     |
-| server/ | `npm run db:new <name>`                                                                | New empty migration file                                                                                                                                                                              |
-| server/ | `npm run db:types`                                                                     | Regenerate `src/types/database.ts` from the local database                                                                                                                                            |
-| server/ | `npm run db:push:staging` / `db:push:production`                                       | Apply new migrations to a hosted project                                                                                                                                                              |
-| server/ | `npm run build` / `npm start`                                                          | Compile to `dist/` and run `dist/src/server.js` without tsx                                                                                                                                           |
-| client/ | `npm run dev` / `dev:staging`                                                          | Vite dev server on :5173 with `/api` proxy, signing in to local / staging Supabase                                                                                                                    |
-| client/ | `npm run typecheck`                                                                    | `tsc --noEmit`                                                                                                                                                                                        |
-| client/ | `npm run lint`                                                                         | ESLint                                                                                                                                                                                                |
-| client/ | `npm test` / `test:watch`                                                              | Vitest unit tests (jsdom, no backend needed)                                                                                                                                                          |
-| client/ | `npm run format` / `format:check`                                                      | Prettier write / check                                                                                                                                                                                |
-| client/ | `npm run build` / `build:staging`                                                      | Type-check + build into `dist/` for production / staging. `build` needs `client/.env.production` (see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#builds))                                                |
-| client/ | `npm run preview`                                                                      | `vite preview` of the last build                                                                                                                                                                      |
-| client/ | `python3 scripts/optimize-images.py`                                                   | Compress a new/replaced photo in `public/images/` and write its 400px thumbnail (needs Pillow: `pip3 install pillow`; see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#compressing-photos-before-a-build)) |
-| client/ | `npm run e2e:webkit`                                                                   | The WebKit smoke (Safari's engine, 360px, API mocked); `npm run e2e:install` once first                                                                                                               |
-| root    | `npm run format` / `format:check`                                                      | Prettier over `scripts/**`, `.github/**` and `plans/**` (root `package.json`, not a workspace; only devDependency `prettier`)                                                                         |
-| root    | `npm test`                                                                             | `node --test` over `scripts/**/*.test.mjs`                                                                                                                                                            |
-| root    | `npm run change -- --client <level> --server <level> "summary"`                        | Record a change intent in `.changes/` (`.claude/rules/workflow.md` §21)                                                                                                                               |
-| root    | `npm run release:dry` / `release`                                                      | Print / apply the version bump from the intents (release PR only)                                                                                                                                     |
-| root    | `npm run change:check`                                                                 | The `version-intent` CI check against `origin/dev`                                                                                                                                                    |
-| root    | `npm run check:bundle` / `check:migrations` / `check:durations` / `check:dist-secrets` | The CI checks: initial JS budget (after a client build), migrations append-only, no hard-coded durations, no secret in the built bundle                                                               |
-| server/ | `npm run db:start:ci`                                                                  | `db:start` without Studio, storage, realtime, mail, logs and edge functions (CI)                                                                                                                      |
-| server/ | `npm run seed -- --production`                                                         | First-time production setup: **the user runs it**, never an agent (like `db:push:production`)                                                                                                         |
-| client/ | `npm run e2e:chromium` / `e2e:install`                                                 | The 360×640 smoke on Chromium (CI, every client PR); `e2e:install` downloads the browsers once                                                                                                        |
+| Where   | Command                                                                                 | What it does                                                                                                                                                                                          |
+| ------- | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| root    | `./start.sh [--seed]`                                                                   | Start (and optionally reseed) everything                                                                                                                                                              |
+| server/ | `pnpm run dev`                                                                          | API with reload (tsx watch) on :8000                                                                                                                                                                  |
+| server/ | `pnpm run dev:worker` / `start:worker`                                                  | The job worker (tsx watch / built) with `GET /health` on :8001                                                                                                                                        |
+| server/ | `pnpm run seed`                                                                         | Reset demo data (see above)                                                                                                                                                                           |
+| server/ | `pnpm run typecheck`                                                                    | `tsc --noEmit`                                                                                                                                                                                        |
+| server/ | `pnpm run lint`                                                                         | ESLint                                                                                                                                                                                                |
+| server/ | `pnpm test` / `test:watch`                                                              | Vitest against the local Supabase stack (see [docs/TESTING.md](docs/TESTING.md))                                                                                                                      |
+| server/ | `pnpm run format` / `format:check`                                                      | Prettier write / check                                                                                                                                                                                |
+| server/ | `pnpm run db:start` / `db:stop`                                                         | Start / stop the local Supabase stack (Docker)                                                                                                                                                        |
+| server/ | `pnpm run db:reset`                                                                     | Rebuild the local database from the migrations (wipes local data)                                                                                                                                     |
+| server/ | `pnpm run db:new <name>`                                                                | New empty migration file                                                                                                                                                                              |
+| server/ | `pnpm run db:types`                                                                     | Regenerate `src/types/database.ts` from the local database                                                                                                                                            |
+| server/ | `pnpm run db:push:staging` / `db:push:production`                                       | Apply new migrations to a hosted project                                                                                                                                                              |
+| server/ | `pnpm run build` / `pnpm start`                                                         | Compile to `dist/` and run `dist/src/server.js` without tsx                                                                                                                                           |
+| client/ | `pnpm run dev` / `dev:staging`                                                          | Vite dev server on :5173 with `/api` proxy, signing in to local / staging Supabase                                                                                                                    |
+| client/ | `pnpm run typecheck`                                                                    | `tsc --noEmit`                                                                                                                                                                                        |
+| client/ | `pnpm run lint`                                                                         | ESLint                                                                                                                                                                                                |
+| client/ | `pnpm test` / `test:watch`                                                              | Vitest unit tests (jsdom, no backend needed)                                                                                                                                                          |
+| client/ | `pnpm run format` / `format:check`                                                      | Prettier write / check                                                                                                                                                                                |
+| client/ | `pnpm run build` / `build:staging`                                                      | Type-check + build into `dist/` for production / staging. `build` needs `client/.env.production` (see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#builds))                                                |
+| client/ | `pnpm run preview`                                                                      | `vite preview` of the last build                                                                                                                                                                      |
+| client/ | `python3 scripts/optimize-images.py`                                                    | Compress a new/replaced photo in `public/images/` and write its 400px thumbnail (needs Pillow: `pip3 install pillow`; see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#compressing-photos-before-a-build)) |
+| client/ | `pnpm run e2e:webkit`                                                                   | The WebKit smoke (Safari's engine, 360px, API mocked); `pnpm run e2e:install` once first                                                                                                              |
+| root    | `pnpm run format` / `format:check`                                                      | Prettier over `scripts/**`, `.github/**` and `plans/**` (root `package.json`, not a workspace; only devDependency `prettier`)                                                                         |
+| root    | `pnpm test`                                                                             | `node --test` over `scripts/**/*.test.mjs`                                                                                                                                                            |
+| root    | `pnpm run change --client <level> --server <level> "summary"`                           | Record a change intent in `.changes/` (`.claude/rules/workflow.md` §21)                                                                                                                               |
+| root    | `pnpm run release:dry` / `release`                                                      | Print / apply the version bump from the intents (release PR only)                                                                                                                                     |
+| root    | `pnpm run change:check`                                                                 | The `version-intent` CI check against `origin/dev`                                                                                                                                                    |
+| root    | `pnpm run check:bundle` / `check:migrations` / `check:durations` / `check:dist-secrets` | The CI checks: initial JS budget (after a client build), migrations append-only, no hard-coded durations, no secret in the built bundle                                                               |
+| server/ | `pnpm run db:start:ci`                                                                  | `db:start` without Studio, storage, realtime, mail, logs and edge functions (CI)                                                                                                                      |
+| server/ | `pnpm run seed --production`                                                            | First-time production setup: **the user runs it**, never an agent (like `db:push:production`)                                                                                                         |
+| client/ | `pnpm run e2e:chromium` / `e2e:install`                                                 | The 360×640 smoke on Chromium (CI, every client PR); `e2e:install` downloads the browsers once                                                                                                        |
 
-The gate for a changed package is `npm run typecheck && npm run lint && npm test`.
+The gate for a changed package is `pnpm run typecheck && pnpm run lint && pnpm test`.
 
 ## Troubleshooting
 
 | Symptom                                                                                                         | Fix                                                                                                                                                                        |
 | --------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `EADDRINUSE: address already in use :::8000` or Vite's `Port 5173 is already in use`                            | Something from an earlier run is still listening. `./start.sh` frees both ports for you; by hand: `lsof -ti:8000 -ti:5173 \| xargs kill`.                                  |
-| `The local Supabase stack is not running` / `Cannot connect to the Docker daemon`                               | Start Docker, then `cd server && npm run db:start`.                                                                                                                        |
-| `start.sh` says **"Database looks empty or unreachable"**, or the app shows "The store has not been set up yet" | Tables missing or never seeded. Local: `cd server && npm run db:reset`, then `./start.sh --seed`. Staging: `npm run db:push:staging`, then `npm run seed`.                 |
+| `The local Supabase stack is not running` / `Cannot connect to the Docker daemon`                               | Start Docker, then `cd server && pnpm run db:start`.                                                                                                                       |
+| `start.sh` says **"Database looks empty or unreachable"**, or the app shows "The store has not been set up yet" | Tables missing or never seeded. Local: `cd server && pnpm run db:reset`, then `./start.sh --seed`. Staging: `pnpm run db:push:staging`, then `pnpm run seed`.              |
 | Sign-in works but then "Your session has expired. Please sign in again."                                        | The web app and the API point at different Supabase projects. Check `APP_ENV`/`SUPABASE_URL` in `server/.env` against `client/.env.<mode>`, and restart with `./start.sh`. |
 | `permission denied for table …` in the API log                                                                  | `SUPABASE_SECRET_KEY` is not the secret key of the project in `SUPABASE_URL` (or is a publishable key).                                                                    |
 | `start.sh` says **"server/.env is missing"**, or the API prints `Invalid environment configuration`             | `cp server/.env.example server/.env`; the message names the variable that is missing or malformed.                                                                         |

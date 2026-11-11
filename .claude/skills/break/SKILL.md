@@ -12,8 +12,8 @@ need the shared Playwright browser, so they never run at the same time.
 
 1. Probe (never restart what answers): `curl -s -o /dev/null -w '%{http_code}'` on
    `http://localhost:8000/api/health`, `http://localhost:5173`, `http://127.0.0.1:54321/rest/v1/`. Start only what
-   is down, in the background, and remember what you started: `cd server && npm run db:start` (+ `npm run seed` on
-   a fresh stack), `cd server && npm run dev`, `cd client && npm run dev`. Never run `start.sh` while the user's
+   is down, in the background, and remember what you started: `cd server && pnpm run db:start` (+ `pnpm run seed` on
+   a fresh stack), `cd server && pnpm run dev`, `cd client && pnpm run dev`. Never run `start.sh` while the user's
    servers are up.
 2. Confirm the API points at local Supabase: `curl -s localhost:8000/api/config | jq -r .` and
    `grep -c 127.0.0.1 server/.env` (never print the file). If either names a hosted project, stop and ask.

@@ -3,7 +3,7 @@
 The Postgres schema in the Supabase project, from `server/supabase/migrations/`. The ER diagram is in
 [ARCHITECTURE.md](ARCHITECTURE.md#10-data-model). Who may read and call what is in [PERMISSIONS.md](PERMISSIONS.md).
 
-- Generated TypeScript types: `server/src/types/database.ts` (`cd server && npm run db:types`, from the local
+- Generated TypeScript types: `server/src/types/database.ts` (`cd server && pnpm run db:types`, from the local
   database). `server/src/types/enums.ts` re-exports the enums from it.
 - Money is paise in `bigint` columns named `…_paise` ([ADR-004](adr/004-rupees-and-paise.md)); the API sends whole
   rupees, converted only by `server/src/utils/money.ts`. While a rupee API field exists for a column, its paise column
@@ -75,7 +75,7 @@ the account was made.
 
 ### stores
 
-V0 has exactly one row, created by `npm run seed`.
+V0 has exactly one row, created by `pnpm run seed`.
 
 | Column                  | Type    | Null | Default             | Notes                                            |
 | ----------------------- | ------- | ---- | ------------------- | ------------------------------------------------ |
@@ -144,7 +144,7 @@ reserved (`order_items.reserved_quantity`), not by what they ordered.
 | `reserved_quantity` | integer | no   | none                | what `place_order` took from stock for this line: `quantity`, or `0` for an item without a stock count; `check (reserved_quantity in (0, quantity))`. A cancel returns exactly this. No default: an insert from a `place_order` that predates the column fails and rolls back its stock change instead of recording 0 |
 
 Foreign keys without an `on delete` clause (`menu_items.store_id`, `orders.user_id`, `orders.store_id`,
-`order_items.menu_item_id`) block deleting a row that is still referenced. `npm run seed` wipes orders first for that
+`order_items.menu_item_id`) block deleting a row that is still referenced. `pnpm run seed` wipes orders first for that
 reason.
 
 ### site_settings

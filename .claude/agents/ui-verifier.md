@@ -19,10 +19,10 @@ Roles: CUSTOMER, STAFF (the restaurant's order board, `/staff`), ADMIN (site-wid
 settings; no staff powers). Site-wide limits live in the one-row `site_settings` table, edited by admins.
 - Client `client/`: React 18 + Vite + Tailwind v4 (tokens in the `@theme` block of `client/src/index.css`) + zustand + react-router 7, icons `lucide-react` only.
 - API `server/`: Express 5 + zod + Supabase (Postgres RPCs `place_order` / `update_order_status`, JWKS-verified auth; `supabaseAdmin` bypasses RLS, so every query scopes by user explicitly).
-- npm in both packages. Gate per package: `npm run typecheck && npm run lint && npm test`.
+- pnpm in both packages (and the repository root). Gate per package: `pnpm run typecheck && pnpm run lint && pnpm test`.
 - **Primary target: low- to mid-range Android phones (360–412px wide, ~4× slower CPU) on slow or flaky networks.** Desktop and staff screens are secondary.
 - Real users and real concurrency: stock races are settled inside the `place_order` transaction. Security and accessibility matter.
-- **Never touch production**: never run `npm run db:push:production` or `npm run seed -- --production`; tests run against local Supabase only (see `docs/TESTING.md`).
+- **Never touch production**: never run `pnpm run db:push:production` or `pnpm run seed --production`; tests run against local Supabase only (see `docs/TESTING.md`).
 - Migrations in `server/supabase/migrations/` are append-only once pushed. API changes stay backward-compatible with the deployed client.
 - Orient with `graphify query "<question>"` (the graph is in `graphify-out/`) before grepping or reading raw files.
 
@@ -60,7 +60,7 @@ curl -s -o /dev/null -w 'api %{http_code}\n'      http://localhost:8000/api/heal
 curl -s -o /dev/null -w 'client %{http_code}\n'   http://localhost:5173/
 ```
 `000` means down. Start what is down in the background and poll the probe until it answers:
-`cd server && npm run db:start`, `cd server && npm run dev`, or `cd client && npm run dev`. Never use `start.sh` while
+`cd server && pnpm run db:start`, `cd server && pnpm run dev`, or `cd client && pnpm run dev`. Never use `start.sh` while
 any of them is up, because it kills ports 8000/5173. Before you rely on the client, confirm it points at local Supabase:
 `grep '^VITE_SUPABASE_URL=' client/.env.development` must show `127.0.0.1` or `localhost`. At the end, stop only the
 processes you started. Leave local Supabase up if a later /post-change stage needs it, and list everything you started
@@ -167,9 +167,9 @@ Resize to 360×640 first. Throttling is per CDP session; apply it again after `b
   320 (180×320, a 360px phone at 200% browser zoom) is beyond WCAG and not a finding. Reset the font size afterwards.
   The CI e2e (`client/e2e/layout.spec.ts`) asserts both passes on every route it covers; L11 adds the routes it does
   not (checkout, admin, the live data).
-- **L12: WebKit.** `cd client && npm run e2e:webkit` runs every `client/e2e/*.spec.ts` (home, menu, add to cart, cart
+- **L12: WebKit.** `cd client && pnpm run e2e:webkit` runs every `client/e2e/*.spec.ts` (home, menu, add to cart, cart
   at 360px, no overflow, clean console) on Safari's engine with every `/api` call mocked. A failure is a blocker;
-  if WebKit is not installed (`npm run e2e:install`, no sudo needed on most hosts) and cannot be, report it under
+  if WebKit is not installed (`pnpm run e2e:install`, no sudo needed on most hosts) and cannot be, report it under
   "Not verified" with the launcher error, never as passed.
 
 ## Output format

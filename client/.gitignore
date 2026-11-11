@@ -5,6 +5,6 @@ dist
 lhci/
 .lighthouseci/
 
-# Playwright (npm run e2e:webkit)
+# Playwright (pnpm run e2e:webkit)
 test-results/
 playwright-report/

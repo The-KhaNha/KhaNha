@@ -6,14 +6,14 @@
 #
 # The images are the same code for every environment (the env file is applied by run.sh at start, never baked in);
 # building per environment checks that environment's env files first and keeps its tag apart. The images install
-# their own dependencies (npm ci inside the Dockerfiles). The host needs node_modules only for the local Supabase CLI,
+# their own dependencies (pnpm install inside the Dockerfiles). The host needs node_modules only for the local Supabase CLI,
 # so `dev` installs server/ when it is missing.
 set -euo pipefail
 cd "$(dirname "$0")"
 source scripts/docker-env.sh "${1:-}"
 
 if [ "$FP_ENV" = dev ] && [ ! -d server/node_modules ]; then
-  (cd server && npm ci)
+  (cd server && pnpm install --frozen-lockfile)
 fi
 
 # The commit GET /api/health reports; -dirty when the tree has uncommitted changes.

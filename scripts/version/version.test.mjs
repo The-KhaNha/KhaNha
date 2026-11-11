@@ -39,20 +39,14 @@ const write = (file, body) => {
   writeFileSync(join(root, file), body);
 };
 const json = (file) => JSON.parse(readFileSync(join(root, file), 'utf8'));
+const LOCKFILE = "lockfileVersion: '9.0'\n";
 const change = (...argv) => recordChange(argv, { root }).file;
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'version-'));
   for (const pkg of ['client', 'server']) {
     write(`${pkg}/package.json`, JSON.stringify({ name: pkg, version: '0.1.0' }, null, 2) + '\n');
-    write(
-      `${pkg}/package-lock.json`,
-      JSON.stringify(
-        { name: pkg, version: '0.1.0', packages: { '': { version: '0.1.0' } } },
-        null,
-        2,
-      ) + '\n',
-    );
+    write(`${pkg}/pnpm-lock.yaml`, LOCKFILE);
     write(`${pkg}/CHANGELOG.md`, '# Changelog\n\n## 0.1.0 — 2026-09-28\n\n- First version.\n');
   }
   write('.changes/README.md', 'format\n');
@@ -81,6 +75,9 @@ describe('lib', () => {
       needsIntent(['docs/API.md', '.github/workflows/ci.yml', 'server/test/a.test.ts']),
       false,
     );
+    // Overrides and allowBuilds live there: they change what is installed into the images.
+    assert.equal(needsIntent(['client/pnpm-workspace.yaml']), true);
+    assert.equal(needsIntent(['pnpm-workspace.yaml']), true);
   });
 
   test('parseIntent rejects bad front matter', () => {
@@ -116,6 +113,17 @@ describe('change.mjs', () => {
     recordChange(['--server', 'patch', 'x', '--dry-run'], { root });
     assert.deepEqual(readdirSync(join(root, '.changes')), ['README.md']);
   });
+
+  test('a leading `--` (pnpm passes it through) reads the same as without it', () => {
+    const now = new Date('2026-11-11T00:00:00Z');
+    const plain = recordChange(['--server', 'patch', 'x', '--dry-run'], { root, now });
+    const dashed = recordChange(['--', '--server', 'patch', 'x', '--dry-run'], { root, now });
+    assert.equal(dashed.body, plain.body); // Only a leading `--`: later on, it is an argument like any other.
+    assert.throws(
+      () => recordChange(['--server', 'patch', '--', 'x'], { root }),
+      /needs a value|summary/,
+    );
+  });
 });
 
 describe('release.mjs', () => {
@@ -128,12 +136,11 @@ describe('release.mjs', () => {
     assert.equal(plan.intents.length, 2);
   });
 
-  test('applies versions, lockfiles, CHANGELOGs, release.json and deletes the intents', () => {
+  test('applies versions, CHANGELOGs, release.json and deletes the intents; the lockfile is untouched', () => {
     change('--server', 'minor', 'New endpoint');
     applyRelease(root, planRelease(root), '2026-10-01');
     assert.equal(json('server/package.json').version, '0.2.0');
-    assert.equal(json('server/package-lock.json').version, '0.2.0');
-    assert.equal(json('server/package-lock.json').packages[''].version, '0.2.0');
+    assert.equal(readFileSync(join(root, 'server/pnpm-lock.yaml'), 'utf8'), LOCKFILE);
     assert.equal(json('client/package.json').version, '0.1.0');
     const log = readFileSync(join(root, 'server/CHANGELOG.md'), 'utf8');
     assert.match(log, /^# Changelog\n\n## 0\.2\.0 — 2026-10-01\n\n- New endpoint\n\n## 0\.1\.0/);

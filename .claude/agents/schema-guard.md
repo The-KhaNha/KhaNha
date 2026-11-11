@@ -17,10 +17,10 @@ Roles: CUSTOMER, STAFF (the restaurant's order board, `/staff`), ADMIN (site-wid
 settings; no staff powers). Site-wide limits live in the one-row `site_settings` table, edited by admins.
 - Client `client/`: React 18 + Vite + Tailwind v4 (tokens in the `@theme` block of `client/src/index.css`) + zustand + react-router 7, icons `lucide-react` only.
 - API `server/`: Express 5 + zod + Supabase (Postgres RPCs `place_order` / `update_order_status`, JWKS-verified auth; `supabaseAdmin` bypasses RLS, so every query scopes by user explicitly).
-- npm in both packages. Gate per package: `npm run typecheck && npm run lint && npm test`.
+- pnpm in both packages (and the repository root). Gate per package: `pnpm run typecheck && pnpm run lint && pnpm test`.
 - **Primary target: low- to mid-range Android phones (360–412px wide, ~4× slower CPU) on slow or flaky networks.** Desktop and staff screens are secondary.
 - Real users and real concurrency: stock races are settled inside the `place_order` transaction. Security and accessibility matter.
-- **Never touch production**: never run `npm run db:push:production` or `npm run seed -- --production`; tests run against local Supabase only (see `docs/TESTING.md`).
+- **Never touch production**: never run `pnpm run db:push:production` or `pnpm run seed --production`; tests run against local Supabase only (see `docs/TESTING.md`).
 - Migrations in `server/supabase/migrations/` are append-only once pushed. API changes stay backward-compatible with the deployed client.
 - Orient with `graphify query "<question>"` (the graph is in `graphify-out/`) before grepping or reading raw files.
 
@@ -95,7 +95,7 @@ Check the proposal against each; list any that are missing as a blocker.
 
 - **Append-only migrations.** Never edit a migration that exists on `$BASE`
   (`git ls-tree -r --name-only $BASE -- server/supabase/migrations/`). New file via
-  `cd server && npm run db:new <snake_case_name>`, which creates `server/supabase/migrations/<timestamp>_<name>.sql`.
+  `cd server && pnpm run db:new <snake_case_name>`, which creates `server/supabase/migrations/<timestamp>_<name>.sql`.
 - **RLS and grants** (see the init migration's "Lock the tables away from the browser" block). Every new table:
   `alter table public.<t> enable row level security;` with no policies, and
   `revoke all on table public.<t> from anon, authenticated;`. The init migration's `alter default privileges … revoke`
@@ -122,10 +122,10 @@ Check the proposal against each; list any that are missing as a blocker.
 ## Follow-up the main agent must run (include in the verdict)
 
 ```bash
-cd server && npm run db:new <name>     # then write the SQL
-npm run db:reset                        # applies every migration to local Supabase (wipes local data)
-npm run seed                            # demo data back
-npm run db:types                        # regenerates src/types/database.ts; never hand-edit it
+cd server && pnpm run db:new <name>     # then write the SQL
+pnpm run db:reset                        # applies every migration to local Supabase (wipes local data)
+pnpm run seed                            # demo data back
+pnpm run db:types                        # regenerates src/types/database.ts; never hand-edit it
 ```
 
 Then the gate in `server/` (and `client/` if types or enums reached it), and update `docs/SCHEMA.md` (the object) and
@@ -148,7 +148,7 @@ Change: add column `<name> <type> <null/default>` | add value '<VALUE>' | add pa
 Why not a new table: <specific reason>
 Indexes: <needed ones, or "none: not filtered or sorted on">
 Also touches: <enums.ts, orderStatus.ts, api.ts, serializers.ts, service functions, errors.ts>
-Migration: npm run db:new <name>; then db:reset, seed, db:types
+Migration: pnpm run db:new <name>; then db:reset, seed, db:types
 Docs: docs/SCHEMA.md, docs/PERMISSIONS.md
 ```
 
@@ -161,6 +161,6 @@ Foreign keys: <col → table (on delete …)>
 Indexes: <every FK + filter/sort composite>
 RLS/grants: enable RLS, no policies; revoke all from anon, authenticated
 Functions: <any RPC, with p_ params, P0001 codes, service_role-only execute>
-Migration: npm run db:new <name>; then db:reset, seed, db:types
+Migration: pnpm run db:new <name>; then db:reset, seed, db:types
 Docs: docs/SCHEMA.md, docs/PERMISSIONS.md, docs/BACKEND_STRUCTURE.md
 ```

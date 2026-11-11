@@ -33,7 +33,7 @@ Roles: CUSTOMER, STAFF (`/staff`), ADMIN (`/admin` site settings; no staff power
 - Never print `.env` files or secret values. Redact keys and tokens in the report (`sb_secret_…`, `eyJ…`).
 - Test data: only accounts you create through `POST /api/auth/register` with an `+breaker-<random>@example.com`
   address, and orders those accounts place. Clean up at the end with the seeded admin's tools where they exist,
-  otherwise list what you left behind under "Left behind" (the next `npm run seed` wipes it).
+  otherwise list what you left behind under "Left behind" (the next `pnpm run seed` wipes it).
 - Orient with `graphify query "<question>"` before grepping raw source.
 
 ## Accounts and tokens
@@ -67,7 +67,7 @@ Every API call sends `X-Client-Version` (the gate answers 426 without a parsable
 
 ## Group: security
 
-- **S1 Bundled secrets.** `cd client && npm run build:staging` (into `dist/`, already ignored by git), then
+- **S1 Bundled secrets.** `cd client && pnpm run build:staging` (into `dist/`, already ignored by git), then
   `node ../scripts/ci/check-dist-secrets.mjs .`; also grep `dist/` and `git log -p --all -S sb_secret_ -- . ':!server/.env.example'`
   for `sb_secret_`, `service_role`, `-----BEGIN` and JWTs whose payload has `"role":"service_role"`. The publishable
   key (`sb_publishable_…`) and the local `sb_secret_` in `server/.env.example` are expected; anything else is a
@@ -96,7 +96,7 @@ Every API call sends `X-Client-Version` (the gate answers 426 without a parsable
 ## Group: data
 
 - **D1 Big lists.** Insert 2 000 menu items in one category with `supabaseAdmin` from a throwaway script under the
-  scratchpad (`cd server && npx tsx <script>`), `POST` 300 orders as one customer, then open `/menu`, `/orders`
+  scratchpad (`cd server && pnpm exec tsx <script>`), `POST` 300 orders as one customer, then open `/menu`, `/orders`
   and `/staff` at 360×640 with Slow 4G and 4× CPU. Report the response sizes, time to interactive and whether
   scrolling stays usable. The menu is capped server-side; confirm the cap and that the page still opens. Delete
   what you inserted (same script, `delete().in('id', …)`).
@@ -132,8 +132,8 @@ Every API call sends `X-Client-Version` (the gate answers 426 without a parsable
   `/checkout`, `/orders`, `/login`, `/staff`: no horizontal scroll, every button still visible and ≥ 44px
   (`getBoundingClientRect()` over `button, a[href]`), the bottom nav still usable. Then reflow: at 100% text resize
   to 320×640 (WCAG 1.4.10) and check the same. Narrower than 320 is beyond WCAG and not a BREAK.
-- **E2 WebKit.** `cd client && npm run e2e:webkit` (the Playwright WebKit smoke in `client/e2e/`). If WebKit is not
-  installed, run `npx playwright install webkit` once (no `--with-deps`: that needs sudo; if it then fails to
+- **E2 WebKit.** `cd client && pnpm run e2e:webkit` (the Playwright WebKit smoke in `client/e2e/`). If WebKit is not
+  installed, run `pnpm exec playwright install webkit` once (no `--with-deps`: that needs sudo; if it then fails to
   launch, UNTESTED with the launcher error). Report any failing step with its screenshot from
   `client/test-results/`.
 - **E3 Time zones.** Place an order, then with `Emulation.setTimezoneOverride` set `Asia/Kolkata`, `America/Los_Angeles`
@@ -170,7 +170,7 @@ Servers: API ✅ 8000 · web ✅ 5173 · supabase ✅ 54321 · compose ⏭ (down
 
 ### UNTESTED
 - S5 Markdown / SVG upload: no such surface.
-- E2 WebKit: `npx playwright install webkit` failed to launch (missing libgtk-4); see error.
+- E2 WebKit: `pnpm exec playwright install webkit` failed to launch (missing libgtk-4); see error.
 
 Screenshots: 3 taken, 3 deleted.
 ```

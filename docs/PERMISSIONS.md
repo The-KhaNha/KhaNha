@@ -26,10 +26,10 @@ work exactly like a customer's. Its only privilege is the admin dashboard (`/adm
 - `requireAuth` reads the role from `profiles` on every request, so promoting or demoting someone takes effect on
   their next request without signing in again.
 - Making someone staff: `update public.profiles set role = 'STAFF' where email = '…';` in the SQL editor (see
-  [DEPLOYMENT.md](DEPLOYMENT.md#production-first-time-setup)). `npm run seed` sets the demo staff account's role the
+  [DEPLOYMENT.md](DEPLOYMENT.md#production-first-time-setup)). `pnpm run seed` sets the demo staff account's role the
   same way.
 - Making someone an admin (production or otherwise): `update public.profiles set role = 'ADMIN' where email = '…';`
-  in the SQL editor. `npm run seed` creates a demo admin account (`admin@campuscafe.local`) the same way, locally and
+  in the SQL editor. `pnpm run seed` creates a demo admin account (`admin@campuscafe.local`) the same way, locally and
   on staging — with the published `admin123` locally and a required `SEED_ADMIN_PASSWORD` on staging. The STAFF
   and CUSTOMER demo accounts follow the same rule (`SEED_STAFF_PASSWORD`, `SEED_CUSTOMER_PASSWORD`), because a
   published staff password on shared staging would expose every customer's name, phone and notes (see

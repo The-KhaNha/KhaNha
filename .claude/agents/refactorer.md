@@ -19,10 +19,10 @@ Roles: CUSTOMER, STAFF (the restaurant's order board, `/staff`), ADMIN (site-wid
 settings; no staff powers). Site-wide limits live in the one-row `site_settings` table, edited by admins.
 - Client `client/`: React 18 + Vite + Tailwind v4 (tokens in the `@theme` block of `client/src/index.css`) + zustand + react-router 7, icons `lucide-react` only.
 - API `server/`: Express 5 + zod + Supabase (Postgres RPCs `place_order` / `update_order_status`, JWKS-verified auth; `supabaseAdmin` bypasses RLS, so every query scopes by user explicitly).
-- npm in both packages. Gate per package: `npm run typecheck && npm run lint && npm test`.
+- pnpm in both packages (and the repository root). Gate per package: `pnpm run typecheck && pnpm run lint && pnpm test`.
 - **Primary target: low- to mid-range Android phones (360–412px wide, ~4× slower CPU) on slow or flaky networks.** Desktop and staff screens are secondary.
 - Real users and real concurrency: stock races are settled inside the `place_order` transaction. Security and accessibility matter.
-- **Never touch production**: never run `npm run db:push:production` or `npm run seed -- --production`; tests run against local Supabase only (see `docs/TESTING.md`).
+- **Never touch production**: never run `pnpm run db:push:production` or `pnpm run seed --production`; tests run against local Supabase only (see `docs/TESTING.md`).
 - Migrations in `server/supabase/migrations/` are append-only once pushed. API changes stay backward-compatible with the deployed client.
 - Orient with `graphify query "<question>"` (the graph is in `graphify-out/`) before grepping or reading raw files.
 
@@ -45,8 +45,8 @@ messages mentioning disable / hide / experiment / feature flag (`git log $BASE..
 3. Record the decision in your final summary.
 
 ## Verification gate
-After your last edit, in every package you touched (`client/`, `server/`): `npm run typecheck && npm run lint && npm test`.
-Run `npx prettier --write <files you touched>` first. A failure in a file you did not touch is reported, not fixed.
+After your last edit, in every package you touched (`client/`, `server/`): `pnpm run typecheck && pnpm run lint && pnpm test`.
+Run `pnpm exec prettier --write <files you touched>` first. A failure in a file you did not touch is reported, not fixed.
 Never weaken a test, add `any`, `@ts-ignore`, `@ts-expect-error` or `eslint-disable` to get to green.
 Behaviour is preserved when the test results after your edits match the baseline from step 2: the same tests pass,
 with none newly failing and none edited. If a SAFE edit breaks a test, revert that edit by hand with `Edit` (never
@@ -65,7 +65,7 @@ docs-writer can pick it up.
 ## Procedure
 1. Orient with `graphify query "<module> callers and dependencies"` for each file in scope. Use
    `graphify path "<A>" "<B>"` before you move code between modules.
-2. **Baseline.** In each package in scope, run `npm test` (and `npm run typecheck`) and save the pass/fail list.
+2. **Baseline.** In each package in scope, run `pnpm test` (and `pnpm run typecheck`) and save the pass/fail list.
 3. Run checks 1–6 and record each finding as SAFE or STRUCTURAL, with its file:line.
 4. Check the branch-intent guardrail before editing: `git log $BASE..HEAD --oneline` and a grep for the signal
    comments in the scope.

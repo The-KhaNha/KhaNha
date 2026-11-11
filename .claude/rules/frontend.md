@@ -28,7 +28,7 @@ Rules that follow:
 
 - Mobile-first layouts. Tap targets ≥ 44px. Animate only `transform`/`opacity`, and honor
   `prefers-reduced-motion` (the global rule in `client/src/index.css`).
-- No heavy dependency without checking its gzip cost first (`perf-auditor` or `npx vite build` output). supabase-js
+- No heavy dependency without checking its gzip cost first (`perf-auditor` or `pnpm exec vite build` output). supabase-js
   is loaded on demand: go through `getSupabase()` (`lib/supabase.ts`), never import `lib/supabaseClient.ts`.
 - The page's largest paint (the store cover) gets `LCP_IMAGE_PROPS`, never sits inside an entrance fade, and does
   not share the link with food photos (`FoodPhotoGate`); see `docs/FRONTEND_STRUCTURE.md` "The largest paint".
