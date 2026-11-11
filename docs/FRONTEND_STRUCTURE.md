@@ -236,7 +236,7 @@ Public, non-user data survives across visits and paints instantly; user data nev
 ### `useResource({ persist: true })`
 
 `lib/useResource.ts`'s `persist` option writes the last good response to `localStorage` under
-`fp_cache:v1:<key>` (`CACHE_PREFIX = 'fp_cache:v1:'` + the resource's `key`) after every successful fetch. On the
+`fp_cache:v2:<key>` (`CACHE_PREFIX = 'fp_cache:v2:'` + the resource's `key`) after every successful fetch. On the
 next mount or visit with the same `key`, that cached value renders at once — `isLoading` is only true while there is
 nothing at all to show — while a real fetch runs and replaces it in the background
 (stale-while-revalidate). `useMenu()`, `useStore()` and `useConfig()` pass `persist: true`; `useOrder`/`useOrders` never do —
@@ -248,8 +248,9 @@ If a refresh fails while a saved copy is showing, `MenuPage` and `HomePage` keep
 A render crash clears every persisted copy (`PageBoundary` calls `clearPersistedCache()`), so one malformed 200 that
 was cached cannot crash every later load: Reload starts clean.
 
-Bump `CACHE_PREFIX` (`fp_cache:v1:` → `fp_cache:v2:`, …) whenever a persisted response's shape changes, so old code
-never hands new code a shape it no longer expects. Reading or writing the cache never throws: private-mode or a full
+Bump `CACHE_PREFIX` (`fp_cache:v2:` → `fp_cache:v3:`, …) whenever a persisted response's shape changes, so old code
+never hands new code a shape it no longer expects. v2 (P2 PR 01): a store gained `slug`, `brand`, `area` and
+`address`. On every page load `dropOldCacheVersions()` removes what an older prefix left behind. Reading or writing the cache never throws: private-mode or a full
 quota just means no head start, not a crash.
 
 ### Photo thumbnails

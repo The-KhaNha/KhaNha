@@ -3,9 +3,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../services/api', () => ({ ApiError: class ApiError extends Error {} }));
 
-const { clearPersistedCache, useResource } = await import('./useResource');
+const { clearPersistedCache, dropOldCacheVersions, useResource } = await import('./useResource');
 
-const CACHE = 'fp_cache:v1:menu';
+const CACHE = 'fp_cache:v2:menu';
 
 function flush(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
@@ -187,16 +187,30 @@ describe('useResource after 426 CLIENT_OUTDATED', () => {
   });
 });
 
+describe('dropOldCacheVersions', () => {
+  afterEach(() => localStorage.clear());
+
+  it('drops entries an older prefix left behind and keeps the current ones and other keys', () => {
+    localStorage.setItem('fp_cache:v1:menu', '{}');
+    localStorage.setItem(CACHE, '{}');
+    localStorage.setItem('fp_cart', '{"lines":[]}');
+    dropOldCacheVersions();
+    expect(localStorage.getItem('fp_cache:v1:menu')).toBeNull();
+    expect(localStorage.getItem(CACHE)).toBe('{}');
+    expect(localStorage.getItem('fp_cart')).toBe('{"lines":[]}');
+  });
+});
+
 describe('clearPersistedCache', () => {
   afterEach(() => localStorage.clear());
 
   it('drops every persisted response and nothing else', () => {
     localStorage.setItem(CACHE, '{}');
-    localStorage.setItem('fp_cache:v1:config', '{}');
+    localStorage.setItem('fp_cache:v2:config', '{}');
     localStorage.setItem('fp_cart', '{"lines":[]}');
     clearPersistedCache();
     expect(localStorage.getItem(CACHE)).toBeNull();
-    expect(localStorage.getItem('fp_cache:v1:config')).toBeNull();
+    expect(localStorage.getItem('fp_cache:v2:config')).toBeNull();
     expect(localStorage.getItem('fp_cart')).toBe('{"lines":[]}');
   });
 });
