@@ -84,8 +84,9 @@ PR 02, so the order between tracks can change if one is blocked.
   and enforces every modifier rule; the API's pure `domain/pricing.ts` runs the same rules first, only to answer
   with a friendly, item-naming error. One table of cases runs through both, so they cannot drift.
 - **Media sits behind a port** ([ADR-006](../docs/adr/006-media-s3-cloudfront.md)): `MEDIA_STORAGE=s3|local`. The
-  client always posts a form to the URL the API hands it; with `s3` that is the bucket (presigned), with `local` it
-  is an API route. Photos are served at `/media/*` on the app's own origin in every environment.
+  upload response names the method, URL and any form fields or headers, and the client does what it says: with
+  `s3` it is a `POST` of a multipart form to the bucket (presigned), with `local` a `PUT` of the raw bytes to an API
+  route. The API gets no multipart parser. Photos are served at `/media/*` on the app's own origin in every environment.
 - **An upload is not attached to anything until the editor saves.** The upload is processed on its own; the item
   write then names the processed upload. An abandoned upload is swept; a half-saved item never points at a missing
   photo.
@@ -155,7 +156,7 @@ PR 00 for P3.1.
 | P3.6 surplus lots and deals                                                                                                  | deferred whole (D4)                                                                                                                                                                                        | after P5.9 ([below](#deferred-p36-surplus-and-deals)) |
 | A5 `stock.low`, `media.processed` events                                                                                     | not emitted: no consumer                                                                                                                                                                                   | P6.3 (staff notifications)                            |
 | P1.5 `order_items.base_unit_price` (deferred from P1)                                                                        | built in PR 13, as `base_unit_price_paise`                                                                                                                                                                 | –                                                     |
-| P1.5 `menu_items.archived_at` (deferred from P1)                                                                             | built in PR 02, with the first delete path                                                                                                                                                                 | –                                                     |
+| P1.5 `menu_items.archived_at` (deferred from P1)                                                                             | the column in PR 01 (the template copy filters on it); the first delete path in PR 02                                                                                                                      | –                                                     |
 | Step 2 of P1.8: a pnpm workspace "with the first shared package (P2 types, P3 media)"                                        | no shared package: media code is server-only, and the DTO copies keep their parity tests                                                                                                                   | the first real shared package                         |
 
 ## The pull requests
@@ -168,7 +169,8 @@ PR 00 for P3.1.
 
 Migration `<ts>_brand_template.sql`:
 
-- the `stores`, `brands` and `menu_items.template_item_id` changes [above](#the-model-p3-builds);
+- the `stores`, `brands` and `menu_items.template_item_id` changes [above](#the-model-p3-builds), and
+  `menu_items.archived_at`, because the copy below filters on it (nothing sets it until PR 02);
 - backfill, per brand: a template store (`<brand slug>-template`, `DRAFT`, `is_template`) whose menu and
   `store_settings` are copied from the brand's oldest store; that store's items get `template_item_id`, and the
   brand's other stores' items get it by matching name (the seed's branches share names; an unmatched item stays
@@ -198,8 +200,8 @@ template as a never-public store row (D1). Intent: `--server minor`.
 `/before-write`: reuse-scout, expected EXTEND (`menu.service.ts`, `toMenuItemDto`); schema-guard, EXTEND
 (`menu_items`). Skills: `/new-endpoint`, `agent-skills:api-and-interface-design`.
 
-Migration `<ts>_menu_item_lifecycle.sql`: `diet`, `archived_at`, `image_variants`, `image_url` nullable (on
-`menu_items` and on the `order_items` snapshot); `menu_items_audit` also fires on insert and on `archived_at`,
+Migration `<ts>_menu_item_lifecycle.sql`: `diet`, `image_variants`, `image_url` nullable (on `menu_items` and on the
+`order_items` snapshot); `archived_at` already exists (PR 01). `menu_items_audit` also fires on insert and on `archived_at`,
 `description` and `diet`; `place_order` (from its latest body) refuses an archived item as `ITEM_UNAVAILABLE`.
 
 Server, all under `requireStore('menu.edit')`, never cached:
@@ -345,16 +347,16 @@ processed_at)`; index `(status, created_at)`; RLS on, revoked.
 
 Server:
 
-- `src/integrations/media/port.ts`: `MediaStore { createUpload(key, contentType, maxBytes) → { url, fields },
+- `src/integrations/media/port.ts`: `MediaStore { createUpload(key, contentType, maxBytes) → { method, url, fields?, headers? },
 read(key), write(key, bytes, contentType), remove(key), publicPath(key) }`; `local.ts`, the folder-backed store.
 - `utils/env.ts`: `MEDIA_STORAGE` (`s3` by default; `local` refused when `APP_ENV` is `production`),
   `MEDIA_LOCAL_DIR`. `local` is what `start.sh` uses until PR 09.
-- `POST /api/stores/:storeId/media/uploads { contentType, byteSize }` → `{ uploadId, upload: { url, fields } }`
+- `POST /api/stores/:storeId/media/uploads { contentType, byteSize }` → `{ uploadId, upload: { method, url, fields?, headers? } }`
   (`menu.edit`; JPEG, PNG or WebP; at most 8 MB; its own rate limiter).
 - `POST /api/stores/:storeId/media/uploads/:uploadId/complete` → marks it `UPLOADED` and emits `media.uploaded`.
   `GET …/uploads/:uploadId` → its status and, once processed, its variants.
-- Local mode only: `PUT /api/stores/:storeId/media/uploads/:uploadId/file` takes the bytes (a body limit of 8 MB on
-  this one route), and the API serves `/media/*` from the folder with the immutable cache header.
+- Local mode only: `PUT /api/stores/:storeId/media/uploads/:uploadId/file` takes the raw bytes (`method: "PUT"` with
+  `headers` in the upload response; a body limit of 8 MB on this one route), and the API serves `/media/*` from the folder with the immutable cache header.
 - New error `UPLOAD_INVALID` (400), and `ErrorDetails` gains its tagged shape.
 
 Tests: `test/api/media-uploads.test.ts` (matrices; a wrong type, a size over the limit, a declared size that does
@@ -393,22 +395,29 @@ patch`.
 - [ ] Merged
 
 Migration `<ts>_q_media.sql`: `select pgmq.create('q_media')`; subscription `('media.*', 'q_media')`;
-`purge_media_uploads(p_now default now())` deletes `PENDING` and `FAILED` rows older than 24 hours, scheduled
-nightly next to the other purges; a second nightly schedule calls `emit_event('media.sweep', …)`, because the sweep
-below deletes objects from the store, which only the worker can reach.
+a nightly schedule calls `emit_event('media.sweep', …)`, because the sweep below deletes objects from the store,
+which only the worker can reach. There is no SQL-only purge of upload rows: it would drop the row while the original
+object stays in storage.
 
 Server:
 
-- `src/jobs/media.ts`, added to `worker.ts`'s handler list: read the original; `sharp` checks the real type from
-  the bytes (anything but JPEG, PNG or WebP, or larger than 6000×6000, is a `PermanentError` that marks the upload
-  `FAILED`); auto-rotate, strip metadata, write 400w and 900w WebP under
+- `src/jobs/media.ts`, added to `worker.ts`'s handler list: first read the upload row; `PROCESSED` means
+  acknowledge and return, so a redelivered message after a completed run never reads the store. Otherwise read the
+  original (a missing original for an upload that is not `PROCESSED` is a `PermanentError` that marks it `FAILED`);
+  `sharp` checks the real type from the bytes (anything but JPEG, PNG or WebP, or larger than 6000×6000, is a
+  `PermanentError` that marks the upload `FAILED`); auto-rotate, strip metadata, write 400w and 900w WebP under
   `stores/<storeId>/<sha256 prefix>-<width>.webp` with `public, max-age=31536000, immutable`; mark the upload
-  `PROCESSED` with its variants; delete the original. Running twice writes the same keys (content-addressed), so
-  the handler is idempotent.
+  `PROCESSED` with its variants; delete the original last. A crash before the mark reruns the whole handler and
+  writes the same keys (content-addressed), so it is idempotent.
 - The item routes (PR 02) accept `imageUploadId`: a processed upload of the same store sets `image_url` (the 900w
   variant) and `image_variants`. `toMenuItemDto` gains `imageSrcSet`, built by the server from the variants.
-- On `media.sweep`, the same handler removes every variant that no `menu_items` row and no `order_items` row
-  points at.
+- On `media.sweep`, the same handler first handles upload rows: for every upload that is `PENDING`, `UPLOADED` or
+  `FAILED` and older than 24 hours it removes the original object, then deletes the row; a failure in between
+  leaves the row, so the next sweep retries. The bucket's own lifecycle rule (originals expire after a day, [P8
+  PR 05](P8_INFRASTRUCTURE.md#build-order)) is the backstop in S3. Then it removes every variant that no
+  `menu_items` row, no `order_items` row **and no `media_uploads` row processed within the last 24 hours** points
+  at. A processed upload nobody attached within 24 hours is swept with its variants and its row. An item write
+  naming an upload that no longer exists answers 400 `UPLOAD_INVALID`, and the editor uploads again.
 - `sharp` is a server dependency. It needs no install script: the platform binary is an optional package, which
   `--ignore-scripts` installs.
 - The production host has 1 GB of memory ([P8 plan](P8_INFRASTRUCTURE.md#the-budget)), so the handler processes
@@ -418,8 +427,11 @@ Server:
 
 Tests: `test/api/media-pipeline.test.ts` (a real queue and the local store: a JPEG becomes two WebP variants
 without EXIF; a renamed text file fails the upload and dead-letters nothing; the same message twice leaves one set
-of variants; an item saved with the upload serves `imageSrcSet`; a variant an old order still shows survives the
-sweep, seen failing without the order check). The `images` CI job proves `sharp` loads in the Alpine runtime image
+of variants; the same message delivered again after a completed run succeeds without reading the store; an item
+saved with the upload serves `imageSrcSet`; a variant an old order still shows survives the sweep, seen failing
+without the order check; an old pending upload that has an original leaves neither object nor row after the sweep;
+with an injected clock, an unattached processed upload survives a sweep at 1 hour and is gone at 25 hours, and one
+attached at 23 hours keeps its variants). The `images` CI job proves `sharp` loads in the Alpine runtime image
 and the image stays under its 300 MB budget.
 
 Docs: `docs/JOBS.md` (the queue, the handler, the sweep), `docs/SCHEMA.md`, `docs/API.md` (`imageSrcSet`,
@@ -431,13 +443,15 @@ Docs: `docs/JOBS.md` (the queue, the handler, the sweep), `docs/SCHEMA.md`, `doc
 
 - `features/manage/usePhotoUpload.ts`: redraw the chosen file on a canvas at 2000px on its longer side and encode a
   JPEG (saves upload data on a metered connection, and turns any format the browser can show into one the server
-  takes), request the upload, post the form, call `complete`, then poll the upload until it is processed (pausing
+  takes), request the upload, send it as the response says (`POST` of a multipart form of `fields` plus the file, or `PUT` of
+  the raw bytes with `headers`), call `complete`, then poll the upload until it is processed (pausing
   while the tab is hidden), with progress, cancel and retry.
 - `ItemEditor` gains the photo field; saving sends `imageUploadId`.
 - `FoodPhoto` takes `srcSet`; menu surfaces pass `item.imageSrcSet`, and `photoSrcSet(src)` remains the fallback
   for bundled photos until PR 12. The `sizes` rules are unchanged.
 
-Tests: `usePhotoUpload.test.ts` (each failure leaves a retry; cancel stops the poll), `FoodPhoto.test.tsx`,
+Tests: `usePhotoUpload.test.ts` (both shapes, the form `POST` and the raw `PUT`; each failure leaves a retry; cancel stops
+the poll), `FoodPhoto.test.tsx`,
 `ItemEditor.test.tsx`, e2e against local storage: upload a photo, see it on the public menu at 400w on a phone
 viewport.
 
@@ -448,14 +462,18 @@ Docs: `docs/COMPONENTS.md` (`FoodPhoto`'s `srcSet`), `docs/FRONTEND_STRUCTURE.md
 - [ ] Merged
 
 - `server/scripts/migrate-media.ts`: for one environment per run, push every photo under `client/public/images/`
-  through the same pipeline and rewrite `menu_items.image_url`, `image_variants` and `stores.image_url`. Safe to
-  repeat. Refuses production without `--production` (the user runs that one).
+  through the same pipeline and rewrite `menu_items.image_url`, `image_variants` and `stores.image_url`, and also rewrite the
+  `order_items.image_url` snapshots that point at `/images/…` to the same media URL (the same photo at a new
+  address), so order history keeps its photos. Safe to repeat. Refuses production without `--production` (the user
+  runs that one). Its `--check` mode prints how many rows of `menu_items`, `stores` and `order_items` in that
+  environment still point at `/images/` and exits non-zero unless the count is zero.
 - The seed writes media URLs by running the same code, so a fresh local database never points at `/images/`.
-- Once local and staging are migrated: the bundled menu photos, `photoSrcSet`'s `/images/` rule,
+- Once local and staging are migrated, and `--check` reports zero in each (12b): the bundled menu photos, `photoSrcSet`'s `/images/` rule,
   `optimize-images.py` and nginx's `/images/` location go, and `photo.test.ts` becomes a variant check. The
   storefront cover stays bundled until a store can upload its own (the settings screen gains it in this PR).
 
-Tests: the script against the local store, twice; the client suite without the bundled files.
+Tests: the script against the local store, twice; an old order shows its photo after the migration; `--check` exits
+non-zero while a row still points at `/images/`; the client suite without the bundled files.
 
 Docs: `docs/DEPLOYMENT.md` (the migration, replacing "Compressing photos"), `.claude/rules/frontend.md` §9,
 `README.md`. Intent: `--server patch --client patch`.
@@ -472,7 +490,10 @@ Migration `<ts>_modifiers.sql`:
 
 - `modifier_groups`, `modifier_options`, `menu_item_modifier_groups`, `order_item_modifiers` (the roadmap's
   columns, store-scoped, deltas in paise) and `order_items.base_unit_price_paise`;
-- `place_order`, from its latest body: each line may carry `modifier_option_ids`. Per line it loads the item's
+- `place_order`, from its latest body, gains `p_modifiers_enabled boolean default false`; the API passes the
+  store's evaluated `modifiers` flag. When it is false, lines are priced from the item alone, no group is enforced,
+  and a line that carries `modifier_option_ids` is refused with `MODIFIER_INVALID`. When it is true, each line may
+  carry `modifier_option_ids`. Per line it loads the item's
   groups and options, applies a group's default option when the group is required and nothing was chosen, enforces
   `min_select ≤ chosen ≤ max_select`, that every option belongs to one of the item's groups and is available and
   unarchived, and that the unit price (item + deltas) is not negative; raises `MODIFIER_REQUIRED` or
@@ -482,7 +503,8 @@ Migration `<ts>_modifiers.sql`:
 - `create_store_from_template` and `push_template_items` copy an item's groups and options with it;
 - the flag row `('modifiers', enabled false, client_visible true)`.
 
-Server: `src/domain/pricing.ts` (`priceLine(item, groups, chosenIds) → { unitPrice, applied } | error`), called by
+Server: `src/domain/pricing.ts` (`priceLine(item, groups, chosenIds, modifiersEnabled) → { unitPrice, applied } |
+error`, the same switch as the function), called by
 `order.service.ts` before the RPC; `createOrderSchema` items gain `modifierOptionIds?` (at most 20), and
 `mergeDuplicateItems` merges by line key (`menuItemId` + sorted option ids); the public menu gains a top-level
 `modifierGroups: { [id]: group }` and `MenuItemDto.modifierGroupIds`, both empty while the flag is off for the
@@ -490,7 +512,8 @@ store; `OrderItemDto` gains `baseUnitPrice` and `modifiers: { groupName, optionN
 
 Tests: `test/unit/pricing.safe.test.ts`, property-based (the price is the base plus the chosen deltas; never
 negative; min and max; defaults); `test/api/order-modifiers.test.ts` (**the shared case table** through
-`priceLine` and through `place_order`, asserting the same outcome; two lines of one item with different options
+`priceLine` and through `place_order`, asserting the same outcome, including the flag-off cases: a required group with no default is accepted at the
+base price, and options sent are refused; two lines of one item with different options
 share its stock limit, under `Promise.all`; an option of another item, an unavailable one, a stale price; an order
 with no `modifierOptionIds` for an item whose required group has a default is accepted with the default; the
 snapshot survives a later rename and delete of the option); the menu payload for 60 items sharing three groups
@@ -633,7 +656,8 @@ sees the options; the owner pushes a price from the template to one branch and n
 ## Risks and gotchas
 
 - **`place_order` again.** PRs 02 and 13 both redefine it (after P2's PR 08). Each starts from the previously merged
-  body; a new field inside `p_lines` needs no new signature, so the grants stay.
+  body. PR 13 adds the parameter `p_modifiers_enabled`, a new signature, so it drops and recreates `place_order`
+  and grants it again.
 - **Two implementations of one pricing rule.** The shared case table in PR 13 is the guard; a rule added to one
   side without a case fails review, and a case added without the other side fails the test.
 - **Uploads are the first place the app accepts bytes.** The type is checked three times (the presign policy, the

@@ -265,7 +265,9 @@ in `stores`.
 Endpoints, all public, cached with `PUBLIC_READ_TTL_MS` and served with the ETag handling the menu has today:
 
 - `GET /api/stores?area=` → `{ stores: StoreSummaryDto[] }` (`id`, `slug`, `name`, `tagline`, `imageUrl`, `area`,
-  `brand`, `isOpen`), `ACTIVE` stores only, capped by a platform constant; key `stores:list`.
+  `brand`, `isOpen`), `ACTIVE` stores only, capped by a platform constant; key `stores:list`. The cache holds the
+  whole list of `ACTIVE` stores under that one key; the `area` filter is applied to the cached list in memory, after
+  the cache, so there is one key, one invalidation and no per-area variants.
 - `GET /api/stores/:storeRef` → `{ store }`; key `store:<id>`. A store that is not `ACTIVE` is 404.
 - `GET /api/stores/:storeRef/menu` → today's `MenuResponse` for that store; key `menu:<storeId>`.
 
@@ -274,7 +276,8 @@ Endpoints, all public, cached with `PUBLIC_READ_TTL_MS` and served with the ETag
 store. `order.service.ts` invalidates `menu:<storeId>` where it invalidates `menu` today.
 
 Tests: `test/api/stores-read.test.ts` (list, by id, by slug, unknown → 404, a `DRAFT` store → 404 and absent from
-the list, `area` filter, the auth matrix shows the routes are public); `test/api/store-cache.test.ts` (each of the
+the list, `area` filter, two requests in a row with different `area` values each return only their own stores, the
+auth matrix shows the routes are public); `test/api/store-cache.test.ts` (each of the
 three keys is served from cache, and a status change, an order that takes the last unit and a cancel each
 invalidate the right one: every case seen failing with its `invalidate` removed).
 
@@ -494,13 +497,15 @@ Server:
   `MEMBERSHIP_EXISTS`. Expiry: 7 days, a platform constant.
 - `DELETE /api/stores/:storeId/invites/:inviteId` (revoke) and `DELETE /api/stores/:storeId/members/:membershipId`
   (removing a manager needs `team.manageManagers`; removing oneself is allowed).
-- `POST /api/me/invites/:token/accept` (signed in; its own rate limiter through `createRateLimiter`, keyed by user).
+- `POST /api/me/invites/accept { token }` (signed in; the token is a bounded string in zod; its own rate limiter
+  through `createRateLimiter`, keyed by user). The token travels in the body, never in a path or query, because the
+  access log keeps the request path and field redaction does not cover it.
 - Tokens: 32 random bytes, base64url; only the hash is stored; the token is never logged (`REDACT_PATHS` gains the
-  field, with its logging test).
+  body field, with its logging test).
 
 Tests: `test/api/team.test.ts` (auth and isolation matrices on all five routes; a manager cannot invite or remove a
 manager; the owner can; accept with the wrong account, an expired, revoked or used token → 404; accept twice → one
-membership; removal takes effect on the next request; every change leaves an audit row naming the actor).
+membership; the access-log line of a successful accept and of a rejected one contains no token; removal takes effect on the next request; every change leaves an audit row naming the actor).
 `claude-security` scan: the PR grants access.
 
 Docs: `docs/API.md`, `docs/PERMISSIONS.md` (who may invite whom), `docs/SCHEMA.md`, `docs/LOGGING.md` (never logged:
@@ -617,8 +622,10 @@ Split seam: the `/manage` shell and store picker as PR 14a, the editor as 14b.
   (bounds from the API's validation errors, not copied).
 - `/manage/:storeSlug/team`: members, pending invites, invite by email with a role; the new invite's link is shown
   once with a Copy button and a share action (`navigator.share` where present); revoke and remove with a confirm.
-- `/join/:token`: signed out → sign in or register, then back; signed in → accept → the staff board or `/manage`.
-  A failure says only that the link is no longer valid.
+- `/join`: the link a manager shares is `/join#<token>`; the token rides in the URL fragment, which a browser
+  never sends to a server, so nginx, a CDN and the `Referer` header never see it. The page reads the fragment and
+  removes it from the address bar (`history.replaceState`) before doing anything else, keeping the token in memory
+  only. Signed out → sign in or register, then back; signed in → accept → the staff board or `/manage`. A failure says only that the link is no longer valid.
 
 Tests: `ManageSettings.test.tsx`, `ManageTeam.test.tsx` (a manager sees no "Manager" role option; the token is not
 kept in any store or storage: `storageKeys.test.ts` stays green), `Join.test.tsx`, e2e: owner invites a manager,

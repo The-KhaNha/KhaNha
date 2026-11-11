@@ -33,7 +33,7 @@ a safe default, and none can be found in the repository.
 | 3   | Do the Mumbai (ap-south-1) prices in the AWS pricing calculator match the [budget table](#the-budget)? If the total comes out above $35 a month, stop and say so                                                                              | PR 01                                            | –        |
 | 4   | Is one AWS account, the one holding the credits, right? Which account is it?                                                                                                                                                                  | PR 01                                            | D1       |
 | 5   | **Create the host now?** Its apply is the day the bill starts (about $11.50 a month). Suggested: about a month before launch                                                                                                                  | PR 04 (PRs 00–03 and 06 cost nothing and can go) | D11      |
-| 6   | What is the production domain name?                                                                                                                                                                                                           | launch; PR 05 can use CloudFront's own hostname  | D3       |
+| 6   | What is the production domain name? Needed before PR 05 if CloudFront cannot use a private origin onto the host (the origin then needs a hostname and certificate)                                                                            | PR 05                                            | D3       |
 | 7   | Has the production Supabase project been created (organisation `KhaNha`, ap-south-1), and is its secret key in the production secret? It is created only shortly before the first release: a free project with no traffic pauses after 7 days | the first production release                     | –        |
 
 An agent asks with one batched question, never by guessing, and never proceeds past a gate on an unanswered row.
@@ -97,7 +97,7 @@ infra/
   host/
     compose.prod.yml             web, api, worker from ECR tags, each with a memory limit
     render-env.sh                Parameter Store and Secrets Manager -> an env file on tmpfs
-    apply-release.sh             pull, up, wait for /api/ready, go back to the last good tags if it never comes
+    apply-release.sh             take candidate tags (or the parameter's), pull, up, wait for /api/ready, else go back to the parameter's
 .github/workflows/
   infra.yml                      plan on a PR; apply after the user's approval
   deploy-production.yml          on a release tag: build, push, wait for the user, deploy, smoke
@@ -176,16 +176,20 @@ to deploy to; and observability lands on a running, dark production, where its a
 - **arm64 host, arm64 images**, built on GitHub's arm64 runners, which are free for a public repository. Nothing is
   ever built on the host: 1 GB is for running the app.
 - **The release is one small parameter.** `/food-pickup/production/release` in Parameter Store holds the two image
-  tags. A deploy writes it and tells the host to apply it; a replaced host reads it when it boots. Rolling back is
-  writing the previous value. The compose file and the host scripts travel inside the deploy document, so changing
-  them updates the document, not the machine.
+  tags of **the last release that passed**, and it is written last. A deploy sends the candidate tags to the host as
+  the command's own parameters; the host applies them, and only after the public smoke passes does the workflow write
+  them to the parameter. A failed deploy leaves the parameter alone, so a replaced host, which reads it when it
+  boots, can never pick up a release that failed. Rolling back is a deploy of the earlier tags. The compose file and
+  the host scripts travel inside the deploy document, so changing them updates the document, not the machine.
 - **A deploy is a short outage, by decision.** With one host and no load balancer, `docker compose up -d` means a
   few seconds of errors. The smoke test waits for it. This is the first thing a second host removes.
 - **Migrations before code, only forwards, and by the user.** The production workflow waits while the user runs
   `pnpm run db:push:production` (CLAUDE.md §2). Expand and contract (the PR template's checkbox) is what makes
   "migrate, then deploy" and "roll back the code, not the database" both safe.
 - **Metrics come from the logs the app already writes.** CloudWatch metric filters read the access line and the
-  worker's lines; no metrics library, no agent, and one new log line (queue depth and memory, every few minutes).
+  worker's lines; no metrics library, no agent, and one new log line (queue depth and each process's memory, every
+  few minutes). The one exception is the host's own memory, which no log line can see: a small timer on the host
+  publishes it (PR 08).
 
 ## Where P8 builds less than the roadmap
 
@@ -292,8 +296,9 @@ Waits for D11: the first PR with an hourly price, about $11.50 a month from its 
   health check or the ports between services.
 - `infra/host/render-env.sh`: reads `/food-pickup/production/*` from Parameter Store and the one secret
   `food-pickup/production/app` from Secrets Manager into an environment file on tmpfs, readable by root only.
-  `infra/host/apply-release.sh`: read the release parameter, pull, `up -d`, wait for `/api/ready` through nginx;
-  if it does not answer in time, return to the tags that last worked and exit non-zero.
+  `infra/host/apply-release.sh`: take candidate tags from the command's parameters, or, with none, the release
+  parameter's tags; pull, `up -d`, wait for `/api/ready` through nginx; if it does not answer in time, return to the
+  tags the release parameter names (the last release that passed) and exit non-zero. It never writes the parameter.
 - `modules/compute`: **one EC2 instance** (Amazon Linux 2023, arm64, `t4g.micro`, **CPU credits `standard`**,
   IMDSv2 only, a 16 GB encrypted disk with a 2 GB swap file, automatic recovery on a hardware fault). User data
   installs docker and the compose plugin and nothing else. The module's inputs and outputs are what an Auto Scaling
@@ -302,11 +307,13 @@ Waits for D11: the first PR with an hourly price, about $11.50 a month from its 
   `TRUST_PROXY_HOPS`, `LOG_LEVEL`, the rate limits, sized for one API instance) from the environment's variables,
   and the secret's container with a placeholder the user replaces; Terraform ignores the value afterwards.
 - The SSM document `food-pickup-deploy`, with the three host files rendered into it: write the files, then run
-  `apply-release.sh`. A State Manager association runs it once on a new host, so a replaced machine comes up on the
-  current release without anyone deploying.
+  `apply-release.sh`, with the candidate tags as the command's parameters (none means the parameter's release). A
+  State Manager association runs it once on a new host with none, so a replaced machine comes up on the last release
+  that passed without anyone deploying.
 
 Tests: `infra/host/*.sh` pass `shellcheck` in the `infra` job; `apply-release.sh` has a test with a fake `docker` on
-the path (applies, and goes back when the health check never passes); a Terraform test asserts the instance's
+the path (applies a candidate; applies the parameter's tags when given none; and a candidate that never becomes
+ready ends on the parameter's tags with a non-zero exit); a Terraform test asserts the instance's
 credit mode is `standard` (the guard against the default that bills). Verify, after the approved apply: a Session
 Manager shell on the host shows docker running, `free -m` shows the swap, and the instance's credit mode reads
 `standard` in the console.
@@ -321,19 +328,20 @@ Manager shell on the host shows docker running, `free -m` shows the swap, and th
 - `modules/cdn`: one distribution with HTTP/3. The default behaviour and `/api/*` go to the host (`/api/*`
   uncached, with `Authorization` and every query string forwarded; everything else obeys the cache headers nginx
   already sends). `/media/*` goes to the bucket through origin access control, cached for a year.
-- **How CloudFront reaches the host.** Preferred: a CloudFront VPC origin onto the instance, so the host takes no
-  traffic from the internet at all. If that cannot be expressed for a single instance with a public address for its
-  outbound traffic: the host's security group admits only CloudFront's published address range, and nginx refuses
-  any request without a header only CloudFront knows. The second form sends requests from CloudFront to the host
-  over plain HTTP inside AWS's network; it is recorded in `infra/README.md` if it is the one used, and it ends when
-  a load balancer with a certificate arrives.
-- The certificate (in `us-east-1`) and the DNS records for the production domain (D3). Until the domain exists the
-  distribution answers on CloudFront's own hostname, which is enough for the dark period.
+- **How CloudFront reaches the host.** Never over plain HTTP: requests carry `Authorization` headers. Two forms
+  only, both free. Preferred: a CloudFront VPC origin onto the instance, so the host takes no traffic from the
+  internet at all. If that cannot be expressed for a single instance with a public address for its outbound traffic:
+  **HTTPS to the origin**. The host's nginx serves TLS on 443 with a free, automatically renewed certificate for an
+  origin hostname (`origin.<domain>`), CloudFront's origin protocol is HTTPS only, the security group admits only
+  CloudFront's published address range on 443, and nginx still refuses any request without a header only CloudFront
+  knows. The form used is recorded in `infra/README.md`. The second form needs the domain (D3) before this PR.
+- The certificate (in `us-east-1`) and the DNS records for the production domain (D3). With the VPC origin, until
+  the domain exists the distribution answers on CloudFront's own hostname, which is enough for the dark period.
 - `TRUST_PROXY_HOPS` is set for the real chain (CloudFront, nginx) and **checked, not assumed**: a request from a
   phone must show that phone's address in the API's rate-limit key.
 
 Verify: `https://<production host>/healthz` answers through CloudFront; a request straight to the host's address is
-refused; an object put in the bucket is reachable at `/media/…` and not at the bucket's own URL.
+refused; nothing on the host answers plain HTTP from outside the VPC; an object put in the bucket is reachable at `/media/…` and not at the bucket's own URL.
 
 ### PR 06 — Production guards in the server (P8.6)
 
@@ -351,29 +359,37 @@ Intent: `--server patch`.
 - [ ] Merged
 
 `.github/workflows/deploy-production.yml`, on the `client-v*` and `server-v*` tags `release.yml` creates on `main`
-(two tags of one release are one run: the second finds the images and stops):
+(the two tags of one release point at the same commit, so they share a `concurrency` group keyed by that commit,
+which never cancels a run in progress: the runs go one after the other, and a run stops early only when the release
+parameter already names this release, that is, when it is deployed):
 
 1. **build**: both images for arm64 from `main` at the tag's commit (layer cache, provenance and SBOM
    attestations, `GIT_COMMIT` as a build argument), smoke-tested with `image-smoke.sh`, pushed as
-   `<version>-<sha7>` through the `deploy` role.
+   `<version>-<sha7>` through the `deploy` role. An image whose tag already exists is not pushed again (tags are
+   immutable) and the run carries on.
 2. **wait**: the Environment `production` has the user as its required reviewer. Before approving, the user runs
    `pnpm run db:push:production` (CLAUDE.md §2: never the pipeline, never the agent).
-3. **deploy**: write the two tags to the release parameter, send `food-pickup-deploy` to the host, wait for it,
-   and fail the run if it fails.
+3. **deploy**: read the release parameter (the previous release), send `food-pickup-deploy` to the host with the
+   candidate tags as the command's parameters, wait for it, and fail the run if it fails. The host returns to the
+   parameter's release by itself when `/api/ready` never comes. The parameter is not written here.
 4. **smoke** (`scripts/ci/deploy-smoke.sh`, new): through the public address, waiting out the few seconds a deploy
    takes: `/api/health` reports this commit, `/api/ready` is 200, `/` loads and the script it names loads,
    `/runtime-env.js` names the production project, `index.html` is uncached and an asset is immutable (so a cache
    mistake fails a deploy instead of pinning an old app), and one public read is 200 and then 304. No browser
    order: production gets no test orders.
+5. **record or undo**: if the smoke passes, write the candidate tags to the release parameter, last, so it names
+   the last release that passed. If it fails, send the document again with no candidate (the host applies the
+   parameter's release), wait for it, and fail the run.
 
-Two `workflow_dispatch` paths, both through the same approval: **redeploy a named earlier version** (the rollback),
-and **a rehearsal**, which builds a named commit of `dev` and deploys it. The rehearsal is how the pipeline and the
+Two `workflow_dispatch` paths, both through the same approval: **redeploy a named earlier version** (the rollback:
+the same flow, with those tags as the candidate), and **a rehearsal**, which builds a named commit of `dev` and deploys it. The rehearsal is how the pipeline and the
 host are exercised before the first release without inventing releases; it refuses to run unless the repository
 variable `PRODUCTION_DARK` is `true`, and the launch checklist (P9.5) sets it to `false` for good.
 
 Tests: `deploy-smoke.sh` runs against the local compose stack in `ci.yml`'s `images` job, so the smoke itself is
-tested before it guards a deploy; `scripts/ci/workflows.test.mjs` gains two rules: the deploy jobs sit in the
-`production` Environment, and the rehearsal job checks `PRODUCTION_DARK`.
+tested before it guards a deploy; `scripts/ci/workflows.test.mjs` gains three rules: the deploy jobs sit in the
+`production` Environment, the rehearsal job checks `PRODUCTION_DARK`, and the deploy workflow has the concurrency
+group keyed by the release commit with `cancel-in-progress` off.
 
 Docs: `docs/DEPLOYMENT.md` gains "How a release reaches production", "The first production release" (below) and
 "Rolling back"; CLAUDE.md §2 and §21 (what a release now triggers; `dev` still deploys nothing); `infra/README.md`;
@@ -387,17 +403,24 @@ Built to stay inside CloudWatch's free allowances.
 
 - `compose.prod.yml`: the `awslogs` driver, one log group per service, kept 30 days.
 - `modules/observability`: the log groups; metric filters on the access line (requests, 5xx, duration) and on the
-  worker's lines (dead letters, queue depth, oldest message age, memory); alarms to an SNS topic with the user's
+  worker's lines (dead letters, queue depth, oldest message age); alarms to an SNS topic with the user's
   address (D10): CloudFront's own 5xx rate (it sees the host being down), the API's 5xx above 2% for 5 minutes,
-  p95 above 1 s for 10 minutes, any dead letter, a message older than 5 minutes, the host's status check, memory
-  above 85%, a low CPU-credit balance (in standard mode an empty balance means a slow app), and the certificate
+  p95 above 1 s for 10 minutes, any dead letter, a message older than 5 minutes, the host's status check, the
+  host's used memory above 85% (the metric below, not the processes' own), a low CPU-credit balance (in standard mode an empty balance means a slow app), and the certificate
   within 21 days of expiry; one dashboard; four saved log queries (errors by code, slowest routes, one request id
   across `api` and `worker`, dead letters).
 - `server/src/worker.ts` and `server/src/server.ts`: one `info` line every `PROCESS_METRICS_LOG_MS` (default five
   minutes, a deployment setting) with the process's memory and, in the worker, each queue's depth and age, which
-  `/health` already computes. It is a timer, not a line per poll, and `docs/LOGGING.md` says so.
+  `/health` already computes. It is a timer, not a line per poll, and `docs/LOGGING.md` says so. The line tells
+  which process grew; it is not the memory alarm's source.
+- **Host memory.** A systemd timer on the host (installed with the other host files) runs a few-line script every
+  five minutes that reads `/proc/meminfo` and publishes the host's used-memory and used-swap percentages with
+  `aws cloudwatch put-metric-data`. The instance role gains `cloudwatch:PutMetricData` for the app's namespace only.
+  No CloudWatch agent: it would itself take memory on a 1 GB host. The two extra metrics stay inside CloudWatch's
+  free allowance.
 
-Tests: `test/logging.safe.test.ts` asserts the access line and the new lines carry the exact fields the metric
+Tests: the script against a fixture `meminfo` gives the expected percentages; on the host, the published metric
+matches `free -m`; `test/logging.safe.test.ts` asserts the access line and the new lines carry the exact fields the metric
 filters read, with a comment naming the Terraform file, so renaming a log field cannot silently blind an alarm;
 `test/unit/worker-health.safe.test.ts` covers the timer with an injected clock.
 
@@ -411,8 +434,9 @@ P8 is closed when production is deployed and healthy, **dark** (no announcement,
 run the user approved, and these have been done on it while it is dark, since there is no staging to do them on:
 
 - **A rehearsal deploy** of a `dev` commit, start to finish, with the smoke green.
-- **The way back**: a rehearsal of a commit whose API cannot start; the host returns to the previous tags and the
-  run fails.
+- **The way back**: a rehearsal of a commit whose API cannot start; the host returns to the previous tags, the run
+  fails, and afterwards the release parameter still names the previous release. A second rehearsal whose API starts
+  but fails the public smoke ends the same way, through the undo step.
 - **An alarm seen firing and recovering**: stop the `api` container from a Session Manager shell, receive the
   email, start it, receive the recovery.
 - **`TRUST_PROXY_HOPS` measured**: a request from a phone shows that phone's address in the API's rate-limit key,
@@ -492,22 +516,22 @@ item that needed the user is resolved** (11 November 2026).
 Those marked ★ are still to be asked ([Ask the user before starting](#ask-the-user-before-starting)). The rest are
 answered, or have a default the plan follows.
 
-| #     | Decision                                        | Answer or default                                                                                                                                                | Applies to |
-| ----- | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| D1    | AWS accounts (roadmap decision 13)              | **one account**: the credits sit in one, and there is one environment (follows from the user's decisions; say if a second account is wanted anyway)              | 01         |
-| D2    | Region                                          | **ap-south-1 (Mumbai)**: the staging Supabase project's region, read from Supabase on 11 November 2026. The production project is created there too              | 01         |
-| D3 ★  | Domain name                                     | needed before launch, not before PR 01: production answers on CloudFront's own hostname while it is dark                                                         | 05         |
-| D4    | Host architecture and size                      | **answered (the user, 11 November 2026):** small; `t4g.micro` (2 vCPU, 1 GB, arm64), standard CPU credits                                                        | 03, 04     |
-| D5    | Staging migrations inside a pipeline            | **answered (the user, 11 November 2026): yes**, with staging's credentials in a GitHub Environment; it takes effect with the AWS staging. Until then, by hand    | later      |
-| D6    | Production migrations (roadmap decision 11)     | manual, by the user, while the deploy waits                                                                                                                      | 07         |
-| D7    | Compose on EC2, or ECS (roadmap decision 12)    | compose on EC2 (ADR-007)                                                                                                                                         | 04         |
-| D8    | A staging on AWS                                | **answered (the user, 11 November 2026):** not at first; one to two months after the first release                                                               | later      |
-| D9    | Production hosts                                | **answered (the user, 11 November 2026):** a single host; replicas come with funding                                                                             | 04         |
-| D10 ★ | Where alarms and the budget alert go            | one email address the user names                                                                                                                                 | 01, 08     |
-| D11   | When the host is created (PR 04)                | when the user says: that is the day the bill starts. Suggested: about a month before launch, to leave time for the dark-period drills. PRs 00–03 and 06 are free | 04         |
-| D12   | Where webhooks are tested before an AWS staging | for the P5 plan: a tunnel to a local stack for the provider's sandbox, or the AWS staging brought forward                                                        | P5         |
-| D13   | Where the AWS spend is recorded                 | **answered (the user, 11 November 2026):** $140 of credits, at least four months; recorded as an amendment to ADR-011                                            | 00         |
-| D14   | Who applies Terraform                           | **answered (the user, 11 November 2026):** the pipeline, after the user's approval (ADR-007 as amended)                                                          | 01         |
+| #     | Decision                                        | Answer or default                                                                                                                                                              | Applies to |
+| ----- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
+| D1    | AWS accounts (roadmap decision 13)              | **one account**: the credits sit in one, and there is one environment (follows from the user's decisions; say if a second account is wanted anyway)                            | 01         |
+| D2    | Region                                          | **ap-south-1 (Mumbai)**: the staging Supabase project's region, read from Supabase on 11 November 2026. The production project is created there too                            | 01         |
+| D3 ★  | Domain name                                     | asked before PR 05; required then if the private origin cannot be used (HTTPS to `origin.<domain>`). With the private origin, CloudFront's own hostname serves the dark period | 05         |
+| D4    | Host architecture and size                      | **answered (the user, 11 November 2026):** small; `t4g.micro` (2 vCPU, 1 GB, arm64), standard CPU credits                                                                      | 03, 04     |
+| D5    | Staging migrations inside a pipeline            | **answered (the user, 11 November 2026): yes**, with staging's credentials in a GitHub Environment; it takes effect with the AWS staging. Until then, by hand                  | later      |
+| D6    | Production migrations (roadmap decision 11)     | manual, by the user, while the deploy waits                                                                                                                                    | 07         |
+| D7    | Compose on EC2, or ECS (roadmap decision 12)    | compose on EC2 (ADR-007)                                                                                                                                                       | 04         |
+| D8    | A staging on AWS                                | **answered (the user, 11 November 2026):** not at first; one to two months after the first release                                                                             | later      |
+| D9    | Production hosts                                | **answered (the user, 11 November 2026):** a single host; replicas come with funding                                                                                           | 04         |
+| D10 ★ | Where alarms and the budget alert go            | one email address the user names                                                                                                                                               | 01, 08     |
+| D11   | When the host is created (PR 04)                | when the user says: that is the day the bill starts. Suggested: about a month before launch, to leave time for the dark-period drills. PRs 00–03 and 06 are free               | 04         |
+| D12   | Where webhooks are tested before an AWS staging | for the P5 plan: a tunnel to a local stack for the provider's sandbox, or the AWS staging brought forward                                                                      | P5         |
+| D13   | Where the AWS spend is recorded                 | **answered (the user, 11 November 2026):** $140 of credits, at least four months; recorded as an amendment to ADR-011                                                          | 00         |
+| D14   | Who applies Terraform                           | **answered (the user, 11 November 2026):** the pipeline, after the user's approval (ADR-007 as amended)                                                                        | 01         |
 
 ## User steps (cannot be done from the repository)
 
@@ -538,7 +562,8 @@ answered, or have a default the plan follows.
   a quiet hour with the rollback ready.
 - **1 GB of memory for three containers and Docker.** Enough for today's API and worker with a few hundred MB to
   spare; P3's image pipeline (`sharp`) is the first thing likely to press on it. Each container has a limit, the
-  host has swap, and the memory alarm (PR 08) is the early warning. The next size up still fits the budget.
+  host has swap, and the alarm on the host's own used memory (PR 08, read from `/proc/meminfo`) is the early
+  warning. The next size up still fits the budget.
 - **Standard CPU credits mean slow, not expensive.** A `t4g.micro` earns enough credits to run both vCPUs at 10%
   around the clock. A burst spends the balance; an empty balance throttles the host. Fine for 0 to 50 users; the
   credit alarm says when it is not.
