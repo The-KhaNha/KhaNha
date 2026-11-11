@@ -8,6 +8,7 @@ import type {
   OrderItemDto,
   SiteSettingsDto,
   StoreDto,
+  StoreSummaryDto,
   UserDto,
 } from '../types/api';
 import { paiseToRupees } from './money';
@@ -82,6 +83,19 @@ export function toStoreDto(store: StoreWithBrand): StoreDto {
     isOpen: store.is_open,
     prepTimeMinMinutes: store.prep_time_min_minutes,
     prepTimeMaxMinutes: store.prep_time_max_minutes,
+  };
+}
+
+export function toStoreSummaryDto(store: StoreWithBrand): StoreSummaryDto {
+  return {
+    id: store.id,
+    slug: store.slug,
+    name: store.name,
+    tagline: store.tagline,
+    imageUrl: store.image_url,
+    area: store.area,
+    brand: store.brand,
+    isOpen: store.is_open,
   };
 }
 

@@ -1,9 +1,9 @@
 import { MAX_QUANTITY_PER_ITEM } from '../schemas/order.schema';
 import type { MenuCategoryDto, MenuItemDto, MenuResponse } from '../types/api';
-import { cached, PUBLIC_READ_TTL_MS } from '../utils/cache';
+import { cached, invalidate, PUBLIC_READ_TTL_MS } from '../utils/cache';
 import { logger } from '../utils/logger';
 import { supabaseAdmin } from '../utils/supabase';
-import { toMenuItemDto, toStoreDto } from '../utils/serializers';
+import { toMenuItemDto, toStoreDto, type StoreWithBrand } from '../utils/serializers';
 import { getStore } from './store.service';
 
 /**
@@ -24,11 +24,21 @@ export const MENU_ITEMS_MAX = 500;
  * drops the cache whenever stock changes through this API (an order placed or cancelled).
  */
 export function getMenu(): Promise<MenuResponse> {
-  return cached('menu', PUBLIC_READ_TTL_MS, loadMenu);
+  return cached('menu', PUBLIC_READ_TTL_MS, async () => loadMenu(await getStore()));
 }
 
-async function loadMenu(): Promise<MenuResponse> {
-  const store = await getStore();
+/** The menu of one ACTIVE store (the caller resolved it through getActiveStore), cached under `menu:<storeId>`. */
+export function getStoreMenu(store: StoreWithBrand): Promise<MenuResponse> {
+  return cached(`menu:${store.id}`, PUBLIC_READ_TTL_MS, () => loadMenu(store));
+}
+
+/** Drops the old single-store key and the store's own: stock changed through this API (an order placed or cancelled). */
+export function invalidateMenus(storeId: string): void {
+  invalidate('menu');
+  invalidate(`menu:${storeId}`);
+}
+
+async function loadMenu(store: StoreWithBrand): Promise<MenuResponse> {
   // id breaks sort_order ties (an import leaves every row at the default 0), so the cut is the same on every load.
   const { data: rows, count } = await supabaseAdmin
     .from('menu_items')

@@ -213,7 +213,7 @@ Approved with the plan. PR 00 updates the roadmap to match.
 
 ### PR 00 — The roadmap says what ADR-001 decided
 
-- [ ] Merged (into `feat/P2`, like every P2 PR)
+- [x] Merged (into `feat/P2`, like every P2 PR)
 
 Docs only (`no-release`). `plans/ROADMAP.md`: the P2 design, P2.1, P2.2 and P2.7 follow
 [the model above](#the-model-p2-builds) and the [differences table](#where-p2-differs-from-the-roadmap); P3.1
@@ -259,7 +259,7 @@ in `stores`.
 
 ### PR 02 — Public store reads (P2.1)
 
-- [ ] Merged
+- [x] Merged
 
 `/before-write`: reuse-scout, expected EXTEND (`store.service.ts`, `menu.service.ts`, `cached()`).
 
@@ -462,7 +462,8 @@ Migration `<ts>_store_pause.sql`: the four pause columns; `pause_store(p_store_i
 p_request_id, p_now default now())` and `resume_store(...)`, each setting the actor and emitting `store.paused` /
 `store.resumed` (a repeat is a no-op that emits nothing); `place_order` re-created from its latest body with one
 more check: a store that is not `ACTIVE`, or is paused at `p_now`, raises `STORE_PAUSED` (or `STORE_CLOSED` for the
-status). `stores_audit` watches the pause columns.
+status); and its stock update gains `and store_id = p_store_id`, so the database also refuses another store's item
+(today only `createOrder` drops it, `ITEM_NOT_FOUND`; deferred here from the PR 01 review). `stores_audit` watches the pause columns.
 
 Server: `POST /api/stores/:storeId/pause { minutes | until, reason? }` and `POST .../resume` (`store.pause`);
 `storePaused(storeName, pausedUntil)` → 409 `STORE_PAUSED` ("Campus Cafe has paused new orders. Back at 3:40 PM.");
@@ -714,7 +715,9 @@ branch cannot see the other; a cart cannot mix stores.
 - Answer the [decisions](#decisions), or accept the defaults.
 - Merge `feat/P2` into `dev` when P2 is done (D7; the agent merges the PRs into `feat/P2`), and merge `dev` into
   `feat/P2` when `dev` has moved.
-- Push `feat/P2`'s migrations to staging (`pnpm run db:push:staging`), then re-seed it (D8). PR 16's migration goes
+- Push `feat/P2`'s migrations to staging (`pnpm run db:push:staging`), then re-seed it (D8). The seed finds Campus
+  Cafe by its slug (`campus-cafe`, backfilled from the store's name): if the staging store had been renamed, the seed
+  adds a second Campus Cafe, and the leftover store should be archived or deleted. PR 16's migration goes
   to staging only when every client pointed at staging is on `feat/P2` (there is no hosted staging app before P8).
 - Optional, once P2 is on staging: set `min_client_version` (Admin → site settings) to P2's client version, so a
   stray older build asks for a reload instead of calling routes that are gone.

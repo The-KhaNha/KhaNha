@@ -479,15 +479,17 @@ describe('expectedUnitPrice edge matrix (which refusal wins, bounds, replay)', (
 });
 
 describe('a stale price refusal refreshes the cached menu', () => {
-  const menuPrice = async () => {
-    const res = await api().get('/api/menu');
+  const menuPrice = async (path = '/api/menu') => {
+    const res = await api().get(path);
     return (res.body as MenuResponse).categories
       .flatMap((c) => c.items)
       .find((i) => i.id === item.id)!.price;
   };
 
-  it('after the 409, GET /api/menu shows the new price at once (not the cached old one)', async () => {
-    expect(await menuPrice()).toBe(price()); // warms the cache
+  it("after the 409, both menus (the old route and the store's own) show the new price at once", async () => {
+    const storeMenu = `/api/stores/${item.store_id}/menu`;
+    expect(await menuPrice()).toBe(price()); // warms the caches
+    expect(await menuPrice(storeMenu)).toBe(price());
     const newPaise = item.price_paise + 700;
     // Written behind the API's back, so only the refusal can drop the cached menu.
     await supabaseAdmin
@@ -500,6 +502,7 @@ describe('a stale price refusal refreshes the cached menu', () => {
       expect(res.status).toBe(409);
       expect(res.body.error.code).toBe('PRICE_CHANGED');
       expect(await menuPrice()).toBe(newPaise / 100);
+      expect(await menuPrice(storeMenu)).toBe(newPaise / 100);
     } finally {
       await supabaseAdmin
         .from('menu_items')

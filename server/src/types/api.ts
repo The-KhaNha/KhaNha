@@ -25,6 +25,12 @@ export interface StoreDto {
   prepTimeMaxMinutes: number;
 }
 
+/** One row of GET /api/stores: what a store picker shows. */
+export type StoreSummaryDto = Pick<
+  StoreDto,
+  'id' | 'slug' | 'name' | 'tagline' | 'imageUrl' | 'area' | 'brand' | 'isOpen'
+>;
+
 export interface MenuItemDto {
   id: string;
   category: string;
