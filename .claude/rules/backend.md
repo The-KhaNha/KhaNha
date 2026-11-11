@@ -74,7 +74,8 @@ gzip on. See `docs/DEPLOYMENT.md` "Containers".
   row in `domain/permissions.ts` with its cells in `permissions.safe.test.ts`; `requestContext` then records the
   caller's `storeRole`, which the audit row keeps as `actor_role` (docs/PERMISSIONS.md). A resource of another store
   addressed through a store route is 404; every store route runs `testStoreIsolation` (docs/TESTING.md).
-- **`supabaseAdmin` bypasses RLS,** so every query scopes by user explicitly.
+- **`supabaseAdmin` bypasses RLS,** so every query scopes by user explicitly. A store-scoped table is queried only
+  in the files `TABLE_OWNERS` in `server/eslint.config.mjs` names; lint fails elsewhere (docs/TESTING.md "Table ownership").
 - Public reads are cached with `cached()` and invalidated by the writes that change them (§2c).
 - Sessions: access tokens stay 1 h (refreshed by supabase-js). A sign-in ends after 7 days without use; each use
   restarts the week (`client/src/features/auth/sessionActivity.ts` + `auth.sessions.inactivity_timeout = "168h"` in

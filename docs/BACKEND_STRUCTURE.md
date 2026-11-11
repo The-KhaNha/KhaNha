@@ -13,7 +13,7 @@ server/
 ├── tsconfig.json             typecheck target: src/, scripts/ and test/
 ├── tsconfig.build.json        build target: src/ and scripts/ only (extends tsconfig.json, excludes test/ from dist/)
 ├── vitest.config.mts         test config (see TESTING.md)
-├── eslint.config.mjs
+├── eslint.config.mjs         lint; TABLE_OWNERS: which files may query each store-scoped table (TESTING.md)
 ├── scripts/
 │   ├── seed.ts               demo reset (local/staging) or first-time production setup
 │   ├── seed-data.ts          the typed fixtures it writes: STORE, MENU (prices as `pricePaise`), DEMO_ACCOUNTS

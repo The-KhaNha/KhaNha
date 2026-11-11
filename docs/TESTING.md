@@ -56,6 +56,15 @@ If the guard throws, the whole run stops before a single request is made. `vites
 - Anything else (it calls `resetDemoData()`, changes shared stock or the store, or leaves orders behind) is
   **destructive**. Name it `*.test.ts`. Destructive suites run on local only.
 
+## Table ownership
+
+`server/eslint.config.mjs` keeps `TABLE_OWNERS`, a map from each store-scoped table (`orders`, `order_items`,
+`menu_items`, `store_memberships`, `domain_events`) to the source files allowed to query it with `.from('<table>')`.
+`pnpm run lint` fails anywhere else under `server/src/`, so a table's store filter and its 404 rule stay in its owning
+service and other modules call that service. An empty list means no file may query the table yet. A new store-scoped
+table gets a row in the same change. Tests and scripts are exempt; they set up fixtures directly.
+`test/unit/table-ownership.safe.test.ts` proves the rule fires.
+
 ## Helpers (`server/test/setup/helpers.ts`)
 
 - `createTestUser(role?)` creates a confirmed user through the admin API, sets the role on the profile (the trigger

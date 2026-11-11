@@ -380,11 +380,17 @@ made every STAFF profile, so the old suites pass unchanged; the guards are new t
 
 ### PR 04b — `scoped` and the table-ownership lint rule (P2.3)
 
-- [ ] Merged
+- [x] Merged
 
 PR 04's split seam: `utils/scoped.ts`, the `no-restricted-syntax` rule in `server/eslint.config.mjs` with its own test
 file, and the adoption in existing services, as PR 04 describes them. Docs: `docs/TESTING.md` (the lint rule),
 `docs/BACKEND_STRUCTURE.md` (`scoped`). Intent: `--server patch`.
+
+As built: the lint rule only (`TABLE_OWNERS` in `server/eslint.config.mjs`, `table-ownership.safe.test.ts`). `scoped`
+was dropped. A supabase-js `.from()` has no `.eq` before `.select()`/`.update()`, `order_items` has no `store_id`, and
+the board reads several stores at once (`.in('store_id', …)`), so a generic wrapper needed casts and fitted no caller.
+The owning services filter by store explicitly, and `testStoreIsolation` proves each store route. Nothing under
+`server/src` changed, so there is no intent; the PR is `no-release`.
 
 ### PR 05 — Store settings (P2.3)
 
