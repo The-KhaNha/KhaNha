@@ -24,7 +24,7 @@ The P1 rules stand ([P1 plan](P1_PLATFORM_CORE.md#how-the-team-works-p1), CLAUDE
   splits at the seam its section names.
 - **One agent, one PR at a time,** in the [build order](#build-order). Each PR branches as `feat/p2-<NN>-<slug>` from
   a fresh `origin/feat/P2`, is finished (gate, `/post-change`, intent, owning docs, its box ticked here), opened as
-  `P2 PR <NN> — <title>`, and then the agent stops until the user says it merged (D7).
+  `P2 PR <NN> — <title>`, and then the agent merges it into `feat/P2` itself once `ci-ok` is green and CodeRabbit is clear (D7).
 - **Migrations.** A new migration is newer than the newest on `feat/P2`. Staging takes migrations from `feat/P2`
   while P2 is open (`pnpm run db:push:staging`, a user step). When `dev` moves, merge `dev` into `feat/P2` before
   the next PR.
@@ -688,16 +688,16 @@ difference from an ADR's text is either an amendment the user approves or a chan
 
 Open. The plan is written for the defaults; a different answer changes the PRs named.
 
-| #   | Decision                                                                                       | Default                                                                                                                           | Applies to |
-| --- | ---------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| D1  | Keep the single-store API until a contract release (the roadmap), or contract inside the phase | **answered (the user, 11 November 2026):** inside the phase; no `default_store_id`, no `multi_store_ui` flag (ADR-001 as amended) | 01, 16     |
-| D2  | A store with no weekly hours                                                                   | follows its manual switch alone (open all day while `is_open`)                                                                    | 06         |
-| D3  | How an invite reaches a person before notifications exist (P6.3)                               | a link the inviter shares; accepting needs an account with the invited email                                                      | 09, 15     |
-| D4  | Who manages the team                                                                           | a manager invites and removes staff; the owner (and a platform admin) also managers                                               | 03, 09     |
-| D5  | What a platform admin may do at a store in P2                                                  | pause and resume, manage the team, read the audit trail; no orders (read-only support views are P7.4's)                           | 03         |
-| D6  | Who creates brands, stores and owners before the admin console (P7.4)                          | the seed, locally and on staging; no endpoint in P2                                                                               | 01         |
-| D7  | Who merges PRs into `feat/P2`                                                                  | the user; the agent stops after opening each PR (P1's standing permission ended with P1)                                          | all        |
-| D8  | Staging data when `feat/P2`'s first migration is pushed                                        | re-seeded (`pnpm run seed` against staging): the single store becomes Campus Cafe under its own brand, plus the demo chain        | 01         |
+| #   | Decision                                                                                       | Default                                                                                                                                                                | Applies to |
+| --- | ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| D1  | Keep the single-store API until a contract release (the roadmap), or contract inside the phase | **answered (the user, 11 November 2026):** inside the phase; no `default_store_id`, no `multi_store_ui` flag (ADR-001 as amended)                                      | 01, 16     |
+| D2  | A store with no weekly hours                                                                   | follows its manual switch alone (open all day while `is_open`)                                                                                                         | 06         |
+| D3  | How an invite reaches a person before notifications exist (P6.3)                               | a link the inviter shares; accepting needs an account with the invited email                                                                                           | 09, 15     |
+| D4  | Who manages the team                                                                           | a manager invites and removes staff; the owner (and a platform admin) also managers                                                                                    | 03, 09     |
+| D5  | What a platform admin may do at a store in P2                                                  | pause and resume, manage the team, read the audit trail; no orders (read-only support views are P7.4's)                                                                | 03         |
+| D6  | Who creates brands, stores and owners before the admin console (P7.4)                          | the seed, locally and on staging; no endpoint in P2                                                                                                                    | 01         |
+| D7  | Who merges PRs into `feat/P2`                                                                  | **answered (the user, 11 November 2026):** the agent merges each PR into `feat/P2` once `ci-ok` is green and CodeRabbit is clear; the user merges `feat/P2` into `dev` | all        |
+| D8  | Staging data when `feat/P2`'s first migration is pushed                                        | re-seeded (`pnpm run seed` against staging): the single store becomes Campus Cafe under its own brand, plus the demo chain                                             | 01         |
 
 ## Closing P2
 
@@ -713,7 +713,7 @@ branch cannot see the other; a cart cannot mix stores.
 - Answer the [decisions](#decisions), or accept the defaults.
 - Merge PR 00 into `dev`, create `feat/P2` from `dev`, and add `feat/P2` by its exact name to the `ci-ok required`
   ruleset (Settings → Rules).
-- Merge each PR into `feat/P2` (D7), and merge `dev` into `feat/P2` when `dev` has moved.
+- Merge `feat/P2` into `dev` when P2 is done (D7; the agent merges the PRs into `feat/P2`), and merge `dev` into `feat/P2` when `dev` has moved.
 - Push `feat/P2`'s migrations to staging (`pnpm run db:push:staging`), then re-seed it (D8). PR 16's migration goes
   to staging only when every client pointed at staging is on `feat/P2` (there is no hosted staging app before P8).
 - Optional, once P2 is on staging: set `min_client_version` (Admin → site settings) to P2's client version, so a
