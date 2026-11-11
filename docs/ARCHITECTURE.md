@@ -117,7 +117,7 @@ Three records, three purposes, three retentions, joined by that request id:
 ```mermaid
 flowchart TB
   subgraph Local["local"]
-    LDocker["Docker stack<br/>npm run db:start<br/>http://127.0.0.1:54321"]
+    LDocker["Docker stack<br/>pnpm run db:start<br/>http://127.0.0.1:54321"]
   end
   subgraph Staging["staging"]
     SProj["Supabase project<br/>xkddnlxeeizaqpefhqlv"]
@@ -424,7 +424,7 @@ sequenceDiagram
   Home->>API: GET /api/store (no token)
   API->>DB: select * from stores limit 1
   alt no store row
-    API-->>Home: 404 "The store has not been set up yet. Run npm run seed"
+    API-->>Home: 404 "The store has not been set up yet. Run pnpm run seed"
   else
     API-->>Home: { store } open state, prep time 10-15 min
   end
@@ -983,7 +983,7 @@ Every code, status and message: [API.md](API.md#errors).
 
 ## 10. Data model
 
-Schema: [server/supabase/migrations/20260925120000_init.sql](../server/supabase/migrations/20260925120000_init.sql). Generated types: [server/src/types/database.ts](../server/src/types/database.ts) (`npm run db:types`).
+Schema: [server/supabase/migrations/20260925120000_init.sql](../server/supabase/migrations/20260925120000_init.sql). Generated types: [server/src/types/database.ts](../server/src/types/database.ts) (`pnpm run db:types`).
 
 ```mermaid
 erDiagram
@@ -1082,4 +1082,4 @@ The browser's publishable key can touch nothing: RLS is on for every table with 
 
 ## 12. Operations
 
-`./start.sh` starts the API and web app for `local` or `staging` in the matching Vite mode and refuses `production`. `npm run seed` resets the demo data (local and staging) or, with `--production`, loads the store and menu into an empty production project. Schema changes are append-only migrations in `server/supabase/migrations/`, rebuilt locally with `db:reset` and applied to hosted projects with `db:push:staging` / `db:push:production`. The flow diagrams for all four (`start.sh`, seeding, promoting a migration, first-time production setup), the environment variables and the build steps are in [DEPLOYMENT.md](DEPLOYMENT.md).
+`./start.sh` starts the API and web app for `local` or `staging` in the matching Vite mode and refuses `production`. `pnpm run seed` resets the demo data (local and staging) or, with `--production`, loads the store and menu into an empty production project. Schema changes are append-only migrations in `server/supabase/migrations/`, rebuilt locally with `db:reset` and applied to hosted projects with `db:push:staging` / `db:push:production`. The flow diagrams for all four (`start.sh`, seeding, promoting a migration, first-time production setup), the environment variables and the build steps are in [DEPLOYMENT.md](DEPLOYMENT.md).

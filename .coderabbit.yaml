@@ -74,7 +74,7 @@ reviews:
     scrubbers, CSP or security headers, and upload handling are high risk.
   # Generated, never edited by hand (the PR-size count skips them too).
   path_filters:
-    - '!**/package-lock.json'
+    - '!**/pnpm-lock.yaml'
     - '!server/src/types/database.ts'
 chat:
   # coderabbit-fixer replies on every thread it handles; an automatic answer to each would spend the chat budget.

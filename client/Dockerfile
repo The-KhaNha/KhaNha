@@ -4,8 +4,9 @@
 
 FROM node:24-alpine AS build
 WORKDIR /app
-COPY package.json package-lock.json .npmrc ./
-RUN npm ci
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+# corepack (shipped with Node 24) fetches the pnpm that package.json's packageManager pins.
+RUN corepack enable && pnpm install --frozen-lockfile
 COPY . .
 ARG GIT_COMMIT=local
 ENV GIT_COMMIT=$GIT_COMMIT
@@ -13,7 +14,7 @@ ENV GIT_COMMIT=$GIT_COMMIT
 # ones at start, so one image serves every environment.
 # Then pre-compress at the highest level once, so nginx serves them with gzip_static instead of compressing each
 # response at its fast default level (about 17% smaller JavaScript on the first visit).
-RUN npm run build:container \
+RUN pnpm run build:container \
   && find dist -type f \( -name '*.js' -o -name '*.css' -o -name '*.html' -o -name '*.svg' -o -name '*.json' \) \
       -exec gzip -9 -k {} +
 

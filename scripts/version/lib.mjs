@@ -1,4 +1,4 @@
-// Shared by change.mjs, release.mjs and check.mjs. No dependencies: these run before any `npm ci`.
+// Shared by change.mjs, release.mjs and check.mjs. No dependencies: these run before any `pnpm install`.
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -11,7 +11,7 @@ export function needsIntent(files) {
   return files.some(
     (file) =>
       /^(client\/src|server\/src|server\/scripts|server\/supabase\/migrations)\//.test(file) ||
-      /(^|\/)package\.json$/.test(file),
+      /(^|\/)(package\.json|pnpm-workspace\.yaml)$/.test(file),
   );
 }
 
@@ -87,6 +87,8 @@ export function parseArgs(argv, booleans = []) {
   const positional = [];
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
+    // pnpm forwards `pnpm run change -- --client minor` with the `--` still in it (npm dropped it).
+    if (arg === '--' && i === 0) continue;
     if (!arg.startsWith('--')) {
       positional.push(arg);
       continue;

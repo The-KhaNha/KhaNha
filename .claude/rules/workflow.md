@@ -73,7 +73,7 @@ decision.
 
 - Any change under `server/src/{routes,controllers,services,schemas,middleware,jobs}/`, `server/src/worker.ts`,
   `server/supabase/migrations/`, `client/src/{pages,services,components}/`, `client/src/App.tsx`, or any
-  `package.json`; or
+  `package.json` or `pnpm-workspace.yaml` (overrides and allowed builds live there); or
 - 5 or more source files; or
 - 150 or more changed lines across `client/src` + `server/src`.
 
@@ -130,7 +130,7 @@ Who implements a phase plan's PR (a `sonnet` implementer or the main agent), the
 ## 18. Long-running processes
 
 - **Always background:** `./start.sh`, dev servers, `docker compose up` (or run it with `-d`; stop with
-  `docker compose down`), `npm run db:start` / `db:reset`, `npm install`, builds, test runs
+  `docker compose down`), `pnpm run db:start` / `db:reset`, `pnpm install`, builds, test runs
   that hit the database, and background agents. Quick commands (curl, git status/diff, a scoped grep) stay in the
   foreground.
 - While anything runs, every turn shows:
@@ -191,7 +191,7 @@ Rules); a `feat/*` pattern would also catch the work branches and refuse their p
 merged into the phase branch. When the phase is done, `feat/P<n>` goes into `dev` as one PR, merged by the user.
 
 **PR size (STRICTLY ENFORCED).** Keep every PR reviewable: at most **38 changed files or 750 changed lines** against
-its base (`node .claude/hooks/major-change-gate.js --status` prints both; `package-lock.json`,
+its base (`node .claude/hooks/major-change-gate.js --status` prints both; `pnpm-lock.yaml`,
 `server/src/types/database.ts` and docs, meaning every Markdown file, do not count; tests do), and one theme per PR. Plan a task that is bigger than that as steps, each its own PR. The
 release PR (`release/*`, from `release.yml`) and a phase branch's PR into `dev` are exempt: each bundles work already
 reviewed in its own PRs.
@@ -231,11 +231,11 @@ changes.
 - A phase branch's PR into `dev` bundles reviewed work: put `@coderabbitai ignore` in its description.
 
 **Versions.** `client/package.json` and `server/package.json` keep independent semver lines (0.x until the pilot
-launch). A change that touches `client/src`, `server/src`, `server/scripts`, `server/supabase/migrations` or a
-`package.json` records its bump before it is finished:
+launch). A change that touches `client/src`, `server/src`, `server/scripts`, `server/supabase/migrations`, a
+`package.json` or a `pnpm-workspace.yaml` records its bump before it is finished:
 
 ```bash
-npm run change -- --client minor --server patch "Store list and per-store menus behind the multi_store_ui flag."
+pnpm run change --client minor --server patch "Store list and per-store menus behind the multi_store_ui flag."
 ```
 
 | Package | major                                                                                                                                         | minor                                                                    | patch                                    |
@@ -248,8 +248,8 @@ Three places enforce it: the `version-intent` CI job (`scripts/version/check.mjs
 and a one-time reminder from `.claude/hooks/major-change-gate.js`.
 
 **Releases.** The bump happens only inside a release PR: `release.yml` → `prepare` (`workflow_dispatch`, `dry_run`
-on by default) branches `release/<date>` off `dev`, runs `npm run release` (highest level per package; versions in
-`package.json` and `package-lock.json`; CHANGELOGs; intents deleted; `major` before 1.0.0 refused without
+on by default) branches `release/<date>` off `dev`, runs `pnpm run release` (highest level per package; versions in
+`package.json` only, as `pnpm-lock.yaml` does not record them; CHANGELOGs; intents deleted; `major` before 1.0.0 refused without
 `--allow-major`), commits and opens the PR into `main`. The user merging it is the production approval. On the merge,
 `tag-and-backmerge` tags `client-vX` / `server-vY` and opens the back-merge PR into `dev` (`no-release`). Staging
 images are tagged `dev-<sha7>`; `package.json` keeps the last released version.

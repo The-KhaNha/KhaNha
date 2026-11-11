@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// Applies the recorded intents: npm run release [-- --dry-run] [--allow-major]
-// Takes the highest level per package, writes the versions into package.json and package-lock.json directly (no
-// `npm version`: no lifecycle scripts, no git checks), prepends the CHANGELOGs, deletes the consumed intents and
+// Applies the recorded intents: pnpm run release [--dry-run] [--allow-major]
+// Takes the highest level per package, writes the versions into package.json directly (no `pnpm version`: no
+// lifecycle scripts, no git checks; pnpm-lock.yaml does not record them), prepends the CHANGELOGs, deletes the consumed intents and
 // writes the gitignored release.json with the tags release.yml creates after the release PR merges.
 import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -62,13 +62,8 @@ export function applyRelease(root, plan, date = new Date().toISOString().slice(0
   for (const [pkg, { version, tag, summaries }] of Object.entries(plan.packages)) {
     const pkgJson = readJson(join(root, pkg, 'package.json'));
     pkgJson.version = version;
+    // Only package.json: a pnpm-lock.yaml does not record the package's own version.
     writeJson(join(root, pkg, 'package.json'), pkgJson);
-
-    const lockPath = join(root, pkg, 'package-lock.json');
-    const lock = readJson(lockPath);
-    lock.version = version;
-    if (lock.packages?.['']) lock.packages[''].version = version;
-    writeJson(lockPath, lock);
 
     prependChangelog(join(root, pkg, 'CHANGELOG.md'), version, date, summaries);
     release[pkg] = { version, tag };
@@ -96,9 +91,7 @@ if (isMain(import.meta)) {
       console.log('Dry run: nothing written.');
     } else {
       applyRelease(root, plan);
-      console.log(
-        'Wrote the versions, lockfiles, CHANGELOGs and release.json; deleted the intents.',
-      );
+      console.log('Wrote the versions, CHANGELOGs and release.json; deleted the intents.');
     }
   } catch (error) {
     console.error(error.message);

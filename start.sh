@@ -26,7 +26,7 @@ RED=$'\033[31m'; GREEN=$'\033[32m'; DIM=$'\033[2m'; BOLD=$'\033[1m'; OFF=$'\033[
 if [ ! -f server/.env ]; then
   echo "${RED}server/.env is missing.${OFF}"
   echo "Create it with:  cp server/.env.example server/.env"
-  echo "The defaults in it use the local Supabase stack (start it with: cd server && npm run db:start)."
+  echo "The defaults in it use the local Supabase stack (start it with: cd server && pnpm run db:start)."
   exit 1
 fi
 
@@ -46,7 +46,7 @@ case "$APP_ENV" in
     CLIENT_ENV_FILE=client/.env.development
     if [ "$(curl -s -o /dev/null -w '%{http_code}' "$SUPABASE_URL/rest/v1/" 2>/dev/null)" = "000" ]; then
       echo "${RED}The local Supabase stack is not running.${OFF}"
-      echo "Start it with:  cd server && npm run db:start   (needs Docker; the first run downloads images)"
+      echo "Start it with:  cd server && pnpm run db:start   (needs Docker; the first run downloads images)"
       exit 1
     fi
     ;;
@@ -66,8 +66,9 @@ esac
 WEB_PORT=$(env_value "$CLIENT_ENV_FILE" VITE_DEV_PORT); WEB_PORT=${WEB_PORT:-5173}
 
 # 3. Dependencies installed?
-[ -d server/node_modules ] || (echo "${DIM}Installing server dependencies...${OFF}" && cd server && npm install --silent)
-[ -d client/node_modules ] || (echo "${DIM}Installing web app dependencies...${OFF}" && cd client && npm install --silent)
+command -v pnpm > /dev/null || { echo "${RED}pnpm is missing.${OFF} Run once:  corepack enable"; exit 1; }
+[ -d server/node_modules ] || (echo "${DIM}Installing server dependencies...${OFF}" && cd server && pnpm install --frozen-lockfile --silent)
+[ -d client/node_modules ] || (echo "${DIM}Installing web app dependencies...${OFF}" && cd client && pnpm install --frozen-lockfile --silent)
 
 # 4. Free the ports from any earlier run. Anything listening on the API, worker or web port is killed.
 for port in "$API_PORT" "$WORKER_PORT" "$WEB_PORT"; do
@@ -79,21 +80,21 @@ sleep 1
 # 5. Optional reseed.
 if [ "${1:-}" = "--seed" ]; then
   echo "${DIM}Reseeding sample data...${OFF}"
-  (cd server && npm run seed) || { echo "${RED}Seeding failed.${OFF} Has the database been created and migrated? See README.md."; exit 1; }
+  (cd server && pnpm run seed) || { echo "${RED}Seeding failed.${OFF} Has the database been created and migrated? See README.md."; exit 1; }
 fi
 
 # 6. Start the API, the worker and the web app.
 mkdir -p .logs
-(cd server && npm run dev > ../.logs/server.log 2>&1) &
+(cd server && pnpm run dev > ../.logs/server.log 2>&1) &
 SERVER_PID=$!
-(cd server && npm run dev:worker > ../.logs/worker.log 2>&1) &
+(cd server && pnpm run dev:worker > ../.logs/worker.log 2>&1) &
 WORKER_PID=$!
 # The dev proxy follows the API's port unless the client's env file names its own target.
 (cd client && VITE_API_PROXY_TARGET="${VITE_API_PROXY_TARGET:-http://localhost:$API_PORT}" \
-  npm run "$CLIENT_DEV_SCRIPT" > ../.logs/client.log 2>&1) &
+  pnpm run "$CLIENT_DEV_SCRIPT" > ../.logs/client.log 2>&1) &
 CLIENT_PID=$!
 
-# kill_tree <pid>: the process and everything under it (npm → sh → tsx watch → node). Killing only the top and the
+# kill_tree <pid>: the process and everything under it (pnpm → sh → tsx watch → node). Killing only the top and the
 # port's listener left `tsx watch` behind, and a later file save restarted a hidden API or worker.
 kill_tree() {
   local child
@@ -141,7 +142,7 @@ done
 
 if [ "$menu_ok" != "200" ]; then
   echo "${RED}Database looks empty or unreachable — run ./start.sh --seed${OFF}"
-  echo "${DIM}(GET /api/menu answered $menu_ok. First time on staging? Apply the migrations with 'cd server && npm run db:push:staging' first. Details in .logs/server.log)${OFF}"
+  echo "${DIM}(GET /api/menu answered $menu_ok. First time on staging? Apply the migrations with 'cd server && pnpm run db:push:staging' first. Details in .logs/server.log)${OFF}"
   cleanup 1
 fi
 

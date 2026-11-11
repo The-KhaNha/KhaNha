@@ -94,7 +94,7 @@ dead-lettered, logged with `invariant: true`. Log lines: [LOGGING.md](LOGGING.md
 ## The worker process
 
 `server/src/worker.ts` is the second entry point ([ADR-005](adr/005-modular-monolith-three-processes.md)), next to `src/server.ts`. It runs
-the API's image with another command (`node dist/src/worker.js`; `npm run dev:worker`, `start:worker`) and the same
+the API's image with another command (`node dist/src/worker.js`; `pnpm run dev:worker`, `start:worker`) and the same
 env. It runs wherever the API runs; one or more replicas are safe, because pgmq's visibility timeouts hand each
 message to one reader at a time.
 
@@ -145,7 +145,7 @@ schedule that purges by age calls a SQL function that takes `p_now timestamptz d
 
 ## Runbook
 
-Local: `cd server && npx supabase db query --local "<sql>"`. Staging: the dashboard's SQL editor. Production is the
+Local: `cd server && pnpm exec supabase db query --local "<sql>"`. Staging: the dashboard's SQL editor. Production is the
 user's.
 
 | To                                            | Run                                                                                                                                                            |

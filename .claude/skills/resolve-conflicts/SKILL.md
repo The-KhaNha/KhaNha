@@ -1,6 +1,6 @@
 ---
 name: resolve-conflicts
-description: Resolve git merge/rebase conflicts in food-pickup without losing either side's intent, plus the Supabase migration check git cannot see. Use it for "/resolve-conflicts", "fix the merge conflicts", "I merged main and it broke", conflict markers (<<<<<<<) in files, "both modified" in git status, a conflicted package-lock.json or database.ts, or two branches that each added a migration.
+description: Resolve git merge/rebase conflicts in food-pickup without losing either side's intent, plus the Supabase migration check git cannot see. Use it for "/resolve-conflicts", "fix the merge conflicts", "I merged main and it broke", conflict markers (<<<<<<<) in files, "both modified" in git status, a conflicted pnpm-lock.yaml or database.ts, or two branches that each added a migration.
 ---
 
 # /resolve-conflicts
@@ -30,10 +30,10 @@ apply it out of order, or refuse it on `db push`).
 
 Spawn `merge-conflict-resolver` (foreground; its questions come back through you) with: the unmerged file list, the
 migration listing for both sides, and: "Follow your full workflow. Ask about every FLAGGED region. Regenerate
-`server/src/types/database.ts` with `npm run db:types` and lockfiles with `npm install` instead of hand-merging.
+`server/src/types/database.ts` with `pnpm run db:types` and lockfiles with `pnpm install` (from the base's `pnpm-lock.yaml`) instead of hand-merging.
 Never edit or re-timestamp a migration that exists on $BASE. Run the gate on touched packages."
 
 ## 3. Report and stop
 
 Pass the agent's summary back as written: the user needs the exact decisions. If a branch migration was
-re-timestamped, tell the user to run `cd server && npm run db:reset && npm run seed`. Do not commit.
+re-timestamped, tell the user to run `cd server && pnpm run db:reset && pnpm run seed`. Do not commit.

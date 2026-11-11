@@ -9,8 +9,9 @@ on:
     paths:
       [
         '**/package.json',
-        '**/package-lock.json',
-        '**/.npmrc',
+        '**/pnpm-lock.yaml',
+        '**/pnpm-workspace.yaml',
+        '.github/actions/setup-pnpm/**',
         '**/Dockerfile',
         'client/nginx/**',
         '.gitleaks.toml',
@@ -35,11 +36,10 @@ jobs:
         working-directory: ${{ matrix.package }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version-file: .node-version
+      - uses: ./.github/actions/setup-pnpm
       # Every dependency, dev tooling included: a compromised build or test tool reaches the bundle and CI's secrets.
-      - run: npm audit --audit-level=moderate
+      # It reads the lockfile only, so nothing is installed.
+      - run: pnpm audit --audit-level moderate
 
   # The images as they would ship, OS packages and Node modules alike. --ignore-unfixed: a CVE with no fix yet cannot be
   # acted on, and the Dockerfiles take Alpine's fixes at build time (apk upgrade).

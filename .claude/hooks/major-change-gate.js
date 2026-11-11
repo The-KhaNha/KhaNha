@@ -27,7 +27,7 @@ const PR_REMINDED = path.join(STATE, 'pr-size-reminded.json');
 // base. The lockfiles, the generated database types and docs (every Markdown file) are not counted; tests are.
 const PR_MAX_FILES = 38;
 const PR_MAX_LINES = 750;
-const PR_UNCOUNTED = /(^|\/)package-lock\.json$|^server\/src\/types\/database\.ts$|\.md$/;
+const PR_UNCOUNTED = /(^|\/)pnpm-lock\.yaml$|^server\/src\/types\/database\.ts$|\.md$/;
 
 // Keep in sync with .claude/rules/workflow.md "What counts as a major change".
 const MAJOR_PATHS = [
@@ -36,7 +36,7 @@ const MAJOR_PATHS = [
   /^server\/supabase\/migrations\//,
   /^client\/src\/(pages|services|components)\//,
   /^client\/src\/App\.tsx$/,
-  /(^|\/)package\.json$/,
+  /(^|\/)(package\.json|pnpm-workspace\.yaml)$/,
 ];
 const SOURCE = /^(client\/src|server\/src|server\/scripts)\/.*\.(ts|tsx|js|css)$|^server\/supabase\/migrations\/.*\.sql$/;
 const LINE_COUNTED = /^(client\/src|server\/src)\//;
@@ -57,7 +57,7 @@ function classify(changes) {
 }
 
 // Keep in sync with needsIntent in scripts/version/lib.mjs (this hook is CommonJS and cannot import it).
-const INTENT_SOURCE = /^(client\/src|server\/src|server\/scripts|server\/supabase\/migrations)\/|(^|\/)package\.json$/;
+const INTENT_SOURCE = /^(client\/src|server\/src|server\/scripts|server\/supabase\/migrations)\/|(^|\/)(package\.json|pnpm-workspace\.yaml)$/;
 const INTENT_FILE = /^\.changes\/(?!README\.md$)[^/]+\.md$/;
 
 /** files: changed paths → true when package source changed and no change intent is among them. */
@@ -205,6 +205,8 @@ function selfTest() {
   assert.equal(needsIntent(['docs/API.md', '.github/workflows/ci.yml']), false);
   assert.equal(needsIntent(['server/src/app.ts']), true);
   assert.equal(needsIntent(['client/package.json']), true);
+  assert.equal(needsIntent(['server/pnpm-workspace.yaml']), true);
+  assert.equal(classify([c('client/pnpm-workspace.yaml')]).major, true);
   assert.equal(needsIntent(['server/src/app.ts', '.changes/20260928-090000-abcd.md']), false);
   assert.equal(needsIntent(['server/src/app.ts', '.changes/README.md']), true);
   const files = (n, lines = 1) => Array.from({ length: n }, (_, i) => c(`client/src/lib/f${i}.ts`, lines));
@@ -214,8 +216,8 @@ function selfTest() {
   assert.equal(prSize([c('server/src/app.ts', 750)]).over, false, '750 lines is within the limit');
   assert.equal(prSize([c('server/src/app.ts', 751)]).over, true, '751 lines is over');
   const uncounted = [
-    c('package-lock.json', 9000),
-    c('client/package-lock.json', 900),
+    c('pnpm-lock.yaml', 9000),
+    c('client/pnpm-lock.yaml', 900),
     c('server/src/types/database.ts', 800),
     c('docs/API.md', 900),
     c('plans/P1_PLATFORM_CORE.md', 900),
@@ -343,7 +345,7 @@ function main() {
     if (JSON.stringify(reminded?.files) !== JSON.stringify(changed)) {
       writeJson(INTENT_REMINDED, { at: new Date().toISOString(), files: changed });
       messages.push(
-        '[version] Source changed, no .changes/*.md: run `npm run change -- --client <level> --server <level> "summary"`.',
+        '[version] Source changed, no .changes/*.md: run `pnpm run change --client <level> --server <level> "summary"`.',
       );
     }
   }

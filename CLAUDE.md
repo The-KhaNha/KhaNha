@@ -29,7 +29,7 @@ limits live in the one-row `site_settings` table, edited by admins.
 
 - Real users, real concurrency. Stock races are settled inside the `place_order` transaction, never in app code.
 - Security and accessibility are requirements, not polish.
-- **Never touch production.** `npm run db:push:production` and `npm run seed -- --production` are run by the user
+- **Never touch production.** `pnpm run db:push:production` and `pnpm run seed --production` are run by the user
   only. Tests run against local Supabase only (§13, `docs/TESTING.md`).
 - Migrations in `server/supabase/migrations/` are append-only once pushed (the `migrations` CI job enforces it).
 - API changes stay backward-compatible with the deployed client: add fields, never rename or remove fields the
@@ -58,7 +58,7 @@ routes): `.claude/rules/frontend.md` §2c.
 
 Client: React 18, Vite 6, Tailwind v4 (`@theme` tokens), zustand, react-router 7, `lucide-react`, supabase-js (auth
 only). API: Express 5, zod, Supabase (secret key, JWKS token checks), pino; Supabase Postgres with schema and RPCs in
-`server/supabase/migrations/`. Tooling: Node 24 (`.nvmrc`, `engine-strict`), npm, TypeScript strict, ESLint,
+`server/supabase/migrations/`. Tooling: Node 24 (`.nvmrc`, `engineStrict`), pnpm (corepack), TypeScript strict, ESLint,
 Prettier, Vitest. Every script and port: `README.md` "Useful scripts" and "Ports".
 
 ## 4. Project structure
@@ -109,7 +109,7 @@ audited table is written through such a function or with the `x-actor` and `x-re
 - Comments explain _why_, not _what_. Unused `_`-prefixed args are allowed on purpose.
 - **No hard-coding** of anything an operator may need to change. Each value has one tier (site setting, deployment
   setting, platform constant with a parity test, presentation constant); the registry and the tiers are
-  `docs/CONFIGURATION.md`. `npm run check:durations` (CI) fails on a `\d+_000` duration literal in services, the
+  `docs/CONFIGURATION.md`. `pnpm run check:durations` (CI) fails on a `\d+_000` duration literal in services, the
   domain layer or `*Rules.ts`.
 
 ## 12. Safety
@@ -141,11 +141,11 @@ Naming conventions: `.claude/rules/frontend.md` §12 and `.claude/rules/backend.
 
 ## 13. Validation after every change
 
-In every package you touched: `npm run typecheck && npm run lint && npm test` (the server suite needs local Supabase
+In every package you touched: `pnpm run typecheck && pnpm run lint && pnpm test` (the server suite needs local Supabase
 running and seeded; in `client/` also the e2e smoke; what each runs: `docs/TESTING.md`). Root and tooling changes
-(`scripts/`, `.github/`, `plans/`, root `package.json`) use the root gate `npm run format:check && npm test` instead
+(`scripts/`, `.github/`, `plans/`, root `package.json`) use the root gate `pnpm run format:check && pnpm test` instead
 (no `typecheck` or `lint` there; `docs/TESTING.md`). Format with
-`npx prettier --write <files>`. Report failures with their output; never weaken a test to get green.
+`pnpm exec prettier --write <files>`. Report failures with their output; never weaken a test to get green.
 
 **Every fix ships with its guard.** A bug fix is done only when the check that would have caught it exists and you
 have seen it fail without the fix: a unit or API test, an e2e smoke case, a `scripts/ci/` check or CI step, or a
@@ -242,7 +242,7 @@ Feature branches → PR into `dev` (staging) → a release PR into `main` (produ
 back-merge into `dev`. A phase may have its own `feat/P<n>` branch that its PRs target. Every PR stays within the
 size limit and one theme; when a branch reaches the limit or its theme is done, verify, commit, push, open the PR
 and **stop** until the user says it is merged. CodeRabbit's hourly review budget, shared by every PR you open, paces
-when PRs are opened, marked ready and re-reviewed. A change to source records its version bump (`npm run change`) before
+when PRs are opened, marked ready and re-reviewed. A change to source records its version bump (`pnpm run change`) before
 it is finished; docs, CI and tooling changes are labelled `no-release`. Never merge into `main` and never tag. The
 branch model, phase branches, the PR-size numbers, the CodeRabbit budget, bump levels and the release process:
 `.claude/rules/workflow.md` §21.

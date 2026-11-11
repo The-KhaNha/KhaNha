@@ -19,7 +19,7 @@ The first command maintains portable `.agents/skills/<name>/SKILL.md` entry file
 adapters for every project role. Both read the canonical prompt at execution time. Discovery metadata is quoted and
 normalized for this runtime without changing the original frontmatter. Run the command again after adding a role or
 skill, or changing its discovery metadata.
-`node scripts/codex/sync.mjs --check` verifies those entries without writing; `npm test` runs the same check.
+`node scripts/codex/sync.mjs --check` verifies those entries without writing; `pnpm test` runs the same check.
 
 The optional second command exposes the enabled plugins from `.claude/settings.json` using the existing
 `~/.claude/plugins/installed_plugins.json` registry. It prefers this project's install, then a user install; it never
@@ -86,7 +86,7 @@ When hooks are unavailable, disabled or not yet trusted, perform these steps you
    after edits, refresh the graph when available, and run `node .claude/hooks/major-change-gate.js --mark` only after
    verification. For minor changes, run `node .claude/hooks/major-change-gate.js` to retain the advisory checks.
 
-Tooling-only changes use the root's actual gate, `npm run format:check && npm test`; it has no `typecheck` or `lint`
+Tooling-only changes use the root's actual gate, `pnpm run format:check && pnpm test`; it has no `typecheck` or `lint`
 scripts. Application changes still require all package gates and browser/lifecycle checks from `CLAUDE.md` §13–14.
 
 Runtime references: [skills](https://developers.openai.com/codex/skills),

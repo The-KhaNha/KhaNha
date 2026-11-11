@@ -94,5 +94,5 @@ Server-only platform constants (no client copy, so not in the parity test):
 
 Presentation constants (animation timings, layout sizes, the reduced-motion rules), `CACHE_PREFIX`, the Supabase
 project refs in `db-push.sh` and the product name (`APP_TITLE` in `client/src/config/app.ts`, named once) stay in
-code by design. `npm run check:durations` (CI, `repo` job) fails on a `\d+_000` duration literal in
+code by design. `pnpm run check:durations` (CI, `repo` job) fails on a `\d+_000` duration literal in
 `server/src/services`, `server/src/domain` or a client `*Rules.ts`.

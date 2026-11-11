@@ -40,15 +40,13 @@ jobs:
           ref: dev
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token || github.token }}
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version-file: .node-version
-      - run: npm run release:dry
+      - uses: ./.github/actions/setup-pnpm
+      - run: pnpm run release:dry
       - name: Commit the release on release/<date>
         if: ${{ !inputs.dry_run }}
         run: |
           branch="release/$(date -u +%Y%m%d-%H%M)"
-          npm run release
+          pnpm run release
           git config user.name "release-bot"
           git config user.email "release-bot@users.noreply.github.com"
           git switch -c "$branch"

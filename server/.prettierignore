@@ -1,0 +1,4 @@
+# pnpm writes its own lockfile format; the root .prettierignore does not apply when Prettier runs from here.
+pnpm-lock.yaml
+# The Supabase CLI's local link state.
+supabase/.temp

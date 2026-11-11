@@ -4,7 +4,7 @@
 
 ## Checklist
 
-- [ ] A change intent is recorded (`npm run change`), or the PR is labelled `no-release` (docs, CI, tooling only)
+- [ ] A change intent is recorded (`pnpm run change`), or the PR is labelled `no-release` (docs, CI, tooling only)
 - [ ] The owning docs are updated in this PR (CLAUDE.md §6)
 - [ ] Migration stage stated: none / expand / contract
 - [ ] `/post-change` run for a major change (CLAUDE.md §17)

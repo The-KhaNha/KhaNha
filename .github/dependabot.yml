@@ -1,5 +1,6 @@
 version: 2
 updates:
+  # `npm` is Dependabot's ecosystem name for pnpm too: it reads the pnpm-lock.yaml next to each package.json.
   - package-ecosystem: npm
     directory: /client
     schedule: { interval: weekly }
@@ -23,7 +24,8 @@ updates:
       minor-and-patch:
         update-types: [minor, patch]
   - package-ecosystem: github-actions
-    directory: /
+    # The workflows, and the local composite action they share.
+    directories: [/, /.github/actions/setup-pnpm]
     schedule: { interval: weekly }
     # A version must be a week old before it is proposed (a hijacked release is usually caught by then); security
     # updates are not delayed.

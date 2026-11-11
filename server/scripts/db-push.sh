@@ -1,8 +1,8 @@
 #!/bin/bash
 # Applies new files in supabase/migrations to a hosted Supabase project.
-#   npm run db:push:staging
-#   npm run db:push:production
-# One-time: `npx supabase login` (opens the browser). The CLI asks for the project's database password,
+#   pnpm run db:push:staging
+#   pnpm run db:push:production
+# One-time: `pnpm exec supabase login` (opens the browser). The CLI asks for the project's database password,
 # or reads it from SUPABASE_DB_PASSWORD. It lists the migrations it is about to apply and asks before applying them.
 
 set -euo pipefail
@@ -28,4 +28,4 @@ if [ "$1" = "production" ]; then
   [ "$answer" = "production" ] || { echo "Cancelled."; exit 1; }
 fi
 
-npx supabase db push --project-ref "$ref"
+pnpm exec supabase db push --project-ref "$ref"

@@ -39,7 +39,7 @@ money or user data are involved.
 10. **Tests** — a Supertest suite in `server/test/api/` covering the matrix in `docs/TESTING.md` (auth, role,
     validation bounds, 404s, business rules, concurrency where it applies, error envelope). Staging-safe →
     `*.safe.test.ts`.
-11. **Gate** — `npm run typecheck && npm run lint && npm test` in both packages, then curl the endpoint on local with
+11. **Gate** — `pnpm run typecheck && pnpm run lint && pnpm test` in both packages, then curl the endpoint on local with
     a real token (CLAUDE.md "CRUD / lifecycle verification").
 
 This is a major change: finish with `/post-change`.
