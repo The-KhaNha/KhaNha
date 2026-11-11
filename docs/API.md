@@ -280,9 +280,10 @@ What the service checks, in this order:
 4. `place_order` reserves stock and writes the order in one transaction. Not enough stock: 400
    `INSUFFICIENT_STOCK` with `details: { menuItemId, name, available }` and the message "Only <n> <name> left. Reduce
    the quantity in your cart." or, when `available` is 0, "<name> just sold out." A refused order leaves no rows and
-   no stock changes behind (see [SCHEMA.md](SCHEMA.md#place_order)). `place_order` checks steps 1 and 2 again under
-   its own locks, so a store closed or an item switched off between step 1 and the order is the same 400
-   `STORE_CLOSED` or `ITEM_UNAVAILABLE` (same message and details) with nothing placed. A line whose price changed
+   no stock changes behind (see [SCHEMA.md](SCHEMA.md#place_order)). `place_order` checks the store's `is_open` flag and
+   step 2's items again under its own locks, so a store closed or an item switched off between step 1 and the order
+   is the same 400 `STORE_CLOSED` or `ITEM_UNAVAILABLE` (same message and details) with nothing placed. The store's
+   `status` (the ACTIVE check of step 1) is not repeated under the lock until P2 PR 08. A line whose price changed
    after step 3 read it: 409 `PRICE_CHANGED` "The price of <name> just changed to ₹<price>. Please review your order." (no `details`), and
    nothing is placed. The client shows the message, reloads the menu and takes the new price into the cart, so the
    next Pay shows the amount it charges.

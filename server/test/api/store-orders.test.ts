@@ -2,6 +2,7 @@
 // old routes scoped to the caller's stores (the cross-store read P2 PR 04 closed).
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { MAX_ITEM_LINES_HARD } from '../../src/schemas/order.schema';
 import type { OrderStatus } from '../../src/types/enums';
 import { supabaseAdmin } from '../../src/utils/supabase';
 import { api } from '../setup/api';
@@ -313,6 +314,7 @@ describe('POST /api/orders with a storeId', () => {
       .select('max_lines_per_order')
       .single()
       .throwOnError();
+    expect(settings.max_lines_per_order + 1).toBeLessThanOrEqual(MAX_ITEM_LINES_HARD);
     const lines = Array.from({ length: settings.max_lines_per_order + 1 }, () => ({
       menuItemId: randomUUID(),
       quantity: 1,
@@ -330,6 +332,10 @@ describe('POST /api/orders with a storeId', () => {
         .set(auth(customer))
         .send({ storeId, items: lines });
       const key = await reuse(storeId);
+      for (const res of [many, key]) {
+        expect(res.status).toBe(404);
+        expect(res.body.error.code).toBe('NOT_FOUND');
+      }
       return [many.status, many.body, key.status, key.body];
     };
     expect(await answer(store.draft)).toEqual(await answer(randomUUID()));
