@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Renders the app icons from public/icon.svg with the Chromium Playwright already installs (npm run e2e:install
-// installs WebKit; `npx playwright install chromium` for this). Run after changing the icon:
+// Renders the app icons from public/icon.svg with the Chromium Playwright already installs (pnpm run e2e:install
+// installs WebKit; `pnpm exec playwright install chromium` for this). Run after changing the icon:
 //   node scripts/make-icons.mjs
 // A full-bleed square (no rounded corners) for the maskable and Apple icons: Android crops maskable icons to its own
 // shape, and iOS paints transparent corners black. The bag sits inside the 80% safe zone either way.

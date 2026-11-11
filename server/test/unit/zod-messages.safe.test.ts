@@ -56,8 +56,8 @@ function importEnv(overrides: Record<string, string | undefined>): { status: num
   for (const [k, v] of Object.entries(overrides)) if (v === undefined) delete env[k];
   try {
     const out = execFileSync(
-      'npx',
-      ['tsx', '-e', "import('./src/utils/env.ts').then(() => console.log('OK'))"],
+      'pnpm',
+      ['exec', 'tsx', '-e', "import('./src/utils/env.ts').then(() => console.log('OK'))"],
       { cwd: process.cwd(), env, encoding: 'utf8', timeout: 15_000, stdio: 'pipe' },
     );
     return { status: 0, out };

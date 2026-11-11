@@ -6,7 +6,7 @@ const seedPassword = (name: string) =>
 
 const envSchema = z
   .object({
-    /** Which Supabase project this process talks to. `npm run seed` refuses to wipe `production`. */
+    /** Which Supabase project this process talks to. `pnpm run seed` refuses to wipe `production`. */
     APP_ENV: z.enum(
       ['local', 'staging', 'production'],
       'APP_ENV must be one of local, staging, production.',

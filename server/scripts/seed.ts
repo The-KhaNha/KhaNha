@@ -1,8 +1,8 @@
-// Local and staging (`npm run seed`): an idempotent demo reset. Wipes all orders, then refreshes the single store,
+// Local and staging (`pnpm run seed`): an idempotent demo reset. Wipes all orders, then refreshes the single store,
 // its menu and the two test accounts. The store, menu items and test accounts keep their ids across re-seeds, so a
 // browser that is already signed in or has a saved cart keeps working.
 //
-// Production (`npm run seed -- --production`): first-time setup only. Creates the store and menu while production
+// Production (`pnpm run seed --production`): first-time setup only. Creates the store and menu while production
 // has no store yet, and nothing else: no wipes, and no test accounts with well-known passwords.
 import { env } from '../src/utils/env';
 import { logger } from '../src/utils/logger';
@@ -199,7 +199,7 @@ async function main(): Promise<void> {
   if (!productionFlag) {
     throw new Error(
       'APP_ENV is production, and the demo seed wipes every order and account. ' +
-        'For first-time setup of an empty production project run `npm run seed -- --production` instead.',
+        'For first-time setup of an empty production project run `pnpm run seed --production` instead.',
     );
   }
   return setUpProduction();

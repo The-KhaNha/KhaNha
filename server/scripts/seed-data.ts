@@ -1,4 +1,4 @@
-// The demo fixtures `npm run seed` writes: the store, its menu and the test accounts. Data only; seed.ts owns what
+// The demo fixtures `pnpm run seed` writes: the store, its menu and the test accounts. Data only; seed.ts owns what
 // happens to it. Kept typed (not JSON) so a wrong field fails typecheck.
 import type { Role } from '../src/types/enums';
 
