@@ -1512,6 +1512,9 @@ it.
 
 ### P1.8 Tooling: pnpm (after the phase merges)
 
+> **How it is built:** [P1_8_PNPM.md](P1_8_PNPM.md), two PRs into `dev`, on pnpm 12. Where the plan and this
+> section disagree (settings live in `pnpm-workspace.yaml`, commands are `pnpm run <script>`), the plan is newer.
+
 Not part of the `feat/P1` branch: its own PR into `dev`, once `feat/P1` is in, so it never conflicts with phase PRs.
 
 **Why.** Three independent package roots (root, `client/`, `server/`) each install their own `node_modules`. pnpm
@@ -1550,6 +1553,11 @@ green, both images build and pass `/healthz`, `pnpm release:dry` prints the same
 **Goal:** many restaurants, some of them chains with several branches, each with its own staff, hours, stock and
 settings, served by one app. **Items:** R1, R3 (store settings), R26, R31, and the role split R11 depends on.
 **Depends on:** P1. **Size:** L. **Flag:** `multi_store_ui`.
+
+> **How it is built:** [P2_MULTI_STORE.md](P2_MULTI_STORE.md), PR by PR on the `feat/P2` branch. This section
+> predates [ADR-001](../docs/adr/001-brands-own-stores.md) as amended (per-store memberships, the owner on the
+> brand, brand templates): where they disagree, the ADR and the plan win until the plan's PR 00 rewrites this
+> section.
 
 ### Design (HLD)
 
@@ -1894,6 +1902,11 @@ variant), CONFIGURATION (store settings), README (demo script for two stores).
 **Goal:** restaurants run their own menus (items, photos, customisations, stock, deals) from the dashboard, and chains
 edit an item once for every branch. **Items:** R1 (multi-branch catalog), R4.2.1, R11.2 (menu and stock), R17, R24.
 **Depends on:** P2, and P8.3 for the staging bucket. **Size:** L. **Flag:** `modifiers`.
+
+> **How it is built:** [P3_CATALOG_AND_MEDIA.md](P3_CATALOG_AND_MEDIA.md), PR by PR on the `feat/P3` branch. P3.1
+> below (a live brand catalog with per-store overrides) was rejected in
+> [ADR-001](../docs/adr/001-brands-own-stores.md) as amended; the plan builds the brand template instead, and P2's
+> PR 00 rewrites P3.1. The plan also moves P3.6 behind P5.9 (an open decision there).
 
 ### P3.1 Catalog for multi-branch brands
 
@@ -3592,6 +3605,11 @@ R22 (similarity, popularity, other users' orders) and R28.7 (recommendation upda
 and `main` deploys production (P8.5). This is a parallel track. P8.1–P8.5 for **staging** must be ready before P5.4 (webhooks need a public HTTPS URL), and the rest before the
 pilot. **Items:** R16, R17, R18, R21, R3 (secrets), R6 (observability), R14 (usage load). **Depends on:** P0.6.
 **Size:** L.
+
+> **How it is built:** [P8_INFRASTRUCTURE.md](P8_INFRASTRUCTURE.md), PR by PR straight into `dev`. Decided on
+> 11 November 2026 (ADR-007 and ADR-011 as amended): production only to start, on one small host with no load
+> balancer, inside a budget of about $35 a month; a staging on AWS follows one to two months after the first
+> release. Where the plan and this section disagree, the plan is newer.
 
 ### P8.1 AWS foundation with Terraform
 

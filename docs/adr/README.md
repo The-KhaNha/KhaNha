@@ -23,7 +23,7 @@ and later phases link to the ADRs they depend on.
 | [004] | Money in paise in the database, rupees at the API                  | Accepted, amended | [P5.1][p5.1], [P5.6][p5.6]   |
 | [005] | A modular monolith with three processes                            | Accepted          | [P1.2][p1.2], [P5.10][p5.10] |
 | [006] | Media in S3 behind CloudFront                                      | Accepted, amended | [P3.3][p3.3], [P8.3][p8.3]   |
-| [007] | Pilot on EC2 with docker compose                                   | Accepted          | [P0.6][p0.6], [P8.4][p8.4]   |
+| [007] | Pilot on EC2 with docker compose                                   | Accepted, amended | [P0.6][p0.6], [P8.4][p8.4]   |
 | [008] | Semantic versioning from change intents                            | Accepted          | [P0.3][p0.3]                 |
 | [009] | Rate limiting per user in the API, in the database and at the edge | Accepted, amended | [P1.6][p1.6], [P9.3][p9.3]   |
 | [010] | Live updates through polling plus Web Push                         | Accepted          | [P6.3][p6.3], [P10.3][p10.3] |
