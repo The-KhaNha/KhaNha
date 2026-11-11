@@ -444,9 +444,8 @@ erDiagram
   }
   STORE_MEMBERSHIPS {
     uuid user_id FK
-    uuid brand_id FK
-    uuid store_id FK "null means every store of the brand"
-    store_role role "OWNER, MANAGER or STAFF"
+    uuid store_id FK "one store; never null"
+    store_role role "MANAGER or STAFF"
   }
   CATALOG_ITEMS {
     uuid id PK
@@ -1697,8 +1696,9 @@ phase adds its own:
   (an email and a role). `DELETE .../members/:membershipId`. A manager manages staff; only the owner or an admin
   manages managers. An invite yields a link the inviter shares, and accepting needs a signed-in account with that
   email. Invites are accepted through `POST /api/me/invites/accept`, with the token in the body, never in a path that
-  is logged. Every change is audited. The brand always has its owner, because the owner is not a membership;
-  changing `brands.owner_id` is an admin action.
+  is logged. Every change is audited. Removing a membership never removes the brand's owner, because the owner is not a membership. A brand can still
+  have no owner: the one the P2 migration creates starts without one, and deleting the owner's profile clears
+  `owner_id` (`on delete set null`). Setting `brands.owner_id` is an admin action.
 
 ### P2.3 Store-scoped orders and settings
 

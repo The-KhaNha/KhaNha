@@ -201,6 +201,9 @@ reviewed in its own PRs.
   `/post-change` for a major change), commit, push, open the PR into the base, and tell the user it is ready.
 - Then **stop**: start no other work, and do not poll CI or the PR. The user says when it is merged (or what to fix);
   only then branch fresh off the updated base for the next step.
+- **Exception, P2 only** (the user, 11 November 2026; P2 plan D7): the agent merges each P2 PR into `feat/P2` itself
+  once `ci-ok` is green and CodeRabbit is clear, then goes on to the next PR. The phase PR `feat/P2` → `dev` is still
+  the user's.
 - `.claude/hooks/major-change-gate.js` reminds once per branch when it passes the limit (`--status` prints the size).
 
 **CodeRabbit budget.** The repository is public, so CodeRabbit reviews it on the free open-source plan: **1–10 PR

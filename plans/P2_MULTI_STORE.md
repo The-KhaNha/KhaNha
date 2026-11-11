@@ -25,7 +25,7 @@ The P1 rules stand ([P1 plan](P1_PLATFORM_CORE.md#how-the-team-works-p1), CLAUDE
 - **One agent, one PR at a time,** in the [build order](#build-order). Each PR branches as `feat/p2-<NN>-<slug>` from
   a fresh `origin/feat/P2`, is finished (gate, `/post-change`, intent, owning docs, its box ticked here), opened as
   `P2 PR <NN> — <title>`, and then the agent merges it into `feat/P2` itself once `ci-ok` is green and CodeRabbit is
-  clear (D7).
+  clear (D7; this applies to P2 only, P3 PRs are merged by the user).
 - **Migrations.** A new migration is newer than the newest on `feat/P2`. Staging takes migrations from `feat/P2`
   while P2 is open (`pnpm run db:push:staging`, a user step). When `dev` moves, merge `dev` into `feat/P2` before
   the next PR.
