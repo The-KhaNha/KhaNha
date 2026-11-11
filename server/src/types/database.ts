@@ -73,6 +73,50 @@ export type Database = {
         };
         Relationships: [];
       };
+      brands: {
+        Row: {
+          created_at: string;
+          description: string;
+          id: string;
+          logo_url: string | null;
+          name: string;
+          owner_id: string | null;
+          slug: string;
+          status: Database['public']['Enums']['store_status'];
+          updated_at: string;
+        };
+        Insert: {
+          created_at?: string;
+          description?: string;
+          id?: string;
+          logo_url?: string | null;
+          name: string;
+          owner_id?: string | null;
+          slug: string;
+          status?: Database['public']['Enums']['store_status'];
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          description?: string;
+          id?: string;
+          logo_url?: string | null;
+          name?: string;
+          owner_id?: string | null;
+          slug?: string;
+          status?: Database['public']['Enums']['store_status'];
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'brands_owner_id_fkey';
+            columns: ['owner_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       domain_events: {
         Row: {
           actor: Json | null;
@@ -492,6 +536,11 @@ export type Database = {
       };
       stores: {
         Row: {
+          address_line: string | null;
+          area: string | null;
+          brand_id: string;
+          contact_phone: string | null;
+          created_at: string;
           description: string;
           id: string;
           image_url: string | null;
@@ -499,9 +548,18 @@ export type Database = {
           name: string;
           prep_time_max_minutes: number;
           prep_time_min_minutes: number;
+          slug: string;
+          status: Database['public']['Enums']['store_status'];
           tagline: string;
+          timezone: string;
+          updated_at: string;
         };
         Insert: {
+          address_line?: string | null;
+          area?: string | null;
+          brand_id: string;
+          contact_phone?: string | null;
+          created_at?: string;
           description: string;
           id?: string;
           image_url?: string | null;
@@ -509,9 +567,18 @@ export type Database = {
           name: string;
           prep_time_max_minutes?: number;
           prep_time_min_minutes?: number;
+          slug: string;
+          status?: Database['public']['Enums']['store_status'];
           tagline: string;
+          timezone?: string;
+          updated_at?: string;
         };
         Update: {
+          address_line?: string | null;
+          area?: string | null;
+          brand_id?: string;
+          contact_phone?: string | null;
+          created_at?: string;
           description?: string;
           id?: string;
           image_url?: string | null;
@@ -519,9 +586,21 @@ export type Database = {
           name?: string;
           prep_time_max_minutes?: number;
           prep_time_min_minutes?: number;
+          slug?: string;
+          status?: Database['public']['Enums']['store_status'];
           tagline?: string;
+          timezone?: string;
+          updated_at?: string;
         };
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: 'stores_brand_id_fkey';
+            columns: ['brand_id'];
+            isOneToOne: false;
+            referencedRelation: 'brands';
+            referencedColumns: ['id'];
+          },
+        ];
       };
     };
     Views: {
@@ -629,6 +708,7 @@ export type Database = {
       actor_type: 'USER' | 'WORKER' | 'RECONCILER' | 'WEBHOOK' | 'SCHEDULER' | 'SYSTEM';
       order_status: 'PLACED' | 'PREPARING' | 'READY' | 'COLLECTED' | 'CANCELLED';
       payment_status: 'PENDING' | 'PAID';
+      store_status: 'DRAFT' | 'ACTIVE' | 'SUSPENDED' | 'ARCHIVED';
       user_role: 'CUSTOMER' | 'STAFF' | 'ADMIN';
     };
     CompositeTypes: {
@@ -757,6 +837,7 @@ export const Constants = {
       actor_type: ['USER', 'WORKER', 'RECONCILER', 'WEBHOOK', 'SCHEDULER', 'SYSTEM'],
       order_status: ['PLACED', 'PREPARING', 'READY', 'COLLECTED', 'CANCELLED'],
       payment_status: ['PENDING', 'PAID'],
+      store_status: ['DRAFT', 'ACTIVE', 'SUSPENDED', 'ARCHIVED'],
       user_role: ['CUSTOMER', 'STAFF', 'ADMIN'],
     },
   },

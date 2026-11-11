@@ -43,6 +43,10 @@ const menu: MenuResponse = {
   rules: { maxQuantityPerItem: 10, lowStockThreshold: 5 },
   store: {
     id: 's1',
+    slug: 'cafe',
+    brand: { id: 'b1', name: 'Cafe', slug: 'cafe' },
+    area: null,
+    address: null,
     name: 'Campus Cafe',
     tagline: 'Coffee',
     description: '',

@@ -3,9 +3,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../services/api', () => ({ ApiError: class ApiError extends Error {} }));
 
-const { clearPersistedCache, useResource } = await import('./useResource');
+const { clearPersistedCache, dropOldCacheVersions, useResource } = await import('./useResource');
 
-const CACHE = 'fp_cache:v1:menu';
+const CACHE = 'fp_cache:v2:menu';
 
 function flush(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
@@ -187,16 +187,55 @@ describe('useResource after 426 CLIENT_OUTDATED', () => {
   });
 });
 
+describe('dropOldCacheVersions', () => {
+  afterEach(() => localStorage.clear());
+
+  it('drops entries an older prefix left behind and keeps the current ones and other keys', () => {
+    localStorage.setItem('fp_cache:v1:menu', '{}');
+    localStorage.setItem(CACHE, '{}');
+    localStorage.setItem('fp_cart', '{"lines":[]}');
+    dropOldCacheVersions();
+    expect(localStorage.getItem('fp_cache:v1:menu')).toBeNull();
+    expect(localStorage.getItem(CACHE)).toBe('{}');
+    expect(localStorage.getItem('fp_cart')).toBe('{"lines":[]}');
+  });
+
+  it('drops every old entry even when the browser reorders keys after a removal', () => {
+    // A storage whose key order changes on every removal: scanning while removing would skip entries.
+    const items = new Map<string, string>();
+    for (const n of [1, 2, 3, 4, 5]) items.set(`fp_cache:v1:k${String(n)}`, '{}');
+    items.set('fp_cart', '[]');
+    let order = [...items.keys()];
+    const fake = {
+      get length() {
+        return order.length;
+      },
+      key: (i: number) => order[i] ?? null,
+      removeItem: (key: string) => {
+        items.delete(key);
+        order = [...items.keys()].reverse();
+      },
+    };
+    vi.stubGlobal('localStorage', fake);
+    try {
+      dropOldCacheVersions();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    expect([...items.keys()]).toEqual(['fp_cart']);
+  });
+});
+
 describe('clearPersistedCache', () => {
   afterEach(() => localStorage.clear());
 
   it('drops every persisted response and nothing else', () => {
     localStorage.setItem(CACHE, '{}');
-    localStorage.setItem('fp_cache:v1:config', '{}');
+    localStorage.setItem('fp_cache:v2:config', '{}');
     localStorage.setItem('fp_cart', '{"lines":[]}');
     clearPersistedCache();
     expect(localStorage.getItem(CACHE)).toBeNull();
-    expect(localStorage.getItem('fp_cache:v1:config')).toBeNull();
+    expect(localStorage.getItem('fp_cache:v2:config')).toBeNull();
     expect(localStorage.getItem('fp_cart')).toBe('{"lines":[]}');
   });
 });

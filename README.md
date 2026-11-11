@@ -120,14 +120,16 @@ The Vite dev server proxies `/api/*` to `http://localhost:8000`. The only client
 
 ## Test accounts
 
-| Role     | Email                    | Password (local) |
-| -------- | ------------------------ | ---------------- |
-| Customer | `anishka@example.com`    | `test1234`       |
-| Staff    | `staff@campuscafe.local` | `staff123`       |
-| Admin    | `admin@campuscafe.local` | `admin123`       |
+| Role                | Email                    | Password (local) |
+| ------------------- | ------------------------ | ---------------- |
+| Customer            | `anishka@example.com`    | `test1234`       |
+| Staff               | `staff@campuscafe.local` | `staff123`       |
+| Admin               | `admin@campuscafe.local` | `admin123`       |
+| Owner (Campus Cafe) | `owner@campuscafe.local` | `owner123`       |
+| Owner (Brew Lane)   | `owner@brewlane.local`   | `owner123`       |
 
 These passwords work on the local stack only. Shared staging uses deployment-provided passwords
-(`SEED_STAFF_PASSWORD`, `SEED_ADMIN_PASSWORD`, `SEED_CUSTOMER_PASSWORD`; see
+(`SEED_STAFF_PASSWORD`, `SEED_ADMIN_PASSWORD`, `SEED_CUSTOMER_PASSWORD`, `SEED_OWNER_PASSWORD`; see
 [DEPLOYMENT.md](docs/DEPLOYMENT.md#server-environment-variables)), and production has no demo accounts.
 
 Or tap **Create an account** in the app; new accounts are customers. The admin account is a site-wide

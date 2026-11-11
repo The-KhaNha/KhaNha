@@ -1,7 +1,13 @@
 // Destructive (local only): places an order, then edits the seeded menu item and store behind the API's back.
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { supabaseAdmin } from '../../src/utils/supabase';
-import { createTestUser, deleteTestUser, resetDemoData, type TestUser } from '../setup/helpers';
+import {
+  createTestUser,
+  deleteTestUser,
+  resetDemoData,
+  type TestUser,
+  oldestStoreId,
+} from '../setup/helpers';
 import { api } from '../setup/api';
 import { resolveTestTarget } from '../setup/target';
 
@@ -73,6 +79,7 @@ it('the customer list and the staff list read the snapshots too, even after the 
     const { data: item } = await supabaseAdmin
       .from('menu_items')
       .select('id, store_id')
+      .eq('store_id', await oldestStoreId())
       .is('stock_quantity', null)
       .eq('is_available', true)
       .limit(1)

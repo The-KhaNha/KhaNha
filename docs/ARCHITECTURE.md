@@ -990,6 +990,8 @@ erDiagram
   AUTH_USERS ||--|| PROFILES : "on_auth_user_created trigger"
   PROFILES o|--o| SITE_SETTINGS : updated_by
   PROFILES ||--o{ ORDERS : places
+  PROFILES o|--o{ BRANDS : owns
+  BRANDS ||--|{ STORES : operates
   STORES ||--o{ MENU_ITEMS : sells
   STORES ||--o{ ORDERS : receives
   ORDERS ||--|{ ORDER_ITEMS : contains
@@ -1016,8 +1018,20 @@ erDiagram
     timestamptz updated_at
     uuid updated_by FK "nullable, ON DELETE SET NULL"
   }
+  BRANDS {
+    uuid id PK
+    text name
+    text slug "unique"
+    uuid owner_id FK "nullable, ON DELETE SET NULL"
+    store_status status
+  }
   STORES {
     uuid id PK
+    uuid brand_id FK
+    text slug "unique"
+    store_status status
+    text area
+    text address_line
     text name
     text tagline
     text description
@@ -1070,7 +1084,7 @@ erDiagram
   }
 ```
 
-Five tables: `profiles` (one per Auth user, holds the role), `stores` (one row in V0), `menu_items` (with optional tracked stock), `orders` and `order_items` (name, price, photo and category on each line, and the store name, snapshotted at order time). Columns with their types, defaults and constraints, the indexes, triggers and the `place_order` / `update_order_status` / `reset_demo_orders` functions are in [SCHEMA.md](SCHEMA.md).
+Six tables: `profiles` (one per Auth user, holds the role), `brands` (the business, with its owner) and `stores` (each belongs to a brand; three in the demo seed), `menu_items` (with optional tracked stock), `orders` and `order_items` (name, price, photo and category on each line, and the store name, snapshotted at order time). Columns with their types, defaults and constraints, the indexes, triggers and the `place_order` / `update_order_status` / `reset_demo_orders` functions are in [SCHEMA.md](SCHEMA.md).
 
 ---
 

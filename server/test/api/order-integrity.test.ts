@@ -7,7 +7,13 @@ import { AppError } from '../../src/utils/errors';
 import type { MenuResponse } from '../../src/types/api';
 import { supabaseAdmin } from '../../src/utils/supabase';
 import { api } from '../setup/api';
-import { createTestUser, deleteTestUser, resetDemoData, type TestUser } from '../setup/helpers';
+import {
+  createTestUser,
+  deleteTestUser,
+  oldestStoreId,
+  resetDemoData,
+  type TestUser,
+} from '../setup/helpers';
 import { resolveTestTarget } from '../setup/target';
 
 let customer: TestUser;
@@ -19,6 +25,7 @@ beforeAll(async () => {
   ({ data: item } = await supabaseAdmin
     .from('menu_items')
     .select('id, store_id, name, price_paise')
+    .eq('store_id', await oldestStoreId())
     .is('stock_quantity', null)
     .eq('is_available', true)
     .order('id')

@@ -63,10 +63,19 @@ export function toSiteSettingsDto(settings: Tables<'site_settings'>): SiteSettin
   };
 }
 
-export function toStoreDto(store: Tables<'stores'>): StoreDto {
+/** A store with its brand's identity, which is all the public DTO shows of the brand. */
+export type StoreWithBrand = Tables<'stores'> & {
+  brand: Pick<Tables<'brands'>, 'id' | 'name' | 'slug'>;
+};
+
+export function toStoreDto(store: StoreWithBrand): StoreDto {
   return {
     id: store.id,
+    slug: store.slug,
     name: store.name,
+    brand: store.brand,
+    area: store.area,
+    address: store.address_line,
     tagline: store.tagline,
     description: store.description,
     imageUrl: store.image_url,

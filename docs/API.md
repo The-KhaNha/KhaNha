@@ -184,8 +184,8 @@ Code: `requireAuth` → `auth.controller.me` → `auth.service.getProfile`. Retu
 
 ### GET /store
 
-Code: `store.controller.getStore` → `store.service.getStore`. Returns the first row of `stores` (V0 has exactly one)
-as `{ store: StoreDto }`. With no store row: 404 `NOT_FOUND` "The store has not been set up yet. Run `pnpm run seed` in
+Code: `store.controller.getStore` → `store.service.getStore`. Returns the oldest row of `stores` (`order by created_at, id`)
+with its brand as `{ store: StoreDto }`. With no store row: 404 `NOT_FOUND` "The store has not been set up yet. Run `pnpm run seed` in
 server/."
 
 ### GET /menu
@@ -243,7 +243,8 @@ What the service checks, in this order:
 1. The store is open (`stores.is_open`), else 400 `STORE_CLOSED` "<store name> is closed right now. Please come back
    when it opens."
 2. For each line, in cart order (`priceLines`):
-   - the item exists (ids that are not UUIDs are never queried and count as missing), else 400 `ITEM_NOT_FOUND`
+   - the item exists **at the order's store** (ids that are not UUIDs are never queried and count as missing; another
+     store's item counts as missing too, so an order never mixes stores), else 400 `ITEM_NOT_FOUND`
      "One of the items is no longer on the menu." with `details: { menuItemId, available: 0 }`;
    - `is_available` is true, else 400 `ITEM_UNAVAILABLE` "<name> is currently unavailable. Please remove it from your
      cart." with `details: { menuItemId, name, available: 0 }`;
@@ -401,15 +402,15 @@ audit view is P7.4).
 
 Query (`server/src/schemas/admin.schema.ts`), every parameter optional:
 
-| Param        | Type          | Rules                                                                                          |
-| ------------ | ------------- | ---------------------------------------------------------------------------------------------- |
-| `entityType` | string        | one of `site_settings`, `order`, `profile`, `menu_item`, `feature_flag` (the audited entities) |
-| `entityId`   | string        | 1–64 characters; needs `entityType` (the same id can belong to entities of different types)    |
-| `actorId`    | string (uuid) | the profile that made the change                                                               |
-| `from`       | ISO 8601      | date and time with an offset (`2026-11-02T10:00:00Z`); `occurredAt >= from`                    |
-| `to`         | ISO 8601      | same format; `occurredAt < to`                                                                 |
-| `before`     | number        | whole number ≥ 1: the previous page's `nextCursor`; only rows with a smaller `id`              |
-| `limit`      | number        | whole number, 1–100, default 50 (`AUDIT_PAGE`)                                                 |
+| Param        | Type          | Rules                                                                                                            |
+| ------------ | ------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `entityType` | string        | one of `site_settings`, `order`, `profile`, `menu_item`, `feature_flag`, `brand`, `store` (the audited entities) |
+| `entityId`   | string        | 1–64 characters; needs `entityType` (the same id can belong to entities of different types)                      |
+| `actorId`    | string (uuid) | the profile that made the change                                                                                 |
+| `from`       | ISO 8601      | date and time with an offset (`2026-11-02T10:00:00Z`); `occurredAt >= from`                                      |
+| `to`         | ISO 8601      | same format; `occurredAt < to`                                                                                   |
+| `before`     | number        | whole number ≥ 1: the previous page's `nextCursor`; only rows with a smaller `id`                                |
+| `limit`      | number        | whole number, 1–100, default 50 (`AUDIT_PAGE`)                                                                   |
 
 - `from` must be before `to` when both are sent (400 otherwise).
 - Paging is keyset on `id`: pass `nextCursor` back as `before` until it is `null`. `before` is the only cursor:
@@ -490,16 +491,20 @@ nothing changes for clients. A new money field carries paise and says so in its 
 
 `StoreDto`
 
-| Field                | Type           |
-| -------------------- | -------------- |
-| `id`                 | string (uuid)  |
-| `name`               | string         |
-| `tagline`            | string         |
-| `description`        | string         |
-| `imageUrl`           | string \| null |
-| `isOpen`             | boolean        |
-| `prepTimeMinMinutes` | number         |
-| `prepTimeMaxMinutes` | number         |
+| Field                | Type                                         |
+| -------------------- | -------------------------------------------- |
+| `id`                 | string (uuid)                                |
+| `slug`               | string                                       |
+| `name`               | string                                       |
+| `brand`              | `{ id: string, name: string, slug: string }` |
+| `area`               | string \| null                               |
+| `address`            | string \| null                               |
+| `tagline`            | string                                       |
+| `description`        | string                                       |
+| `imageUrl`           | string \| null                               |
+| `isOpen`             | boolean                                      |
+| `prepTimeMinMinutes` | number                                       |
+| `prepTimeMaxMinutes` | number                                       |
 
 `MenuItemDto`
 

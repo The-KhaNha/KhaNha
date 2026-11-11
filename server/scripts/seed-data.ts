@@ -2,15 +2,28 @@
 // happens to it. Kept typed (not JSON) so a wrong field fails typecheck.
 import type { Role } from '../src/types/enums';
 
-export const STORE = {
-  name: 'Campus Cafe',
-  tagline: 'Coffee • Snacks • Quick Bites',
-  description: 'Quick bites, coffee and snacks.',
-  image_url: '/images/cafe-cover.jpg',
-  is_open: true,
-  prep_time_min_minutes: 10,
-  prep_time_max_minutes: 15,
-};
+export interface SeedStore {
+  name: string;
+  slug: string;
+  tagline: string;
+  description: string;
+  image_url: string;
+  is_open: boolean;
+  prep_time_min_minutes: number;
+  prep_time_max_minutes: number;
+  area: string;
+  address_line: string;
+  menu: SeedMenuItem[];
+}
+
+export interface SeedBrand {
+  name: string;
+  slug: string;
+  description: string;
+  /** Email of the demo account that owns the brand; production has no demo accounts, so it seeds none. */
+  ownerEmail: string;
+  stores: SeedStore[];
+}
 
 export interface SeedMenuItem {
   category: string;
@@ -27,7 +40,7 @@ export interface SeedMenuItem {
 
 // Array order defines sort_order (and therefore category order on the menu). Images live in client/public/images.
 // Three items are stock-limited to demo the "Only N left" flow; re-seeding resets their stock.
-export const MENU: SeedMenuItem[] = [
+export const CAMPUS_CAFE_MENU: SeedMenuItem[] = [
   {
     category: 'Coffee',
     name: 'Cold Coffee',
@@ -115,8 +128,73 @@ export const MENU: SeedMenuItem[] = [
   },
 ];
 
+/** Campus Cafe's menu; the other stores' menus are their own copies of a shorter list. */
+export const MENU = CAMPUS_CAFE_MENU;
+
+// "Campus Cafe" is today's single store and full menu. "Brew Lane" is a chain with two branches in different areas,
+// each with its own copy of a short menu (P2: a store's menu belongs to the store).
+const BREW_LANE_MENU: SeedMenuItem[] = CAMPUS_CAFE_MENU.filter((item) =>
+  ['Espresso', 'Cappuccino', 'Veg Sandwich', 'Chocolate Brownie'].includes(item.name),
+).map((item) => ({ ...item, isPopular: false, stockQuantity: undefined }));
+
+const BREW_LANE_STORE = {
+  tagline: 'Coffee • Sandwiches • Brownies',
+  description: 'A small coffee chain with the same short menu at every branch.',
+  image_url: '/images/cafe-cover.jpg',
+  is_open: true,
+  prep_time_min_minutes: 8,
+  prep_time_max_minutes: 12,
+  menu: BREW_LANE_MENU,
+};
+
+export const BRANDS: SeedBrand[] = [
+  {
+    name: 'Campus Cafe',
+    slug: 'campus-cafe',
+    description: 'Quick bites, coffee and snacks.',
+    ownerEmail: 'owner@campuscafe.local',
+    stores: [
+      {
+        name: 'Campus Cafe',
+        slug: 'campus-cafe',
+        tagline: 'Coffee • Snacks • Quick Bites',
+        description: 'Quick bites, coffee and snacks.',
+        image_url: '/images/cafe-cover.jpg',
+        is_open: true,
+        prep_time_min_minutes: 10,
+        prep_time_max_minutes: 15,
+        area: 'Main Campus',
+        address_line: 'Student Centre, Ground Floor',
+        menu: CAMPUS_CAFE_MENU,
+      },
+    ],
+  },
+  {
+    name: 'Brew Lane',
+    slug: 'brew-lane',
+    description: 'A small coffee chain with two branches.',
+    ownerEmail: 'owner@brewlane.local',
+    stores: [
+      {
+        ...BREW_LANE_STORE,
+        name: 'Brew Lane North Gate',
+        slug: 'brew-lane-north-gate',
+        area: 'North Gate',
+        address_line: '12 Library Road',
+      },
+      {
+        ...BREW_LANE_STORE,
+        name: 'Brew Lane Tech Park',
+        slug: 'brew-lane-tech-park',
+        area: 'Tech Park',
+        address_line: 'Block B, Tech Park Plaza',
+      },
+    ],
+  },
+];
+
 export type StagingPasswordKey =
-  'SEED_STAFF_PASSWORD' | 'SEED_ADMIN_PASSWORD' | 'SEED_CUSTOMER_PASSWORD';
+  'SEED_STAFF_PASSWORD' | 'SEED_ADMIN_PASSWORD' | 'SEED_CUSTOMER_PASSWORD' | 'SEED_OWNER_PASSWORD';
 
 // The published passwords (README.md "Test accounts") work locally only. Shared staging is reachable by anyone who
 // reads the README, so there every account's password comes from the deployment (seedDemo checks all of them first).
@@ -152,5 +230,22 @@ export const DEMO_ACCOUNTS: {
     localPassword: 'test1234',
     stagingPassword: 'SEED_CUSTOMER_PASSWORD',
     phone: '9876543210',
+  },
+  // Brand owners stay CUSTOMER profiles: store roles arrive with memberships (P2 PR 03); brands.owner_id is the link.
+  {
+    role: 'CUSTOMER',
+    name: 'Campus Cafe Owner',
+    email: 'owner@campuscafe.local',
+    localPassword: 'owner123',
+    stagingPassword: 'SEED_OWNER_PASSWORD',
+    phone: null,
+  },
+  {
+    role: 'CUSTOMER',
+    name: 'Brew Lane Owner',
+    email: 'owner@brewlane.local',
+    localPassword: 'owner123',
+    stagingPassword: 'SEED_OWNER_PASSWORD',
+    phone: null,
   },
 ];

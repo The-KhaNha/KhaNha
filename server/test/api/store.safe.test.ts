@@ -8,6 +8,10 @@ describe('GET /api/store', () => {
     expect(Object.keys(res.body.store).sort()).toEqual(
       [
         'id',
+        'slug',
+        'brand',
+        'area',
+        'address',
         'name',
         'tagline',
         'description',

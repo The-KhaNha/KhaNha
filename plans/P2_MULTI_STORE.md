@@ -230,7 +230,7 @@ with no configured default store (D1). This PR only brings the roadmap into line
 
 ### PR 01 — Brands and stores: expand, and the seed (P2.1)
 
-- [ ] Merged
+- [x] Merged
 
 `/before-write`: schema-guard, NEW TABLE (`brands`), EXTEND (`stores`).
 
@@ -541,8 +541,8 @@ inside the `@theme` tokens (CLAUDE.md §7, §16).
   a redirect to the cart's store, else `/`.
 - `services/stores.ts` (`GET /stores`, `/stores/:ref`, `/stores/:ref/menu`, `/stores/:ref/hours`);
   `features/stores/useStores.ts` and `useStoreMenu(storeRef)`, both `useResource` with `persist: true`, keys
-  `stores` and `menu:<storeId>`. `CACHE_PREFIX` becomes `fp_cache:v2:` (old entries are dropped on first load, with
-  a test).
+  `stores` and `menu:<storeId>`. `CACHE_PREFIX` is already
+  `fp_cache:v2:` (bumped in PR 01, where the store DTO grew; old entries are dropped on every load, with a test).
 - `StoreCard` gains `variant="compact"` (photo, name, area, open state); `OpenPill` takes `state` and `label`
   ("Closes at 9 PM", "Opens tomorrow at 8 AM", "Closed for Diwali", "Paused · back at 3:40 PM").
 - Budgets (CLAUDE.md §2b): the first card's photo is the LCP candidate on `/` (eager, 400px `srcset`), the rest

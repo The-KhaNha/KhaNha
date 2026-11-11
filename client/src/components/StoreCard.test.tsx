@@ -5,6 +5,10 @@ import { StoreCard } from './StoreCard';
 
 const store = {
   id: 's1',
+  slug: 'cafe',
+  brand: { id: 'b1', name: 'Cafe', slug: 'cafe' },
+  area: null,
+  address: null,
   name: 'Campus Cafe',
   tagline: 'Coffee',
   description: 'Quick bites.',
