@@ -306,6 +306,35 @@ describe('POST /api/orders with a storeId', () => {
     expect(again.body.error.code).toBe('IDEMPOTENCY_KEY_REUSED');
   });
 
+  it('a DRAFT store answers like an unknown one whatever else is wrong (too many lines, a reused key)', async () => {
+    // One line over the site setting (the schema's own cap is higher), so only createOrder can refuse it.
+    const { data: settings } = await supabaseAdmin
+      .from('site_settings')
+      .select('max_lines_per_order')
+      .single()
+      .throwOnError();
+    const lines = Array.from({ length: settings.max_lines_per_order + 1 }, () => ({
+      menuItemId: randomUUID(),
+      quantity: 1,
+    }));
+    const idempotencyKey = randomUUID();
+    const reuse = (storeId: string) =>
+      api()
+        .post('/api/orders')
+        .set(auth(customer))
+        .send({ storeId, idempotencyKey, items: [{ menuItemId: item.id, quantity: 1 }] });
+    expect((await reuse(await oldestStoreId())).status).toBe(201);
+    const answer = async (storeId: string) => {
+      const many = await api()
+        .post('/api/orders')
+        .set(auth(customer))
+        .send({ storeId, items: lines });
+      const key = await reuse(storeId);
+      return [many.status, many.body, key.status, key.body];
+    };
+    expect(await answer(store.draft)).toEqual(await answer(randomUUID()));
+  });
+
   it('a storeId that is not a uuid → 400 VALIDATION_ERROR', async () => {
     const res = await place('campus-cafe');
     expect(res.status).toBe(400);

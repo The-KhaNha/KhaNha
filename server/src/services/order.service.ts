@@ -109,20 +109,19 @@ export async function createOrder(
       .then(({ data }) => data),
   ]);
 
-  if (existing) {
-    // The same key at another store is another order, never a replay of this one.
-    if (existing.store_id !== store.id || !matchesRequest(existing, input)) {
-      throw idempotencyKeyReused(existing.id, existing.order_number);
-    }
+  // A replay answers the order the key placed, even at a store that has stopped trading since.
+  if (existing && existing.store_id === store.id && matchesRequest(existing, input))
     return { order: existing, replayed: true };
-  }
+  // A store that is not trading (a draft, suspended, archived) takes no orders and is not there to the public: refused
+  // before any other check, so no answer tells it apart from an unknown id.
+  if (store.status !== 'ACTIVE') throw notFound('Store not found.');
+  // The same key at another store, or for another order, is never a replay.
+  if (existing) throw idempotencyKeyReused(existing.id, existing.order_number);
 
   const maxLines = settings.max_lines_per_order;
   if (input.lineCount > maxLines)
     throw validationError(`An order can have at most ${maxLines} items.`);
 
-  // A store that is not trading (a draft, suspended, archived) takes no orders, and is not there to the public.
-  if (store.status !== 'ACTIVE') throw notFound('Store not found.');
   if (!store.is_open) throw storeClosed(store.name);
   // Another store's item is not on this store's menu: it is "not found" here, so an order never mixes stores and
   // never draws down another store's stock.

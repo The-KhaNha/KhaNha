@@ -490,6 +490,11 @@ ones; a repeated pause is 200 with one event). The lifecycle walk checks `domain
 Docs: `docs/API.md` (routes, `STORE_PAUSED`), `docs/SCHEMA.md`, `docs/JOBS.md` (the two events; no subscription
 yet), `plans/ROADMAP.md` A3 and A5. Intent: `--server minor --client patch` (the client learns the code in PR 11).
 
+From PR 04's review (CodeRabbit on #50): `createOrder` checks `stores.status` on its own uncached read, so a store
+suspended between that read and `place_order` can still take one order. The re-created `place_order` checks
+`status = 'ACTIVE'` under its store lock as well, raising a code `createOrder` maps to 404 "Store not found.", with a
+test that suspends the store mid-flight.
+
 ### PR 09 — Team: members and invites (P2.2)
 
 - [ ] Merged

@@ -258,8 +258,9 @@ Body (`server/src/schemas/order.schema.ts`):
 
 What the service checks, in this order:
 
-1. The store (`storeId`, read uncached) exists and is `ACTIVE`, else 404 `NOT_FOUND` "Store not found."; and it is
-   open (`stores.is_open`), else 400 `STORE_CLOSED` "<store name> is closed right now. Please come back
+1. The store (`storeId`, read uncached) exists and is `ACTIVE`, else 404 `NOT_FOUND` "Store not found.". Only a
+   replay of the same order at the same store is answered before this check, so no other answer (a reused key, too
+   many lines) tells a store that is not trading from an unknown id. Then it is open (`stores.is_open`), else 400 `STORE_CLOSED` "<store name> is closed right now. Please come back
    when it opens."
 2. For each line, in cart order (`priceLines`):
    - the item exists **at the order's store** (ids that are not UUIDs are never queried and count as missing; another
