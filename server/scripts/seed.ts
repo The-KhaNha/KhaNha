@@ -7,7 +7,7 @@
 import { env } from '../src/utils/env';
 import { logger } from '../src/utils/logger';
 import { supabaseAdmin as db } from '../src/utils/supabase';
-import type { Tables } from '../src/types/database';
+import type { Tables, TablesInsert } from '../src/types/database';
 import { BRANDS, DEMO_ACCOUNTS, type SeedBrand, type SeedMenuItem } from './seed-data';
 
 const ACCOUNTS = DEMO_ACCOUNTS.map(({ localPassword, stagingPassword, ...account }) => ({
@@ -133,6 +133,39 @@ async function seedAccounts(): Promise<Map<string, string>> {
   return ids;
 }
 
+/** Each demo account's store membership; any other membership of a demo account (a test's) is removed. */
+async function seedMemberships(accountIds: Map<string, string>): Promise<void> {
+  // Only the demo slugs: an unfiltered read is capped at 1000 rows, so a demo store could be missing.
+  const slugs = DEMO_ACCOUNTS.flatMap(({ store }) => (store ? [store.slug] : []));
+  const { data: stores } = await db
+    .from('stores')
+    .select('id, slug')
+    .in('slug', slugs)
+    .throwOnError();
+  const storeIds = new Map(stores.map((store) => [store.slug, store.id]));
+  const rows: TablesInsert<'store_memberships'>[] = [];
+  for (const { email, store } of DEMO_ACCOUNTS) {
+    const userId = accountIds.get(email);
+    if (!store || !userId) continue;
+    const storeId = storeIds.get(store.slug);
+    if (!storeId)
+      throw new Error(`${email} works at ${store.slug}, which the seed does not create.`);
+    rows.push({ user_id: userId, store_id: storeId, role: store.role });
+  }
+  // An unchanged row is no change, so a re-seed writes no audit rows for it.
+  await db
+    .from('store_memberships')
+    .upsert(rows, { onConflict: 'user_id,store_id' })
+    .throwOnError();
+  // Deleted by predicate per account: a read of every membership would be capped by the Data API.
+  const kept = new Map(rows.map((row) => [row.user_id, row.store_id]));
+  for (const userId of accountIds.values()) {
+    const stale = db.from('store_memberships').delete().eq('user_id', userId);
+    const storeId = kept.get(userId);
+    await (storeId ? stale.neq('store_id', storeId) : stale).throwOnError();
+  }
+}
+
 function describeMenu(store: Tables<'stores'>, menuItems: Tables<'menu_items'>[]): string {
   const popular = menuItems.filter((item) => item.is_popular).length;
   const unavailable = menuItems.filter((item) => !item.is_available).length;
@@ -165,8 +198,9 @@ async function seedDemo(): Promise<void> {
   // Orders are demo data: wipe them so numbering starts from #1001 again.
   await db.rpc('reset_demo_orders').throwOnError();
 
-  const ownerIds = await seedAccounts();
-  const stores = await seedBrands(BRANDS, ownerIds);
+  const accountIds = await seedAccounts();
+  const stores = await seedBrands(BRANDS, accountIds);
+  await seedMemberships(accountIds);
   // Back to the defaults, so every demo reset (and every test run) starts from the same limits.
   await db
     .from('site_settings')

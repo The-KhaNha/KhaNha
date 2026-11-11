@@ -61,6 +61,7 @@ If the guard throws, the whole run stops before a single request is made. `vites
 - `createTestUser(role?)` creates a confirmed user through the admin API, sets the role on the profile (the trigger
   always makes a CUSTOMER) and signs in. It returns `{ id, email, password, token }`. Send the token as
   `Authorization: Bearer <token>`.
+- `createStoreMember(storeId, role)` creates a customer account and a `store_memberships` row for it; `createBrandOwner(brandId)` makes a new account the owner of a brand the test created. Both return the `createTestUser` shape.
 - `deleteTestUser(user)` deletes the auth user; the profile goes with it through the cascade. Call it in `afterAll`.
 - `testAuthMatrix(...)` runs the shared 401 cases (no header, malformed scheme, foreign JWT, deleted user) against a
   route; `foreignJwt()` makes a well-formed JWT with a random signature (fails JWKS verification like a foreign or tampered

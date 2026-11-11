@@ -1,7 +1,7 @@
 import type { AuthError } from '@supabase/supabase-js';
 import type { RegisterInput } from '../schemas/auth.schema';
-import type { Tables } from '../types/database';
 import { AppError, notFound, validationError } from '../utils/errors';
+import type { ProfileWithStanding } from '../utils/serializers';
 import { supabaseAdmin } from '../utils/supabase';
 
 /**
@@ -11,7 +11,7 @@ import { supabaseAdmin } from '../utils/supabase';
  * Registration goes through the API (not supabase.auth.signUp in the browser) so the same zod rules as before
  * apply, and so the account is usable at once: it is created already confirmed, and no email is sent.
  */
-export async function register(input: RegisterInput): Promise<Tables<'profiles'>> {
+export async function register(input: RegisterInput): Promise<ProfileWithStanding> {
   const { data, error } = await supabaseAdmin.auth.admin.createUser({
     email: input.email,
     password: input.password,
@@ -22,10 +22,13 @@ export async function register(input: RegisterInput): Promise<Tables<'profiles'>
   return getProfile(data.user.id);
 }
 
-export async function getProfile(id: string): Promise<Tables<'profiles'>> {
+/** The profile with the stores the account works at and the brands it owns, for UserDto. */
+export async function getProfile(id: string): Promise<ProfileWithStanding> {
   const { data: profile } = await supabaseAdmin
     .from('profiles')
-    .select()
+    .select(
+      '*, memberships:store_memberships!store_memberships_user_id_fkey(role, store:stores!inner(id, slug, name)), brands!brands_owner_id_fkey(id, name, slug)',
+    )
     .eq('id', id)
     .maybeSingle()
     .throwOnError();

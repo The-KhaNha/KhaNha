@@ -23,6 +23,8 @@ const customer = (): User => ({
   phone: null,
   role: 'CUSTOMER',
   createdAt: new Date().toISOString(),
+  memberships: [],
+  ownedBrands: [],
 });
 
 // Storage that is there but full (older iOS private mode, a full quota, some WebViews): every write throws. zustand's

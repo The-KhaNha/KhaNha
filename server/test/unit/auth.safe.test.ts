@@ -16,9 +16,10 @@ function reqWith(user?: AuthUser): { user?: AuthUser } {
   return { user };
 }
 
-const staff: AuthUser = { id: 'u-staff', role: 'STAFF' };
-const admin: AuthUser = { id: 'u-admin', role: 'ADMIN' };
-const customer: AuthUser = { id: 'u-customer', role: 'CUSTOMER' };
+const none = { memberships: [], ownedBrandIds: [] };
+const staff: AuthUser = { id: 'u-staff', role: 'STAFF', ...none };
+const admin: AuthUser = { id: 'u-admin', role: 'ADMIN', ...none };
+const customer: AuthUser = { id: 'u-customer', role: 'CUSTOMER', ...none };
 
 describe('currentUser', () => {
   it('returns req.user when requireAuth has set it', () => {

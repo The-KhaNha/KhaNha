@@ -71,7 +71,7 @@ decision.
 
 ### What counts as a major change
 
-- Any change under `server/src/{routes,controllers,services,schemas,middleware,jobs}/`, `server/src/worker.ts`,
+- Any change under `server/src/{routes,controllers,services,schemas,middleware,jobs,domain}/`, `server/src/worker.ts`,
   `server/supabase/migrations/`, `client/src/{pages,services,components}/`, `client/src/App.tsx`, or any
   `package.json` or `pnpm-workspace.yaml` (overrides and allowed builds live there); or
 - 5 or more source files; or

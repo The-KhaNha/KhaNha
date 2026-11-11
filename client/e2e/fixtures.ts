@@ -163,6 +163,8 @@ export async function signIn(
     phone: null,
     role,
     createdAt: now,
+    memberships: [],
+    ownedBrands: [],
   };
   const order: Order = {
     id: 'o1',

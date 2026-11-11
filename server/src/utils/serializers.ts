@@ -1,5 +1,6 @@
 import type { QueryData } from '@supabase/supabase-js';
 import type { Tables } from '../types/database';
+import type { StoreRole } from '../types/enums';
 import type {
   AuditEntryDto,
   FeatureFlagDto,
@@ -39,7 +40,13 @@ type OrderItemRow = OrderWithDetails['order_items'][number];
 /** Postgres returns timestamps as "2026-09-25 10:00:00.123+00"-style strings; the API always sends ISO 8601. */
 const toIso = (timestamp: string): string => new Date(timestamp).toISOString();
 
-export function toUserDto(profile: Tables<'profiles'>): UserDto {
+/** A profile with its store memberships and owned brands embedded (auth.service.getProfile). */
+export type ProfileWithStanding = Tables<'profiles'> & {
+  memberships: { role: StoreRole; store: { id: string; slug: string; name: string } }[];
+  brands: { id: string; name: string; slug: string }[];
+};
+
+export function toUserDto(profile: ProfileWithStanding): UserDto {
   return {
     id: profile.id,
     name: profile.name,
@@ -47,6 +54,13 @@ export function toUserDto(profile: Tables<'profiles'>): UserDto {
     phone: profile.phone,
     role: profile.role,
     createdAt: toIso(profile.created_at),
+    memberships: profile.memberships.map(({ role, store }) => ({
+      storeId: store.id,
+      storeSlug: store.slug,
+      storeName: store.name,
+      role,
+    })),
+    ownedBrands: profile.brands.map(({ id, name, slug }) => ({ id, name, slug })),
   };
 }
 

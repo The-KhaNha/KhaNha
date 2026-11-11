@@ -3,7 +3,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import request from 'supertest';
 import { createClient } from '@supabase/supabase-js';
 import { describe, expect, it } from 'vitest';
-import type { Role } from '../../src/types/enums';
+import type { Role, StoreRole } from '../../src/types/enums';
 import { invalidate } from '../../src/utils/cache';
 import { env } from '../../src/utils/env';
 import { supabaseAdmin } from '../../src/utils/supabase';
@@ -42,6 +42,23 @@ export async function createTestUser(role: Role = 'CUSTOMER'): Promise<TestUser>
   if (signInError) throw signInError;
 
   return { id: data.user.id, email, password, token: session.session.access_token };
+}
+
+/** A new account that works at `storeId` as `role`; its profile stays CUSTOMER (store roles are memberships). */
+export async function createStoreMember(storeId: string, role: StoreRole): Promise<TestUser> {
+  const user = await createTestUser();
+  await supabaseAdmin
+    .from('store_memberships')
+    .insert({ user_id: user.id, store_id: storeId, role })
+    .throwOnError();
+  return user;
+}
+
+/** A new account that owns `brandId`, replacing its owner: use it on a brand the test created. */
+export async function createBrandOwner(brandId: string): Promise<TestUser> {
+  const user = await createTestUser();
+  await supabaseAdmin.from('brands').update({ owner_id: user.id }).eq('id', brandId).throwOnError();
+  return user;
 }
 
 /** A client that never holds a session past its call, so the shared admin client stays signed out. */

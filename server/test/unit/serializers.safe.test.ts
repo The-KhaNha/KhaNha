@@ -5,13 +5,16 @@ import {
   toOrderDto,
   toStoreDto,
   toUserDto,
+  type ProfileWithStanding,
   type OrderWithDetails,
   type StoreWithBrand,
 } from '../../src/utils/serializers';
 import type { Tables } from '../../src/types/database';
 
-function profile(overrides: Partial<Tables<'profiles'>> = {}): Tables<'profiles'> {
+function profile(overrides: Partial<ProfileWithStanding> = {}): ProfileWithStanding {
   return {
+    memberships: [],
+    brands: [],
     id: 'user-1',
     name: 'Ann',
     email: 'ann@example.test',
@@ -103,7 +106,22 @@ describe('toUserDto', () => {
       phone: '9876543210',
       role: 'CUSTOMER',
       createdAt: new Date('2026-09-25 10:00:00.123+00').toISOString(),
+      memberships: [],
+      ownedBrands: [],
     });
+  });
+
+  it('maps the embedded memberships and owned brands', () => {
+    const dto = toUserDto(
+      profile({
+        memberships: [{ role: 'MANAGER', store: { id: 's-1', slug: 'north', name: 'North' } }],
+        brands: [{ id: 'b-1', name: 'Brew', slug: 'brew' }],
+      }),
+    );
+    expect(dto.memberships).toEqual([
+      { storeId: 's-1', storeSlug: 'north', storeName: 'North', role: 'MANAGER' },
+    ]);
+    expect(dto.ownedBrands).toEqual([{ id: 'b-1', name: 'Brew', slug: 'brew' }]);
   });
 
   it('passes through a null phone', () => {

@@ -49,19 +49,28 @@ export async function resolveStoreRef(ref: string): Promise<string> {
   });
 }
 
-/** One ACTIVE store for the public routes, cached under `store:<id>`; any other status is 404 like an unknown id. */
-export function getActiveStore(id: string): Promise<StoreWithBrand> {
+/**
+ * One store whatever its status, cached under `store:<id>`; an unknown id is 404. `requireStore` decides who may see
+ * a store that is not ACTIVE, so the cache holds every status and each reader filters.
+ */
+export function getStoreById(id: string): Promise<StoreWithBrand> {
   return cached(`store:${id}`, PUBLIC_READ_TTL_MS, async () => {
     const { data } = await supabaseAdmin
       .from('stores')
       .select(STORE_SELECT)
       .eq('id', id)
-      .eq('status', 'ACTIVE')
       .maybeSingle()
       .throwOnError();
     if (!data) throw notFound('Store not found.');
     return data;
   });
+}
+
+/** One ACTIVE store for the public routes; any other status is 404 like an unknown id. */
+export async function getActiveStore(id: string): Promise<StoreWithBrand> {
+  const store = await getStoreById(id);
+  if (store.status !== 'ACTIVE') throw notFound('Store not found.');
+  return store;
 }
 
 /** Every ACTIVE store under one key (`stores:list`); `area` narrows it in memory so there is one entry to invalidate. */

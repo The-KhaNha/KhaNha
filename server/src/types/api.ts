@@ -1,5 +1,5 @@
 // Response shapes shared with the client. Keep these in sync with the API contract.
-import type { ActorType, OrderStatus, PaymentStatus, Role } from './enums';
+import type { ActorType, OrderStatus, PaymentStatus, Role, StoreRole } from './enums';
 
 export interface UserDto {
   id: string;
@@ -8,6 +8,10 @@ export interface UserDto {
   phone: string | null;
   role: Role;
   createdAt: string;
+  /** The stores this account works at (P2.2); the brand's owner has no rows here. */
+  memberships: { storeId: string; storeSlug: string; storeName: string; role: StoreRole }[];
+  /** The brands this account owns: OWNER of every store of each (ADR-001). */
+  ownedBrands: { id: string; name: string; slug: string }[];
 }
 
 export interface StoreDto {

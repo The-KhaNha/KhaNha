@@ -7,6 +7,8 @@ export type Role = Enums['user_role'];
 export type OrderStatus = Enums['order_status'];
 export type PaymentStatus = Enums['payment_status'];
 export type ActorType = Enums['actor_type'];
+export type StoreRole = Enums['store_role'];
+export type StoreStatus = Enums['store_status'];
 
 export const ORDER_STATUSES = Constants.public.Enums.order_status;
 export const ROLES = Constants.public.Enums.user_role;

@@ -3,6 +3,8 @@ export type Role = 'CUSTOMER' | 'STAFF' | 'ADMIN';
 export type OrderStatus = 'PLACED' | 'PREPARING' | 'READY' | 'COLLECTED' | 'CANCELLED';
 export type PaymentStatus = 'PENDING' | 'PAID';
 export type ActorType = 'USER' | 'WORKER' | 'RECONCILER' | 'WEBHOOK' | 'SCHEDULER' | 'SYSTEM';
+/** A role at one store (P2.2); the brand's owner is not a membership. */
+export type StoreRole = 'MANAGER' | 'STAFF';
 
 export interface User {
   id: string;
@@ -11,6 +13,10 @@ export interface User {
   phone: string | null;
   role: Role;
   createdAt: string; // ISO
+  /** The stores this account works at. */
+  memberships: { storeId: string; storeSlug: string; storeName: string; role: StoreRole }[];
+  /** The brands this account owns: OWNER of every store of each. */
+  ownedBrands: { id: string; name: string; slug: string }[];
 }
 
 export interface Store {

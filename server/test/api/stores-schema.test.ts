@@ -3,6 +3,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { supabaseAdmin } from '../../src/utils/supabase';
+import { createTestUser, deleteTestUser } from '../setup/helpers';
 
 const tag = randomUUID().slice(0, 8);
 let brandId: string;
@@ -109,5 +110,70 @@ describe('stores and brands schema', () => {
         changes: { area: [null, 'North'] },
       },
     ]);
+  });
+
+  it('a membership writes one audit row on insert, update and delete, with the store role as actor_role', async () => {
+    const member = await createTestUser();
+    try {
+      const requestId = `memberships-schema-${tag}`;
+      const actor = JSON.stringify({
+        type: 'USER',
+        id: randomUUID(),
+        role: 'CUSTOMER',
+        storeRole: 'OWNER',
+      });
+      const { data: row } = await supabaseAdmin
+        .from('store_memberships')
+        .insert({ user_id: member.id, store_id: storeId, role: 'STAFF' })
+        .setHeader('x-actor', actor)
+        .setHeader('x-request-id', requestId)
+        .select('id')
+        .single()
+        .throwOnError();
+      await supabaseAdmin
+        .from('store_memberships')
+        .update({ role: 'MANAGER' })
+        .eq('id', row.id)
+        .setHeader('x-actor', actor)
+        .setHeader('x-request-id', requestId)
+        .throwOnError();
+      await supabaseAdmin
+        .from('store_memberships')
+        .delete()
+        .eq('id', row.id)
+        .setHeader('x-actor', actor)
+        .setHeader('x-request-id', requestId)
+        .throwOnError();
+      const { data } = await supabaseAdmin
+        .from('audit_log')
+        .select('actor_role, store_id, action, entity_type, entity_id, changes')
+        .eq('request_id', requestId)
+        .order('id')
+        .throwOnError();
+      const common = {
+        actor_role: 'OWNER',
+        store_id: storeId,
+        action: 'membership.changed',
+        entity_type: 'membership',
+        entity_id: row.id,
+      };
+      expect(data).toEqual([
+        {
+          ...common,
+          changes: { user_id: [null, member.id], store_id: [null, storeId], role: [null, 'STAFF'] },
+        },
+        { ...common, changes: { role: ['STAFF', 'MANAGER'] } },
+        {
+          ...common,
+          changes: {
+            user_id: [member.id, null],
+            store_id: [storeId, null],
+            role: ['MANAGER', null],
+          },
+        },
+      ]);
+    } finally {
+      await deleteTestUser(member);
+    }
   });
 });

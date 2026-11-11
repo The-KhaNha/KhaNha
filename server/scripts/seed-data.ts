@@ -1,6 +1,6 @@
 // The demo fixtures `pnpm run seed` writes: the store, its menu and the test accounts. Data only; seed.ts owns what
 // happens to it. Kept typed (not JSON) so a wrong field fails typecheck.
-import type { Role } from '../src/types/enums';
+import type { Role, StoreRole } from '../src/types/enums';
 
 export interface SeedStore {
   name: string;
@@ -205,15 +205,14 @@ export const DEMO_ACCOUNTS: {
   localPassword: string;
   stagingPassword: StagingPasswordKey;
   phone: string | null;
+  /** The store the account works at (P2.2), by slug. */
+  store?: { slug: string; role: StoreRole };
 }[] = [
-  {
-    role: 'STAFF',
-    name: 'Campus Cafe Staff',
-    email: 'staff@campuscafe.local',
-    localPassword: 'staff123',
-    stagingPassword: 'SEED_STAFF_PASSWORD',
-    phone: null,
-  },
+  // A staff member and a manager per store. Their profile role is STAFF until P2 PR 16, so the old staff board
+  // (/staff) still admits them; every store team account shares SEED_STAFF_PASSWORD on staging.
+  ...teamAccounts('Campus Cafe', 'campuscafe.local', 'campus-cafe'),
+  ...teamAccounts('North Gate', 'northgate.brewlane.local', 'brew-lane-north-gate'),
+  ...teamAccounts('Tech Park', 'techpark.brewlane.local', 'brew-lane-tech-park'),
   {
     // The site-wide admin dashboard (/admin). Not a restaurant role: it has no staff powers.
     role: 'ADMIN',
@@ -231,7 +230,7 @@ export const DEMO_ACCOUNTS: {
     stagingPassword: 'SEED_CUSTOMER_PASSWORD',
     phone: '9876543210',
   },
-  // Brand owners stay CUSTOMER profiles: store roles arrive with memberships (P2 PR 03); brands.owner_id is the link.
+  // Brand owners are CUSTOMER profiles: brands.owner_id makes them OWNER of every store of their brand.
   {
     role: 'CUSTOMER',
     name: 'Campus Cafe Owner',
@@ -249,3 +248,15 @@ export const DEMO_ACCOUNTS: {
     phone: null,
   },
 ];
+
+function teamAccounts(storeName: string, domain: string, slug: string) {
+  return (['STAFF', 'MANAGER'] as const).map((role) => ({
+    role: 'STAFF' as const,
+    name: `${storeName} ${role === 'STAFF' ? 'Staff' : 'Manager'}`,
+    email: `${role.toLowerCase()}@${domain}`,
+    localPassword: `${role.toLowerCase()}123`,
+    stagingPassword: 'SEED_STAFF_PASSWORD' as const,
+    phone: null,
+    store: { slug, role },
+  }));
+}

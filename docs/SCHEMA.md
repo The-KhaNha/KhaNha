@@ -40,6 +40,7 @@ a new file (see [DEPLOYMENT.md](DEPLOYMENT.md#schema-changes)).
 | `20261109094725_money_paise_contract.sql`          | drops `menu_items.price`, `orders.total`, `order_items.unit_price` and `line_total`, and the `menu_items_sync_price` trigger and function first; `place_order` (same signature) stops writing the rupee columns; `menu_items_audit` watches `price_paise` and no longer `price`                                                                                                                                                                                                                                                   |
 | `20261109122051_order_integrity.sql`               | `place_order` (same signature, grants kept) reads `stores.is_open` `for share` before stock (`STORE_CLOSED`) and refuses an item with `is_available = false` in its pricing read (`ITEM_UNAVAILABLE`); `menu_items_price_paise_check` becomes `price_paise > 0`                                                                                                                                                                                                                                                                   |
 | `20261111094853_brands_and_stores.sql`             | adds `store_status`, `brands` (RLS, revoked) and the `stores` columns `brand_id`, `slug`, `status`, `timezone`, `area`, `address_line`, `contact_phone`, `created_at`, `updated_at`, backfilled (one `ACTIVE` brand per store, slugged after its name) and then `not null`; `set_updated_at` and audit triggers on both                                                                                                                                                                                                           |
+| `20261111123222_store_memberships.sql`             | adds `store_role`, `store_memberships` (RLS, revoked) with its backfill of `STAFF` profiles into the oldest store and `store_memberships_audit`; redefines `audit_row_change()` to record inserts and deletes and the actor's `storeRole`                                                                                                                                                                                                                                                                                         |
 
 ## Enums
 
@@ -50,6 +51,7 @@ a new file (see [DEPLOYMENT.md](DEPLOYMENT.md#schema-changes)).
 | `payment_status` | `PENDING`, `PAID`                                                |
 | `actor_type`     | `USER`, `WORKER`, `RECONCILER`, `WEBHOOK`, `SCHEDULER`, `SYSTEM` |
 | `store_status`   | `DRAFT`, `ACTIVE`, `SUSPENDED`, `ARCHIVED`                       |
+| `store_role`     | `MANAGER`, `STAFF`                                               |
 
 `ADMIN` was added with `alter type ... add value` (`20260927094610_admin_settings_collected.sql`); it is the
 site-wide developer/operator role (the `/admin` dashboard), not a restaurant role — see
@@ -91,6 +93,25 @@ through the seed until P3.
 | `status`      | `store_status` | no   | `DRAFT`             |                                                                                |
 | `created_at`  | timestamptz    | no   | `now()`             |                                                                                |
 | `updated_at`  | timestamptz    | no   | `now()`             | `brands_set_updated_at`                                                        |
+
+### store_memberships
+
+Who works at which store (ADR-001; `20261111123222_store_memberships.sql`). A row is a `STAFF` or `MANAGER` at one
+store. The brand's owner has **no row**: `brands.owner_id` makes them OWNER of every store of the brand, so the last
+owner cannot be removed by construction. What each role may do: [PERMISSIONS.md](PERMISSIONS.md#store-roles). The
+migration backfills every `profiles.role = 'STAFF'` account as a `STAFF` member of the oldest store.
+
+| Column       | Type         | Null | Default             | Notes                                                  |
+| ------------ | ------------ | ---- | ------------------- | ------------------------------------------------------ |
+| `id`         | uuid         | no   | `gen_random_uuid()` | primary key                                            |
+| `user_id`    | uuid         | no   |                     | references `profiles (id)` on delete cascade           |
+| `store_id`   | uuid         | no   |                     | references `stores (id)` on delete cascade; indexed    |
+| `role`       | `store_role` | no   |                     |                                                        |
+| `created_at` | timestamptz  | no   | `now()`             |                                                        |
+| `created_by` | uuid         | yes  |                     | references `profiles (id)` on delete set null; indexed |
+
+`unique (user_id, store_id)`: one role per person per store. Audited by `store_memberships_audit`
+(`membership.changed`: `user_id`, `store_id`, `role`).
 
 ### stores
 
@@ -294,23 +315,25 @@ One row per Supabase Auth session, written only by `touch_session`; a row is pur
 
 ## Indexes
 
-| Index                                | Columns                                                                          |
-| ------------------------------------ | -------------------------------------------------------------------------------- |
-| `brands_owner_id_idx`                | `brands (owner_id)`                                                              |
-| `stores_brand_id_idx`                | `stores (brand_id)`                                                              |
-| `menu_items_store_id_category_idx`   | `menu_items (store_id, category)`                                                |
-| `orders_user_id_created_at_idx`      | `orders (user_id, created_at)`                                                   |
-| `orders_status_created_at_idx`       | `orders (status, created_at)`                                                    |
-| `order_items_menu_item_id_idx`       | `order_items (menu_item_id)`                                                     |
-| `orders_user_id_idempotency_key_idx` | `orders (user_id, idempotency_key)`, unique, `where idempotency_key is not null` |
-| `domain_events_aggregate_idx`        | `domain_events (aggregate_type, aggregate_id, occurred_at)`                      |
-| `audit_log_entity_idx`               | `audit_log (entity_type, entity_id, id desc)`                                    |
-| `audit_log_entity_type_idx`          | `audit_log (entity_type, id desc)`                                               |
-| `audit_log_store_idx`                | `audit_log (store_id, id desc)`                                                  |
-| `audit_log_actor_idx`                | `audit_log (actor_id, id desc)`                                                  |
-| `session_activity_user_id_idx`       | `session_activity (user_id)`, for the cascade from `profiles`                    |
-| unique constraint                    | `order_items (order_id, line_number)`                                            |
-| unique constraint                    | `profiles (email)`, `orders (order_number)`                                      |
+| Index                                | Columns                                                                              |
+| ------------------------------------ | ------------------------------------------------------------------------------------ |
+| `brands_owner_id_idx`                | `brands (owner_id)`                                                                  |
+| `store_memberships_store_id_idx`     | `store_memberships (store_id)`, the team list                                        |
+| `store_memberships_created_by_idx`   | `store_memberships (created_by)`                                                     |
+| `stores_brand_id_idx`                | `stores (brand_id)`                                                                  |
+| `menu_items_store_id_category_idx`   | `menu_items (store_id, category)`                                                    |
+| `orders_user_id_created_at_idx`      | `orders (user_id, created_at)`                                                       |
+| `orders_status_created_at_idx`       | `orders (status, created_at)`                                                        |
+| `order_items_menu_item_id_idx`       | `order_items (menu_item_id)`                                                         |
+| `orders_user_id_idempotency_key_idx` | `orders (user_id, idempotency_key)`, unique, `where idempotency_key is not null`     |
+| `domain_events_aggregate_idx`        | `domain_events (aggregate_type, aggregate_id, occurred_at)`                          |
+| `audit_log_entity_idx`               | `audit_log (entity_type, entity_id, id desc)`                                        |
+| `audit_log_entity_type_idx`          | `audit_log (entity_type, id desc)`                                                   |
+| `audit_log_store_idx`                | `audit_log (store_id, id desc)`                                                      |
+| `audit_log_actor_idx`                | `audit_log (actor_id, id desc)`                                                      |
+| `session_activity_user_id_idx`       | `session_activity (user_id)`, for the cascade from `profiles`                        |
+| unique constraint                    | `order_items (order_id, line_number)`                                                |
+| unique constraint                    | `profiles (email)`, `orders (order_number)`, `store_memberships (user_id, store_id)` |
 
 `site_settings` has no indexes on purpose (one row), including on `updated_by`. `session_activity.last_seen_at` has
 none either: the API moves it every few minutes per session, and an index would cost each of those updates an index
@@ -318,24 +341,25 @@ write for one small nightly scan.
 
 ## Triggers
 
-| Trigger                        | On                                                                                                                                                                        | Function                                                 |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| `orders_set_updated_at`        | before update on `orders`, each row                                                                                                                                       | `set_updated_at()`                                       |
-| `site_settings_set_updated_at` | before update on `site_settings`, each row                                                                                                                                | `set_updated_at()`                                       |
-| `feature_flags_set_updated_at` | before update on `feature_flags`, each row                                                                                                                                | `set_updated_at()`                                       |
-| `on_auth_user_created`         | after insert on `auth.users`                                                                                                                                              | `handle_new_user()`                                      |
-| `on_auth_user_email_changed`   | after update of `email` on `auth.users`, when the email changed                                                                                                           | `handle_user_email_change()`                             |
-| `site_settings_audit`          | after update on `site_settings`, each row                                                                                                                                 | `audit_row_change('site_settings.changed', '*')`         |
-| `orders_audit`                 | after update of `status` on `orders`, each row                                                                                                                            | `audit_row_change('order.status_changed', 'status')`     |
-| `profiles_audit`               | after update of `role` on `profiles`, each row                                                                                                                            | `audit_row_change('profile.role_changed', 'role')`       |
-| `menu_items_audit`             | after update of `name`, `price_paise`, `is_available`, `image_url`, `category` on `menu_items`, each row (never `stock_quantity`)                                         | `audit_row_change('menu_item.changed', <those columns>)` |
-| `brands_set_updated_at`        | before update on `brands`, each row                                                                                                                                       | `set_updated_at()`                                       |
-| `stores_set_updated_at`        | before update on `stores`, each row                                                                                                                                       | `set_updated_at()`                                       |
-| `brands_audit`                 | after update on `brands`, each row                                                                                                                                        | `audit_row_change('brand.changed', '*')`                 |
-| `stores_audit`                 | after update of `name`, `slug`, `status`, `is_open`, `area`, `address_line`, `contact_phone`, `timezone` on `stores`, each row (its audit row has `store_id = stores.id`) | `audit_row_change('store.changed', …)`                   |
-| `feature_flags_audit`          | after update on `feature_flags`, each row                                                                                                                                 | `audit_row_change('feature_flag.changed', '*')`          |
-| `audit_log_no_change`          | before update or delete on `audit_log`, each row                                                                                                                          | `audit_log_append_only()`                                |
-| `audit_log_no_truncate`        | before truncate on `audit_log`, each statement                                                                                                                            | `audit_log_append_only()`                                |
+| Trigger                        | On                                                                                                                                                                        | Function                                                                |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `orders_set_updated_at`        | before update on `orders`, each row                                                                                                                                       | `set_updated_at()`                                                      |
+| `site_settings_set_updated_at` | before update on `site_settings`, each row                                                                                                                                | `set_updated_at()`                                                      |
+| `feature_flags_set_updated_at` | before update on `feature_flags`, each row                                                                                                                                | `set_updated_at()`                                                      |
+| `on_auth_user_created`         | after insert on `auth.users`                                                                                                                                              | `handle_new_user()`                                                     |
+| `on_auth_user_email_changed`   | after update of `email` on `auth.users`, when the email changed                                                                                                           | `handle_user_email_change()`                                            |
+| `site_settings_audit`          | after update on `site_settings`, each row                                                                                                                                 | `audit_row_change('site_settings.changed', '*')`                        |
+| `orders_audit`                 | after update of `status` on `orders`, each row                                                                                                                            | `audit_row_change('order.status_changed', 'status')`                    |
+| `profiles_audit`               | after update of `role` on `profiles`, each row                                                                                                                            | `audit_row_change('profile.role_changed', 'role')`                      |
+| `menu_items_audit`             | after update of `name`, `price_paise`, `is_available`, `image_url`, `category` on `menu_items`, each row (never `stock_quantity`)                                         | `audit_row_change('menu_item.changed', <those columns>)`                |
+| `brands_set_updated_at`        | before update on `brands`, each row                                                                                                                                       | `set_updated_at()`                                                      |
+| `stores_set_updated_at`        | before update on `stores`, each row                                                                                                                                       | `set_updated_at()`                                                      |
+| `brands_audit`                 | after update on `brands`, each row                                                                                                                                        | `audit_row_change('brand.changed', '*')`                                |
+| `stores_audit`                 | after update of `name`, `slug`, `status`, `is_open`, `area`, `address_line`, `contact_phone`, `timezone` on `stores`, each row (its audit row has `store_id = stores.id`) | `audit_row_change('store.changed', …)`                                  |
+| `store_memberships_audit`      | after insert or update or delete on `store_memberships`, each row (`membership.changed`: `user_id`, `store_id`, `role`)                                                   | `audit_row_change('membership.changed', 'user_id', 'store_id', 'role')` |
+| `feature_flags_audit`          | after update on `feature_flags`, each row                                                                                                                                 | `audit_row_change('feature_flag.changed', '*')`                         |
+| `audit_log_no_change`          | before update or delete on `audit_log`, each row                                                                                                                          | `audit_log_append_only()`                                               |
+| `audit_log_no_truncate`        | before truncate on `audit_log`, each statement                                                                                                                            | `audit_log_append_only()`                                               |
 
 ## Functions
 
@@ -360,7 +384,7 @@ object (SQLSTATE `P0001`). How the API maps them is in [API.md](API.md#database-
 | `queue_dead_letter(...)`     | sql      | definer  | boolean | the worker                                                                              | `service_role`       |
 | `queue_metrics(text)`        | sql      | definer  | table   | the worker's health report                                                              | `service_role`       |
 | `purge_domain_events(...)`   | sql      | invoker  | integer | pg_cron `purge-domain-events`                                                           | `service_role`       |
-| `audit_row_change()`         | plpgsql  | definer  | trigger | the five `*_audit` triggers                                                             | nobody               |
+| `audit_row_change()`         | plpgsql  | definer  | trigger | the `*_audit` triggers                                                                  | nobody               |
 | `audit_log_append_only()`    | plpgsql  | invoker  | trigger | `audit_log_no_change`, `_no_truncate`                                                   | nobody               |
 
 ### set_updated_at
@@ -584,6 +608,8 @@ redefines the function with `coalesce(id, key)`, same signature, so the revokes 
 
 `store_id` is the row's `store_id`, or, for a `stores` row, its own `id` (`20261111094853_brands_and_stores.sql` redefines the function again, same signature).
 
+`20261111123222_store_memberships.sql` redefines it once more (same signature) so inserts and deletes are audited too: an insert is recorded as `[null, value]` pairs and a delete as `[value, null]` pairs, and the store and entity id come from whichever row exists. `actor_role` is the actor's `storeRole` (the store role of a store-scoped request) when present, else its `role`.
+
 The actor is parsed only for a real change; one that does not parse, or names an unknown `actor_type`, fails the write
 on purpose. The API vouches for the actor it sends: the secret key cannot write `audit_log`, but it chooses whom a
 change is attributed to. An audited table is therefore written through a transition function or with those two headers; `updated_by` is
@@ -591,15 +617,15 @@ never read (a later SQL edit would carry the last admin's id).
 
 ## Row-level security and grants
 
-- RLS is enabled on all twelve tables (`site_settings`, the outbox tables, `audit_log`, `feature_flags` and `session_activity` included, each by the migration
+- RLS is enabled on all fourteen tables (`site_settings`, the outbox tables, `audit_log`, `feature_flags` and `session_activity` included, each by the migration
   that creates it). There are no policies.
-- `revoke all` on all twelve tables from `anon` and `authenticated`.
+- `revoke all` on all fourteen tables from `anon` and `authenticated`.
 - Default privileges for role `postgres` in `public`: new tables grant nothing to `anon`/`authenticated`, and new
   functions grant no `EXECUTE` to `public`, `anon` or `authenticated`. This is why the `20260927094610` migration did
   not need its own `revoke`/`grant` for functions — it adds no new function — but still revokes table privileges for
   `site_settings` explicitly, matching every other table.
 - `EXECUTE` on every function is revoked from `public`, `anon` and `authenticated`, then granted to `service_role`
-  for all but the five trigger functions.
+  for all but the trigger functions.
 - `anon` and `authenticated` have no `USAGE` on the `pgmq` or `cron` schema, and neither schema is exposed through
   the Data API (`api.schemas` in `server/supabase/config.toml`).
 - `server/test/api/database-lockdown.test.ts` checks all of the above from the catalogs, for every table and function,

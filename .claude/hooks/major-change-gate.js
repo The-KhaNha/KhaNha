@@ -31,7 +31,7 @@ const PR_UNCOUNTED = /(^|\/)pnpm-lock\.yaml$|^server\/src\/types\/database\.ts$|
 
 // Keep in sync with .claude/rules/workflow.md "What counts as a major change".
 const MAJOR_PATHS = [
-  /^server\/src\/(routes|controllers|services|schemas|middleware|jobs)\//,
+  /^server\/src\/(routes|controllers|services|schemas|middleware|jobs|domain)\//,
   /^server\/src\/worker\.ts$/,
   /^server\/supabase\/migrations\//,
   /^client\/src\/(pages|services|components)\//,
@@ -190,6 +190,7 @@ function selfTest() {
   assert.equal(classify([c('client/src/index.css', 20)]).major, false);
   assert.equal(classify([c('server/src/routes/index.ts')]).major, true);
   assert.equal(classify([c('server/src/jobs/notify.ts')]).major, true);
+  assert.equal(classify([c('server/src/domain/permissions.ts')]).major, true);
   assert.equal(classify([c('server/src/worker.ts')]).major, true);
   assert.equal(classify([c('server/src/utils/shutdown.ts', 20)]).major, false);
   assert.equal(classify([c('server/supabase/migrations/2026_x.sql')]).major, true);
