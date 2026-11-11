@@ -333,7 +333,7 @@ Docs: `docs/PERMISSIONS.md` (memberships, the owner, the matrix, 404-or-403), `d
 
 ### PR 04 — Store-scoped orders and the isolation matrix (P2.3)
 
-- [ ] Merged
+- [x] Merged (the split seam taken: the lint rule and `scoped` are PR 04b)
 
 `/before-write`: reuse-scout, expected EXTEND (`order.service.ts`, the order routes).
 
@@ -373,6 +373,18 @@ Docs: `docs/API.md`, `docs/PERMISSIONS.md` (the route matrix), `docs/TESTING.md`
 rule), `docs/BACKEND_STRUCTURE.md` (`scoped`), `.claude/rules/backend.md` §10. Intent: `--server minor`.
 
 Split seam if over the limit: the lint rule and `scoped` adoption in existing services move to a PR 04b.
+
+As built: another store's item stays 400 `ITEM_NOT_FOUND` (the stable code its existing test pins), not
+`ITEM_UNAVAILABLE`. `createTestUser('STAFF')` is also a STAFF member of the oldest store, as the memberships backfill
+made every STAFF profile, so the old suites pass unchanged; the guards are new tests in `store-orders.test.ts`.
+
+### PR 04b — `scoped` and the table-ownership lint rule (P2.3)
+
+- [ ] Merged
+
+PR 04's split seam: `utils/scoped.ts`, the `no-restricted-syntax` rule in `server/eslint.config.mjs` with its own test
+file, and the adoption in existing services, as PR 04 describes them. Docs: `docs/TESTING.md` (the lint rule),
+`docs/BACKEND_STRUCTURE.md` (`scoped`). Intent: `--server patch`.
 
 ### PR 05 — Store settings (P2.3)
 

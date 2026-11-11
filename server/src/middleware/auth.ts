@@ -4,7 +4,7 @@ import { verifyCredentials } from '@supabase/server/core';
 import { isAuthSessionMissingError } from '@supabase/supabase-js';
 import { accessFor, can, type Capability } from '../domain/permissions';
 import { getStoreById } from '../services/store.service';
-import type { AuthUser, RequestContext } from '../types/auth';
+import type { AuthUser, RequestContext, StoreContext } from '../types/auth';
 import { env } from '../utils/env';
 import { forbidden, IntegrationError, notFound, unauthorized } from '../utils/errors';
 import { isUuid } from '../utils/ids';
@@ -214,6 +214,12 @@ export function requireStore(capability: Capability): RequestHandler {
 export function currentUser(req: { user?: AuthUser }): AuthUser {
   if (!req.user) throw unauthorized();
   return req.user;
+}
+
+/** Reads the store set by `requireStore`; throws if the route forgot to require it. */
+export function currentStore(req: { store?: StoreContext }): StoreContext {
+  if (!req.store) throw notFound('Store not found.');
+  return req.store;
 }
 
 /** Who is asking, and which request: a write records them with the event it emits and its audit row. */

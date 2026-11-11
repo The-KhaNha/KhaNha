@@ -315,25 +315,26 @@ One row per Supabase Auth session, written only by `touch_session`; a row is pur
 
 ## Indexes
 
-| Index                                | Columns                                                                              |
-| ------------------------------------ | ------------------------------------------------------------------------------------ |
-| `brands_owner_id_idx`                | `brands (owner_id)`                                                                  |
-| `store_memberships_store_id_idx`     | `store_memberships (store_id)`, the team list                                        |
-| `store_memberships_created_by_idx`   | `store_memberships (created_by)`                                                     |
-| `stores_brand_id_idx`                | `stores (brand_id)`                                                                  |
-| `menu_items_store_id_category_idx`   | `menu_items (store_id, category)`                                                    |
-| `orders_user_id_created_at_idx`      | `orders (user_id, created_at)`                                                       |
-| `orders_status_created_at_idx`       | `orders (status, created_at)`                                                        |
-| `order_items_menu_item_id_idx`       | `order_items (menu_item_id)`                                                         |
-| `orders_user_id_idempotency_key_idx` | `orders (user_id, idempotency_key)`, unique, `where idempotency_key is not null`     |
-| `domain_events_aggregate_idx`        | `domain_events (aggregate_type, aggregate_id, occurred_at)`                          |
-| `audit_log_entity_idx`               | `audit_log (entity_type, entity_id, id desc)`                                        |
-| `audit_log_entity_type_idx`          | `audit_log (entity_type, id desc)`                                                   |
-| `audit_log_store_idx`                | `audit_log (store_id, id desc)`                                                      |
-| `audit_log_actor_idx`                | `audit_log (actor_id, id desc)`                                                      |
-| `session_activity_user_id_idx`       | `session_activity (user_id)`, for the cascade from `profiles`                        |
-| unique constraint                    | `order_items (order_id, line_number)`                                                |
-| unique constraint                    | `profiles (email)`, `orders (order_number)`, `store_memberships (user_id, store_id)` |
+| Index                                   | Columns                                                                              |
+| --------------------------------------- | ------------------------------------------------------------------------------------ |
+| `brands_owner_id_idx`                   | `brands (owner_id)`                                                                  |
+| `store_memberships_store_id_idx`        | `store_memberships (store_id)`, the team list                                        |
+| `store_memberships_created_by_idx`      | `store_memberships (created_by)`                                                     |
+| `stores_brand_id_idx`                   | `stores (brand_id)`                                                                  |
+| `menu_items_store_id_category_idx`      | `menu_items (store_id, category)`                                                    |
+| `orders_user_id_created_at_idx`         | `orders (user_id, created_at)`                                                       |
+| `orders_status_created_at_idx`          | `orders (status, created_at)`                                                        |
+| `orders_store_id_status_created_at_idx` | `orders (store_id, status, created_at desc)`: one store's board (P2.3)               |
+| `order_items_menu_item_id_idx`          | `order_items (menu_item_id)`                                                         |
+| `orders_user_id_idempotency_key_idx`    | `orders (user_id, idempotency_key)`, unique, `where idempotency_key is not null`     |
+| `domain_events_aggregate_idx`           | `domain_events (aggregate_type, aggregate_id, occurred_at)`                          |
+| `audit_log_entity_idx`                  | `audit_log (entity_type, entity_id, id desc)`                                        |
+| `audit_log_entity_type_idx`             | `audit_log (entity_type, id desc)`                                                   |
+| `audit_log_store_idx`                   | `audit_log (store_id, id desc)`                                                      |
+| `audit_log_actor_idx`                   | `audit_log (actor_id, id desc)`                                                      |
+| `session_activity_user_id_idx`          | `session_activity (user_id)`, for the cascade from `profiles`                        |
+| unique constraint                       | `order_items (order_id, line_number)`                                                |
+| unique constraint                       | `profiles (email)`, `orders (order_number)`, `store_memberships (user_id, store_id)` |
 
 `site_settings` has no indexes on purpose (one row), including on `updated_by`. `session_activity.last_seen_at` has
 none either: the API moves it every few minutes per session, and an index would cost each of those updates an index

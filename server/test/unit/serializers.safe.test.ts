@@ -79,8 +79,10 @@ function orderWithDetails(overrides: Partial<OrderWithDetails> = {}): OrderWithD
     estimated_ready_at: '2026-09-25 10:15:00.000+00',
     created_at: '2026-09-25 10:00:00.000+00',
     updated_at: '2026-09-25 10:00:00.000+00',
+    user_id: 'user-1',
     store_id: 'store-1',
     store_name: 'Campus Cafe',
+    store: { slug: 'campus-cafe', brand_id: 'brand-1' },
     order_items: [
       {
         id: 'oi-1',
@@ -205,7 +207,7 @@ describe('toOrderDto', () => {
       estimatedReadyAt: new Date('2026-09-25 10:15:00.000+00').toISOString(),
       createdAt: new Date('2026-09-25 10:00:00.000+00').toISOString(),
       updatedAt: new Date('2026-09-25 10:00:00.000+00').toISOString(),
-      store: { id: 'store-1', name: 'Campus Cafe' },
+      store: { id: 'store-1', name: 'Campus Cafe', slug: 'campus-cafe' },
       items: [
         {
           id: 'oi-1',

@@ -25,9 +25,11 @@ work exactly like a customer's. Its only privilege is the admin dashboard (`/adm
   administrator using the SQL editor) can change it.
 - `requireAuth` reads the role from `profiles` on every request, so promoting or demoting someone takes effect on
   their next request without signing in again.
-- Making someone staff: `update public.profiles set role = 'STAFF' where email = '…';` in the SQL editor (see
-  [DEPLOYMENT.md](DEPLOYMENT.md#production-first-time-setup)). `pnpm run seed` sets the demo staff account's role the
-  same way.
+- Making someone staff: `update public.profiles set role = 'STAFF' where email = '…';` in the SQL editor, and, since
+  P2 PR 04, a membership of the store they work at, without which the board is empty and every order 404:
+  `insert into public.store_memberships (user_id, store_id, role) select id, '<store id>', 'STAFF' from public.profiles where email = '…';` (`'MANAGER'` for a manager; see
+  [DEPLOYMENT.md](DEPLOYMENT.md#production-first-time-setup) and [Store roles](#store-roles)). `pnpm run seed` sets
+  the demo staff accounts up the same way.
 - Making someone an admin (production or otherwise): `update public.profiles set role = 'ADMIN' where email = '…';`
   in the SQL editor. `pnpm run seed` creates a demo admin account (`admin@campuscafe.local`) the same way, locally and
   on staging — with the published `admin123` locally and a required `SEED_ADMIN_PASSWORD` on staging. The STAFF
@@ -77,25 +79,31 @@ it has (so a visible store answers 403), else none. An ADMIN who is also a STAFF
 
 ## Route matrix
 
-| Route                          | anonymous  | CUSTOMER            | STAFF                                  | ADMIN                 | Enforced by                                                                            |
-| ------------------------------ | ---------- | ------------------- | -------------------------------------- | --------------------- | -------------------------------------------------------------------------------------- |
-| `GET /api/health`              | yes        | yes                 | yes                                    | yes                   | –                                                                                      |
-| `GET /api/ready`               | yes        | yes                 | yes                                    | yes                   | –                                                                                      |
-| `GET /api/config`              | yes        | yes                 | yes                                    | yes                   | – (public: the same config for everyone; before the client version gate)               |
-| `POST /api/client-errors`      | yes        | yes                 | yes                                    | yes                   | – (public: no token; before the client version gate; per-address `clientErrorLimiter`) |
-| `GET /api/store`               | yes        | yes                 | yes                                    | yes                   | –                                                                                      |
-| `GET /api/menu`                | yes        | yes                 | yes                                    | yes                   | –                                                                                      |
-| `POST /api/auth/register`      | yes        | yes                 | yes                                    | yes                   | –                                                                                      |
-| `GET /api/auth/me`             | 401        | own profile         | own profile                            | own profile           | `requireAuth`                                                                          |
-| `POST /api/orders`             | 401        | yes                 | yes                                    | yes                   | `requireAuth`                                                                          |
-| `GET /api/orders`              | 401        | own orders          | newest `staff_order_list_limit` of all | own orders            | `requireAuth` + `order.service.listOrders`                                             |
-| `GET /api/orders/:id`          | 401        | own order, else 404 | any order                              | own order, else 404   | `requireAuth` + `order.service.getOrder`                                               |
-| `PATCH /api/orders/:id/status` | 401        | 403                 | yes                                    | 403                   | `requireAuth` + `requireStaff`                                                         |
-| `GET /api/admin/settings`      | 401        | 403                 | 403                                    | yes                   | `requireAuth` + `requireAdmin`                                                         |
-| `PATCH /api/admin/settings`    | 401        | 403                 | 403                                    | yes                   | `requireAuth` + `requireAdmin`                                                         |
-| `GET /api/admin/audit`         | 401        | 403                 | 403                                    | yes                   | `requireAuth` + `requireAdmin`                                                         |
-| `PATCH /api/admin/flags/:key`  | 401        | 403                 | 403                                    | yes (unknown key 404) | `requireAuth` + `requireAdmin`                                                         |
-| `/admin` (client route)        | → `/login` | → `/`               | → `/`                                  | renders `AdminPage`   | `RequireRole role="ADMIN"` (client only)                                               |
+| Route                                               | anonymous  | CUSTOMER            | STAFF                                                | ADMIN                 | Enforced by                                                                             |
+| --------------------------------------------------- | ---------- | ------------------- | ---------------------------------------------------- | --------------------- | --------------------------------------------------------------------------------------- |
+| `GET /api/health`                                   | yes        | yes                 | yes                                                  | yes                   | –                                                                                       |
+| `GET /api/ready`                                    | yes        | yes                 | yes                                                  | yes                   | –                                                                                       |
+| `GET /api/config`                                   | yes        | yes                 | yes                                                  | yes                   | – (public: the same config for everyone; before the client version gate)                |
+| `POST /api/client-errors`                           | yes        | yes                 | yes                                                  | yes                   | – (public: no token; before the client version gate; per-address `clientErrorLimiter`)  |
+| `GET /api/store`                                    | yes        | yes                 | yes                                                  | yes                   | –                                                                                       |
+| `GET /api/menu`                                     | yes        | yes                 | yes                                                  | yes                   | –                                                                                       |
+| `POST /api/auth/register`                           | yes        | yes                 | yes                                                  | yes                   | –                                                                                       |
+| `GET /api/auth/me`                                  | 401        | own profile         | own profile                                          | own profile           | `requireAuth`                                                                           |
+| `POST /api/orders`                                  | 401        | yes                 | yes                                                  | yes                   | `requireAuth`                                                                           |
+| `GET /api/orders`                                   | 401        | own orders          | the boards of the stores they work at                | own orders            | `requireAuth` + `order.service.listOrders`                                              |
+| `GET /api/orders/:id`                               | 401        | own order, else 404 | own, or `orders.view` at its store; else 404         | own order, else 404   | `requireAuth` + `order.service.getOrder`                                                |
+| `PATCH /api/orders/:id/status`                      | 401        | 403                 | `orders.transition` at its store, else 404           | 403                   | `requireAuth` + `requireStaff` + `order.service.updateOrderStatus`                      |
+| `GET /api/stores/:storeId/orders`                   | 401        | 403                 | `orders.view` there, else 403 (404 if not visible)   | 403                   | `requireAuth` + `requireStore('orders.view')`                                           |
+| `PATCH /api/stores/:storeId/orders/:orderId/status` | 401        | 403                 | `orders.transition` there; another store's order 404 | 403                   | `requireAuth` + `requireStore('orders.transition')` + `order.service.updateOrderStatus` |
+| `GET /api/admin/settings`                           | 401        | 403                 | 403                                                  | yes                   | `requireAuth` + `requireAdmin`                                                          |
+| `PATCH /api/admin/settings`                         | 401        | 403                 | 403                                                  | yes                   | `requireAuth` + `requireAdmin`                                                          |
+| `GET /api/admin/audit`                              | 401        | 403                 | 403                                                  | yes                   | `requireAuth` + `requireAdmin`                                                          |
+| `PATCH /api/admin/flags/:key`                       | 401        | 403                 | 403                                                  | yes (unknown key 404) | `requireAuth` + `requireAdmin`                                                          |
+| `/admin` (client route)                             | → `/login` | → `/`               | → `/`                                                | renders `AdminPage`   | `RequireRole role="ADMIN"` (client only)                                                |
+
+The STAFF column of the two store routes means a store standing (a membership or the brand's owner, whatever the
+profile role); a CUSTOMER or ADMIN profile with that standing gets the same. `testStoreIsolation`
+([TESTING.md](TESTING.md)) runs the tenant matrix on each store route.
 
 Nothing stops a `STAFF` or `ADMIN` account from placing an order: `POST /api/orders` only requires a signed-in user.
 `staffOrderListLimit` and `customerOrderHistoryLimit` are the two editable `site_settings` (defaults 100 and 20); see
@@ -117,14 +125,18 @@ Code: `server/src/middleware/auth.ts`.
 
 ### Ownership: someone else's order is a 404
 
-`order.service.getOrder` adds `.eq('user_id', user.id)` unless the caller is `STAFF`. A customer asking for another
-customer's order gets the same 404 `NOT_FOUND` "Order not found." as for a missing id, and a non-UUID id is also 404.
-The two cases look identical, so order ids cannot be probed. Never return 403 for another user's resource. `ADMIN` is
-not `STAFF`, so an admin's own orders are scoped by `user_id` exactly like a customer's.
+`order.service.getOrder` answers the order to the customer who placed it, or to a caller whose access at the order's
+store holds `orders.view` (`accessToOrder`). Anyone else asking gets the same 404 `NOT_FOUND` "Order not found." as for
+a missing id, and a non-UUID id is also 404. The cases look identical, so order ids cannot be probed. Never return 403
+for another user's resource. `ADMIN` has no `orders.view`, so an admin sees only their own orders.
 
-`listOrders` filters by `user_id` for everyone except `STAFF`, and applies `limit(settings.staff_order_list_limit)`
-for staff (read from `site_settings`, see [SCHEMA.md](SCHEMA.md#site_settings)) or
-`limit(settings.customer_order_history_limit)` otherwise.
+`updateOrderStatus` reads the order's store first and applies `orders.transition` there the same way (404), and on
+the store route also requires the order to be of `:storeId`. Until P2 PR 04 a `STAFF` profile read and moved every
+store's orders; `test/api/store-orders.test.ts` is the guard.
+
+`listOrders` filters by `user_id` for everyone except `STAFF`, whose board is the stores they work at (members, or the brand's owner;
+`listStoreOrders`, `.in('store_id', …)`) with `limit(settings.staff_order_list_limit)` on finished orders (read from
+`site_settings`, see [SCHEMA.md](SCHEMA.md#site_settings)); others get `limit(settings.customer_order_history_limit)`.
 
 ### Why every query scopes by user
 

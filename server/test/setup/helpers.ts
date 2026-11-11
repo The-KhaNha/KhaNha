@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { randomBytes, randomUUID } from 'node:crypto';
 import request from 'supertest';
 import { createClient } from '@supabase/supabase-js';
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Role, StoreRole } from '../../src/types/enums';
 import { invalidate } from '../../src/utils/cache';
 import { env } from '../../src/utils/env';
@@ -33,6 +33,14 @@ export async function createTestUser(role: Role = 'CUSTOMER'): Promise<TestUser>
   // The profile trigger always makes a CUSTOMER.
   if (role !== 'CUSTOMER') {
     await supabaseAdmin.from('profiles').update({ role }).eq('id', data.user.id).throwOnError();
+  }
+  // Like every STAFF profile the memberships migration backfilled: staff of the oldest store, so the old staff routes
+  // (scoped to the caller's stores since P2 PR 04) show them that store's board.
+  if (role === 'STAFF') {
+    await supabaseAdmin
+      .from('store_memberships')
+      .insert({ user_id: data.user.id, store_id: await oldestStoreId(), role: 'STAFF' })
+      .throwOnError();
   }
 
   const { data: session, error: signInError } = await throwawayClient().auth.signInWithPassword({
@@ -202,6 +210,119 @@ export function testAuthMatrix(
       const res = await makeRequest(api()).set('Authorization', `Bearer ${user.token}`);
       expect(res.status).toBe(401);
       expect(res.body).toEqual({ error: { code: 'UNAUTHORIZED', message: expect.any(String) } });
+    });
+  });
+}
+
+/**
+ * Removes what a test made on its own stores: their events and orders, the users (with their orders at any store),
+ * then the stores and brands. Nothing cascades from a store to its orders or events.
+ */
+export async function deleteTestStores(
+  storeIds: string[],
+  brandIds: string[],
+  users: TestUser[],
+): Promise<void> {
+  await supabaseAdmin.from('domain_events').delete().in('store_id', storeIds).throwOnError();
+  await supabaseAdmin.from('orders').delete().in('store_id', storeIds).throwOnError();
+  const userIds = users.map((user) => user.id);
+  await supabaseAdmin.from('orders').delete().in('user_id', userIds).throwOnError();
+  await Promise.all(users.map((user) => deleteTestUser(user)));
+  await supabaseAdmin.from('stores').delete().in('id', storeIds).throwOnError();
+  await supabaseAdmin.from('brands').delete().in('id', brandIds).throwOnError();
+  invalidate();
+}
+
+/**
+ * The tenant matrix every store route runs (P2.3), on two stores of two brands it makes itself. `send` calls the route
+ * for `storeId`, addressing `resourceId`; `resource(storeId)` makes one of the route's resources there (omit it for a
+ * route that addresses none, such as a list). Staff of store A on store B's route → 403; A's staff reaching B's
+ * resource through A's route → 404; the other brand's owner → 403; a customer → 403; anonymous → 401; and A's staff
+ * on A's own resource get through, so the refusals are not vacuous.
+ */
+export function testStoreIsolation(
+  label: string,
+  send: (http: ReturnType<typeof api>, storeId: string, resourceId: string) => request.Test,
+  resource?: (storeId: string) => Promise<string>,
+): void {
+  describe(`${label} — store isolation`, () => {
+    const tag = randomUUID().slice(0, 8);
+    const brandIds: string[] = [];
+    const users: TestUser[] = [];
+    const store = { a: '', b: '' };
+    const resourceOf = { a: '', b: '' };
+    let staffA: TestUser;
+    let ownerB: TestUser;
+    let customer: TestUser;
+
+    beforeAll(async () => {
+      const { data: brands } = await supabaseAdmin
+        .from('brands')
+        .insert(
+          ['a', 'b'].map((key) => ({
+            name: `Iso ${key}`,
+            slug: `iso-${key}-${tag}`,
+            status: 'ACTIVE' as const,
+          })),
+        )
+        .select('id, slug')
+        .throwOnError();
+      brandIds.push(...brands.map((brand) => brand.id));
+      const { data: stores } = await supabaseAdmin
+        .from('stores')
+        .insert(
+          brands.map((brand) => ({
+            name: `Isolation ${brand.slug}`,
+            slug: `store-${brand.slug}`,
+            brand_id: brand.id,
+            status: 'ACTIVE' as const,
+            tagline: 'Test',
+            description: 'A store for testStoreIsolation',
+          })),
+        )
+        .select('id, slug')
+        .throwOnError();
+      for (const key of ['a', 'b'] as const) {
+        store[key] = stores.find((row) => row.slug === `store-iso-${key}-${tag}`)?.id ?? '';
+        resourceOf[key] = resource ? await resource(store[key]) : randomUUID();
+      }
+      staffA = await createStoreMember(store.a, 'STAFF');
+      ownerB = await createBrandOwner(brandIds[1] ?? '');
+      customer = await createTestUser();
+      users.push(staffA, ownerB, customer);
+    }, 60_000);
+
+    afterAll(() => deleteTestStores(Object.values(store), brandIds, users));
+
+    const call = (who: TestUser | null, storeKey: 'a' | 'b', resourceKey: 'a' | 'b') => {
+      const req = send(api(), store[storeKey], resourceOf[resourceKey]);
+      return who ? req.set('Authorization', `Bearer ${who.token}`) : req;
+    };
+
+    it('anonymous → 401', async () => {
+      expect((await call(null, 'a', 'a')).status).toBe(401);
+    });
+    it.each([
+      ['a customer', () => customer],
+      ["the other brand's owner", () => ownerB],
+    ])('%s → 403', async (_who, who) => {
+      const res = await call(who(), 'a', 'a');
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('FORBIDDEN');
+    });
+    it("store A's staff on store B's route → 403", async () => {
+      expect((await call(staffA, 'b', 'b')).status).toBe(403);
+    });
+    it.runIf(resource !== undefined)(
+      "store A's staff reaching B's resource through A's route → 404",
+      async () => {
+        const res = await call(staffA, 'a', 'b');
+        expect(res.status).toBe(404);
+        expect(res.body.error.code).toBe('NOT_FOUND');
+      },
+    );
+    it("store A's staff on A's own route get through", async () => {
+      expect((await call(staffA, 'a', 'a')).status).toBeLessThan(300);
     });
   });
 }

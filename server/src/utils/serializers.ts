@@ -18,7 +18,7 @@ import { supabaseAdmin } from './supabase';
 /**
  * Every order endpoint returns the order with its lines and a minimal store reference.
  * The store's name and each line's photo are snapshots taken when the order was placed (place_order), so a later menu
- * or store edit never rewrites a past order, and the read needs no join beyond its own lines.
+ * or store edit never rewrites a past order. The store join brings its live slug, and its brand for the access check.
  * Amounts are read in paise and sent in rupees (utils/money.ts).
  * Callers add their filters; lines always come back in cart order.
  */
@@ -27,7 +27,8 @@ export function selectOrders() {
     .from('orders')
     .select(
       `id, order_number, status, payment_status, total_paise, customer_name, customer_phone, note,
-       estimated_ready_at, created_at, updated_at, store_id, store_name,
+       estimated_ready_at, created_at, updated_at, user_id, store_id, store_name,
+       store:stores!inner (slug, brand_id),
        order_items (id, line_number, menu_item_id, name, unit_price_paise, quantity, line_total_paise, image_url)`,
     )
     .order('line_number', { referencedTable: 'order_items' });
@@ -160,7 +161,7 @@ export function toOrderDto(order: OrderWithDetails): OrderDto {
     estimatedReadyAt: toIso(order.estimated_ready_at),
     createdAt: toIso(order.created_at),
     updatedAt: toIso(order.updated_at),
-    store: { id: order.store_id, name: order.store_name },
+    store: { id: order.store_id, name: order.store_name, slug: order.store.slug },
     items: order.order_items.map(toOrderItemDto),
   };
 }

@@ -93,7 +93,7 @@ export interface Order {
   estimatedReadyAt: string;
   createdAt: string;
   updatedAt: string;
-  store: { id: string; name: string };
+  store: { id: string; name: string; slug: string };
   items: OrderItem[];
 }
 

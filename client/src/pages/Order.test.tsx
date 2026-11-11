@@ -16,7 +16,7 @@ const order = (status: OrderStatus): Order => ({
   estimatedReadyAt: now,
   createdAt: now,
   updatedAt: now,
-  store: { id: 's1', name: 'Campus Cafe' },
+  store: { id: 's1', name: 'Campus Cafe', slug: 'campus-cafe' },
   items: [
     {
       id: 'l1',
