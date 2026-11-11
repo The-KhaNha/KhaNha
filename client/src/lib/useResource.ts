@@ -63,32 +63,34 @@ function writeCache(key: string, data: unknown): void {
   }
 }
 
-/**
- * Drops every persisted response. PageBoundary calls it when a render crashes: a malformed response that was cached
- * would otherwise crash every later visit before the fresh fetch could replace it, and Reload could never recover.
- */
-export function clearPersistedCache(): void {
+/** Removes every key that matches. Keys are collected first: removing while scanning can reorder them and skip one. */
+function removeKeys(matches: (key: string) => boolean): void {
   try {
-    for (let i = localStorage.length - 1; i >= 0; i -= 1) {
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i += 1) {
       const key = localStorage.key(i);
-      if (key?.startsWith(CACHE_PREFIX)) localStorage.removeItem(key);
+      if (key !== null && matches(key)) keys.push(key);
     }
+    for (const key of keys) localStorage.removeItem(key);
   } catch {
     // Storage blocked: nothing was persisted either.
   }
 }
 
-/** Drops what an older CACHE_PREFIX left behind: no code reads it again, so it only fills a small phone's storage. */
+/**
+ * Drops every persisted response. PageBoundary calls it when a render crashes: a malformed response that was cached
+ * would otherwise crash every later visit before the fresh fetch could replace it, and Reload could never recover.
+ */
+export function clearPersistedCache(): void {
+  removeKeys((key) => key.startsWith(CACHE_PREFIX));
+}
+
+/**
+ * Drops what an older CACHE_PREFIX left behind: no code reads it again, so it only fills a small phone's storage. A tab
+ * still running the old build loses its head start once (it refetches), by design: no migration for a cache.
+ */
 export function dropOldCacheVersions(): void {
-  try {
-    for (let i = localStorage.length - 1; i >= 0; i -= 1) {
-      const key = localStorage.key(i);
-      if (key?.startsWith(CACHE_ROOT) && !key.startsWith(CACHE_PREFIX))
-        localStorage.removeItem(key);
-    }
-  } catch {
-    // Storage blocked: nothing was persisted either.
-  }
+  removeKeys((key) => key.startsWith(CACHE_ROOT) && !key.startsWith(CACHE_PREFIX));
 }
 // Once per page load, before any resource reads its cache.
 dropOldCacheVersions();

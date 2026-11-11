@@ -199,6 +199,31 @@ describe('dropOldCacheVersions', () => {
     expect(localStorage.getItem(CACHE)).toBe('{}');
     expect(localStorage.getItem('fp_cart')).toBe('{"lines":[]}');
   });
+
+  it('drops every old entry even when the browser reorders keys after a removal', () => {
+    // A storage whose key order changes on every removal: scanning while removing would skip entries.
+    const items = new Map<string, string>();
+    for (const n of [1, 2, 3, 4, 5]) items.set(`fp_cache:v1:k${String(n)}`, '{}');
+    items.set('fp_cart', '[]');
+    let order = [...items.keys()];
+    const fake = {
+      get length() {
+        return order.length;
+      },
+      key: (i: number) => order[i] ?? null,
+      removeItem: (key: string) => {
+        items.delete(key);
+        order = [...items.keys()].reverse();
+      },
+    };
+    vi.stubGlobal('localStorage', fake);
+    try {
+      dropOldCacheVersions();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    expect([...items.keys()]).toEqual(['fp_cart']);
+  });
 });
 
 describe('clearPersistedCache', () => {
