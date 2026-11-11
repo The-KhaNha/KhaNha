@@ -417,15 +417,15 @@ audit view is P7.4).
 
 Query (`server/src/schemas/admin.schema.ts`), every parameter optional:
 
-| Param        | Type          | Rules                                                                                                            |
-| ------------ | ------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `entityType` | string        | one of `site_settings`, `order`, `profile`, `menu_item`, `feature_flag`, `brand`, `store` (the audited entities) |
-| `entityId`   | string        | 1–64 characters; needs `entityType` (the same id can belong to entities of different types)                      |
-| `actorId`    | string (uuid) | the profile that made the change                                                                                 |
-| `from`       | ISO 8601      | date and time with an offset (`2026-11-02T10:00:00Z`); `occurredAt >= from`                                      |
-| `to`         | ISO 8601      | same format; `occurredAt < to`                                                                                   |
-| `before`     | number        | whole number ≥ 1: the previous page's `nextCursor`; only rows with a smaller `id`                                |
-| `limit`      | number        | whole number, 1–100, default 50 (`AUDIT_PAGE`)                                                                   |
+| Param        | Type          | Rules                                                                                                                          |
+| ------------ | ------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `entityType` | string        | one of `site_settings`, `order`, `profile`, `menu_item`, `feature_flag`, `brand`, `store`, `membership` (the audited entities) |
+| `entityId`   | string        | 1–64 characters; needs `entityType` (the same id can belong to entities of different types)                                    |
+| `actorId`    | string (uuid) | the profile that made the change                                                                                               |
+| `from`       | ISO 8601      | date and time with an offset (`2026-11-02T10:00:00Z`); `occurredAt >= from`                                                    |
+| `to`         | ISO 8601      | same format; `occurredAt < to`                                                                                                 |
+| `before`     | number        | whole number ≥ 1: the previous page's `nextCursor`; only rows with a smaller `id`                                              |
+| `limit`      | number        | whole number, 1–100, default 50 (`AUDIT_PAGE`)                                                                                 |
 
 - `from` must be before `to` when both are sent (400 otherwise).
 - Paging is keyset on `id`: pass `nextCursor` back as `before` until it is `null`. `before` is the only cursor:
@@ -478,14 +478,18 @@ nothing changes for clients. A new money field carries paise and says so in its 
 
 `UserDto`
 
-| Field       | Type                                   |
-| ----------- | -------------------------------------- |
-| `id`        | string (uuid)                          |
-| `name`      | string                                 |
-| `email`     | string                                 |
-| `phone`     | string \| null                         |
-| `role`      | `'CUSTOMER'` \| `'STAFF'` \| `'ADMIN'` |
-| `createdAt` | string (ISO 8601)                      |
+| Field         | Type                                                              |
+| ------------- | ----------------------------------------------------------------- |
+| `id`          | string (uuid)                                                     |
+| `name`        | string                                                            |
+| `email`       | string                                                            |
+| `phone`       | string \| null                                                    |
+| `role`        | `'CUSTOMER'` \| `'STAFF'` \| `'ADMIN'`                            |
+| `createdAt`   | string (ISO 8601)                                                 |
+| `memberships` | `{ storeId, storeSlug, storeName, role: 'MANAGER' \| 'STAFF' }[]` |
+| `ownedBrands` | `{ id, name, slug }[]`                                            |
+
+`memberships` are the stores the account works at; `ownedBrands` are the brands it owns (OWNER of every store of each, no membership row). Both are `[]` for a customer, and returned by `GET /auth/me` and `POST /auth/register`. See [PERMISSIONS.md](PERMISSIONS.md#store-roles).
 
 `ADMIN` is the site-wide developer/operator role (the `/admin` dashboard), not a restaurant role — see
 [PERMISSIONS.md](PERMISSIONS.md#roles).

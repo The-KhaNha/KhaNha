@@ -35,6 +35,44 @@ work exactly like a customer's. Its only privilege is the admin dashboard (`/adm
   published staff password on shared staging would expose every customer's name, phone and notes (see
   [DEPLOYMENT.md](DEPLOYMENT.md#production-first-time-setup)).
 
+## Store roles
+
+Decision (ADR-001, P2.2): staff and managers are memberships of one store, not a site-wide profile role. Context: a
+chain has several stores, and one person may work one of them. Decision: a `store_memberships` row
+([SCHEMA.md](SCHEMA.md#store_memberships)) gives `STAFF` or `MANAGER` at one store, and the brand's owner
+(`brands.owner_id`) is `OWNER` of every store of the brand with **no row**, so the last owner cannot be removed.
+Consequence: a person's standing is per store; `profiles.role` stays `STAFF` for the demo accounts until P2 PR 16, so the
+old `/staff` routes still admit them.
+
+The caller's access at a store is, first match wins: `OWNER` (owns the store's brand), their membership role, `ADMIN`
+(profile role), else none. The map is `MATRIX` in `server/src/domain/permissions.ts` (`can(access, capability)`,
+`accessFor(user, store)`); a capability is added with the route that checks it.
+
+| Capability            | STAFF | MANAGER | OWNER | ADMIN |
+| --------------------- | ----- | ------- | ----- | ----- |
+| `orders.view`         | yes   | yes     | yes   |       |
+| `orders.transition`   | yes   | yes     | yes   |       |
+| `store.pause`         | yes   | yes     | yes   | yes   |
+| `hours.edit`          |       | yes     | yes   |       |
+| `settings.edit`       |       | yes     | yes   |       |
+| `team.manageStaff`    |       | yes     | yes   | yes   |
+| `team.manageManagers` |       |         | yes   | yes   |
+| `audit.store`         |       | yes     | yes   | yes   |
+
+`ADMIN` holds only `store.pause`, `team.*` and `audit.store`: no kitchen power (it never sees or moves orders).
+
+`requireStore(capability)` (`server/src/middleware/auth.ts`, after `requireAuth`) guards a route with `:storeId`:
+
+- A malformed or unknown store id is 404 `NOT_FOUND`, and so is a store that is not `ACTIVE` when the caller has no
+  access to it (a draft store does not exist to outsiders).
+- A store the caller can see but lacks the capability for is 403 `FORBIDDEN`.
+- It sets `req.store` and `req.storeAccess`; `requestContext` then records `storeRole` in the actor, which the audit row
+  stores as `actor_role` ([SCHEMA.md](SCHEMA.md#audit_row_change)).
+
+`requireAuth` reads the caller's memberships and owned brands in the same `profiles` read (`req.user.memberships`,
+`req.user.ownedBrandIds`), so a change applies on the next request. `GET /api/auth/me` returns them
+([API.md](API.md#get-authme)).
+
 ## Route matrix
 
 | Route                          | anonymous  | CUSTOMER            | STAFF                                  | ADMIN                 | Enforced by                                                                            |
@@ -163,7 +201,7 @@ flowchart LR
   end
 
   subgraph Postgres["Postgres, public schema"]
-    Tables["profiles, stores, menu_items,<br/>orders, order_items, site_settings,<br/>domain_events, event_subscriptions, job_failures,<br/>feature_flags, session_activity, audit_log (service_role: select only)<br/>RLS ON, no policies,<br/>all privileges revoked from anon/authenticated"]
+    Tables["profiles, brands, stores, store_memberships, menu_items,<br/>orders, order_items, site_settings,<br/>domain_events, event_subscriptions, job_failures,<br/>feature_flags, session_activity, audit_log (service_role: select only)<br/>RLS ON, no policies,<br/>all privileges revoked from anon/authenticated"]
     Fns["place_order, update_order_status,<br/>reset_demo_orders, emit_event,<br/>queue_*, purge_domain_events<br/>EXECUTE only for service_role"]
     Trg["handle_new_user, handle_user_email_change, audit_row_change,<br/>audit_log_append_only<br/>security definer, fired by their triggers only"]
   end

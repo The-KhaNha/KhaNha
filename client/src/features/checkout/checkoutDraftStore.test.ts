@@ -16,6 +16,8 @@ const user: User = {
   phone: null,
   role: 'CUSTOMER',
   createdAt: '2026-09-28T00:00:00.000Z',
+  memberships: [],
+  ownedBrands: [],
 };
 
 describe('checkoutDraftStore', () => {

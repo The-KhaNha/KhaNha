@@ -90,6 +90,8 @@ describe('browser storage keys', () => {
           phone: null,
           role: 'CUSTOMER',
           createdAt: '2026-09-28T00:00:00.000Z',
+          memberships: [],
+          ownedBrands: [],
         },
         token: 't',
       });

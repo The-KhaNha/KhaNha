@@ -41,7 +41,10 @@ describe('authStore when the supabase chunk cannot load', () => {
   it('hydrate resolves, and keeps the stored session', async () => {
     const { useAuthStore } = await import('../features/auth/authStore');
     const user = { id: 'u1', name: 'A', email: 'a@b.co', phone: null, role: 'CUSTOMER' as const };
-    useAuthStore.setState({ user: { ...user, createdAt: '2026-01-01T00:00:00Z' }, token: 't' });
+    useAuthStore.setState({
+      user: { ...user, createdAt: '2026-01-01T00:00:00Z', memberships: [], ownedBrands: [] },
+      token: 't',
+    });
     await expect(useAuthStore.getState().hydrate()).resolves.toBeUndefined();
     expect(useAuthStore.getState().token).toBe('t');
   });

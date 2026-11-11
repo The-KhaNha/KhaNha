@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, describe, expect, it } from 'vitest';
+import { supabaseAdmin } from '../../src/utils/supabase';
 import {
+  createStoreMember,
   createTestUser,
   deleteAccountByEmail,
   deleteTestUser,
@@ -44,9 +46,14 @@ describe('POST /api/auth/register', () => {
     const email = `test-${randomUUID()}@example.test`;
     const res = await register(payload({ email }));
     expect(res.status).toBe(201);
-    expect(res.body.user).toMatchObject({ email, role: 'CUSTOMER' });
+    expect(res.body.user).toMatchObject({
+      email,
+      role: 'CUSTOMER',
+      memberships: [],
+      ownedBrands: [],
+    });
     expect(Object.keys(res.body.user).sort()).toEqual(
-      ['id', 'name', 'email', 'phone', 'role', 'createdAt'].sort(),
+      ['id', 'name', 'email', 'phone', 'role', 'createdAt', 'memberships', 'ownedBrands'].sort(),
     );
   });
 
@@ -200,10 +207,51 @@ describe('GET /api/auth/me', () => {
       expect(res.status).toBe(200);
       expect(res.body.user.id).toBe(user.id);
       expect(Object.keys(res.body.user).sort()).toEqual(
-        ['id', 'name', 'email', 'phone', 'role', 'createdAt'].sort(),
+        ['id', 'name', 'email', 'phone', 'role', 'createdAt', 'memberships', 'ownedBrands'].sort(),
       );
     } finally {
       await deleteTestUser(user);
+    }
+  });
+
+  it('lists the stores the caller works at and the brands they own', async () => {
+    const slug = `me-test-${randomUUID().slice(0, 8)}`;
+    const { data: brand } = await supabaseAdmin
+      .from('brands')
+      .insert({ name: 'Me Test', slug })
+      .select('id')
+      .single()
+      .throwOnError();
+    const { data: store } = await supabaseAdmin
+      .from('stores')
+      .insert({
+        name: 'Me Test Store',
+        slug,
+        brand_id: brand.id,
+        tagline: 'Test',
+        description: 'Test',
+      })
+      .select('id')
+      .single()
+      .throwOnError();
+    let user: TestUser | undefined;
+    try {
+      user = await createStoreMember(store.id, 'MANAGER');
+      await supabaseAdmin
+        .from('brands')
+        .update({ owner_id: user.id })
+        .eq('id', brand.id)
+        .throwOnError();
+      const res = await api().get('/api/auth/me').set('Authorization', `Bearer ${user.token}`);
+      expect(res.status).toBe(200);
+      expect(res.body.user.memberships).toEqual([
+        { storeId: store.id, storeSlug: slug, storeName: 'Me Test Store', role: 'MANAGER' },
+      ]);
+      expect(res.body.user.ownedBrands).toEqual([{ id: brand.id, name: 'Me Test', slug }]);
+    } finally {
+      await deleteTestUser(user);
+      await supabaseAdmin.from('stores').delete().eq('id', store.id);
+      await supabaseAdmin.from('brands').delete().eq('id', brand.id);
     }
   });
 });

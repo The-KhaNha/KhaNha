@@ -289,7 +289,7 @@ Verify: `curl :8000/api/stores`, then `/api/stores/<slug>/menu` twice: the secon
 
 ### PR 03 — Memberships and the capability map (P2.2)
 
-- [ ] Merged
+- [x] Merged
 
 `/before-write`: schema-guard, NEW TABLE (`store_memberships`); reuse-scout, NO MATCH (`domain/` is new).
 

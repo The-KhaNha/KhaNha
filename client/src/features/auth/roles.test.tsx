@@ -17,6 +17,8 @@ const user = (role: User['role']): User => ({
   phone: null,
   role,
   createdAt: '2026-09-27T00:00:00Z',
+  memberships: [],
+  ownedBrands: [],
 });
 
 function renderAt(role: User['role'] | null) {

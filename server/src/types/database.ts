@@ -534,6 +534,55 @@ export type Database = {
           },
         ];
       };
+      store_memberships: {
+        Row: {
+          created_at: string;
+          created_by: string | null;
+          id: string;
+          role: Database['public']['Enums']['store_role'];
+          store_id: string;
+          user_id: string;
+        };
+        Insert: {
+          created_at?: string;
+          created_by?: string | null;
+          id?: string;
+          role: Database['public']['Enums']['store_role'];
+          store_id: string;
+          user_id: string;
+        };
+        Update: {
+          created_at?: string;
+          created_by?: string | null;
+          id?: string;
+          role?: Database['public']['Enums']['store_role'];
+          store_id?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'store_memberships_created_by_fkey';
+            columns: ['created_by'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'store_memberships_store_id_fkey';
+            columns: ['store_id'];
+            isOneToOne: false;
+            referencedRelation: 'stores';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'store_memberships_user_id_fkey';
+            columns: ['user_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       stores: {
         Row: {
           address_line: string | null;
@@ -708,6 +757,7 @@ export type Database = {
       actor_type: 'USER' | 'WORKER' | 'RECONCILER' | 'WEBHOOK' | 'SCHEDULER' | 'SYSTEM';
       order_status: 'PLACED' | 'PREPARING' | 'READY' | 'COLLECTED' | 'CANCELLED';
       payment_status: 'PENDING' | 'PAID';
+      store_role: 'MANAGER' | 'STAFF';
       store_status: 'DRAFT' | 'ACTIVE' | 'SUSPENDED' | 'ARCHIVED';
       user_role: 'CUSTOMER' | 'STAFF' | 'ADMIN';
     };
@@ -837,6 +887,7 @@ export const Constants = {
       actor_type: ['USER', 'WORKER', 'RECONCILER', 'WEBHOOK', 'SCHEDULER', 'SYSTEM'],
       order_status: ['PLACED', 'PREPARING', 'READY', 'COLLECTED', 'CANCELLED'],
       payment_status: ['PENDING', 'PAID'],
+      store_role: ['MANAGER', 'STAFF'],
       store_status: ['DRAFT', 'ACTIVE', 'SUSPENDED', 'ARCHIVED'],
       user_role: ['CUSTOMER', 'STAFF', 'ADMIN'],
     },

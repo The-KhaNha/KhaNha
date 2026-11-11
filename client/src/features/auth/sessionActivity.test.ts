@@ -56,6 +56,8 @@ const me: User = {
   phone: null,
   role: 'CUSTOMER',
   createdAt: '2026-09-27T00:00:00Z',
+  memberships: [],
+  ownedBrands: [],
 };
 vi.mock('../../lib/supabase', () => ({
   getSupabase: async () => ({

@@ -15,7 +15,7 @@ function app(options: RateLimitOptions, log: Logger = logger) {
   server.use(pinoHttp({ logger: log, customLogLevel: accessLevel }));
   server.use((req, _res, next) => {
     const id = req.header('x-test-user');
-    if (id) req.user = { id, role: 'CUSTOMER' };
+    if (id) req.user = { id, role: 'CUSTOMER', memberships: [], ownedBrandIds: [] };
     next();
   });
   server.post('/write', createRateLimiter(options), (_req, res) => {
