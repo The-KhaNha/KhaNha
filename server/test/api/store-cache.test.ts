@@ -1,6 +1,6 @@
 // Destructive: places and cancels a real order, so it reseeds before and after (local only). Proves the three public
 // store keys are served from cache and that stock changes drop menu:<storeId>.
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { MenuResponse } from '../../src/types/api';
 import { invalidate } from '../../src/utils/cache';
 import { supabaseAdmin } from '../../src/utils/supabase';
@@ -118,6 +118,45 @@ describe('menu:<storeId> stays in step with orders', () => {
       .set('Authorization', `Bearer ${staff.token}`)
       .send({ status: 'CANCELLED' });
     expect(cancelled.status).toBe(200);
+    expect(await stockOf('Blueberry Muffin')).toBe(5);
+  });
+
+  it('a cancel whose re-read fails still refreshes the store menu', async () => {
+    const muffin = (await menuOf()).categories
+      .flatMap((c) => c.items)
+      .find((i) => i.name === 'Blueberry Muffin')!;
+    const placed = await api()
+      .post('/api/orders')
+      .set('Authorization', `Bearer ${customer.token}`)
+      .send({ items: [{ menuItemId: muffin.id, quantity: 5 }] });
+    expect(placed.status).toBe(201);
+    expect(await stockOf('Blueberry Muffin')).toBe(0); // menu:<id> now holds the sold-out copy
+
+    // The cancel commits, then the only `orders` read on that path (the re-read) fails once.
+    // `from` is an overloaded generic; the fake only needs the table name, hence the casts through unknown.
+    const realFrom = supabaseAdmin.from.bind(supabaseAdmin) as unknown as (
+      table: string,
+    ) => unknown;
+    let failed = false;
+    const fake = (table: string) => {
+      if (table === 'orders' && !failed) {
+        failed = true;
+        throw new Error('re-read failed');
+      }
+      return realFrom(table);
+    };
+    const spy = vi
+      .spyOn(supabaseAdmin, 'from')
+      .mockImplementation(fake as unknown as typeof supabaseAdmin.from);
+    try {
+      const cancelled = await api()
+        .patch(`/api/orders/${placed.body.order.id}/status`)
+        .set('Authorization', `Bearer ${staff.token}`)
+        .send({ status: 'CANCELLED' });
+      expect(cancelled.status).toBe(500);
+    } finally {
+      spy.mockRestore();
+    }
     expect(await stockOf('Blueberry Muffin')).toBe(5);
   });
 });

@@ -305,12 +305,17 @@ export async function updateOrderStatus(
     }
     throw err;
   }
-  // Cancelling puts the items back in stock (a repeated cancel moved nothing). The old single-store key drops before
-  // the re-read, so a failed read cannot leave it showing the restocked items as sold out; the store's own key needs
-  // the order's store, which only the read gives.
+  // Cancelling puts the items back in stock (a repeated cancel moved nothing, so a retry would not get here again).
   const restocked = changed && nextStatus === 'CANCELLED';
-  if (restocked) invalidate('menu');
-  const { data: order } = await selectOrders().eq('id', id).single().throwOnError();
+  let order: OrderWithDetails;
+  try {
+    ({ data: order } = await selectOrders().eq('id', id).single().throwOnError());
+  } catch (err) {
+    // The re-read names the order's store; without it, drop every cached read rather than leave a menu showing the
+    // restocked items as sold out until its TTL.
+    if (restocked) invalidate();
+    throw err;
+  }
   if (restocked) invalidateMenus(order.store_id);
   return { order, repeated: !changed };
 }
