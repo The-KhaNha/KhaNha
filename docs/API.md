@@ -49,24 +49,27 @@ The API has no sign-in or sign-out route. The browser signs in and out with supa
 
 ## Routes
 
-| Method | Path                 | Auth         | Request                                                       | Success                                         |
-| ------ | -------------------- | ------------ | ------------------------------------------------------------- | ----------------------------------------------- |
-| GET    | `/health`            | none         | none                                                          | 200 `{ ok: true, version, commit }`             |
-| GET    | `/ready`             | none         | none                                                          | 200 `{ ready: true }` or 503 `{ ready: false }` |
-| GET    | `/config`            | none         | none                                                          | 200 `ConfigDto`                                 |
-| POST   | `/client-errors`     | none         | body: [`clientErrorsSchema`](#post-client-errors)             | 204, no body                                    |
-| POST   | `/auth/register`     | none         | body: [`registerSchema`](#post-authregister)                  | 201 `{ user: UserDto }`                         |
-| GET    | `/auth/me`           | user         | none                                                          | 200 `{ user: UserDto }`                         |
-| GET    | `/store`             | none         | none                                                          | 200 `{ store: StoreDto }`                       |
-| GET    | `/menu`              | none         | none                                                          | 200 `MenuResponse`                              |
-| POST   | `/orders`            | user         | body: [`createOrderSchema`](#post-orders)                     | 201 `{ order: OrderDto }`                       |
-| GET    | `/orders`            | user         | query: [`listOrdersQuerySchema`](#get-orders)                 | 200 `{ orders: OrderDto[] }`                    |
-| GET    | `/orders/:id`        | user         | path: `id`                                                    | 200 `{ order: OrderDto }`                       |
-| PATCH  | `/orders/:id/status` | user + STAFF | body: [`updateOrderStatusSchema`](#patch-ordersidstatus)      | 200 `{ order: OrderDto }`                       |
-| GET    | `/admin/settings`    | user + ADMIN | none                                                          | 200 `{ settings: SiteSettingsDto }`             |
-| PATCH  | `/admin/settings`    | user + ADMIN | body: [`updateSettingsSchema`](#patch-adminsettings)          | 200 `{ settings: SiteSettingsDto }`             |
-| GET    | `/admin/audit`       | user + ADMIN | query: [`auditQuerySchema`](#get-adminaudit)                  | 200 `AuditPageDto`                              |
-| PATCH  | `/admin/flags/:key`  | user + ADMIN | path: `key`; body: [`updateFlagSchema`](#patch-adminflagskey) | 200 `{ flag: FeatureFlagDto }`                  |
+| Method | Path                     | Auth         | Request                                                       | Success                                         |
+| ------ | ------------------------ | ------------ | ------------------------------------------------------------- | ----------------------------------------------- |
+| GET    | `/health`                | none         | none                                                          | 200 `{ ok: true, version, commit }`             |
+| GET    | `/ready`                 | none         | none                                                          | 200 `{ ready: true }` or 503 `{ ready: false }` |
+| GET    | `/config`                | none         | none                                                          | 200 `ConfigDto`                                 |
+| POST   | `/client-errors`         | none         | body: [`clientErrorsSchema`](#post-client-errors)             | 204, no body                                    |
+| POST   | `/auth/register`         | none         | body: [`registerSchema`](#post-authregister)                  | 201 `{ user: UserDto }`                         |
+| GET    | `/auth/me`               | user         | none                                                          | 200 `{ user: UserDto }`                         |
+| GET    | `/store`                 | none         | none                                                          | 200 `{ store: StoreDto }`                       |
+| GET    | `/stores`                | none         | query `area?`                                                 | 200 `{ stores: StoreSummaryDto[] }`             |
+| GET    | `/stores/:storeRef`      | none         | none                                                          | 200 `{ store: StoreDto }`                       |
+| GET    | `/stores/:storeRef/menu` | none         | none                                                          | 200 `MenuResponse`                              |
+| GET    | `/menu`                  | none         | none                                                          | 200 `MenuResponse`                              |
+| POST   | `/orders`                | user         | body: [`createOrderSchema`](#post-orders)                     | 201 `{ order: OrderDto }`                       |
+| GET    | `/orders`                | user         | query: [`listOrdersQuerySchema`](#get-orders)                 | 200 `{ orders: OrderDto[] }`                    |
+| GET    | `/orders/:id`            | user         | path: `id`                                                    | 200 `{ order: OrderDto }`                       |
+| PATCH  | `/orders/:id/status`     | user + STAFF | body: [`updateOrderStatusSchema`](#patch-ordersidstatus)      | 200 `{ order: OrderDto }`                       |
+| GET    | `/admin/settings`        | user + ADMIN | none                                                          | 200 `{ settings: SiteSettingsDto }`             |
+| PATCH  | `/admin/settings`        | user + ADMIN | body: [`updateSettingsSchema`](#patch-adminsettings)          | 200 `{ settings: SiteSettingsDto }`             |
+| GET    | `/admin/audit`           | user + ADMIN | query: [`auditQuerySchema`](#get-adminaudit)                  | 200 `AuditPageDto`                              |
+| PATCH  | `/admin/flags/:key`      | user + ADMIN | path: `key`; body: [`updateFlagSchema`](#patch-adminflagskey) | 200 `{ flag: FeatureFlagDto }`                  |
 
 `orderRouter.use(requireAuth)` runs before any `/orders` route matches. So any path under `/api/orders`, including
 one that matches no route, returns 401 without a valid token. `adminRouter.use(requireAuth, requireAdmin)` does the
@@ -187,6 +190,18 @@ Code: `requireAuth` → `auth.controller.me` → `auth.service.getProfile`. Retu
 Code: `store.controller.getStore` → `store.service.getStore`. Returns the oldest row of `stores` (`order by created_at, id`)
 with its brand as `{ store: StoreDto }`. With no store row: 404 `NOT_FOUND` "The store has not been set up yet. Run `pnpm run seed` in
 server/."
+
+### GET /stores, /stores/:storeRef, /stores/:storeRef/menu
+
+Public, cached (see Caching) and ETag'd like `/menu`. Code: `store.controller` → `store.service` (`listStores`,
+`resolveStoreRef`, `getActiveStore`) and `menu.service.getStoreMenu`.
+
+- `GET /stores?area=` lists `ACTIVE` stores (`stores.status`, the brand's status is not checked) ordered by `name`, `id`,
+  capped at `STORE_LIST_MAX` (200). `area` is an exact match applied to the cached list (empty means every area); longer than 60 characters
+  is 400; a warning is logged when the cap bites.
+- `:storeRef` is a store id (uuid, any case) or a slug. A ref that cannot be a slug (the `stores.slug` pattern) is 404
+  without a database read; an unknown ref, or a store that is not `ACTIVE`, is 404 `NOT_FOUND` "Store not found." (the same for both, so a draft store does not leak).
+- `/stores/:storeRef/menu` returns the same `MenuResponse` as `GET /menu`, for that store.
 
 ### GET /menu
 
@@ -489,6 +504,9 @@ nothing changes for clients. A new money field carries paise and says so in its 
 | `minClientVersion`          | string            | default `0.0.0`; clients below it get 426 `CLIENT_OUTDATED` ([gate](#client-version-gate)) |
 | `updatedAt`                 | string (ISO 8601) | set whenever a setting is saved                                                            |
 
+`StoreSummaryDto`: `id`, `slug`, `name`, `tagline`, `imageUrl`, `area`, `brand` (`{ id, name, slug }`), `isOpen`; the
+fields of `StoreDto` a store picker needs (client: `StoreSummary`).
+
 `StoreDto`
 
 | Field                | Type                                         |
@@ -743,7 +761,7 @@ body has not changed, the response is a bodiless `304 Not Modified` instead of t
 
 ### Server read cache (`server/src/utils/cache.ts`)
 
-`GET /api/menu`, `GET /api/store` and the `site_settings` row (read by every `GET /api/orders`, by
+`GET /api/menu`, `GET /api/store`, the three `GET /api/stores` routes and the `site_settings` row (read by every `GET /api/orders`, by
 `GET /api/admin/settings`, by `GET /api/config` and by the client version gate) are additionally held in an in-process cache, so concurrent requests during a cold cache
 share one database round-trip instead of repeating it:
 
@@ -757,6 +775,9 @@ share one database round-trip instead of repeating it:
 | -------------------------------------------------------------------- | ----------------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /api/menu`                                                      | `'menu'`          | `menu.service.getMenu` → `loadMenu`                                                                | `order.service.createOrder` (in a `finally`, so a placed order and a stock-refused one both invalidate it) and `updateOrderStatus` when the new status is `CANCELLED` |
 | `GET /api/store`                                                     | `'store'`         | `store.service.getCachedStore` → `getStore`                                                        | nothing today; a future store-editing endpoint must call `invalidate('store')`                                                                                        |
+| `GET /api/stores`                                                    | `'stores:list'`   | `store.service.listStores` (every `ACTIVE` store; `area` filters in memory afterwards)             | nothing today; a store-editing endpoint must call `invalidate('stores:list')`                                                                                         |
+| `GET /api/stores/:storeRef`, `/menu` (the store)                     | `'store:<id>'`    | `store.service.getActiveStore`; the ref → id step is `'store_ref:<slug>'` (`resolveStoreRef`)      | nothing today; a store-editing endpoint must call `invalidate('store:<id>')`                                                                                          |
+| `GET /api/stores/:storeRef/menu`                                     | `'menu:<id>'`     | `menu.service.getStoreMenu` → `loadMenu`                                                           | `menu.service.invalidateMenus(storeId)` from the same places as `'menu'` (it drops both)                                                                              |
 | `GET /api/orders`, `GET /api/admin/settings`, `GET /api/config`      | `'site_settings'` | `settings.service.getSettings`                                                                     | `settings.service.updateSettings` (`PATCH /api/admin/settings`), at once                                                                                              |
 | `GET /api/config` (`features`), every `flags.service.isEnabled` call | `'feature_flags'` | `flags.service.getFlags` (every flag, rules parsed; evaluated per caller, never cached per caller) | `flags.service.setFlag` (`PATCH /api/admin/flags/:key`), at once                                                                                                      |
 

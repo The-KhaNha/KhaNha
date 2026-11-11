@@ -28,6 +28,11 @@ export interface Store {
   prepTimeMaxMinutes: number;
 }
 
+export type StoreSummary = Pick<
+  Store,
+  'id' | 'slug' | 'name' | 'tagline' | 'imageUrl' | 'area' | 'brand' | 'isOpen'
+>;
+
 export interface MenuItem {
   id: string;
   category: string;

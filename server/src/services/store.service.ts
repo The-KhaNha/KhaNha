@@ -1,6 +1,11 @@
+import { STORE_LIST_MAX } from '../schemas/limits';
+import type { StoreSummaryDto } from '../types/api';
 import { cached, PUBLIC_READ_TTL_MS } from '../utils/cache';
 import { notFound } from '../utils/errors';
-import type { StoreWithBrand } from '../utils/serializers';
+import { isUuid } from '../utils/ids';
+import { logger } from '../utils/logger';
+import { STORE_SLUG_PATTERN } from '../schemas/store.schema';
+import { toStoreSummaryDto, type StoreWithBrand } from '../utils/serializers';
 import { supabaseAdmin } from '../utils/supabase';
 
 /** Until the store-scoped routes land, "the store" is the oldest one: deterministic, and today's only store. */
@@ -23,4 +28,57 @@ export async function getStore(): Promise<StoreWithBrand> {
  */
 export function getCachedStore(): Promise<StoreWithBrand> {
   return cached('store', PUBLIC_READ_TTL_MS, getStore);
+}
+
+const STORE_SELECT = '*, brand:brands!inner(id, name, slug)';
+
+/** The id a public `:storeRef` names: a uuid is the id itself, anything else is a slug. Cached; an unknown slug is 404. */
+export async function resolveStoreRef(ref: string): Promise<string> {
+  // One cache entry per store whatever the casing; a uuid-shaped slug is never minted (the seed and P7.4 make slugs).
+  if (isUuid(ref)) return ref.toLowerCase();
+  if (!STORE_SLUG_PATTERN.test(ref)) throw notFound('Store not found.');
+  return cached(`store_ref:${ref}`, PUBLIC_READ_TTL_MS, async () => {
+    const { data } = await supabaseAdmin
+      .from('stores')
+      .select('id')
+      .eq('slug', ref)
+      .maybeSingle()
+      .throwOnError();
+    if (!data) throw notFound('Store not found.');
+    return data.id;
+  });
+}
+
+/** One ACTIVE store for the public routes, cached under `store:<id>`; any other status is 404 like an unknown id. */
+export function getActiveStore(id: string): Promise<StoreWithBrand> {
+  return cached(`store:${id}`, PUBLIC_READ_TTL_MS, async () => {
+    const { data } = await supabaseAdmin
+      .from('stores')
+      .select(STORE_SELECT)
+      .eq('id', id)
+      .eq('status', 'ACTIVE')
+      .maybeSingle()
+      .throwOnError();
+    if (!data) throw notFound('Store not found.');
+    return data;
+  });
+}
+
+/** Every ACTIVE store under one key (`stores:list`); `area` narrows it in memory so there is one entry to invalidate. */
+export async function listStores(area?: string): Promise<StoreSummaryDto[]> {
+  const all = await cached('stores:list', PUBLIC_READ_TTL_MS, async () => {
+    const { data } = await supabaseAdmin
+      .from('stores')
+      .select(STORE_SELECT)
+      .eq('status', 'ACTIVE')
+      .order('name')
+      .order('id')
+      .limit(STORE_LIST_MAX)
+      .throwOnError();
+    // The cap is a safety valve: say so when it bites, or a store missing from its area's list is a silent mystery.
+    if (data.length === STORE_LIST_MAX)
+      logger.warn({ shown: STORE_LIST_MAX }, 'Store list truncated');
+    return data.map(toStoreSummaryDto);
+  });
+  return area === undefined ? all : all.filter((store) => store.area === area);
 }

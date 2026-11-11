@@ -3,7 +3,6 @@ import { MAX_QUANTITY_PER_ITEM, type CreateOrderInput } from '../schemas/order.s
 import type { AuthUser, RequestContext } from '../types/auth';
 import type { Tables } from '../types/database';
 import { ORDER_STATUSES, type OrderStatus } from '../types/enums';
-import { invalidate } from '../utils/cache';
 import {
   AppError,
   idempotencyKeyReused,
@@ -18,6 +17,8 @@ import { isUuid } from '../utils/ids';
 import { paiseToRupees } from '../utils/money';
 import { selectOrders, type OrderWithDetails } from '../utils/serializers';
 import { raisedByDatabase, supabaseAdmin } from '../utils/supabase';
+import { invalidate } from '../utils/cache';
+import { invalidateMenus } from './menu.service';
 import { simulatePayment } from './payment.service';
 import { getSettings } from './settings.service';
 import { getStore } from './store.service';
@@ -125,7 +126,7 @@ export async function createOrder(
     menuItems.filter((item) => item.store_id === store.id).map((item) => [item.id, item]),
   );
 
-  const { lines, totalPaise } = priceLines(input.items, byId);
+  const { lines, totalPaise } = priceLines(input.items, byId, store.id);
   // A real gateway would be charged here. With one, a refusal from place_order (sold out, price changed) must refund it.
   const paymentStatus = await simulatePayment(totalPaise);
 
@@ -167,7 +168,7 @@ export async function createOrder(
     throw err;
   } finally {
     // Placed or refused for stock, the cached menu's stock counts are out of date either way.
-    invalidate('menu');
+    invalidateMenus(store.id);
   }
 
   const { data: order } = await selectOrders().eq('id', orderId).single().throwOnError();
@@ -304,10 +305,18 @@ export async function updateOrderStatus(
     }
     throw err;
   }
-  // Cancelling puts the items back in stock (a repeated cancel moved nothing).
-  if (changed && nextStatus === 'CANCELLED') invalidate('menu');
-
-  const { data: order } = await selectOrders().eq('id', id).single().throwOnError();
+  // Cancelling puts the items back in stock (a repeated cancel moved nothing, so a retry would not get here again).
+  const restocked = changed && nextStatus === 'CANCELLED';
+  let order: OrderWithDetails;
+  try {
+    ({ data: order } = await selectOrders().eq('id', id).single().throwOnError());
+  } catch (err) {
+    // The re-read names the order's store; without it, drop every cached read rather than leave a menu showing the
+    // restocked items as sold out until its TTL.
+    if (restocked) invalidate();
+    throw err;
+  }
+  if (restocked) invalidateMenus(order.store_id);
   return { order, repeated: !changed };
 }
 
@@ -324,6 +333,7 @@ function statusesLeadingTo(target: OrderStatus): OrderStatus[] {
 function priceLines(
   requested: CreateOrderInput['items'],
   byId: Map<string, MenuItem>,
+  storeId: string,
 ): { lines: OrderLine[]; totalPaise: number } {
   let totalPaise = 0;
   const lines = requested.map(({ menuItemId, quantity, expectedUnitPrices }) => {
@@ -344,7 +354,7 @@ function priceLines(
     const price = paiseToRupees(item.price_paise);
     if (expectedUnitPrices.some((expected) => expected !== price)) {
       // The checkout reloads the menu after this refusal: a cached menu would show the old price and be refused again.
-      invalidate('menu');
+      invalidateMenus(storeId);
       throw priceChanged(menuItemId, item.name, price);
     }
     totalPaise += item.price_paise * quantity;

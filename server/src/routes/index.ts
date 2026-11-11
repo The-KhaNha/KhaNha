@@ -10,7 +10,7 @@ import { adminRouter } from './admin.routes';
 import { authRouter } from './auth.routes';
 import { menuRouter } from './menu.routes';
 import { orderRouter } from './order.routes';
-import { storeRouter } from './store.routes';
+import { storeRouter, storesRouter } from './store.routes';
 
 export const apiRouter = Router();
 
@@ -35,6 +35,7 @@ apiRouter.use(clientVersionGate);
 
 apiRouter.use('/auth', authRouter);
 apiRouter.use('/store', storeRouter);
+apiRouter.use('/stores', storesRouter);
 apiRouter.use('/menu', menuRouter);
 apiRouter.use('/orders', orderRouter);
 apiRouter.use('/admin', adminRouter);
