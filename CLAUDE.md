@@ -241,8 +241,8 @@ Read. Run `graphify update .` after modifying code. Details: `.claude/rules/work
 Feature branches → PR into `dev` (staging) → a release PR into `main` (production, merged by the user) → a
 back-merge into `dev`. A phase may have its own `feat/P<n>` branch that its PRs target. Every PR stays within the
 size limit and one theme; when a branch reaches the limit or its theme is done, verify, commit, push, open the PR
-and **stop** until the user says it is merged. CodeRabbit's hourly review budget, shared by every PR you open, paces
-when PRs are opened, marked ready and re-reviewed. A change to source records its version bump (`pnpm run change`) before
+and **stop** until the user says it is merged (P2 only: the agent merges into `feat/P2` itself, workflow.md §21).
+CodeRabbit's hourly review budget, shared by every PR you open, paces when PRs are opened, marked ready and re-reviewed. A change to source records its version bump (`pnpm run change`) before
 it is finished; docs, CI and tooling changes are labelled `no-release`. Never merge into `main` and never tag. The
 branch model, phase branches, the PR-size numbers, the CodeRabbit budget, bump levels and the release process:
 `.claude/rules/workflow.md` §21.

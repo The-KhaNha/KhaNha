@@ -411,7 +411,7 @@ with no policies, all privileges revoked from `anon` and `authenticated`, an FK 
 erDiagram
   PROFILES ||--o{ STORE_MEMBERSHIPS : "holds"
   BRANDS ||--o{ STORES : "operates"
-  PROFILES ||--o{ BRANDS : "owns"
+  PROFILES |o--o{ BRANDS : "owns"
   STORES ||--o{ STORE_MEMBERSHIPS : "store role"
   STORES ||--|| STORE_SETTINGS : "configured by"
   STORES ||--o{ STORE_HOURS : "weekly hours"
