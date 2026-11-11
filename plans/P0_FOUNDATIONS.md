@@ -4,7 +4,7 @@ The PR-by-PR plan for [ROADMAP.md P0](ROADMAP.md#p0--foundations-and-guardrails)
 why; this file says in which order, in which pull requests, with which files, tests, docs and checks. When the two
 disagree, the roadmap's design wins and this file is fixed. When a PR merges, tick its box here and in the roadmap.
 
-> **Status: approved plan, nothing built yet** (28 September 2026). P0 is sized **L** for a team of two or three.
+> **Status: done**. PRs 01–16 are merged into `dev`. P0 was sized **L** for a team of two or three.
 
 ## How the team works P0
 
@@ -72,7 +72,7 @@ configuration registry last because it is the largest step and blocks nothing el
 
 ### PR 01 — Toolchain pin and line endings (P0.1)
 
-- [ ] Merged
+- [x] Merged
 
 | File                                                    | Purpose                                                                                                                                                                        |
 | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -91,7 +91,7 @@ Verify: `node -v` prints 24.x; `npm ci` in both packages; the gate in both; in a
 
 ### PR 02 — CI static jobs, `ci-ok`, bundle budget, Dependabot, PR template (P0.2)
 
-- [ ] Merged
+- [x] Merged
 
 | File                               | Purpose                                                                                                                                                                 |
 | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -121,7 +121,7 @@ bypass list; `main` accepts PRs from `release/*` and `hotfix/*` only); make `dev
 
 ### PR 03 — Supabase in CI, migrations job, generated-types drift (P0.2)
 
-- [ ] Merged
+- [x] Merged
 
 | File                                   | Purpose                                                                                                                                                                                                                                                                                                                     |
 | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -140,7 +140,7 @@ turns it red; a clean branch is green and `database.ts` shows no drift.
 
 ### PR 04 — `security.yml` (P0.2)
 
-- [ ] Merged
+- [x] Merged
 
 Triggers: PRs into `dev` and `main`, and a weekly schedule. Not a required check. Jobs: `audit`
 (`npm audit --omit=dev --audit-level=high` in each package); `secrets` (the gitleaks **binary** downloaded from its
@@ -152,7 +152,7 @@ Verify: the workflow is green; a scratch commit containing a fake `sb_secret_` s
 
 ### PR 05 — Versioning with change intents (P0.3)
 
-- [ ] Merged
+- [x] Merged
 
 | File                                         | Behaviour                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -184,7 +184,7 @@ User steps: create the GitHub App (contents and pull-requests write), install it
 
 ### PR 06 — Architecture decision records (P0.8)
 
-- [ ] Merged
+- [x] Merged
 
 `docs/adr/0000-template.md` (Status, Date, Context, Options considered, Decision, Consequences, Links),
 `docs/adr/README.md` (the index), and `001-brands-own-stores.md`, `002-outbox-pgmq-pg-cron.md`,
@@ -199,7 +199,7 @@ User step: move each ADR to Accepted or amend it; ADR-002 and ADR-007 before PR 
 
 ### PR 07 — Health, readiness, keep-alive, client version (P0.7a)
 
-- [ ] Merged
+- [x] Merged
 
 Server:
 
@@ -237,7 +237,7 @@ within about a second while `/api/health` stays 200; Profile shows the version a
 
 ### PR 08 — `min_client_version` and the 426 gate (P0.7b)
 
-- [ ] Merged
+- [x] Merged
 
 | File                                                     | Change                                                                                                                                                                                                                                                                                |
 | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -271,7 +271,7 @@ show the banner and `curl -i localhost:8000/api/menu` answer `426`; reset to `0.
 
 ### PR 09 — Dockerfiles, nginx, runtime env (P0.6a)
 
-- [ ] Merged
+- [x] Merged
 
 **`server/Dockerfile`** (the roadmap's three stages): `deps` runs `npm ci --ignore-scripts` (skips the Supabase CLI
 binary); `build` runs `npm run build` and keeps `dist/scripts` (so P8.5 can seed staging with
@@ -342,7 +342,7 @@ on Linux). Record the finding in `docs/DEPLOYMENT.md`.
 
 ### PR 10 — `compose.yaml` and the `images` CI job (P0.6b)
 
-- [ ] Merged
+- [x] Merged
 
 `compose.yaml` at the root: `api` (build `server` with `GIT_COMMIT: ${GIT_COMMIT:-local}`, `env_file: server/.env`,
 `SUPABASE_URL` per PR 09's finding, `CLIENT_ORIGIN: http://localhost:8080`, `TRUST_PROXY_HOPS: 1`,
@@ -366,7 +366,7 @@ healthy.
 
 ### PR 11 — Lighthouse CI (P0.2, deferred until the compose stack exists)
 
-- [ ] Merged
+- [x] Merged
 
 `client/lighthouserc.json`: `formFactor: mobile`, 360×640, `throttling: { rttMs: 150, throughputKbps: 1638,
 cpuSlowdownMultiplier: 4 }`, `numberOfRuns: 3`; LCP ≤ 2500 ms and CLS ≤ 0.1 as **warn** for the first two weeks, TBT
@@ -379,7 +379,7 @@ Verify: the workflow is green with its warnings listed, and the report artifact 
 
 ### PR 12 — Error classes, cause chains, redaction (P0.5)
 
-- [ ] Merged
+- [x] Merged
 
 | File                             | Change                                                                                                                                                                                                                                                                                                     |
 | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -403,7 +403,7 @@ Verify: `npm run db:stop`, then `curl -i localhost:8000/api/menu` answers the 50
 
 ### PR 13 — Config a: `site_settings` columns and the admin form (P0.4)
 
-- [ ] Merged
+- [x] Merged
 
 Migration `<ts>_site_settings_config.sql`: `max_lines_per_order integer not null default 30 check (… between 1 and
 100)`, `order_poll_ms` (4000), `orders_poll_ms` (8000), `staff_board_poll_ms` (4000), each
@@ -421,7 +421,7 @@ Verify: the gate; `PATCH /api/admin/settings` with each new field in and out of 
 
 ### PR 14 — Config b: `GET /api/config`, `useConfig`, fallbacks and parity (P0.4)
 
-- [ ] Merged
+- [x] Merged
 
 Server: `env.ts` gains `SESSION_IDLE_DAYS` (1–90, default 7) with the comment "must equal
 `auth.sessions.inactivity_timeout` (168h) in `config.toml` and the hosted project's dashboard"; `schemas/limits.ts`
@@ -465,7 +465,7 @@ intervals after `PATCH /api/admin/settings` changes `orderPollMs`.
 
 ### PR 15 — Config c: menu rules and the lines limit (P0.4)
 
-- [ ] Merged
+- [x] Merged
 
 `menu.service.ts` adds `rules: { maxQuantityPerItem, lowStockThreshold }` (server constants now; per store in P2.3;
 the client keeps its mirrors until then and only gains the type). `order.schema.ts` raises the zod sanity bound to
@@ -479,7 +479,7 @@ Docs: `docs/API.md` (`rules`, the limits table); `docs/CONFIGURATION.md`.
 
 ### PR 16 — Config d: fixtures, env-driven ports and TTL, policy (P0.4)
 
-- [ ] Merged
+- [x] Merged
 
 | File                                           | Change                                                                                                                                                                                             |
 | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

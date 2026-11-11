@@ -16,7 +16,7 @@ which files, tests, docs and checks, and where P3 deliberately builds something 
 ## How the team works P3
 
 The P2 rules stand ([P2 plan](P2_MULTI_STORE.md#how-the-team-works-p2), CLAUDE.md §13–§21), with `feat/P3` as the
-phase branch (cut from `dev` once `feat/P2` is merged, and added by its exact name to the `ci-ok required` ruleset),
+phase branch (cut from `dev` once `feat/P2` is merged, and covered by the `ci-ok required` ruleset's `feat/P[0-9]` pattern),
 work branches `feat/p3-<NN>-<slug>`, PR titles `P3 PR <NN> — <title>`, and the same size limit. Two additions:
 
 - **Every menu write invalidates `menu:<storeId>`** and ships the cache test that fails without it (CLAUDE.md §2c).
@@ -644,7 +644,7 @@ sees the options; the owner pushes a price from the template to one branch and n
 ## User steps (cannot be done from the repository)
 
 - Answer the [decisions](#decisions), or accept the defaults.
-- Create `feat/P3` from `dev` once P2 is merged, and add it by its exact name to the `ci-ok required` ruleset.
+- Create `feat/P3` from `dev` once P2 is merged (the `ci-ok required` ruleset's `feat/P[0-9]` pattern already covers it).
 - Merge each PR into `feat/P3`; push its migrations to staging (`pnpm run db:push:staging`).
 - Photos on staging: staging is not hosted on AWS until after the first release
   ([P8 plan](P8_INFRASTRUCTURE.md#later-staging-on-aws)), so a local stack pointed at staging uses
