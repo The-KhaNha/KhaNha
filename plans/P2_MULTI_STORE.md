@@ -17,8 +17,8 @@ picks it up). When a PR merges, tick its box here and in the roadmap.
 
 The P1 rules stand ([P1 plan](P1_PLATFORM_CORE.md#how-the-team-works-p1), CLAUDE.md §13–§21):
 
-- **Every P2 PR, PR 00 included, goes into `feat/P2`**, cut from `dev` on 11 November 2026 and added by its exact
-  name to the `ci-ok required` ruleset. `feat/P2` goes into `dev` as one PR when P2 is done; the user merges it.
+- **Every P2 PR, PR 00 included, goes into `feat/P2`**, cut from `dev` on 11 November 2026 and covered by
+  the `ci-ok required` ruleset's `feat/P[0-9]` pattern. `feat/P2` goes into `dev` as one PR when P2 is done; the user merges it.
 - **At most 38 changed files or 750 changed lines per PR** against `origin/feat/P2` (lockfiles,
   `server/src/types/database.ts` and Markdown do not count; tests do), one theme each. A PR that grows past the limit
   splits at the seam its section names.
@@ -712,8 +712,6 @@ branch cannot see the other; a cart cannot mix stores.
 ## User steps (cannot be done from the repository)
 
 - Answer the [decisions](#decisions), or accept the defaults.
-- Add `feat/P2` (cut from `dev` by the agent on 11 November 2026) by its exact name to the `ci-ok required` ruleset
-  (Settings → Rules).
 - Merge `feat/P2` into `dev` when P2 is done (D7; the agent merges the PRs into `feat/P2`), and merge `dev` into
   `feat/P2` when `dev` has moved.
 - Push `feat/P2`'s migrations to staging (`pnpm run db:push:staging`), then re-seed it (D8). PR 16's migration goes

@@ -176,7 +176,7 @@ relationships.
 ## 21. Branches, PR size, versions and releases
 
 **Branches.** Feature branches → PR into `dev` (`ci-ok` green before merging, enforced by the `ci-ok required`
-ruleset on `main`, `dev` and each listed `feat/P<n>`, ADR-011; `dev` deploys staging) → a release PR into `main`
+ruleset on `main`, `dev` and each `feat/P<n>`, ADR-011; `dev` deploys staging) → a release PR into `main`
 (production, merged by the user) → a back-merge PR into `dev`. Hotfixes branch off `main` as `hotfix/*`, carry their
 own intent, get their own release run and are back-merged the same way. Migrations are immutable once merged into
 `dev`. Agents that compare against "the base" use the PR's base branch: `origin/dev` for features, `origin/main` for
@@ -186,9 +186,10 @@ hotfixes, `origin/feat/P<n>` for a phase's PRs.
 builds its PRs in order). Its PRs come from `feat/p<n>-<NN>-<slug>` branches (git cannot hold
 `feat/P1` and `feat/P1/…` side by side) and go into `feat/P<n>`, with the same size limit, CI (`ci.yml` and `security.yml`
 match `feat/**` for PRs; `ci.yml` also runs on pushes to `feat/P<n>`) and CodeRabbit review (`.coderabbit.yaml`
-matches `^feat/`). When a phase branch is cut, add it by its exact name to the `ci-ok required` ruleset (Settings →
-Rules); a `feat/*` pattern would also catch the work branches and refuse their pushes. Migrations are immutable once
-merged into the phase branch. When the phase is done, `feat/P<n>` goes into `dev` as one PR, merged by the user.
+matches `^feat/`). The `ci-ok required` ruleset covers every phase branch through the patterns `feat/P[0-9]` and
+`feat/P[0-9][0-9]` (set 11 November 2026), which match `feat/P2` but never a work branch such as
+`feat/p2-01-brands-stores` (a `feat/*` pattern would catch the work branches and refuse their pushes). Migrations
+are immutable once merged into the phase branch. When the phase is done, `feat/P<n>` goes into `dev` as one PR, merged by the user.
 
 **PR size (STRICTLY ENFORCED).** Keep every PR reviewable: at most **38 changed files or 750 changed lines** against
 its base (`node .claude/hooks/major-change-gate.js --status` prints both; `pnpm-lock.yaml`,
