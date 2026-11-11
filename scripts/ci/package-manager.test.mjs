@@ -90,7 +90,7 @@ test('no npm command (or spawned npx) in app code, scripts, tests, compose or .e
     read(f)
       .split('\n')
       .map((line, i) => [f, i + 1, line.trim()])
-      .filter(([, , line]) => NPM_COMMAND.test(line) || /['"]npx['"]/.test(line)),
+      .filter(([, , line]) => NPM_COMMAND.test(line) || /['"`]npx['"`]/.test(line)),
   );
   assert.deepEqual(hits, []);
 });
