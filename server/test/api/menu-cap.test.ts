@@ -18,6 +18,8 @@ beforeAll(async () => {
   const { data: store } = await supabaseAdmin
     .from('stores')
     .select('id')
+    .order('created_at')
+    .order('id')
     .limit(1)
     .single()
     .throwOnError();

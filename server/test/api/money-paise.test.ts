@@ -6,6 +6,7 @@ import { MENU } from '../../scripts/seed-data';
 import { supabaseAdmin } from '../../src/utils/supabase';
 import { api } from '../setup/api';
 import {
+  oldestStoreId,
   createTestUser,
   deleteTestUser,
   localSql,
@@ -27,6 +28,7 @@ beforeAll(async () => {
   ({ data: item } = await supabaseAdmin
     .from('menu_items')
     .select('id, store_id, name, price_paise')
+    .eq('store_id', await oldestStoreId())
     .is('stock_quantity', null)
     .eq('is_available', true)
     .order('id')

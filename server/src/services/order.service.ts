@@ -119,7 +119,11 @@ export async function createOrder(
     throw validationError(`An order can have at most ${maxLines} items.`);
 
   if (!store.is_open) throw storeClosed(store.name);
-  const byId = new Map(menuItems.map((item) => [item.id, item]));
+  // Another store's item is not on this store's menu: it is "not found" here, so an order never mixes stores and
+  // never draws down another store's stock.
+  const byId = new Map(
+    menuItems.filter((item) => item.store_id === store.id).map((item) => [item.id, item]),
+  );
 
   const { lines, totalPaise } = priceLines(input.items, byId);
   // A real gateway would be charged here. With one, a refusal from place_order (sold out, price changed) must refund it.

@@ -12,7 +12,11 @@ export interface UserDto {
 
 export interface StoreDto {
   id: string;
+  slug: string;
   name: string;
+  brand: { id: string; name: string; slug: string };
+  area: string | null;
+  address: string | null;
   tagline: string;
   description: string;
   imageUrl: string | null;

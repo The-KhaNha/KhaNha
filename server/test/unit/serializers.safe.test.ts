@@ -6,6 +6,7 @@ import {
   toStoreDto,
   toUserDto,
   type OrderWithDetails,
+  type StoreWithBrand,
 } from '../../src/utils/serializers';
 import type { Tables } from '../../src/types/database';
 
@@ -21,9 +22,19 @@ function profile(overrides: Partial<Tables<'profiles'>> = {}): Tables<'profiles'
   };
 }
 
-function store(overrides: Partial<Tables<'stores'>> = {}): Tables<'stores'> {
+function store(overrides: Partial<StoreWithBrand> = {}): StoreWithBrand {
   return {
     id: 'store-1',
+    slug: 'campus-cafe',
+    brand_id: 'brand-1',
+    brand: { id: 'brand-1', name: 'Campus Cafe', slug: 'campus-cafe' },
+    status: 'ACTIVE',
+    timezone: 'Asia/Kolkata',
+    area: 'Main Campus',
+    address_line: null,
+    contact_phone: null,
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
     name: 'Campus Cafe',
     tagline: 'Coffee • Snacks • Quick Bites',
     description: 'Quick bites, coffee and snacks.',
@@ -104,7 +115,11 @@ describe('toStoreDto', () => {
   it('maps snake_case store fields to camelCase', () => {
     expect(toStoreDto(store())).toEqual({
       id: 'store-1',
+      slug: 'campus-cafe',
       name: 'Campus Cafe',
+      brand: { id: 'brand-1', name: 'Campus Cafe', slug: 'campus-cafe' },
+      area: 'Main Campus',
+      address: null,
       tagline: 'Coffee • Snacks • Quick Bites',
       description: 'Quick bites, coffee and snacks.',
       imageUrl: '/images/cafe-cover.jpg',

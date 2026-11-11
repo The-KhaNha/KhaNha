@@ -15,7 +15,11 @@ export interface User {
 
 export interface Store {
   id: string;
+  slug: string;
   name: string;
+  brand: { id: string; name: string; slug: string };
+  area: string | null;
+  address: string | null;
   tagline: string;
   description: string;
   imageUrl: string | null;

@@ -1,5 +1,5 @@
-// Local and staging (`pnpm run seed`): an idempotent demo reset. Wipes all orders, then refreshes the single store,
-// its menu and the two test accounts. The store, menu items and test accounts keep their ids across re-seeds, so a
+// Local and staging (`pnpm run seed`): an idempotent demo reset. Wipes all orders, then refreshes the brands, their stores,
+// their menus and the test accounts. The store, menu items and test accounts keep their ids across re-seeds, so a
 // browser that is already signed in or has a saved cart keeps working.
 //
 // Production (`pnpm run seed --production`): first-time setup only. Creates the store and menu while production
@@ -8,30 +8,49 @@ import { env } from '../src/utils/env';
 import { logger } from '../src/utils/logger';
 import { supabaseAdmin as db } from '../src/utils/supabase';
 import type { Tables } from '../src/types/database';
-import { DEMO_ACCOUNTS, MENU, STORE } from './seed-data';
+import { BRANDS, DEMO_ACCOUNTS, type SeedBrand, type SeedMenuItem } from './seed-data';
 
 const ACCOUNTS = DEMO_ACCOUNTS.map(({ localPassword, stagingPassword, ...account }) => ({
   ...account,
   password: env.APP_ENV === 'staging' ? (env[stagingPassword] ?? '') : localPassword,
 }));
 
-async function seedStore(): Promise<Tables<'stores'>> {
-  const { data: existing } = await db
-    .from('stores')
+/** A brand and its stores, found by slug so a re-seed keeps their ids. Returns each store with its menu. */
+async function seedBrand(
+  brand: SeedBrand,
+  ownerIds: Map<string, string>,
+): Promise<{ store: Tables<'stores'>; menu: SeedMenuItem[] }[]> {
+  const row = {
+    name: brand.name,
+    slug: brand.slug,
+    description: brand.description,
+    status: 'ACTIVE' as const,
+    owner_id: ownerIds.get(brand.ownerEmail) ?? null,
+  };
+  const { data: saved } = await db
+    .from('brands')
+    .upsert(row, { onConflict: 'slug' })
     .select('id')
-    .limit(1)
-    .maybeSingle()
+    .single()
     .throwOnError();
-  const { data: store } = existing
-    ? await db.from('stores').update(STORE).eq('id', existing.id).select().single().throwOnError()
-    : await db.from('stores').insert(STORE).select().single().throwOnError();
-  return store;
+
+  const stores: { store: Tables<'stores'>; menu: SeedMenuItem[] }[] = [];
+  for (const { menu, ...fields } of brand.stores) {
+    const { data: store } = await db
+      .from('stores')
+      .upsert({ ...fields, brand_id: saved.id, status: 'ACTIVE' }, { onConflict: 'slug' })
+      .select()
+      .single()
+      .throwOnError();
+    stores.push({ store, menu });
+  }
+  return stores;
 }
 
-async function seedMenu(storeId: string): Promise<Tables<'menu_items'>[]> {
+async function seedMenu(storeId: string, menu: SeedMenuItem[]): Promise<Tables<'menu_items'>[]> {
   // By name, not the whole table: PostgREST caps a response at 1000 rows, so a large menu would hide seeded items and
   // insert duplicates (server/test/api/menu-cap.test.ts).
-  const names = MENU.map((item) => item.name);
+  const names = menu.map((item) => item.name);
   const { data: current } = await db
     .from('menu_items')
     .select('id, name')
@@ -41,7 +60,7 @@ async function seedMenu(storeId: string): Promise<Tables<'menu_items'>[]> {
   const idByName = new Map(current.map((item) => [item.name, item.id]));
 
   const items: Tables<'menu_items'>[] = [];
-  for (const [index, item] of MENU.entries()) {
+  for (const [index, item] of menu.entries()) {
     const row = {
       store_id: storeId,
       category: item.category,
@@ -74,7 +93,8 @@ async function seedMenu(storeId: string): Promise<Tables<'menu_items'>[]> {
   return items;
 }
 
-async function seedAccounts(): Promise<void> {
+async function seedAccounts(): Promise<Map<string, string>> {
+  const ids = new Map<string, string>();
   for (const { password, role, ...account } of ACCOUNTS) {
     const { data: existing } = await db
       .from('profiles')
@@ -100,23 +120,36 @@ async function seedAccounts(): Promise<void> {
       .update({ name: account.name, phone: account.phone, role })
       .eq('id', data.user.id)
       .throwOnError();
+    ids.set(account.email, data.user.id);
   }
 
-  // Accounts registered while testing are removed so the project is back to the two test accounts.
+  // Accounts registered while testing are removed so the project is back to the demo accounts.
   const keep = new Set(ACCOUNTS.map((account) => account.email));
   const { data: profiles } = await db.from('profiles').select('id, email').throwOnError();
   for (const profile of profiles.filter((p) => !keep.has(p.email))) {
     const { error } = await db.auth.admin.deleteUser(profile.id); // cascades to the profile
     if (error) throw new Error(`Could not remove the account ${profile.email}: ${error.message}`);
   }
+  return ids;
 }
 
 function describeMenu(store: Tables<'stores'>, menuItems: Tables<'menu_items'>[]): string {
   const popular = menuItems.filter((item) => item.is_popular).length;
   const unavailable = menuItems.filter((item) => !item.is_available).length;
   const limited = menuItems.filter((item) => item.stock_quantity !== null);
-  return `  Store     ${store.name} — ${menuItems.length} menu items (${popular} popular, ${unavailable} unavailable)
-  Stock     ${limited.map((item) => `${item.name} ${item.stock_quantity}`).join(', ')} (everything else unlimited)`;
+  const stock = limited.map((item) => `${item.name} ${item.stock_quantity}`).join(', ');
+  return `  Store     ${store.name} (${store.area}) — ${menuItems.length} menu items (${popular} popular, ${unavailable} unavailable)${stock ? `\n  Stock     ${stock}` : ''}`;
+}
+
+/** Seeds brands with their stores and menus; `ownerIds` is empty in production, which has no demo accounts. */
+async function seedBrands(brands: SeedBrand[], ownerIds: Map<string, string>): Promise<string[]> {
+  const lines: string[] = [];
+  for (const brand of brands) {
+    for (const { store, menu } of await seedBrand(brand, ownerIds)) {
+      lines.push(describeMenu(store, await seedMenu(store.id, menu)));
+    }
+  }
+  return lines;
 }
 
 async function seedDemo(): Promise<void> {
@@ -132,9 +165,8 @@ async function seedDemo(): Promise<void> {
   // Orders are demo data: wipe them so numbering starts from #1001 again.
   await db.rpc('reset_demo_orders').throwOnError();
 
-  const store = await seedStore();
-  const menuItems = await seedMenu(store.id);
-  await seedAccounts();
+  const ownerIds = await seedAccounts();
+  const stores = await seedBrands(BRANDS, ownerIds);
   // Back to the defaults, so every demo reset (and every test run) starts from the same limits.
   await db
     .from('site_settings')
@@ -158,7 +190,7 @@ async function seedDemo(): Promise<void> {
 
   logger.info(`
 Seeded Food Pickup (${env.APP_ENV}: ${env.SUPABASE_URL})
-${describeMenu(store, menuItems)}
+${stores.join('\n')}
   Orders    next order number is #1001
 
 Test accounts (${accounts}) — see README.md "Test accounts" for logins
@@ -179,11 +211,10 @@ async function setUpProduction(): Promise<void> {
     return;
   }
 
-  const store = await seedStore();
-  const menuItems = await seedMenu(store.id);
+  const stores = await seedBrands(BRANDS.slice(0, 1), new Map());
   logger.info(`
 Set up Food Pickup (production: ${env.SUPABASE_URL})
-${describeMenu(store, menuItems)}
+${stores.join('\n')}
 
 No accounts were created. To add a staff member: Supabase dashboard → Authentication → Add user (auto-confirm),
 then in the SQL editor: update public.profiles set role = 'STAFF' where email = '<their email>';

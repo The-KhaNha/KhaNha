@@ -159,6 +159,10 @@ describe('CheckoutPage when a price changed before the order was placed', () => 
     return {
       store: {
         id: 's1',
+        slug: 'cafe',
+        brand: { id: 'b1', name: 'Cafe', slug: 'cafe' },
+        area: null,
+        address: null,
         name: 'Cafe',
         tagline: '',
         description: '',

@@ -39,6 +39,8 @@ beforeAll(async () => {
   const { data: store } = await supabaseAdmin
     .from('stores')
     .select('id')
+    .order('created_at')
+    .order('id')
     .limit(1)
     .single()
     .throwOnError();
@@ -388,6 +390,41 @@ describe('not found', () => {
     const res = await patchStatus(randomUUID(), 'PREPARING');
     expect(res.status).toBe(404);
     expect(res.body.error.code).toBe('NOT_FOUND');
+  });
+
+  it("another store's item -> 400 ITEM_NOT_FOUND, and that store's stock is untouched", async () => {
+    const { data: foreign } = await supabaseAdmin
+      .from('menu_items')
+      .select('id, stock_quantity')
+      .neq('store_id', storeId)
+      .order('id')
+      .limit(1)
+      .single()
+      .throwOnError();
+    // A real stock count, so a decrement would show (the seed leaves the other stores' items uncounted).
+    await supabaseAdmin
+      .from('menu_items')
+      .update({ stock_quantity: 5 })
+      .eq('id', foreign.id)
+      .throwOnError();
+    try {
+      const res = await placeOrder(customer1, { items: [{ menuItemId: foreign.id, quantity: 1 }] });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('ITEM_NOT_FOUND');
+      const { data: after } = await supabaseAdmin
+        .from('menu_items')
+        .select('stock_quantity')
+        .eq('id', foreign.id)
+        .single()
+        .throwOnError();
+      expect(after.stock_quantity).toBe(5);
+    } finally {
+      await supabaseAdmin
+        .from('menu_items')
+        .update({ stock_quantity: foreign.stock_quantity })
+        .eq('id', foreign.id)
+        .throwOnError();
+    }
   });
 
   it('/api/orders/%E0 -> 400 BAD_REQUEST (bad percent-encoding)', async () => {

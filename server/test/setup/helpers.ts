@@ -82,6 +82,22 @@ export function resetDemoData(): void {
 }
 
 /**
+ * The store the single-store routes (`GET /api/menu`, `POST /api/orders` without a store) use until P2 PR 16: the
+ * oldest. A test that orders "an item" must pick it from this store, or the API refuses it as another store's.
+ */
+export async function oldestStoreId(): Promise<string> {
+  const { data } = await supabaseAdmin
+    .from('stores')
+    .select('id')
+    .order('created_at')
+    .order('id')
+    .limit(1)
+    .single()
+    .throwOnError();
+  return data.id;
+}
+
+/**
  * Runs one row-returning SQL statement on the local database as `postgres`, for what the API cannot reach: pgmq,
  * `cron.job`, the catalogs. Local only.
  */

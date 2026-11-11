@@ -16,6 +16,10 @@ import type {
 
 export const store: Store = {
   id: 's1',
+  slug: 'cafe',
+  brand: { id: 'b1', name: 'Cafe', slug: 'cafe' },
+  area: null,
+  address: null,
   name: 'Campus Cafe',
   tagline: 'Coffee and toasties by the quad',
   description: 'Order ahead and skip the queue.',

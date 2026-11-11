@@ -229,7 +229,7 @@ with no configured default store (D1). This PR only brings the roadmap into line
 
 ### PR 01 — Brands and stores: expand, and the seed (P2.1)
 
-- [ ] Merged
+- [x] Merged
 
 `/before-write`: schema-guard, NEW TABLE (`brands`), EXTEND (`stores`).
 
