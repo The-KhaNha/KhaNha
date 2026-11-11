@@ -33,8 +33,8 @@ alter table public.stores
   add column updated_at timestamptz not null default now();
 
 -- One brand per existing store, named and slugged after it. The slug is the name lower-cased with every run of
--- other characters as one '-', cut to 50, trimmed (so a cut never leaves a trailing '-'), and given a piece of the
--- store's id when two stores would share it.
+-- other characters as one '-', cut to 50, trimmed (so a cut never leaves a trailing '-'), and given '--N' (its rank among
+-- the stores sharing it) when two stores would share it.
 with base as (
   select id, name,
          coalesce(
@@ -48,8 +48,9 @@ numbered as (
   select id, name,
          case when row_number() over (partition by stem order by created_at, tie) = 1
               then stem
-              -- A number could meet another store's own stem ('kiosk', 'kiosk', 'kiosk-2'); the id cannot.
-              else stem || '-' || left(replace(tie::text, '-', ''), 8)
+              -- A stem never holds '--' (runs of other characters collapse to one '-'), so 'stem--N' cannot meet
+              -- any store's own stem or another group's suffixed slug; N is unique within its stem.
+              else stem || '--' || row_number() over (partition by stem order by created_at, tie)
          end as slug
     from base
 ),
