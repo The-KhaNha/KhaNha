@@ -185,7 +185,11 @@ export async function signIn(
     phone: null,
     role,
     createdAt: now,
-    memberships: [],
+    // The staff board is per store: a staff account works at the fixture store.
+    memberships:
+      role === 'STAFF'
+        ? [{ storeId: store.id, storeSlug: store.slug, storeName: store.name, role: 'STAFF' }]
+        : [],
     ownedBrands: [],
   };
   const order: Order = {
@@ -213,10 +217,11 @@ export async function signIn(
     ],
   };
   await page.route('**/api/auth/me', (route) => route.fulfill({ json: { user } }));
-  await page.route('**/api/orders**', (route) =>
+  await page.route(/\/api\/(stores\/s1\/)?orders/, (route) =>
     route.fulfill({
-      json:
-        new URL(route.request().url()).pathname === '/api/orders' ? { orders: [order] } : { order },
+      json: /\/orders$/.test(new URL(route.request().url()).pathname)
+        ? { orders: [order] }
+        : { order },
     }),
   );
   await page.addInitScript((user) => {
