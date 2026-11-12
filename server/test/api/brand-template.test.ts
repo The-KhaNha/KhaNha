@@ -116,6 +116,32 @@ beforeAll(async () => {
     ])
     .throwOnError();
 
+  // An existing branch with an item of the same name and category: it was never copied, so it gets no lineage.
+  const { data: sibling } = await supabaseAdmin
+    .from('stores')
+    .insert({
+      name: 'Sibling',
+      slug: `template-sib-${tag}`,
+      brand_id: brandId,
+      tagline: '',
+      description: '',
+    })
+    .select('id')
+    .single()
+    .throwOnError();
+  storeIds.push(sibling.id);
+  await supabaseAdmin
+    .from('menu_items')
+    .insert({
+      ...base,
+      store_id: sibling.id,
+      name: 'Tea',
+      category: 'Drinks',
+      price_paise: 2500,
+      sort_order: 1,
+    })
+    .throwOnError();
+
   const { data: id } = await supabaseAdmin
     .rpc('ensure_brand_template', { p_brand_id: brandId })
     .throwOnError();
@@ -214,6 +240,15 @@ describe('the template', () => {
     await supabaseAdmin.from('domain_events').delete().eq('store_id', id).throwOnError();
     await supabaseAdmin.from('stores').delete().eq('id', id).throwOnError();
     await supabaseAdmin.from('brands').delete().eq('id', other.id).throwOnError();
+  });
+
+  it('links no item of another existing store, even one with the same name and category', async () => {
+    const { data } = await supabaseAdmin
+      .from('menu_items')
+      .select('template_item_id, store:stores!inner(slug)')
+      .eq('store.slug', `template-sib-${tag}`)
+      .throwOnError();
+    expect(data.map((item) => item.template_item_id)).toEqual([null]);
   });
 
   it('can never be ACTIVE (check constraint)', async () => {

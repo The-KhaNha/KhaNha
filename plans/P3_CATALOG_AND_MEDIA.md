@@ -186,8 +186,7 @@ Migration `<ts>_brand_template.sql`:
   `menu_items.archived_at`, because the copy below filters on it (nothing sets it until PR 02);
 - backfill, per brand: a template store (`<brand slug>-template`, `DRAFT`, `is_template`) whose menu and
   settings columns are copied from the brand's oldest store; that store's items get `template_item_id`, and the
-  brand's other stores' items get it by matching name (the seed's branches share names; an unmatched item stays
-  null, which is correct: it has no template ancestor);
+  brand's other existing stores get no lineage (as built: a name match could link an item that was never copied, and the push in PR 07 would then overwrite it; staging's existing second Brew Lane branch is therefore not linked, and new branches are)
 - `create_store_from_template(p_brand_id, p_name, p_slug, p_area, p_address_line, p_actor, p_request_id) returns
 uuid`: inserts the store (`DRAFT`), copies the template's settings columns (P2 keeps them on `stores`), and copies the
   template's unarchived items with `template_item_id` set; emits `store.created`. Hours are not copied (a new

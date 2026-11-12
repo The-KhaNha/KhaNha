@@ -13,8 +13,9 @@ alter table public.menu_items
   add column archived_at timestamptz;
 create index menu_items_template_item_id_idx on public.menu_items (template_item_id);
 
--- The brand's template, made on first call from its oldest store (menu and settings; hours stay per branch). Every
--- other store's items get their lineage by name and category. Idempotent: a brand that has a template keeps it. Returns its id.
+-- The brand's template, made on first call from its oldest store (menu and settings; hours stay per branch); that
+-- store's items point at their copies. Other existing stores get no lineage: an item with no record of being copied
+-- is never guessed into one, so a template push can only reach real copies. Idempotent: a brand that has a template keeps it. Returns its id.
 create function public.ensure_brand_template(
   p_brand_id uuid,
   p_actor jsonb default null,
@@ -89,13 +90,6 @@ begin
     )
     update public.menu_items m set template_item_id = src.new_id from src where m.id = src.id;
 
-    -- ponytail: by name and category; two template items alike in both link to either. Fine for the seed's branches.
-    update public.menu_items m
-       set template_item_id = t.id
-      from public.menu_items t, public.stores s
-     where t.store_id = v_template
-       and s.id = m.store_id and s.brand_id = p_brand_id and not s.is_template and s.id <> v_source.id
-       and m.template_item_id is null and m.name = t.name and m.category = t.category;
   end if;
 
   update public.brands set template_store_id = v_template where id = p_brand_id;

@@ -189,7 +189,7 @@ and the audit trail ([PERMISSIONS.md](PERMISSIONS.md#store-roles)).
 
 `ensure_brand_template(p_brand_id, p_actor, p_request_id) returns uuid` (plpgsql, invoker, `service_role` only;
 `20261112144103_brand_template.sql`) returns the brand's template, making it on the first call from the brand's oldest
-store: the store row `<brand slug>-template` (with an 8-character suffix from the brand id when that slug is taken) with that store's settings, prep times and timezone, its unarchived items with no stock and available, and lineage set on that store's items (by row) and on the brand's other stores' items (by name and category). A brand with no store gets an empty template on the column defaults. It emits `store.created` (`{ brandId, isTemplate: true }`);
+store: the store row `<brand slug>-template` (with an 8-character suffix from the brand id when that slug is taken) with that store's settings, prep times and timezone, its unarchived items with no stock and available, and lineage set on that store's items. Other existing stores get none: lineage comes only from a real copy, never a guess by name. A brand with no store gets an empty template on the column defaults. It emits `store.created` (`{ brandId, isTemplate: true }`);
 a repeat returns the same id and emits nothing; an unknown brand raises `NOT_FOUND`. The migration ran it for every
 existing brand; the seed runs it after a brand's first store.
 
