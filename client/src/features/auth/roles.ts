@@ -9,7 +9,10 @@ type Account = Pick<User, 'role' | 'memberships' | 'ownedBrands'>;
  */
 export function homeFor(user: Account): string {
   if (user.role === 'ADMIN') return '/admin';
-  if (user.ownedBrands.length > 0 || (user.memberships ?? []).some((m) => m.role === 'MANAGER'))
+  if (
+    (user.ownedBrands ?? []).length > 0 ||
+    (user.memberships ?? []).some((m) => m.role === 'MANAGER')
+  )
     return '/manage';
   if ((user.memberships ?? []).length > 0 || user.role === 'STAFF') return '/staff';
   return '/';

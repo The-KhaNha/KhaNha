@@ -59,6 +59,8 @@ describe('homeFor', () => {
     expect(
       homeFor({ ...user('CUSTOMER'), ownedBrands: [{ id: 'b1', name: 'Cafe', slug: 'cafe' }] }),
     ).toBe('/manage');
+    // A profile saved before ownedBrands and memberships existed.
+    expect(homeFor({ role: 'CUSTOMER' } as User)).toBe('/');
   });
 });
 

@@ -180,9 +180,12 @@ export function StaffDashboardPage() {
   );
 }
 
+const NO_MEMBERSHIPS: never[] = [];
+
 /** `/staff`: the stores this account works at. With one there is nothing to choose, so it goes straight to its board. */
 export function StaffStoresPage() {
-  const memberships = useAuthStore((s) => s.user?.memberships ?? []);
+  // The fallback outside the selector: a new [] on every read would re-render without end (zustand v5).
+  const memberships = useAuthStore((s) => s.user?.memberships) ?? NO_MEMBERSHIPS;
   if (memberships.length === 1)
     return <Navigate to={`/staff/${memberships[0]!.storeSlug}`} replace />;
   return (
@@ -193,6 +196,11 @@ export function StaffStoresPage() {
           icon={StoreIcon}
           title="You are not on a store's team."
           description="Ask a manager to invite you."
+          action={
+            <Link to="/" className="text-center text-body font-semibold text-brand-700 underline">
+              Browse stores
+            </Link>
+          }
         />
       ) : (
         <ul className="space-y-3">

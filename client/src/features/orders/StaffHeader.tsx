@@ -78,7 +78,13 @@ export function StaffHeader({
           </Button>
         </div>
       </div>
-      {pause && <div className="mx-auto max-w-6xl px-4 sm:px-6">{pause}</div>}
+      {pause && (
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-3 px-4 sm:px-6">
+          {/* The heading is hidden on a phone: the pause row names the store it acts on. */}
+          {storeName && <p className="truncate text-body font-bold sm:hidden">{storeName}</p>}
+          {pause}
+        </div>
+      )}
       {children && <div className="mx-auto max-w-6xl px-4 sm:px-6">{children}</div>}
     </header>
   );

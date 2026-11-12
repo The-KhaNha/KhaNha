@@ -120,4 +120,17 @@ describe('the staff board per store', () => {
     at();
     expect(screen.getByText('board of a store')).toBeInTheDocument();
   });
+
+  it('shows a profile saved without memberships the empty switcher, with a way out', () => {
+    signInAt();
+    const { user } = useAuthStore.getState();
+    useAuthStore.setState({ user: { ...user!, memberships: undefined as never } });
+    render(
+      <MemoryRouter>
+        <StaffStoresPage />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("You are not on a store's team.")).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Browse stores' })).toHaveAttribute('href', '/');
+  });
 });
