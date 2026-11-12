@@ -23,6 +23,9 @@ const store: Store = {
   description: '',
   imageUrl: null,
   isOpen: true,
+  openState: 'OPEN',
+  nextChangeAt: null,
+  openLabel: null,
   prepTimeMinMinutes: 10,
   prepTimeMaxMinutes: 15,
 };

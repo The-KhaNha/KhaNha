@@ -444,6 +444,31 @@ The menu is public and is not polled. The Cart and Checkout pages load it again 
 
 ---
 
+### 4.4 The open state
+
+`domain/schedule.ts` (`openState`, pure) turns a store row, its weekly hours, its exceptions, `last_order_minutes_before_close`
+and the clock into `{ state, nextChangeAt, label }`; `schedule.service` loads the schedule (cached `store_hours:<id>`)
+and the store reads, the menu and `createOrder` call it. Intervals belong to the local date they start on, so a
+past-midnight interval still counts the next morning.
+
+```mermaid
+flowchart TD
+  Row["stores row + schedule"] --> Status{"status ACTIVE?"}
+  Status -->|"no"| Off["UNAVAILABLE"]
+  Status -->|"yes"| Pause{"paused? (P2.5)"}
+  Pause -->|"yes"| Paused["PAUSED"]
+  Pause -->|"no"| Manual{"is_open?"}
+  Manual -->|"no"| Closed0["CLOSED"]
+  Manual -->|"yes"| Day["a CLOSED exception empties the day, SPECIAL_HOURS replace the week,<br/>else the weekly intervals; no weekly rows = open all day"]
+  Day --> In{"inside an interval,<br/>before the last-order cutoff?"}
+  In -->|"no"| Closed["CLOSED, nextChangeAt = next opening"]
+  In -->|"yes"| Soon{"within CLOSING_SOON_MINUTES of the cutoff?"}
+  Soon -->|"yes"| CS["CLOSING_SOON, nextChangeAt = last order"]
+  Soon -->|"no"| Open["OPEN, nextChangeAt = last order"]
+```
+
+`createOrder` refuses with `STORE_CLOSED` (naming `nextChangeAt`) unless the state is `OPEN` or `CLOSING_SOON`.
+
 ## 5. Cart
 
 The cart lives only in the browser (`fp_cart` in localStorage) and holds no server state. Code: [client/src/features/cart/cartStore.ts](../client/src/features/cart/cartStore.ts), [client/src/features/cart/cartRules.ts](../client/src/features/cart/cartRules.ts).

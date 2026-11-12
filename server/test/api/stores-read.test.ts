@@ -72,7 +72,19 @@ describe('GET /api/stores', () => {
       .throwOnError();
     expect(stores.map((s) => s.id)).toEqual(expected.map((s) => s.id));
     expect(Object.keys(stores[0]!).sort()).toEqual(
-      ['area', 'brand', 'id', 'imageUrl', 'isOpen', 'name', 'slug', 'tagline'].sort(),
+      [
+        'area',
+        'brand',
+        'id',
+        'imageUrl',
+        'isOpen',
+        'name',
+        'nextChangeAt',
+        'openLabel',
+        'openState',
+        'slug',
+        'tagline',
+      ].sort(),
     );
   });
 

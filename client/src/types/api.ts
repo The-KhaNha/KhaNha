@@ -19,6 +19,9 @@ export interface User {
   ownedBrands: { id: string; name: string; slug: string }[];
 }
 
+/** What a customer sees of a store's hours. `isOpen` is true for OPEN and CLOSING_SOON. */
+export type OpenStateName = 'OPEN' | 'CLOSING_SOON' | 'CLOSED' | 'PAUSED' | 'UNAVAILABLE';
+
 export interface Store {
   id: string;
   slug: string;
@@ -30,14 +33,54 @@ export interface Store {
   description: string;
   imageUrl: string | null;
   isOpen: boolean;
+  openState: OpenStateName;
+  /** The next change of state: the closing time while open, the next opening while closed; null when unknown. */
+  nextChangeAt: string | null;
+  /** Ready to show: "Closes at 9:00 PM", "Opens tomorrow at 8:00 AM", "Closed for Diwali". */
+  openLabel: string | null;
   prepTimeMinMinutes: number;
   prepTimeMaxMinutes: number;
 }
 
 export type StoreSummary = Pick<
   Store,
-  'id' | 'slug' | 'name' | 'tagline' | 'imageUrl' | 'area' | 'brand' | 'isOpen'
+  | 'id'
+  | 'slug'
+  | 'name'
+  | 'tagline'
+  | 'imageUrl'
+  | 'area'
+  | 'brand'
+  | 'isOpen'
+  | 'openState'
+  | 'nextChangeAt'
+  | 'openLabel'
 >;
+
+/** One weekly interval of GET /api/stores/:storeRef/hours; `HH:MM`, `closesAt` before `opensAt` runs past midnight. */
+export interface StoreHours {
+  /** ISO weekday: 1 = Monday ... 7 = Sunday. */
+  dayOfWeek: number;
+  opensAt: string;
+  closesAt: string;
+}
+
+export interface ScheduleException {
+  id: string;
+  startsOn: string;
+  endsOn: string;
+  kind: 'CLOSED' | 'SPECIAL_HOURS';
+  opensAt: string | null;
+  closesAt: string | null;
+  label: string;
+}
+
+/** GET /api/stores/:storeRef/hours: the week, and the exceptions from today (store time) on. */
+export interface StoreScheduleResponse {
+  timezone: string;
+  hours: StoreHours[];
+  exceptions: ScheduleException[];
+}
 
 export interface MenuItem {
   id: string;
@@ -109,7 +152,9 @@ export interface ApiErrorDetails {
   orderId?: string;
   orderNumber?: number;
   /** Shapes added since P1 carry a `kind`; the ones above predate it and are told apart by `code`. */
-  kind?: 'rateLimit';
+  kind?: 'rateLimit' | 'storeClosed';
+  /** STORE_CLOSED: when the store next opens, when known. */
+  nextChangeAt?: string;
   /** RATE_LIMITED: seconds until the window resets, the same number as the Retry-After header. */
   retryAfterSeconds?: number;
 }

@@ -22,6 +22,8 @@ import { invalidate } from '../utils/cache';
 import { invalidateMenus } from './menu.service';
 import { simulatePayment } from './payment.service';
 import { getSettings } from './settings.service';
+import { describeWhen } from '../domain/schedule';
+import { computeOpenState, getSchedule } from './schedule.service';
 import { getStore } from './store.service';
 import { getStoreSettings } from './storeSettings.service';
 
@@ -88,7 +90,7 @@ export async function createOrder(
   const ids = input.items.map((line) => line.menuItemId).filter(isUuid);
   // None of these reads depends on another, so they go out together: one round trip to the database instead of one
   // each (test/api/order-reads.test.ts). The checks below still run in the same order.
-  const [existing, settings, store, customerName, menuItems] = await Promise.all([
+  const [existing, settings, store, earlySchedule, customerName, menuItems] = await Promise.all([
     input.idempotencyKey
       ? selectOrders()
           .eq('user_id', user.id)
@@ -101,6 +103,8 @@ export async function createOrder(
     // is harmless for a cap this generous.
     getSettings(),
     getStore(input.storeId),
+    // The legacy single-store call names no store yet: its schedule is read below, once the store is known.
+    input.storeId ? getSchedule(input.storeId) : null,
     input.customerName ?? lookupUserName(user.id),
     supabaseAdmin
       .from('menu_items')
@@ -123,7 +127,19 @@ export async function createOrder(
   if (input.lineCount > maxLines)
     throw validationError(`An order can have at most ${maxLines} items.`);
 
-  if (!store.is_open) throw storeClosed(store.name);
+  const now = new Date();
+  const { state, nextChangeAt } = computeOpenState(
+    store,
+    earlySchedule ?? (await getSchedule(store.id)),
+    now,
+  );
+  if (state !== 'OPEN' && state !== 'CLOSING_SOON')
+    throw storeClosed(
+      store.name,
+      nextChangeAt
+        ? { nextChangeAt, when: describeWhen(nextChangeAt, now, store.timezone) }
+        : undefined,
+    );
   // Another store's item is not on this store's menu: it is "not found" here, so an order never mixes stores and
   // never draws down another store's stock.
   const byId = new Map(

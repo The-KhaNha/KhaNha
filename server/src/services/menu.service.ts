@@ -3,6 +3,7 @@ import { cached, invalidate, PUBLIC_READ_TTL_MS } from '../utils/cache';
 import { logger } from '../utils/logger';
 import { supabaseAdmin } from '../utils/supabase';
 import { toMenuItemDto, toStoreDto, type StoreWithBrand } from '../utils/serializers';
+import { getOpenFields } from './schedule.service';
 import { getStore } from './store.service';
 
 /**
@@ -55,7 +56,7 @@ async function loadMenu(store: StoreWithBrand): Promise<MenuResponse> {
       maxQuantityPerItem: store.max_quantity_per_item,
       lowStockThreshold: store.low_stock_threshold,
     },
-    store: toStoreDto(store),
+    store: toStoreDto(store, await getOpenFields(store)),
     popular: items.filter((item) => item.isPopular),
     categories: groupByCategory(items),
   };

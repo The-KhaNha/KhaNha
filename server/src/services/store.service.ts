@@ -5,6 +5,7 @@ import { notFound } from '../utils/errors';
 import { isUuid } from '../utils/ids';
 import { logger } from '../utils/logger';
 import { STORE_SLUG_PATTERN } from '../schemas/store.schema';
+import { computeOpenState, getSchedules, toOpenFields } from './schedule.service';
 import { toStoreSummaryDto, type StoreWithBrand } from '../utils/serializers';
 import { supabaseAdmin } from '../utils/supabase';
 
@@ -90,7 +91,16 @@ export async function listStores(area?: string): Promise<StoreSummaryDto[]> {
     // The cap is a safety valve: say so when it bites, or a store missing from its area's list is a silent mystery.
     if (data.length === STORE_LIST_MAX)
       logger.warn({ shown: STORE_LIST_MAX }, 'Store list truncated');
-    return data.map(toStoreSummaryDto);
+    // Computed here, so a listed state is at most PUBLIC_READ_TTL_MS old (the entry is rebuilt after that).
+    const schedules = await getSchedules(data.map((store) => store.id));
+    return data.map((store) =>
+      toStoreSummaryDto(
+        store,
+        toOpenFields(
+          computeOpenState(store, schedules.get(store.id) ?? { hours: [], exceptions: [] }),
+        ),
+      ),
+    );
   });
   return area === undefined ? all : all.filter((store) => store.area === area);
 }
