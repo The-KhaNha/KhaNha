@@ -1,16 +1,9 @@
-import { MAX_QUANTITY_PER_ITEM } from '../schemas/order.schema';
 import type { MenuCategoryDto, MenuItemDto, MenuResponse } from '../types/api';
 import { cached, invalidate, PUBLIC_READ_TTL_MS } from '../utils/cache';
 import { logger } from '../utils/logger';
 import { supabaseAdmin } from '../utils/supabase';
 import { toMenuItemDto, toStoreDto, type StoreWithBrand } from '../utils/serializers';
 import { getStore } from './store.service';
-
-/**
- * Cart rules the client applies (per-item cap, the "only N left" threshold). Server constants for now; per store in
- * P2.3, when the client stops mirroring them (cartRules.ts).
- */
-const MENU_RULES = { maxQuantityPerItem: MAX_QUANTITY_PER_ITEM, lowStockThreshold: 5 } as const;
 
 /**
  * Most items one menu response carries (docs/CONFIGURATION.md, platform constant). A campus café lists tens; the cap
@@ -56,7 +49,12 @@ async function loadMenu(store: StoreWithBrand): Promise<MenuResponse> {
   const items = rows.map(toMenuItemDto);
 
   return {
-    rules: MENU_RULES,
+    // The cart rules the client applies: the store's own cap and "only N left" threshold, off the store row (its
+    // cache keys are dropped by updateStoreSettings with the menu's).
+    rules: {
+      maxQuantityPerItem: store.max_quantity_per_item,
+      lowStockThreshold: store.low_stock_threshold,
+    },
     store: toStoreDto(store),
     popular: items.filter((item) => item.isPopular),
     categories: groupByCategory(items),

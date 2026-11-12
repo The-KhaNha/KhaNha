@@ -244,6 +244,8 @@ export function testStoreIsolation(
   label: string,
   send: (http: ReturnType<typeof api>, storeId: string, resourceId: string) => request.Test,
   resource?: (storeId: string) => Promise<string>,
+  // The role of store A's member: STAFF, or MANAGER for a route a staff member may not call.
+  memberRole: StoreRole = 'STAFF',
 ): void {
   describe(`${label} — store isolation`, () => {
     const tag = randomUUID().slice(0, 8);
@@ -286,7 +288,7 @@ export function testStoreIsolation(
         store[key] = stores.find((row) => row.slug === `store-iso-${key}-${tag}`)?.id ?? '';
         resourceOf[key] = resource ? await resource(store[key]) : randomUUID();
       }
-      staffA = await createStoreMember(store.a, 'STAFF');
+      staffA = await createStoreMember(store.a, memberRole);
       ownerB = await createBrandOwner(brandIds[1] ?? '');
       customer = await createTestUser();
       users.push(staffA, ownerB, customer);

@@ -5,6 +5,7 @@ import { requireAuth, requireStore } from '../middleware/auth';
 import { writeLimiter } from '../middleware/rateLimit';
 import { validate } from '../middleware/validate';
 import { listOrdersQuerySchema, updateOrderStatusSchema } from '../schemas/order.schema';
+import { updateStoreSettingsSchema } from '../schemas/storeSettings.schema';
 import { storeListQuerySchema, storeRefParamsSchema } from '../schemas/store.schema';
 
 export const storeRouter = Router();
@@ -32,4 +33,18 @@ storesRouter.patch(
   writeLimiter,
   validate(updateOrderStatusSchema),
   orders.updateStoreOrderStatus,
+);
+storesRouter.get(
+  '/:storeId/settings',
+  requireAuth,
+  requireStore('settings.edit'),
+  store.getStoreSettings,
+);
+storesRouter.patch(
+  '/:storeId/settings',
+  requireAuth,
+  requireStore('settings.edit'),
+  writeLimiter,
+  validate(updateStoreSettingsSchema),
+  store.updateStoreSettings,
 );

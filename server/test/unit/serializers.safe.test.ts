@@ -45,6 +45,10 @@ function store(overrides: Partial<StoreWithBrand> = {}): StoreWithBrand {
     is_open: true,
     prep_time_min_minutes: 10,
     prep_time_max_minutes: 15,
+    max_quantity_per_item: 10,
+    low_stock_threshold: 5,
+    staff_order_list_limit: 100,
+    last_order_minutes_before_close: 0,
     ...overrides,
   };
 }

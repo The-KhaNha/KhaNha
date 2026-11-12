@@ -5,12 +5,13 @@ hard-coded in two places. Add a row here in the same change that adds a setting 
 
 ## Tiers
 
-| Tier              | Where                                                | Changed by                                                | Takes effect                                                             |
-| ----------------- | ---------------------------------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------ |
-| Site setting      | the one `site_settings` row                          | an admin, `PATCH /api/admin/settings` (the `/admin` page) | the next request on this API instance; others within the 10 s read cache |
-| Deployment (env)  | `server/.env`, the host, the web image's runtime env | whoever deploys                                           | the next process start ([DEPLOYMENT.md](DEPLOYMENT.md))                  |
-| Feature flag      | a `feature_flags` row                                | an admin, `PATCH /api/admin/flags/:key`                   | the next request on this API instance; others within the 10 s read cache |
-| Platform constant | code, with a parity test where both sides need it    | a code change and a release                               | the next release                                                         |
+| Tier              | Where                                                | Changed by                                                        | Takes effect                                                             |
+| ----------------- | ---------------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Site setting      | the one `site_settings` row                          | an admin, `PATCH /api/admin/settings` (the `/admin` page)         | the next request on this API instance; others within the 10 s read cache |
+| Store setting     | four columns of the `stores` row                     | a store's manager or owner, `PATCH /api/stores/:storeId/settings` | the next request on this instance; others within the 10 s read cache     |
+| Deployment (env)  | `server/.env`, the host, the web image's runtime env | whoever deploys                                                   | the next process start ([DEPLOYMENT.md](DEPLOYMENT.md))                  |
+| Feature flag      | a `feature_flags` row                                | an admin, `PATCH /api/admin/flags/:key`                           | the next request on this API instance; others within the 10 s read cache |
+| Platform constant | code, with a parity test where both sides need it    | a code change and a release                                       | the next release                                                         |
 
 ## Site settings
 
@@ -22,7 +23,7 @@ same in three places: the `site_settings` check constraints ([SCHEMA.md](SCHEMA.
 | Key (API)                   | Column                         | Type    | Default | Bounds     | Read by                                                                                                                          |
 | --------------------------- | ------------------------------ | ------- | ------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------- |
 | `customerOrderHistoryLimit` | `customer_order_history_limit` | integer | 20      | 1–200      | `GET /api/orders` for a customer                                                                                                 |
-| `staffOrderListLimit`       | `staff_order_list_limit`       | integer | 100     | 1–500      | `GET /api/orders` for staff: finished orders kept on the board (active ones always show)                                         |
+| `staffOrderListLimit`       | `staff_order_list_limit`       | integer | 100     | 1–500      | no longer read: moved to the store settings below; the column stays so the deployed admin page keeps working                     |
 | `maxLinesPerOrder`          | `max_lines_per_order`          | integer | 30      | 1–100      | `POST /api/orders` (`createOrder`, lines counted before merging; up to 10 s late on other instances)                             |
 | `orderPollMs`               | `order_poll_ms`                | integer | 4000    | 2000–60000 | the order page's poll (`useOrder`, via `GET /api/config`)                                                                        |
 | `ordersPollMs`              | `orders_poll_ms`               | integer | 8000    | 2000–60000 | the customer's order list poll (`useOrders`)                                                                                     |
@@ -32,6 +33,21 @@ same in three places: the `site_settings` check constraints ([SCHEMA.md](SCHEMA.
 
 The client reads them through `GET /api/config` (`useConfig()`, persisted) and falls back to
 `client/src/config/fallbacks.json` until it loads or when it cannot.
+
+## Store settings
+
+Columns of the `stores` row ([SCHEMA.md](SCHEMA.md#stores)), read through `getStoreSettings(storeId)`
+(`server/src/services/storeSettings.service.ts`, cached as `store_settings:<id>`; the write drops it and the store's
+menus). Bounds are the check constraints, `STORE_SETTING_BOUNDS` and `updateStoreSettingsSchema`, kept equal by
+`test/api/store-settings.test.ts`. A new store takes the defaults; the migration copied each existing store's
+`staff_order_list_limit` from the site setting once.
+
+| Key (API)                     | Column                            | Default | Bounds | Read by                                                           |
+| ----------------------------- | --------------------------------- | ------- | ------ | ----------------------------------------------------------------- |
+| `maxQuantityPerItem`          | `max_quantity_per_item`           | 10      | 1–50   | `createOrder` (a line's merged quantity), `MenuResponse.rules`    |
+| `lowStockThreshold`           | `low_stock_threshold`             | 5       | 0–50   | `MenuResponse.rules` (the "only N left" pill)                     |
+| `staffOrderListLimit`         | `staff_order_list_limit`          | 100     | 1–500  | the store's board: finished orders kept (active ones always show) |
+| `lastOrderMinutesBeforeClose` | `last_order_minutes_before_close` | 0       | 0–240  | stored only; enforced by P2 PR 06                                 |
 
 ## Feature flags
 

@@ -2,7 +2,11 @@ import type { RequestHandler } from 'express';
 import * as menuService from '../services/menu.service';
 import * as storeService from '../services/store.service';
 import type { StoreListQuery } from '../schemas/store.schema';
-import { toStoreDto } from '../utils/serializers';
+import { currentStore, requestContext } from '../middleware/auth';
+import type { UpdateStoreSettingsInput } from '../schemas/storeSettings.schema';
+import * as settingsService from '../services/storeSettings.service';
+import type { BodyHandler } from '../types/http';
+import { toStoreDto, toStoreSettingsDto } from '../utils/serializers';
 
 export const getStore: RequestHandler = async (_req, res) => {
   res.json({ store: toStoreDto(await storeService.getCachedStore()) });
@@ -22,4 +26,21 @@ export const getStoreByRef: RequestHandler = async (req, res) => {
 
 export const getStoreMenu: RequestHandler = async (req, res) => {
   res.json(await menuService.getStoreMenu(await activeStore(req.params.storeRef)));
+};
+
+/** GET /api/stores/:storeId/settings, after requireStore('settings.edit'). */
+export const getStoreSettings: RequestHandler = async (req, res) => {
+  res.json({
+    settings: toStoreSettingsDto(await settingsService.getStoreSettings(currentStore(req).id)),
+  });
+};
+
+/** PATCH /api/stores/:storeId/settings, after requireStore('settings.edit'). */
+export const updateStoreSettings: BodyHandler<UpdateStoreSettingsInput> = async (req, res) => {
+  const settings = await settingsService.updateStoreSettings(
+    currentStore(req).id,
+    req.body,
+    requestContext(req),
+  );
+  res.json({ settings: toStoreSettingsDto(settings) });
 };

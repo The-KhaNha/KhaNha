@@ -1,10 +1,12 @@
 // Destructive: changes the site_settings row and inserts orders; resetDemoData() puts both back (local only).
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { invalidate } from '../../src/utils/cache';
 import { supabaseAdmin } from '../../src/utils/supabase';
 import {
   createTestUser,
   deleteTestUser,
+  oldestStoreId,
   resetDemoData,
   testAuthMatrix,
   type TestUser,
@@ -241,18 +243,30 @@ describe('admin settings: the limits apply to the next request', () => {
     ]);
   });
 
-  it('a new staff list limit shows up at once (it caps finished orders; active ones always show)', async () => {
+  it("a store's staff list limit caps finished orders; the site setting no longer does", async () => {
     await supabaseAdmin
       .from('orders')
       .update({ status: 'COLLECTED' })
       .in('id', insertedOrderIds)
       .throwOnError();
-    await api().patch('/api/admin/settings').set(bearer(admin)).send({ staffOrderListLimit: 2 });
+    await api().patch('/api/admin/settings').set(bearer(admin)).send({ staffOrderListLimit: 1 });
+    await supabaseAdmin
+      .from('stores')
+      .update({ staff_order_list_limit: 2 })
+      .eq('id', await oldestStoreId())
+      .throwOnError();
+    invalidate();
     const res = await api().get('/api/orders').set(bearer(staff));
     const finished = (res.body.orders as { status: string }[]).filter(
       (o) => o.status === 'COLLECTED' || o.status === 'CANCELLED',
     );
     expect(finished).toHaveLength(2);
+    await supabaseAdmin
+      .from('stores')
+      .update({ staff_order_list_limit: 100 })
+      .eq('id', await oldestStoreId())
+      .throwOnError();
+    invalidate();
   });
 
   it('records who changed it and when', async () => {

@@ -46,6 +46,7 @@ export const AUDIT_ENTITY_TYPES = [
   'brand',
   'store',
   'membership',
+  'store_settings',
 ] as const;
 
 const timestamp = (name: string) =>
