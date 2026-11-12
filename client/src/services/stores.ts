@@ -1,4 +1,11 @@
-import type { MenuResponse, Store, StoreScheduleResponse, StoreSummary } from '../types/api';
+import type {
+  MenuResponse,
+  ScheduleException,
+  Store,
+  StoreHours,
+  StoreScheduleResponse,
+  StoreSummary,
+} from '../types/api';
 import { request } from './api';
 
 const path = (ref: string, tail = '') => `/stores/${encodeURIComponent(ref)}${tail}`;
@@ -14,6 +21,33 @@ const requestStoreMenu = (ref: string) =>
 
 export const fetchStoreHours = (ref: string) =>
   request<StoreScheduleResponse>(path(ref, '/hours'), { auth: false });
+
+/** What POST .../schedule-exceptions takes; `CLOSED` carries no times. */
+export interface NewException {
+  startsOn: string;
+  endsOn: string;
+  kind: ScheduleException['kind'];
+  opensAt?: string;
+  closesAt?: string;
+  label: string;
+}
+
+/** Replaces the whole week; the server refuses overlaps with a 400 VALIDATION_ERROR message. */
+export const saveStoreHours = (storeId: string, hours: StoreHours[]) =>
+  request<StoreScheduleResponse>(path(storeId, '/hours'), { method: 'PUT', body: { hours } });
+
+export const createScheduleException = async (storeId: string, body: NewException) =>
+  (
+    await request<{ exception: ScheduleException }>(path(storeId, '/schedule-exceptions'), {
+      method: 'POST',
+      body,
+    })
+  ).exception;
+
+export const deleteScheduleException = (storeId: string, exceptionId: string) =>
+  request<void>(path(storeId, `/schedule-exceptions/${encodeURIComponent(exceptionId)}`), {
+    method: 'DELETE',
+  });
 
 // Started while the app boots (main.tsx): handed out once, so later calls ask the server again.
 const prefetched = new Map<string, Promise<unknown>>();

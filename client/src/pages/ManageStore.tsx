@@ -8,6 +8,7 @@ import { MANAGE_TABS, canManage } from '../features/manage/manageRules';
 import { useStoreByRef } from '../features/stores/useStores';
 import { cn } from '../lib/cn';
 import { NotFoundPage } from './NotFound';
+import { ManageHoursPage } from './ManageHours';
 
 const ComingNext = () => (
   <EmptyState
@@ -76,7 +77,17 @@ export function ManageStorePage() {
       <Routes>
         <Route index element={<Navigate to="hours" replace />} />
         {MANAGE_TABS.map(({ path }) => (
-          <Route key={path} path={path} element={<ComingNext />} />
+          <Route
+            key={path}
+            path={path}
+            element={
+              path === 'hours' ? (
+                <ManageHoursPage store={store} onChanged={retry} />
+              ) : (
+                <ComingNext />
+              )
+            }
+          />
         ))}
         <Route path="*" element={<NotFoundPage />} />
       </Routes>

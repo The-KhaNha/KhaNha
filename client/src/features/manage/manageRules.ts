@@ -13,6 +13,14 @@ export function canManage(user: User, store: Pick<StoreSummary, 'id' | 'brand'>)
   );
 }
 
+/**
+ * Whether the account may edit the opening hours (`hours.edit`, docs/PERMISSIONS.md): the brand's owner or a MANAGER
+ * member. An ADMIN can open `/manage` but holds no hours capability, so the editor is not offered.
+ */
+export const canEditHours = (user: User, store: Pick<StoreSummary, 'id' | 'brand'>): boolean =>
+  user.ownedBrands.some((b) => b.id === store.brand.id) ||
+  user.memberships.some((m) => m.storeId === store.id && m.role === 'MANAGER');
+
 /** The picker's list: the active stores the account can manage (a paused or closed-down store is not listed). */
 export const managedStores = (user: User, stores: StoreSummary[]): StoreSummary[] =>
   stores.filter((s) => canManage(user, s));

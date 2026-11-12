@@ -397,6 +397,10 @@ UI (presentational; the pages own the data):
 | `HomeHero()`                                                | the paprika pitch above `/` and every store page                                                                                                    |
 | `MenuRedirect()`                                            | `/menu`: the cart's store menu when the cart has items, else the one active store's menu, else `/`                                                  |
 
+### features/manage
+
+`manageRules.ts`: `canManage` (owner, MANAGER or ADMIN may open `/manage`), `canEditHours` (owner or MANAGER only: an ADMIN opening `/manage/:storeSlug/hours` sees a note, no editor and no hours request), `managedStores`, `MANAGE_TABS`. `hoursRules.ts`: the week editor's pure helpers (`weekFromHours`, `weekToHours`, `addInterval`, `removeInterval`, `editInterval`, `copyDayToAll`, `sameWeek`, `presetDraft`, `exceptionBody`). **`WeekGrid`** (`{ week, onChange, disabled? }`): a card per day at 360px, a row per day from `md`; add and remove an interval, copy a day to all days. **`ExceptionList`** (`{ exceptions, onAdd, onRemove, busy }`): the special days with the "Closed for …" and "Late hours" presets; `onAdd` resolves with the server's message when refused. `pages/ManageHours.tsx` saves through `services/stores.ts` and reloads the hours, the store and the store list after every change; the server's overlap error shows under the grid.
+
 ### features/menu
 
 | Export                                                                                               | What                                                                                                                                                                                                                                       |

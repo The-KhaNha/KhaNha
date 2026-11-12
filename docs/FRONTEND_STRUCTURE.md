@@ -53,8 +53,7 @@ client/
     │   ├── cart/           cartStore, cartRules, useReorder, CartBar, AddToCart, ReplaceCartSheet
     │   ├── checkout/       checkoutDraftStore (the form as typed + the idempotency key, sessionStorage)
     │   ├── config/         useConfig (GET /api/config, persisted), fallbacks (config/fallbacks.json)
-    │   ├── manage/         manageRules (canManage, managedStores, MANAGE_TABS): who may open `/manage`, and its tabs
-    │   ├── manage/         manageRules (canManage, managedStores, MANAGE_TABS): who may open `/manage`, and its tabs
+    │   ├── manage/         manageRules (canManage, canEditHours, managedStores, MANAGE_TABS), hoursRules (the week editor's pure helpers), WeekGrid, ExceptionList
     │   ├── menu/           useMenu, useStore, CategoryChips, ItemDetailSheet
     │   ├── stores/         useStores, useStoreByRef, useStoreMenu, storeRules, HomeHero, MenuRedirect
     │   ├── version/        versionStore (the 426 "outdated" flag), OutdatedBanner
@@ -209,16 +208,16 @@ persisted, so the reload loses nothing.
 
 ## Feature folders
 
-| Folder              | Rules and hooks                                                                         | UI                                                                                                  |
-| ------------------- | --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `features/admin`    | `settingsRules.ts`, `useSiteSettings.ts`                                                | (`pages/Admin.tsx` owns the form UI directly)                                                       |
-| `features/auth`     | `authStore.ts`, `roles.ts`, `sessionActivity.ts`, `useAuthRedirect.ts`, `validation.ts` | `AuthCard`, `RequireAuth`, `RequireRole`                                                            |
-| `features/cart`     | `cartStore.ts`, `cartRules.ts`, `useReorder.ts`                                         | `CartBar`                                                                                           |
-| `features/checkout` | `checkoutDraftStore.ts`                                                                 | (`pages/Checkout.tsx` owns the form)                                                                |
-| `features/manage`   | `manageRules.ts`                                                                        | (`pages/Manage.tsx`, `pages/ManageStore.tsx` own the UI; tabs are placeholders until PR 14b and 15) |
-| `features/menu`     | `useMenu.ts`, `useStore.ts`                                                             | `CategoryChips`, `ItemDetailSheet`                                                                  |
-| `features/stores`   | `useStores.ts`, `useStoreMenu.ts`, `storeRules.ts`                                      | `HomeHero`, `MenuRedirect`                                                                          |
-| `features/orders`   | `orderStatus.ts`, `useOrder.ts`, `useOrders.ts`                                         | `OrderHero`, `StaffHeader`, `StaffFilters`, `StaffBoard`, `StaffOrderCard`                          |
+| Folder              | Rules and hooks                                                                         | UI                                                                                                                                |
+| ------------------- | --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `features/admin`    | `settingsRules.ts`, `useSiteSettings.ts`                                                | (`pages/Admin.tsx` owns the form UI directly)                                                                                     |
+| `features/auth`     | `authStore.ts`, `roles.ts`, `sessionActivity.ts`, `useAuthRedirect.ts`, `validation.ts` | `AuthCard`, `RequireAuth`, `RequireRole`                                                                                          |
+| `features/cart`     | `cartStore.ts`, `cartRules.ts`, `useReorder.ts`                                         | `CartBar`                                                                                                                         |
+| `features/checkout` | `checkoutDraftStore.ts`                                                                 | (`pages/Checkout.tsx` owns the form)                                                                                              |
+| `features/manage`   | `manageRules.ts`                                                                        | (`pages/Manage.tsx`, `pages/ManageStore.tsx`, `pages/ManageHours.tsx` own the UI; Settings and Team are placeholders until PR 15) |
+| `features/menu`     | `useMenu.ts`, `useStore.ts`                                                             | `CategoryChips`, `ItemDetailSheet`                                                                                                |
+| `features/stores`   | `useStores.ts`, `useStoreMenu.ts`, `storeRules.ts`                                      | `HomeHero`, `MenuRedirect`                                                                                                        |
+| `features/orders`   | `orderStatus.ts`, `useOrder.ts`, `useOrders.ts`                                         | `OrderHero`, `StaffHeader`, `StaffFilters`, `StaffBoard`, `StaffOrderCard`                                                        |
 
 Details of each export: [COMPONENTS.md](COMPONENTS.md#feature-rules-and-hooks).
 
