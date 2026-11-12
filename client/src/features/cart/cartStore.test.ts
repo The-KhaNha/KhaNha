@@ -15,6 +15,7 @@ function menuItem(overrides: Partial<MenuItem> = {}): MenuItem {
     description: 'Creamy chilled coffee',
     price: 120,
     imageUrl: '/images/cold-coffee.jpg',
+    diet: null,
     isAvailable: true,
     isPopular: true,
     sortOrder: 1,

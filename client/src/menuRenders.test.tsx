@@ -33,6 +33,7 @@ const item = (i: number): MenuItem => ({
   description: 'Tasty',
   price: 100 + i,
   imageUrl: '/images/cold-coffee.jpg',
+  diet: null,
   isAvailable: true,
   isPopular: false,
   sortOrder: i,

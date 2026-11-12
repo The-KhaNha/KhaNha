@@ -38,6 +38,7 @@ const item = (overrides: Partial<MenuItem>): MenuItem => ({
   name: 'Cold Coffee',
   description: 'Creamy chilled coffee',
   price: 120,
+  diet: null,
   imageUrl: '/images/cold-coffee.jpg',
   isAvailable: true,
   isPopular: true,

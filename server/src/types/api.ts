@@ -82,13 +82,25 @@ export interface MenuItemDto {
   name: string;
   description: string;
   price: number;
-  imageUrl: string;
+  /** null: no photo yet (an item made in the editor before its upload). */
+  imageUrl: string | null;
+  /** null: not marked. */
+  diet: Diet | null;
   /** Effective availability: false when the item is switched off OR its tracked stock has run out. */
   isAvailable: boolean;
   isPopular: boolean;
   sortOrder: number;
   /** Units left when the item tracks stock; null = not tracked (only the per-order cap applies). */
   stockQuantity: number | null;
+}
+
+export type Diet = 'VEG' | 'NON_VEG' | 'EGG';
+
+/** An item in the menu editor (`GET /api/stores/:storeId/menu-items`): archived ones too, with the raw switch. */
+export interface ManagedMenuItemDto extends MenuItemDto {
+  /** The switch alone; `isAvailable` also counts stock. Always false once archived. */
+  isEnabled: boolean;
+  archivedAt: string | null;
 }
 
 export interface MenuCategoryDto {
@@ -157,7 +169,7 @@ export interface OrderItemDto {
   quantity: number;
   lineTotal: number;
   /** The menu item's photo when the order was placed, so order screens need no menu lookup for thumbnails. */
-  imageUrl: string;
+  imageUrl: string | null;
 }
 
 export interface OrderDto {

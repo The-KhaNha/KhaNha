@@ -176,7 +176,7 @@ PR 00 for P3.1.
 
 ### PR 01 — The brand template and its lineage (P3.1)
 
-- [ ] Merged
+- [x] Merged (#77, f313ff5)
 
 `/before-write`: schema-guard, expected EXTEND (`stores`, `brands`, `menu_items`), no new table.
 
@@ -262,14 +262,20 @@ Server, all under `requireStore('menu.edit')`, never cached:
 | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
 | `GET /api/stores/:storeId/menu-items`            | every item of the store, archived ones included, with stock                                                               |
 | `POST /api/stores/:storeId/menu-items`           | create (`name`, `description`, `price`, `category`, `diet?`, `isPopular?`, `stockQuantity?`); placed last in its category |
-| `PATCH /api/stores/:storeId/menu-items/:itemId`  | edit any of those, and `isAvailable`                                                                                      |
+| `PATCH /api/stores/:storeId/menu-items/:itemId`  | edit any of those except `stockQuantity`, and `isAvailable`                                                               |
 | `DELETE /api/stores/:storeId/menu-items/:itemId` | archive (the row stays: order history and lineage point at it); a repeat is 204                                           |
+
+As built: `place_order` is unchanged. A check constraint (`archived_at is null or not is_available`) keeps an archived
+item switched off, and `place_order` already refuses an unavailable item. `menu.changed` comes from statement triggers
+on `menu_items` (one event per store per statement; stock moves emit none), so direct table writes emit it in their own
+transaction. The editor's list is `ManagedMenuItemDto` (`isEnabled`, `archivedAt`). PATCH takes no `stockQuantity`: PR 04's
+stock function owns stock edits; create still sets the starting stock. The seed still matches its items by
+name, which stays safe because it wipes orders and deletes duplicates.
 
 `price` is whole rupees at the API and paise in the row (`utils/money.ts`). Bounds live in `schemas/limits.ts`
 (name 2–80, description ≤ 300, category 1–40, price 1–100000) with their check constraints and the parity test. The
 public menu skips archived items; `MenuItemDto` gains `diet`. Every write invalidates `menu:<storeId>` and emits
-`menu.changed`. A second item with the same name in a store is allowed (the seed's upsert-by-name moves to a seed
-key).
+`menu.changed`. A second item with the same name in a store is allowed.
 
 Tests: `test/api/menu-items.test.ts` (the edge-case matrix on four routes; auth and isolation matrices; an item of
 another store is 404; an archived item leaves the public menu, stays in an old order, and cannot be ordered; a

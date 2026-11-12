@@ -153,6 +153,7 @@ describe('CheckoutPage when a price changed before the order was placed', () => 
       description: '',
       price,
       imageUrl: '',
+      diet: null,
       isAvailable: true,
       isPopular: false,
       sortOrder: 1,

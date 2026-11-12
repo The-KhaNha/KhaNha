@@ -63,6 +63,10 @@ The API has no sign-in or sign-out route. The browser signs in and out with supa
 | GET    | `/orders/:id`                                       | user                       | path: `id`                                                                 | 200 `{ order: OrderDto }`                                     |
 | GET    | `/stores/:storeId/orders`                           | user + `orders.view`       | query: [`listOrdersQuerySchema`](#get-storesstoreidorders)                 | 200 `{ orders: OrderDto[] }`                                  |
 | PATCH  | `/stores/:storeId/orders/:orderId/status`           | user + `orders.transition` | body: [`updateOrderStatusSchema`](#patch-storesstoreidordersorderidstatus) | 200 `{ order: OrderDto }`                                     |
+| GET    | `/stores/:storeId/menu-items`                       | user + `menu.edit`         | none                                                                       | 200 `{ items: ManagedMenuItemDto[] }`                         |
+| POST   | `/stores/:storeId/menu-items`                       | user + `menu.edit`         | body: [`createMenuItemSchema`](#post-storesstoreidmenu-items)              | 201 `{ item: ManagedMenuItemDto }`                            |
+| PATCH  | `/stores/:storeId/menu-items/:itemId`               | user + `menu.edit`         | body: [`updateMenuItemSchema`](#patch-storesstoreidmenu-itemsitemid)       | 200 `{ item: ManagedMenuItemDto }`                            |
+| DELETE | `/stores/:storeId/menu-items/:itemId`               | user + `menu.edit`         | path: `itemId`                                                             | 204                                                           |
 | PUT    | `/stores/:storeId/hours`                            | user + `hours.edit`        | body: [`setStoreHoursSchema`](#put-storesstoreidhours)                     | 200 `StoreScheduleResponse`                                   |
 | POST   | `/stores/:storeId/schedule-exceptions`              | user + `hours.edit`        | body: [`createExceptionSchema`](#post-storesstoreidschedule-exceptions)    | 201 `{ exception: ScheduleExceptionDto }`                     |
 | DELETE | `/stores/:storeId/schedule-exceptions/:exceptionId` | user + `hours.edit`        | path: `exceptionId`                                                        | 204                                                           |
@@ -396,6 +400,42 @@ move is a 409, `PLACED` → `PLACED` included. The request's `x-request-id` is r
 | 404    | `NOT_FOUND`                 | `:storeId` or the order id not a UUID, no such order, or an order of another store                                       |
 | 409    | `INVALID_STATUS_TRANSITION` | "Order #<number> cannot move from <current status> to <requested status>." The status quoted is the order's current one. |
 
+### GET /stores/:storeId/menu-items
+
+The menu editor's list (P3.4). Code: `requireAuth` → `requireStore('menu.edit')` → `menu.controller.listMenuItems` →
+`menu.service.listManagedItems`. Returns `{ items: ManagedMenuItemDto[] }`: every item of the store, archived ones
+included, in menu order, at most 1000 (`MANAGED_ITEMS_MAX`). Never cached. `menu.edit` is held by MANAGER and OWNER
+(staff: 403); the brand's owner also reaches the brand template's menu ([PERMISSIONS.md](PERMISSIONS.md#store-roles)).
+
+### POST /stores/:storeId/menu-items
+
+Code: `requireAuth` → `requireStore('menu.edit')` → `writeLimiter` → `validate(createMenuItemSchema)` →
+`menu.controller.createMenuItem` → `menu.service.createMenuItem`.
+
+Body: `name` (2–80), `description?` (at most 300, default `""`), `price` (whole rupees, 1–100000), `category` (1–40),
+`diet?` (`VEG`, `NON_VEG`, `EGG` or `null`), `isPopular?`, `stockQuantity?` (0–100000, or `null` for not tracked). Text
+is trimmed and counted as in [Shared field rules](#shared-field-rules); an unknown field is 400 `VALIDATION_ERROR`. The
+item goes last in its category (a new category last on the menu), with no photo (`imageUrl: null`). A store may hold
+two items with the same name. Answers 201 `{ item: ManagedMenuItemDto }`.
+
+### PATCH /stores/:storeId/menu-items/:itemId
+
+Code: as above with `validate(updateMenuItemSchema)` → `menu.service.updateMenuItem`. Body: any of the create fields but
+`stockQuantity` (a stock edit is the stock function's, with its trail: P3 PR 04), and `isAvailable` (the switch), at
+least one. A new `category` puts the item last in it, so the categories keep their places. Answers
+`{ item: ManagedMenuItemDto }`. Another store's item, an unknown or malformed id, and an archived item (read-only) are 404.
+
+### DELETE /stores/:storeId/menu-items/:itemId
+
+Archives the item: `archived_at` is set and the item is switched off (`menu_items_archived_unavailable`), so it leaves
+the public menu, is never copied to a new branch, and `POST /orders` refuses it as `ITEM_UNAVAILABLE`. The row stays:
+orders and lineage point at it, and the editor's list still shows it. 204; a repeat is 204 and changes nothing. Another
+store's item or an unknown id is 404.
+
+Every write goes through the Data API with the `x-actor` and `x-request-id` headers, leaves one `menu_item.changed`
+audit row and one `menu.changed` event ([JOBS.md](JOBS.md#menu-events)), and drops the store's cached menu, so the
+next `GET /stores/:storeRef/menu` shows it.
+
 ### PUT /stores/:storeId/hours
 
 Code: `requireAuth` → `requireStore('hours.edit')` → `writeLimiter` → `validate(setStoreHoursSchema)` →
@@ -678,18 +718,22 @@ fields of `StoreDto` a store picker needs (client: `StoreSummary`).
 
 `MenuItemDto`
 
-| Field           | Type           | Notes                                                        |
-| --------------- | -------------- | ------------------------------------------------------------ |
-| `id`            | string (uuid)  |                                                              |
-| `category`      | string         |                                                              |
-| `name`          | string         |                                                              |
-| `description`   | string         |                                                              |
-| `price`         | number         | whole rupees                                                 |
-| `imageUrl`      | string         |                                                              |
-| `isAvailable`   | boolean        | false when switched off or tracked stock is 0                |
-| `isPopular`     | boolean        |                                                              |
-| `sortOrder`     | number         |                                                              |
-| `stockQuantity` | number \| null | units left; `null` = not tracked (only the 10-per-order cap) |
+| Field           | Type                                      | Notes                                                        |
+| --------------- | ----------------------------------------- | ------------------------------------------------------------ |
+| `id`            | string (uuid)                             |                                                              |
+| `category`      | string                                    |                                                              |
+| `name`          | string                                    |                                                              |
+| `description`   | string                                    |                                                              |
+| `price`         | number                                    | whole rupees                                                 |
+| `imageUrl`      | string \| null                            | `null`: no photo yet                                         |
+| `diet`          | `'VEG'` \| `'NON_VEG'` \| `'EGG'` \| null | `null`: not marked                                           |
+| `isAvailable`   | boolean                                   | false when switched off or tracked stock is 0                |
+| `isPopular`     | boolean                                   |                                                              |
+| `sortOrder`     | number                                    |                                                              |
+| `stockQuantity` | number \| null                            | units left; `null` = not tracked (only the 10-per-order cap) |
+
+`ManagedMenuItemDto` (the editor's list): `MenuItemDto` plus `isEnabled` (boolean, the switch alone; `isAvailable` also
+counts stock) and `archivedAt` (ISO 8601 \| null). The public menu never carries archived items.
 
 `MenuResponse`: `{ rules: { maxQuantityPerItem, lowStockThreshold }, store: StoreDto, popular: MenuItemDto[], categories: { name: string, items: MenuItemDto[] }[] }`.
 
@@ -713,15 +757,15 @@ fields of `StoreDto` a store picker needs (client: `StoreSummary`).
 
 `OrderItemDto`
 
-| Field        | Type          | Notes                               |
-| ------------ | ------------- | ----------------------------------- |
-| `id`         | string (uuid) |                                     |
-| `menuItemId` | string (uuid) |                                     |
-| `name`       | string        | snapshot at order time              |
-| `unitPrice`  | number        | snapshot at order time              |
-| `quantity`   | number        |                                     |
-| `lineTotal`  | number        | `unitPrice × quantity`              |
-| `imageUrl`   | string        | the menu item's photo at order time |
+| Field        | Type           | Notes                               |
+| ------------ | -------------- | ----------------------------------- |
+| `id`         | string (uuid)  |                                     |
+| `menuItemId` | string (uuid)  |                                     |
+| `name`       | string         | snapshot at order time              |
+| `unitPrice`  | number         | snapshot at order time              |
+| `quantity`   | number         |                                     |
+| `lineTotal`  | number         | `unitPrice × quantity`              |
+| `imageUrl`   | string \| null | the menu item's photo at order time |
 
 `MemberDto`
 

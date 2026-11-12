@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import * as admin from '../controllers/admin.controller';
+import * as menu from '../controllers/menu.controller';
 import * as orders from '../controllers/order.controller';
 import * as store from '../controllers/store.controller';
 import * as team from '../controllers/team.controller';
@@ -7,6 +8,7 @@ import { requireAuth, requireStore } from '../middleware/auth';
 import { writeLimiter } from '../middleware/rateLimit';
 import { validate } from '../middleware/validate';
 import { auditQuerySchema } from '../schemas/admin.schema';
+import { createMenuItemSchema, updateMenuItemSchema } from '../schemas/menuItem.schema';
 import { listOrdersQuerySchema, updateOrderStatusSchema } from '../schemas/order.schema';
 import { updateStoreSettingsSchema } from '../schemas/storeSettings.schema';
 import { storeListQuerySchema, storeRefParamsSchema } from '../schemas/store.schema';
@@ -121,4 +123,34 @@ storesRouter.post(
   requireStore('store.pause'),
   writeLimiter,
   store.resumeStore,
+);
+// The menu editor (P3.4): managers and the owner; the brand's owner also edits the template's menu.
+storesRouter.get(
+  '/:storeId/menu-items',
+  requireAuth,
+  requireStore('menu.edit'),
+  menu.listMenuItems,
+);
+storesRouter.post(
+  '/:storeId/menu-items',
+  requireAuth,
+  requireStore('menu.edit'),
+  writeLimiter,
+  validate(createMenuItemSchema),
+  menu.createMenuItem,
+);
+storesRouter.patch(
+  '/:storeId/menu-items/:itemId',
+  requireAuth,
+  requireStore('menu.edit'),
+  writeLimiter,
+  validate(updateMenuItemSchema),
+  menu.updateMenuItem,
+);
+storesRouter.delete(
+  '/:storeId/menu-items/:itemId',
+  requireAuth,
+  requireStore('menu.edit'),
+  writeLimiter,
+  menu.archiveMenuItem,
 );

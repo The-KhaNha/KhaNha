@@ -15,6 +15,16 @@ export const LIMITS = {
   // POST /api/client-errors: sized so five reports stay well under the 64 KB a `keepalive` request may carry in
   // flight. The browser reporter cuts to the same bounds, so a tightened bound here must reach it too.
   clientErrors: { reportsMax: 5, messageMax: 500, stackMax: 3500, routeMax: 200 },
+  // A menu item (P3.4), with the matching CHECK constraints on public.menu_items. Price in whole rupees.
+  menuItem: {
+    nameMin: 2,
+    nameMax: 80,
+    descriptionMax: 300,
+    categoryMax: 40,
+    priceMin: 1,
+    priceMax: 100000,
+    stockMax: 100000,
+  },
 } as const;
 
 /** Most stores `GET /api/stores` returns (docs/CONFIGURATION.md, platform constant); the list is not paginated. */

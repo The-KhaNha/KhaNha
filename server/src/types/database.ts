@@ -270,8 +270,10 @@ export type Database = {
           archived_at: string | null;
           category: string;
           description: string;
+          diet: Database['public']['Enums']['diet_marker'] | null;
           id: string;
-          image_url: string;
+          image_url: string | null;
+          image_variants: Json | null;
           is_available: boolean;
           is_popular: boolean;
           name: string;
@@ -285,8 +287,10 @@ export type Database = {
           archived_at?: string | null;
           category: string;
           description: string;
+          diet?: Database['public']['Enums']['diet_marker'] | null;
           id?: string;
-          image_url: string;
+          image_url?: string | null;
+          image_variants?: Json | null;
           is_available?: boolean;
           is_popular?: boolean;
           name: string;
@@ -300,8 +304,10 @@ export type Database = {
           archived_at?: string | null;
           category?: string;
           description?: string;
+          diet?: Database['public']['Enums']['diet_marker'] | null;
           id?: string;
-          image_url?: string;
+          image_url?: string | null;
+          image_variants?: Json | null;
           is_available?: boolean;
           is_popular?: boolean;
           name?: string;
@@ -332,7 +338,7 @@ export type Database = {
         Row: {
           category: string;
           id: string;
-          image_url: string;
+          image_url: string | null;
           line_number: number;
           line_total_paise: number;
           menu_item_id: string;
@@ -345,7 +351,7 @@ export type Database = {
         Insert: {
           category: string;
           id?: string;
-          image_url: string;
+          image_url?: string | null;
           line_number: number;
           line_total_paise: number;
           menu_item_id: string;
@@ -358,7 +364,7 @@ export type Database = {
         Update: {
           category?: string;
           id?: string;
-          image_url?: string;
+          image_url?: string | null;
           line_number?: number;
           line_total_paise?: number;
           menu_item_id?: string;
@@ -1021,6 +1027,7 @@ export type Database = {
     };
     Enums: {
       actor_type: 'USER' | 'WORKER' | 'RECONCILER' | 'WEBHOOK' | 'SCHEDULER' | 'SYSTEM';
+      diet_marker: 'VEG' | 'NON_VEG' | 'EGG';
       order_status: 'PLACED' | 'PREPARING' | 'READY' | 'COLLECTED' | 'CANCELLED';
       payment_status: 'PENDING' | 'PAID';
       schedule_exception_kind: 'CLOSED' | 'SPECIAL_HOURS';
@@ -1152,6 +1159,7 @@ export const Constants = {
   public: {
     Enums: {
       actor_type: ['USER', 'WORKER', 'RECONCILER', 'WEBHOOK', 'SCHEDULER', 'SYSTEM'],
+      diet_marker: ['VEG', 'NON_VEG', 'EGG'],
       order_status: ['PLACED', 'PREPARING', 'READY', 'COLLECTED', 'CANCELLED'],
       payment_status: ['PENDING', 'PAID'],
       schedule_exception_kind: ['CLOSED', 'SPECIAL_HOURS'],

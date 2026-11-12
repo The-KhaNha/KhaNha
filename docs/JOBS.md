@@ -52,6 +52,14 @@ Emitted by `pause_store` and `resume_store` ([SCHEMA.md](SCHEMA.md#stores)) in t
 A repeated pause or resume emits nothing, and neither does a resume of a pause that already ran out. A pause that ends
 by itself emits nothing either: it is derived, and a sweep comes with the first consumer.
 
+## Menu events
+
+`menu.changed` (`aggregateId` and `storeId`: the store; payload `{ itemIds }`) is emitted by the `menu_items_emit_changed`
+statement triggers ([SCHEMA.md](SCHEMA.md#triggers)) in the transaction of any write that changed what a menu shows:
+an insert, or an update of anything but `stock_quantity` and `template_item_id`. One statement is one event per store,
+so a copy or a bulk edit is one event, and a stock move (every order) is none. The actor and request id come from
+`app.actor` or the Data API's `x-actor` and `x-request-id` headers. Nothing subscribes to it yet (P7.7).
+
 ## Queues and subscriptions
 
 | Queue             | Subscribed to | Consumer                           | Added by                    |

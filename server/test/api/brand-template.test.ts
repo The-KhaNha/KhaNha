@@ -19,6 +19,8 @@ const COPIED = [
   'description',
   'price_paise',
   'image_url',
+  'image_variants',
+  'diet',
   'is_popular',
   'sort_order',
 ] as const;
@@ -85,6 +87,9 @@ beforeAll(async () => {
     is_popular: false,
     stock_quantity: null,
     archived_at: null,
+    is_available: true,
+    diet: null,
+    image_variants: null,
   };
   await supabaseAdmin
     .from('menu_items')
@@ -96,6 +101,8 @@ beforeAll(async () => {
         price_paise: 2000,
         sort_order: 1,
         is_popular: true,
+        diet: 'VEG',
+        image_variants: { '400': '/media/tea-400.webp' },
       },
       {
         ...base,
@@ -112,6 +119,8 @@ beforeAll(async () => {
         price_paise: 1000,
         sort_order: 3,
         archived_at: new Date().toISOString(),
+        // An archived item is always switched off (menu_items_archived_unavailable).
+        is_available: false,
       },
     ])
     .throwOnError();
@@ -317,7 +326,7 @@ describe('create_store_from_template', () => {
     const [tea] = await itemsOf(templateId);
     await supabaseAdmin
       .from('menu_items')
-      .update({ archived_at: new Date().toISOString() })
+      .update({ archived_at: new Date().toISOString(), is_available: false })
       .eq('id', tea?.id ?? '')
       .throwOnError();
     const { data } = await openBranch(`template-branch-${tag}`).throwOnError();
@@ -349,13 +358,13 @@ describe('create_store_from_template', () => {
     }
   });
 
-  it('emits store.created for the branch', async () => {
+  it('emits store.created for the branch, and one menu.changed for its copied menu', async () => {
     const { data } = await supabaseAdmin
       .from('domain_events')
       .select('type')
       .eq('aggregate_id', branchId)
       .throwOnError();
-    expect(data.map((event) => event.type)).toEqual(['store.created']);
+    expect(data.map((event) => event.type).sort()).toEqual(['menu.changed', 'store.created']);
   });
 
   it('refuses a taken slug and leaves nothing behind', async () => {
