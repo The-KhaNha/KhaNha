@@ -10,6 +10,7 @@ import { auditQuerySchema } from '../schemas/admin.schema';
 import { listOrdersQuerySchema, updateOrderStatusSchema } from '../schemas/order.schema';
 import { updateStoreSettingsSchema } from '../schemas/storeSettings.schema';
 import { storeListQuerySchema, storeRefParamsSchema } from '../schemas/store.schema';
+import { createExceptionSchema, setStoreHoursSchema } from '../schemas/storeHours.schema';
 import { createInviteSchema } from '../schemas/team.schema';
 
 export const storeRouter = Router();
@@ -52,6 +53,30 @@ storesRouter.patch(
   writeLimiter,
   validate(updateStoreSettingsSchema),
   store.updateStoreSettings,
+);
+// Opening hours (P2.4): the week is replaced whole; exceptions are added and removed one at a time.
+storesRouter.put(
+  '/:storeId/hours',
+  requireAuth,
+  requireStore('hours.edit'),
+  writeLimiter,
+  validate(setStoreHoursSchema),
+  store.setStoreHours,
+);
+storesRouter.post(
+  '/:storeId/schedule-exceptions',
+  requireAuth,
+  requireStore('hours.edit'),
+  writeLimiter,
+  validate(createExceptionSchema),
+  store.createScheduleException,
+);
+storesRouter.delete(
+  '/:storeId/schedule-exceptions/:exceptionId',
+  requireAuth,
+  requireStore('hours.edit'),
+  writeLimiter,
+  store.deleteScheduleException,
 );
 storesRouter.get(
   '/:storeId/audit',

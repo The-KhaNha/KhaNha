@@ -260,12 +260,15 @@ describe('GET /api/admin/audit: combined and edge queries', () => {
 });
 
 describe('AUDIT_ENTITY_TYPES', () => {
-  it('lists exactly the entity types the audit_row_change triggers write', () => {
+  it('lists exactly the entity types the audit_row_change triggers and set_store_hours write', () => {
     const rows = localSql<{ entity_type: string }>(
       `select distinct split_part(split_part(pg_get_triggerdef(oid), 'audit_row_change(''', 2), '.', 1) as entity_type
          from pg_trigger where tgfoid = 'public.audit_row_change'::regproc`,
     );
-    expect(rows.map((row) => row.entity_type).sort()).toEqual([...AUDIT_ENTITY_TYPES].sort());
+    // store_hours is written by set_store_hours (one row a saved week), not by a trigger.
+    expect([...rows.map((row) => row.entity_type), 'store_hours'].sort()).toEqual(
+      [...AUDIT_ENTITY_TYPES].sort(),
+    );
   });
 });
 

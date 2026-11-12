@@ -5,6 +5,8 @@ import type { StoreListQuery } from '../schemas/store.schema';
 import { currentStore, requestContext } from '../middleware/auth';
 import type { UpdateStoreSettingsInput } from '../schemas/storeSettings.schema';
 import * as scheduleService from '../services/schedule.service';
+import type { CreateExceptionInput, SetStoreHoursInput } from '../schemas/storeHours.schema';
+import * as hoursService from '../services/storeHours.service';
 import * as settingsService from '../services/storeSettings.service';
 import type { BodyHandler } from '../types/http';
 import { toStoreDto, toStoreSettingsDto, type StoreWithBrand } from '../utils/serializers';
@@ -52,4 +54,34 @@ export const updateStoreSettings: BodyHandler<UpdateStoreSettingsInput> = async 
     requestContext(req),
   );
   res.json({ settings: toStoreSettingsDto(settings) });
+};
+
+/** PUT /api/stores/:storeId/hours, after requireStore('hours.edit'). Answers with the saved schedule. */
+export const setStoreHours: BodyHandler<SetStoreHoursInput> = async (req, res) => {
+  const store = currentStore(req);
+  await hoursService.setStoreHours(store.id, req.body, requestContext(req));
+  res.json(await scheduleService.getStoreSchedule(await storeService.getStoreById(store.id)));
+};
+
+/** POST /api/stores/:storeId/schedule-exceptions, after requireStore('hours.edit'). */
+export const createScheduleException: BodyHandler<CreateExceptionInput> = async (req, res) => {
+  const store = currentStore(req);
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: store.timezone }).format(new Date());
+  const exception = await hoursService.createException(
+    store.id,
+    today,
+    req.body,
+    requestContext(req),
+  );
+  res.status(201).json({ exception });
+};
+
+/** DELETE /api/stores/:storeId/schedule-exceptions/:exceptionId, after requireStore('hours.edit'). */
+export const deleteScheduleException: RequestHandler = async (req, res) => {
+  await hoursService.deleteException(
+    currentStore(req).id,
+    String(req.params.exceptionId),
+    requestContext(req),
+  );
+  res.status(204).end();
 };

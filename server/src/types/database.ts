@@ -912,6 +912,15 @@ export type Database = {
         Returns: undefined;
       };
       reset_demo_orders: { Args: never; Returns: undefined };
+      set_store_hours: {
+        Args: {
+          p_actor?: Json;
+          p_hours: Json;
+          p_request_id?: string;
+          p_store_id: string;
+        };
+        Returns: boolean;
+      };
       touch_session: {
         Args: {
           p_idle: string;

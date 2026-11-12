@@ -19,3 +19,6 @@ export const LIMITS = {
 
 /** Most stores `GET /api/stores` returns (docs/CONFIGURATION.md, platform constant); the list is not paginated. */
 export const STORE_LIST_MAX = 200;
+
+/** Opening hours (docs/CONFIGURATION.md, platform constants): most intervals a day, most upcoming exceptions a store holds. */
+export const HOURS_LIMITS = { intervalsPerDay: 6, upcomingExceptions: 50 } as const;
