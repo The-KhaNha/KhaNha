@@ -1958,7 +1958,7 @@ create index menu_items_template_item_id_idx on public.menu_items (template_item
   invite to it is refused.
 - **Copy at creation, push on demand.** The brand's owner opens a branch from `/manage`; it starts as an unlisted
   draft, and the owner publishes it once it has an address, weekly hours and an available item. A new store is created as a copy of the template's menu and
-  `store_settings`. A later template edit reaches only stores created after it, unless the owner pushes it to chosen
+  its settings columns (P2 keeps them on `stores`). A later template edit reaches only stores created after it, unless the owner pushes it to chosen
   stores; a push overwrites the pushed fields in those copies and is audited (`template.push`, owner only).
 - **Lineage.** Each copied item keeps `template_item_id`, so analytics compare the same dish across stores after a
   rename or a price change. `category` stays text on the item.
@@ -2163,7 +2163,7 @@ R11.2 (menu and stock). The analytics dashboard comes later, in [P7.3](#p73-rest
 
 R11.2 says staff may also update stock.
 
-- The `stock.update` capability goes to `STAFF` when `store_settings.staff_can_edit_stock` is on (the default).
+- The `stock.update` capability goes to `STAFF` when `stores.staff_can_edit_stock` is on (the default).
 - On the staff board:
   - a Stock tab with the same quick controls;
   - "Mark sold out" on any order line in the order detail ([P6.4](#p64-staff-dashboard-v2)).

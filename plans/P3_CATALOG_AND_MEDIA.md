@@ -55,7 +55,7 @@ What the code has when P2 is done (P1 and P2 as planned), and what P3 adds.
 | 05  | Client: the menu screen and the item editor         | P3.4       | 02, 03     | 20 / 720             |
 | 06  | Client: stock in `/manage` and on the staff board   | P3.4, P3.5 | 04, 05     | 14 / 520             |
 | 07  | Template push                                       | P3.1       | 05         | 14 / 560             |
-| 07b | Client: open a branch, its profile, publish         | P3.1       | 01b        | 14 / 600             |
+| 07b | Client: open a branch, its profile, publish         | P3.1       | 01b, 05    | 14 / 600             |
 | 08  | Media: the port, local storage, the uploads API     | P3.3       | 02         | 16 / 620             |
 | 09  | Media: S3 and MinIO                                 | P3.3       | 08         | 14 / 480             |
 | 10  | Media: the image pipeline in the worker             | P3.3       | 09         | 14 / 600             |
@@ -391,7 +391,7 @@ Docs: `docs/API.md`, `docs/SCHEMA.md`, `docs/PERMISSIONS.md`, `docs/ARCHITECTURE
 
 - [ ] Merged
 
-`/before-write`: reuse-scout (the `/manage` shell and store picker from P2 PR 14a, the Settings form from PR 15,
+Depends on PR 05 too: the checklist links to the menu screen. `/before-write`: reuse-scout (the `/manage` shell and store picker from P2 PR 14a, the Settings form from PR 15,
 `Input`, `Button`, `Skeleton`, `EmptyState`, `ErrorState`).
 
 - The owner's store picker gains "Open a branch": a form (name, area, address; the slug shown, editable) that
