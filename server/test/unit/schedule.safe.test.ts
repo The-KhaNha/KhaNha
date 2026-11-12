@@ -154,6 +154,23 @@ describe('openState', () => {
     expect(openState(ny, hours, [], 0, new Date('2026-03-08T08:00:00Z')).state).toBe('CLOSED');
   });
 
+  it('opens a time the spring-forward gap skips no earlier than the clock reaches it', () => {
+    // 02:30 does not exist in New York on 2026-03-08 (01:59 EST is followed by 03:00 EDT); it opens at 03:30 EDT.
+    const ny: ScheduleStore = { ...store, timezone: 'America/New_York' };
+    const hours: ScheduleHours[] = [{ dayOfWeek: 7, opensAt: '02:30', closesAt: '05:00' }];
+    // 01:45 EST, before the gap: still closed, opening at 03:30 EDT (07:30Z).
+    const early = openState(ny, hours, [], 0, new Date('2026-03-08T06:45:00Z'));
+    expect(early.state).toBe('CLOSED');
+    expect(early.nextChangeAt).toEqual(new Date('2026-03-08T07:30:00Z'));
+    expect(openState(ny, hours, [], 0, new Date('2026-03-08T07:30:00Z')).state).toBe('OPEN');
+  });
+
+  it('keeps the seconds of a stored time', () => {
+    const hours: ScheduleHours[] = [{ dayOfWeek: 1, opensAt: '09:00:30', closesAt: '17:00:00' }];
+    expect(openState(store, hours, [], 0, india(0, 9 * 60)).state).toBe('CLOSED');
+    expect(openState(store, hours, [], 0, india(0, 9 * 60 + 1)).state).toBe('OPEN');
+  });
+
   it('reads PAUSED until the pause ends, once the inputs exist', () => {
     const until = india(0, 15 * 60);
     const paused = { ...store, acceptingOrders: false, pausedUntil: until };

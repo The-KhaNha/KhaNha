@@ -34,3 +34,14 @@ create index store_schedule_exceptions_store_id_ends_on_starts_on_idx
 alter table public.store_hours enable row level security;
 alter table public.store_schedule_exceptions enable row level security;
 revoke all on table public.store_hours, public.store_schedule_exceptions from anon, authenticated;
+
+-- Audited like store_memberships: an insert or delete is recorded as [null, value] pairs. Saving a week replaces its
+-- rows, so the trail shows each interval added or removed.
+create trigger store_hours_audit
+  after insert or update or delete on public.store_hours
+  for each row execute function public.audit_row_change('store_hours.changed', 'day_of_week', 'opens_at', 'closes_at');
+create trigger store_schedule_exceptions_audit
+  after insert or update or delete on public.store_schedule_exceptions
+  for each row execute function public.audit_row_change(
+    'schedule_exception.changed', 'starts_on', 'ends_on', 'kind', 'opens_at', 'closes_at', 'label'
+  );

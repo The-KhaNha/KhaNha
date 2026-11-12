@@ -88,15 +88,23 @@ function localDay(ms: number, timeZone: string): number {
   return Math.floor((ms + offsetMs(ms, timeZone)) / DAY_MS);
 }
 
-/** The instant a local wall time (minutes after midnight of local day `day`) happens; two passes settle a clock change. */
-function wallToInstant(day: number, minutes: number, timeZone: string): number {
-  const guess = day * DAY_MS + minutes * MINUTE_MS;
-  const first = guess - offsetMs(guess, timeZone);
-  return guess - offsetMs(first, timeZone);
+/**
+ * The instant a local wall time (seconds after midnight of local day `day`) happens. Two offset lookups give the
+ * candidates; a time that exists maps back to itself (in a fall-back overlap both do, and the earlier wins). A time a
+ * spring-forward gap skips maps back to neither: it moves forward by the gap (02:30 becomes 03:30), as Temporal's
+ * 'compatible' does, so an interval never starts before its advertised opening.
+ */
+function wallToInstant(day: number, seconds: number, timeZone: string): number {
+  const wall = day * DAY_MS + seconds * 1000;
+  const first = wall - offsetMs(wall, timeZone);
+  const candidates = [first, wall - offsetMs(first, timeZone)];
+  const real = candidates.filter((at) => at + offsetMs(at, timeZone) === wall);
+  return real.length ? Math.min(...real) : Math.max(...candidates);
 }
 
-const minutesOf = (time: string): number =>
-  Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
+/** `HH:MM` or `HH:MM:SS` as seconds after midnight (Postgres `time` may carry seconds). */
+const secondsOf = (time: string): number =>
+  Number(time.slice(0, 2)) * 3600 + Number(time.slice(3, 5)) * 60 + Number(time.slice(6, 8) || 0);
 const dayOf = (date: string): number => Date.parse(`${date}T00:00:00Z`) / DAY_MS;
 /** ISO weekday of a local day: 1 = Monday ... 7 = Sunday. 1970-01-01 was a Thursday. */
 const isoWeekday = (day: number): number => ((((day + 3) % 7) + 7) % 7) + 1;
@@ -124,8 +132,8 @@ function intervalsOn(
     return [{ start: wallToInstant(day, 0, timeZone), end: wallToInstant(day + 1, 0, timeZone) }];
   }
   return wanted.map(({ opensAt, closesAt }) => {
-    const opens = minutesOf(opensAt);
-    const closes = minutesOf(closesAt);
+    const opens = secondsOf(opensAt);
+    const closes = secondsOf(closesAt);
     return {
       start: wallToInstant(day, opens, timeZone),
       end: wallToInstant(closes <= opens ? day + 1 : day, closes, timeZone),
