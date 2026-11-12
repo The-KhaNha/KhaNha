@@ -6,6 +6,7 @@ import { PageBoundary } from './components/PageBoundary';
 import { TopBar } from './components/TopBar';
 import { useAuthStore } from './features/auth/authStore';
 import { RequireAuth } from './features/auth/RequireAuth';
+import { RequireMembership } from './features/auth/RequireMembership';
 import { RequireRole } from './features/auth/RequireRole';
 import { MenuRedirect } from './features/stores/MenuRedirect';
 import { CartBar } from './features/cart/CartBar';
@@ -38,6 +39,9 @@ const RegisterPage = lazy(() =>
 const AdminPage = lazy(() => import('./pages/Admin').then((m) => ({ default: m.AdminPage })));
 const StaffDashboardPage = lazy(() =>
   import('./pages/StaffDashboard').then((m) => ({ default: m.StaffDashboardPage })),
+);
+const StaffStoresPage = lazy(() =>
+  import('./pages/StaffDashboard').then((m) => ({ default: m.StaffStoresPage })),
 );
 
 const WIDTH_CLASS = { default: 'max-w-md md:max-w-lg', wide: 'max-w-md md:max-w-2xl' } as const;
@@ -118,9 +122,17 @@ function AppShell() {
             <Route
               path="/staff"
               element={
-                <RequireRole role="STAFF">
+                <RequireMembership>
+                  <StaffStoresPage />
+                </RequireMembership>
+              }
+            />
+            <Route
+              path="/staff/:storeSlug"
+              element={
+                <RequireMembership>
                   <StaffDashboardPage />
-                </RequireRole>
+                </RequireMembership>
               }
             />
             <Route

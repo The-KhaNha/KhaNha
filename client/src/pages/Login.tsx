@@ -23,7 +23,7 @@ export function LoginPage() {
   const [serverError, setServerError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  if (user) return <Navigate to={homeFor(user.role)} replace />;
+  if (user) return <Navigate to={homeFor(user)} replace />;
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();

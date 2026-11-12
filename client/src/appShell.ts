@@ -107,6 +107,7 @@ const SHELL_BY_ROUTE: { pattern: string; config: ShellConfig }[] = [
   { pattern: '/login', config: { ...fullScreen, title: 'Sign in' } },
   { pattern: '/register', config: { ...fullScreen, title: 'Create your account' } },
   { pattern: '/staff', config: { ...fullScreen, title: 'Staff board' } },
+  { pattern: '/staff/:storeSlug', config: { ...fullScreen, title: 'Staff board' } },
 ];
 
 const NOT_FOUND_SHELL: ShellConfig = {

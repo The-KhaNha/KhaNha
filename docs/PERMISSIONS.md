@@ -130,6 +130,7 @@ band, and it is shown once, stored only as a hash and never logged. Follow-up: v
 | `POST /api/me/invites/accept`                       | 401        | yes, with the invite's token and email               | yes, with the invite's token and email               | yes, with the invite's token and email               | `requireAuth` + `inviteAcceptLimiter`; every refusal 404                                |
 | `GET /api/admin/audit`                              | 401        | 403                                                  | 403                                                  | yes                                                  | `requireAuth` + `requireAdmin`                                                          |
 | `PATCH /api/admin/flags/:key`                       | 401        | 403                                                  | 403                                                  | yes (unknown key 404)                                | `requireAuth` + `requireAdmin`                                                          |
+| `/staff`, `/staff/:storeSlug` (client routes)       | → `/login` | → `/` (no store role, or none at that store)         | the board of the store (`RequireMembership`)         | → `/` unless a member                                | `RequireMembership` (client only; the API checks `orders.view` per store)               |
 | `/admin` (client route)                             | → `/login` | → `/`                                                | → `/`                                                | renders `AdminPage`                                  | `RequireRole role="ADMIN"` (client only)                                                |
 
 The STAFF column of the two store routes means a store standing (a membership or the brand's owner, whatever the
@@ -180,14 +181,14 @@ return any row the query asks for. Every service that reads per-user data must f
 
 Code: `client/src/features/auth/RequireAuth.tsx`, `RequireRole.tsx`, `useAuthRedirect.ts`, `roles.ts`.
 
-| Guard                      | No token                               | Signed in, wrong role | Matching role |
-| -------------------------- | -------------------------------------- | --------------------- | ------------- |
-| `RequireAuth`              | redirect to `/login?next=<path+query>` | render                | render        |
-| `RequireRole role="STAFF"` | redirect to `/login?next=<path+query>` | redirect to `/`       | render        |
-| `RequireRole role="ADMIN"` | redirect to `/login?next=<path+query>` | redirect to `/`       | render        |
+| Guard                                       | No token                               | Signed in, wrong role                                         | Matching role |
+| ------------------------------------------- | -------------------------------------- | ------------------------------------------------------------- | ------------- |
+| `RequireAuth`                               | redirect to `/login?next=<path+query>` | render                                                        | render        |
+| `RequireMembership` (`/staff[/:storeSlug]`) | redirect to `/login?next=<path+query>` | redirect to `/` unless a membership matches the route's store | render        |
+| `RequireRole role="ADMIN"`                  | redirect to `/login?next=<path+query>` | redirect to `/`                                               | render        |
 
 `RequireStaff.tsx` was replaced by the generic `RequireRole.tsx` (one role prop instead of one component per role);
-`/staff` now renders `<RequireRole role="STAFF">` and `/admin` renders `<RequireRole role="ADMIN">`.
+`/staff` renders `<RequireMembership>` (a store role from `user.memberships`, at the route's store) and `/admin` renders `<RequireRole role="ADMIN">`.
 
 - Guards read `token` (and `user.role` for a role guard) from `authStore`, which mirrors the supabase-js session so
   the check is synchronous.

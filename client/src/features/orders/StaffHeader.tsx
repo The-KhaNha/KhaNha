@@ -6,13 +6,15 @@ import { formatAgo, formatTime } from '../../lib/format';
 import { useNow } from '../../lib/useNow';
 
 interface StaffHeaderProps {
-  /** From GET /api/store; undefined while it loads. */
+  /** The store's name, from the signed-in user's membership. */
   storeName?: string;
   /** Timestamp of the last successful orders fetch. */
   updatedAt: number | null;
   /** True when the last fetch failed and nothing has loaded yet. */
   offline: boolean;
   onLogout: () => void;
+  /** The pause control, in a row of its own so it never moves the board when the store loads. */
+  pause?: ReactNode;
   /** The filter row, rendered inside the sticky header. */
   children?: ReactNode;
 }
@@ -23,6 +25,7 @@ export function StaffHeader({
   updatedAt,
   offline,
   onLogout,
+  pause,
   children,
 }: StaffHeaderProps) {
   // The clock lives here, not in the page: a tick re-renders the header, never the board of cards below it.
@@ -75,6 +78,7 @@ export function StaffHeader({
           </Button>
         </div>
       </div>
+      {pause && <div className="mx-auto max-w-6xl px-4 sm:px-6">{pause}</div>}
       {children && <div className="mx-auto max-w-6xl px-4 sm:px-6">{children}</div>}
     </header>
   );
