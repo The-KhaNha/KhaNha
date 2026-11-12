@@ -10,23 +10,21 @@ are drawn in [ARCHITECTURE.md](ARCHITECTURE.md#3-authentication). Status codes a
 | ---------- | --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | anonymous  | anyone without a token                                    | read the store and menu, register, sign in                                                                                                                           |
 | `CUSTOMER` | every new account (the `profiles.role` default)           | place orders, list and read their own orders                                                                                                                         |
-| `STAFF`    | accounts whose `profiles.role` was set to `STAFF` by hand | read every order (newest `staff_order_list_limit` in the list, default 100), change order status                                                                     |
+| `STAFF`    | a store membership role only (no `profiles.role`)         | at their store: read its orders, change order status (see [Store roles](#store-roles))                                                                               |
 | `ADMIN`    | accounts whose `profiles.role` was set to `ADMIN` by hand | read and edit the site settings (`GET`/`PATCH /api/admin/settings`), read the audit log (`GET /api/admin/audit`), flip feature flags (`PATCH /api/admin/flags/:key`) |
 
 `ADMIN` is a **site-wide developer/operator role**, not a restaurant role: a separate track from `STAFF` with no
-staff powers (`requireStaff` still checks `role === 'STAFF'` exactly, so an admin gets 403 on
-`PATCH /orders/:id/status` like a customer) and no special powers over orders — an admin's own orders and profile
+staff powers (an admin without a store standing gets 403 on a store's order routes like a customer) and no special powers over orders — an admin's own orders and profile
 work exactly like a customer's. Its only privilege is the admin dashboard (`/admin`, the `site_settings` row); see
 [SCHEMA.md](SCHEMA.md#site_settings).
 
 - The role is `profiles.role` (enum `user_role`) and nothing else. It is never read from the token or from
-  `user_metadata`: users can edit their own `user_metadata`, so it must never grant `STAFF` or `ADMIN`.
+  `user_metadata`: users can edit their own `user_metadata`, so it must never grant `ADMIN`.
 - No application API route changes `profiles.role`. Only privileged database access (the secret key, or an
   administrator using the SQL editor) can change it.
 - `requireAuth` reads the role from `profiles` on every request, so promoting or demoting someone takes effect on
   their next request without signing in again.
-- Making someone staff: `update public.profiles set role = 'STAFF' where email = '…';` in the SQL editor, and, since
-  P2 PR 04, a membership of the store they work at, without which the board is empty and every order 404:
+- Making someone staff: a membership of the store they work at (the profile stays `CUSTOMER`; the `STAFF` profile role was migrated away in P2 PR 16):
   `insert into public.store_memberships (user_id, store_id, role) select id, '<store id>', 'STAFF' from public.profiles where email = '…';` (`'MANAGER'` for a manager). Since P2 PR 09 a manager or the owner can invite people through the API instead ([Team invites and removals](#team-invites-and-removals)); the SQL stays as the fallback, for example for the first manager of a store. See
   [DEPLOYMENT.md](DEPLOYMENT.md#production-first-time-setup) and [Store roles](#store-roles)). `pnpm run seed` sets
   the demo staff accounts up the same way.
@@ -43,8 +41,7 @@ Decision (ADR-001, P2.2): staff and managers are memberships of one store, not a
 chain has several stores, and one person may work one of them. Decision: a `store_memberships` row
 ([SCHEMA.md](SCHEMA.md#store_memberships)) gives `STAFF` or `MANAGER` at one store, and the brand's owner
 (`brands.owner_id`) is `OWNER` of every store of the brand with **no row**, so the last owner cannot be removed.
-Consequence: a person's standing is per store; `profiles.role` stays `STAFF` for the demo accounts until P2 PR 16, so the
-old `/staff` routes still admit them.
+Consequence: a person's standing is per store; `profiles.role` is only `CUSTOMER` or `ADMIN` in practice (the enum still has `STAFF`, unused).
 
 The caller's standings at a store are `OWNER` (owns the store's brand), their membership role and `ADMIN` (profile
 role), in that order. `accessFor` picks the first standing that holds the requested capability, else the first standing
@@ -112,14 +109,11 @@ band, and it is shown once, stored only as a hash and never logged. Follow-up: v
 | `GET /api/ready`                                    | yes        | yes                                                          | yes                                                  | yes                                                  | –                                                                                       |
 | `GET /api/config`                                   | yes        | yes                                                          | yes                                                  | yes                                                  | – (public: the same config for everyone; before the client version gate)                |
 | `POST /api/client-errors`                           | yes        | yes                                                          | yes                                                  | yes                                                  | – (public: no token; before the client version gate; per-address `clientErrorLimiter`)  |
-| `GET /api/store`                                    | yes        | yes                                                          | yes                                                  | yes                                                  | –                                                                                       |
-| `GET /api/menu`                                     | yes        | yes                                                          | yes                                                  | yes                                                  | –                                                                                       |
 | `POST /api/auth/register`                           | yes        | yes                                                          | yes                                                  | yes                                                  | –                                                                                       |
 | `GET /api/auth/me`                                  | 401        | own profile                                                  | own profile                                          | own profile                                          | `requireAuth`                                                                           |
 | `POST /api/orders`                                  | 401        | yes                                                          | yes                                                  | yes                                                  | `requireAuth`                                                                           |
-| `GET /api/orders`                                   | 401        | own orders                                                   | the boards of the stores they work at                | own orders                                           | `requireAuth` + `order.service.listOrders`                                              |
+| `GET /api/orders`                                   | 401        | own orders                                                   | own orders                                           | own orders                                           | `requireAuth` + `order.service.listOrders`                                              |
 | `GET /api/orders/:id`                               | 401        | own, or `orders.view` at its store; else 404                 | own, or `orders.view` at its store; else 404         | own, or `orders.view` at its store; else 404         | `requireAuth` + `order.service.getOrder`                                                |
-| `PATCH /api/orders/:id/status`                      | 401        | 403                                                          | `orders.transition` at its store, else 404           | 403                                                  | `requireAuth` + `requireStaff` + `order.service.updateOrderStatus`                      |
 | `GET /api/stores/:storeId/orders`                   | 401        | `orders.view` there, else 403 (404 if not visible)           | `orders.view` there, else 403 (404 if not visible)   | `orders.view` there, else 403 (404 if not visible)   | `requireAuth` + `requireStore('orders.view')`                                           |
 | `PATCH /api/stores/:storeId/orders/:orderId/status` | 401        | `orders.transition` there; another store's order 404         | `orders.transition` there; another store's order 404 | `orders.transition` there; another store's order 404 | `requireAuth` + `requireStore('orders.transition')` + `order.service.updateOrderStatus` |
 | `GET /api/admin/settings`                           | 401        | 403                                                          | 403                                                  | yes                                                  | `requireAuth` + `requireAdmin`                                                          |
@@ -142,8 +136,8 @@ The STAFF column of the two store routes means a store standing (a membership or
 profile role); a CUSTOMER or ADMIN profile with that standing gets the same. `testStoreIsolation`
 ([TESTING.md](TESTING.md)) runs the tenant matrix on each store route.
 
-Nothing stops a `STAFF` or `ADMIN` account from placing an order: `POST /api/orders` only requires a signed-in user.
-`staffOrderListLimit` and `customerOrderHistoryLimit` are the two editable `site_settings` (defaults 100 and 20); see
+Nothing stops a store member or `ADMIN` account from placing an order: `POST /api/orders` only requires a signed-in user.
+`customerOrderHistoryLimit` is an editable `site_settings` value (default 20; the staff board's length is each store's own setting); see
 [API.md#get-adminsettings](API.md#get-adminsettings).
 
 ## Server
@@ -153,9 +147,8 @@ Code: `server/src/middleware/auth.ts`.
 - `requireAuth` verifies the bearer token against the project's JWKS (`verifyCredentials` from `@supabase/server`),
   loads `id, role` from `profiles`, and sets `req.user`. A token from another Supabase project fails verification.
   A valid token whose profile is gone is 401.
-- `requireStaff` must run after `requireAuth`. It returns 403 `FORBIDDEN` unless `req.user.role === 'STAFF'`.
 - `requireAdmin` must run after `requireAuth`. It returns 403 `FORBIDDEN` unless `req.user.role === 'ADMIN'`. It
-  guards `adminRouter` (`adminRouter.use(requireAuth, requireAdmin)`), so `STAFF` cannot reach `/api/admin/*` either.
+  guards `adminRouter` (`adminRouter.use(requireAuth, requireAdmin)`), so a store member cannot reach `/api/admin/*` either.
 - `currentUser(req)` reads `req.user` and throws 401 if a route forgot `requireAuth`.
 - `orderRouter.use(requireAuth)` guards every path under `/api/orders`; `adminRouter.use(requireAuth, requireAdmin)`
   guards every path under `/api/admin`.
@@ -168,12 +161,9 @@ a missing id, and a non-UUID id is also 404. The cases look identical, so order 
 for another user's resource. `ADMIN` standing alone has no `orders.view`; an admin (or customer) with a store membership or brand ownership can also see orders at that store.
 
 `updateOrderStatus` reads the order's store first and applies `orders.transition` there the same way (404), and on
-the store route also requires the order to be of `:storeId`. Until P2 PR 04 a `STAFF` profile read and moved every
-store's orders; `test/api/store-orders.test.ts` is the guard.
+the store route also requires the order to be of `:storeId`. `test/api/store-orders.test.ts` is the guard.
 
-`listOrders` filters by `user_id` for everyone except `STAFF`, whose board is the stores they work at (members, or the brand's owner;
-`listStoreOrders`, `.in('store_id', …)`) with `limit(settings.staff_order_list_limit)` on finished orders (read from
-`site_settings`, see [SCHEMA.md](SCHEMA.md#site_settings)); others get `limit(settings.customer_order_history_limit)`.
+`listOrders` filters by `user_id` for everyone and applies `limit(settings.customer_order_history_limit)`; a store's board is `listStoreOrders` (`.eq('store_id', …)`, finished orders capped by the store's own `staff_order_list_limit`).
 
 ### Why every query scopes by user
 

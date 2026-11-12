@@ -97,7 +97,7 @@ It prints the URLs and logins when both servers answer. Press **Ctrl+C** once to
 - **Frees the API, worker and web ports first** (8000, 8001 and 5173 unless configured) — anything still listening on them (a stray `pnpm run dev`, an earlier `start.sh`) is killed. Don't run it while another copy of the project is deliberately serving those ports.
 - `--seed` runs `pnpm run seed` before starting (see [Re-seeding wipes orders](#re-seeding-wipes-orders)).
 - Starts the API and the job worker (`tsx watch`, auto-reload on server edits) and the web app (Vite, hot reloads client edits). Their output goes to **`.logs/server.log`**, **`.logs/worker.log`** and **`.logs/client.log`** (gitignored) — look there when something misbehaves.
-- Waits until `GET /api/health`, the worker's `http://localhost:8001/health`, the web app and `GET /api/menu` all return 200. If the API is up but the menu isn't, it says **"Database looks empty or unreachable — run ./start.sh --seed"** and stops.
+- Waits until `GET /api/health`, the worker's `http://localhost:8001/health`, the web app return 200 and `GET /api/stores` lists a store. If the API is up but no store is listed, it says **"Database looks empty or unreachable — run ./start.sh --seed"** and stops.
 - Does _not_ start Supabase or apply migrations — that is step 1 above (or `pnpm run db:push:staging` for staging).
 
 ### Manual start (two terminals)

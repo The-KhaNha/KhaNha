@@ -169,12 +169,6 @@ async function checkSession(
   return 'ok';
 }
 
-/** Must run after `requireAuth`. */
-export const requireStaff: RequestHandler = (req, _res, next) => {
-  if (currentUser(req).role !== 'STAFF') throw forbidden('Only staff can do that.');
-  next();
-};
-
 /**
  * Must run after `requireAuth`. ADMIN is the site-wide developer role (the admin dashboard), separate from staff:
  * an admin has no staff powers and staff cannot change site settings.

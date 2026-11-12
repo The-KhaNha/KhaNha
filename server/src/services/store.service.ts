@@ -11,29 +11,16 @@ import { supabaseAdmin } from '../utils/supabase';
 
 const STORE_SELECT = '*, brand:brands!inner(id, name, slug)';
 
-/**
- * The store `id` names, uncached, whatever its status (an unknown id is 404). Without an id, "the store" of the
- * single-store routes until P2 PR 16: the oldest, deterministic, and today's only store.
- */
-export async function getStore(id?: string): Promise<StoreWithBrand> {
-  const query = supabaseAdmin.from('stores').select(STORE_SELECT);
-  const { data: store } = await (
-    id ? query.eq('id', id) : query.order('created_at').order('id').limit(1)
-  )
+/** The store `id` names, uncached, whatever its status (an unknown id is 404). */
+export async function getStore(id: string): Promise<StoreWithBrand> {
+  const { data: store } = await supabaseAdmin
+    .from('stores')
+    .select(STORE_SELECT)
+    .eq('id', id)
     .maybeSingle()
     .throwOnError();
   if (store) return store;
-  throw notFound(
-    id ? 'Store not found.' : 'The store has not been set up yet. Run `pnpm run seed` in server/.',
-  );
-}
-
-/**
- * The store for GET /api/store, cached for PUBLIC_READ_TTL_MS. Anything that acts on the store (createOrder's
- * is_open check) calls getStore() instead, so it never trusts a stale copy.
- */
-export function getCachedStore(): Promise<StoreWithBrand> {
-  return cached('store', PUBLIC_READ_TTL_MS, () => getStore());
+  throw notFound('Store not found.');
 }
 
 /** The id a public `:storeRef` names: a uuid is the id itself, anything else is a slug. Cached; an unknown slug is 404. */

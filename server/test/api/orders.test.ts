@@ -1047,4 +1047,12 @@ describe('idempotencyKey', () => {
     const ok = await placeOrder(customer1, { idempotencyKey: key });
     expect(JSON.stringify(ok.body)).not.toContain(key);
   });
+
+  describe('POST /api/orders after the multi-store contract', () => {
+    it('no storeId -> 400 VALIDATION_ERROR naming the field (there is no default store any more)', async () => {
+      const res = await placeOrder(customer1, { storeId: undefined });
+      expect(res.status).toBe(400);
+      expect(res.body.error.details).toEqual({ field: 'storeId' });
+    });
+  });
 });

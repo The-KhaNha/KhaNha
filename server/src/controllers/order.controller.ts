@@ -45,9 +45,6 @@ export const getOrder: RequestHandler<OrderParams> = async (req, res) => {
   res.json({ order: toOrderDto(order) });
 };
 
-export const updateOrderStatus: BodyHandler<UpdateOrderStatusInput, OrderParams> = (req, res) =>
-  moveOrder(req, res, req.params.id);
-
 /** PATCH /api/stores/:storeId/orders/:orderId/status, after requireStore('orders.transition'). */
 export const updateStoreOrderStatus: BodyHandler<UpdateOrderStatusInput, StoreOrderParams> = (
   req,

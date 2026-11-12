@@ -14,7 +14,7 @@
 #     env file; default 8000, 8001 and 5173): kills whatever is still listening there from an earlier run
 #   - optionally reseeds (--seed)
 #   - starts the API, the worker and the web app, logging to .logs/server.log, .logs/worker.log and .logs/client.log
-#   - waits until the API, the worker's /health, the web app and GET /api/menu answer, then prints where to go
+#   - waits until the API, the worker's /health, the web app and GET /api/stores (with a store) answer, then prints where to go
 # It does NOT start Supabase or apply migrations; see README.md "Quick start" for the one-time setup.
 
 set -u
@@ -132,17 +132,18 @@ if [ "$api_ok" != "200" ] || [ "$worker_ok" != "200" ] || [ "$web_ok" != "200" ]
   cleanup 1
 fi
 
-# 8. The API is up, but is the database there and seeded? /api/menu needs the store and its items.
-menu_ok=""
+# 8. The API is up, but is the database there and seeded? GET /api/stores answers 200 even when empty, so look for a
+#    store in the body.
+seeded=""
 for i in 1 2 3; do
-  menu_ok=$(http_status http://localhost:$API_PORT/api/menu)
-  [ "$menu_ok" = "200" ] && break
+  stores=$(curl -s --max-time 5 http://localhost:$API_PORT/api/stores 2>/dev/null)
+  case "$stores" in *'"slug"'*) seeded=yes; break ;; esac
   sleep 1
 done
 
-if [ "$menu_ok" != "200" ]; then
+if [ -z "$seeded" ]; then
   echo "${RED}Database looks empty or unreachable — run ./start.sh --seed${OFF}"
-  echo "${DIM}(GET /api/menu answered $menu_ok. First time on staging? Apply the migrations with 'cd server && pnpm run db:push:staging' first. Details in .logs/server.log)${OFF}"
+  echo "${DIM}(GET /api/stores listed no store. First time on staging? Apply the migrations with 'cd server && pnpm run db:push:staging' first. Details in .logs/server.log)${OFF}"
   cleanup 1
 fi
 

@@ -14,10 +14,6 @@ import { createExceptionSchema, setStoreHoursSchema } from '../schemas/storeHour
 import { createInviteSchema } from '../schemas/team.schema';
 import { pauseStoreSchema } from '../schemas/storePause.schema';
 
-export const storeRouter = Router();
-
-storeRouter.get('/', store.getStore);
-
 export const storesRouter = Router();
 
 storesRouter.get('/', validate(storeListQuerySchema, 'query'), store.listStores);

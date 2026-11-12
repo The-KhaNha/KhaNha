@@ -13,10 +13,6 @@ import type { PauseStoreInput } from '../schemas/storePause.schema';
 import type { BodyHandler } from '../types/http';
 import { toStoreDto, toStoreSettingsDto, type StoreWithBrand } from '../utils/serializers';
 
-export const getStore: RequestHandler = async (_req, res) => {
-  res.json({ store: await storeDto(await storeService.getCachedStore()) });
-};
-
 export const listStores: RequestHandler = async (req, res) => {
   const { area } = req.query as StoreListQuery;
   res.json({ stores: await storeService.listStores(area) });

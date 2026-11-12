@@ -136,7 +136,6 @@ export interface InviteDto {
 /** Site-wide limits edited on the admin dashboard (the site_settings row). */
 export interface SiteSettingsDto {
   customerOrderHistoryLimit: number;
-  staffOrderListLimit: number;
   /** Most lines one order may have (enforced by createOrder). */
   maxLinesPerOrder: number;
   /** Client poll intervals in ms: one order's page, the customer's order list, the staff board. */

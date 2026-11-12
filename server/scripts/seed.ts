@@ -206,7 +206,6 @@ async function seedDemo(): Promise<void> {
     .from('site_settings')
     .update({
       customer_order_history_limit: 20,
-      staff_order_list_limit: 100,
       max_lines_per_order: 30,
       order_poll_ms: 4000,
       orders_poll_ms: 8000,
@@ -251,7 +250,8 @@ Set up Food Pickup (production: ${env.SUPABASE_URL})
 ${stores.join('\n')}
 
 No accounts were created. To add a staff member: Supabase dashboard → Authentication → Add user (auto-confirm),
-then in the SQL editor: update public.profiles set role = 'STAFF' where email = '<their email>';
+then in the SQL editor: insert into public.store_memberships (user_id, store_id, role) select id, '<store id>', 'STAFF'
+from public.profiles where email = '<their email>';  -- or invite them from /manage once an owner or manager exists
 `);
 }
 

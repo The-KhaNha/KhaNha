@@ -23,9 +23,10 @@ The user must always see what you are thinking and what background work is doing
 ## 2. Production context
 
 food-pickup is a **live production app**: campus-café pickup ordering. Customers browse the menu, order and track
-pickup; staff move orders through PLACED → PREPARING → READY → COLLECTED (or CANCELLED). Roles: CUSTOMER, STAFF (the
-restaurant's order board, `/staff`), ADMIN (site-wide operator, `/admin` site settings; no staff powers). At a store,
-a person is its brand's OWNER (`brands.owner_id`), or a MANAGER or STAFF member (`store_memberships`); what each may
+pickup; staff move orders through PLACED → PREPARING → READY → COLLECTED (or CANCELLED). Profile roles: CUSTOMER and
+ADMIN (site-wide operator, `/admin` site settings; no staff powers). At a store, a person is its brand's OWNER
+(`brands.owner_id`), or a MANAGER or STAFF member (`store_memberships`; the board is `/staff`, `/manage` for owners and
+managers); what each may
 do is the capability map in `server/src/domain/permissions.ts` (`docs/PERMISSIONS.md`). Site-wide limits live in
 the one-row `site_settings` table, edited by admins.
 

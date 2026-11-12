@@ -91,7 +91,7 @@ export async function createOrder(
   const ids = input.items.map((line) => line.menuItemId).filter(isUuid);
   // None of these reads depends on another, so they go out together: one round trip to the database instead of one
   // each (test/api/order-reads.test.ts). The checks below still run in the same order.
-  const [existing, settings, store, earlySchedule, customerName, menuItems] = await Promise.all([
+  const [existing, settings, store, schedule, customerName, menuItems] = await Promise.all([
     input.idempotencyKey
       ? selectOrders()
           .eq('user_id', user.id)
@@ -104,9 +104,8 @@ export async function createOrder(
     // is harmless for a cap this generous.
     getSettings(),
     getStore(input.storeId),
-    // The legacy single-store call names no store yet: its schedule is read below, once the store is known.
     // Uncached, like the store: a write never reads through the cache.
-    input.storeId ? loadSchedule(input.storeId) : null,
+    loadSchedule(input.storeId),
     input.customerName ?? lookupUserName(user.id),
     supabaseAdmin
       .from('menu_items')
@@ -130,11 +129,7 @@ export async function createOrder(
     throw validationError(`An order can have at most ${maxLines} items.`);
 
   const now = new Date();
-  const { state, nextChangeAt } = computeOpenState(
-    store,
-    earlySchedule ?? (await loadSchedule(store.id)),
-    now,
-  );
+  const { state, nextChangeAt } = computeOpenState(store, schedule, now);
   if (state === 'PAUSED')
     throw storePaused(store.name, pausedBack(nextChangeAt, now, store.timezone));
   if (state !== 'OPEN' && state !== 'CLOSING_SOON')
@@ -243,17 +238,13 @@ function matchesRequest(
 }
 
 /**
- * GET /api/orders. Both lists are polled, so both are bounded to the newest orders. The sizes are site settings (admin
- * dashboard): a customer sees their newest `customer_order_history_limit`; a STAFF profile, until P2 PR 16, the board
- * of every store they work at, as a member or as its brand's owner (listStoreOrders), so the list matches the orders
- * getOrder and updateOrderStatus let them reach. Newest first.
+ * GET /api/orders: the caller's own orders, newest first, bounded to `customer_order_history_limit` (a site setting)
+ * because the list is polled. A store's board reads its orders through listStoreOrders.
  */
 export async function listOrders(
   user: AuthUser,
   status?: OrderStatus,
 ): Promise<OrderWithDetails[]> {
-  if (user.role === 'STAFF') return listStoreOrders(await storesWorkedAt(user), status);
-
   const settings = await getSettings();
   let query = selectOrders()
     .order('created_at', { ascending: false })
@@ -262,18 +253,6 @@ export async function listOrders(
   if (status) query = query.eq('status', status);
   const { data: orders } = await query.throwOnError();
   return orders;
-}
-
-/** The stores where the caller has a store standing: their memberships, and every store of a brand they own. */
-async function storesWorkedAt(user: AuthUser): Promise<string[]> {
-  const ids = user.memberships.map((m) => m.storeId);
-  if (user.ownedBrandIds.length === 0) return ids;
-  const { data: owned } = await supabaseAdmin
-    .from('stores')
-    .select('id')
-    .in('brand_id', user.ownedBrandIds)
-    .throwOnError();
-  return [...new Set([...ids, ...owned.map((store) => store.id)])];
 }
 
 /**

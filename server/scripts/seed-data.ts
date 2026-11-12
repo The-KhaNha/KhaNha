@@ -208,8 +208,8 @@ export const DEMO_ACCOUNTS: {
   /** The store the account works at (P2.2), by slug. */
   store?: { slug: string; role: StoreRole };
 }[] = [
-  // A staff member and a manager per store. Their profile role is STAFF until P2 PR 16, so the old staff board
-  // (/staff) still admits them; every store team account shares SEED_STAFF_PASSWORD on staging.
+  // A staff member and a manager per store: CUSTOMER profiles whose store role is their membership (P2.7). Every
+  // store team account shares SEED_STAFF_PASSWORD on staging.
   ...teamAccounts('Campus Cafe', 'campuscafe.local', 'campus-cafe'),
   ...teamAccounts('North Gate', 'northgate.brewlane.local', 'brew-lane-north-gate'),
   ...teamAccounts('Tech Park', 'techpark.brewlane.local', 'brew-lane-tech-park'),
@@ -251,7 +251,7 @@ export const DEMO_ACCOUNTS: {
 
 function teamAccounts(storeName: string, domain: string, slug: string) {
   return (['STAFF', 'MANAGER'] as const).map((role) => ({
-    role: 'STAFF' as const,
+    role: 'CUSTOMER' as const,
     name: `${storeName} ${role === 'STAFF' ? 'Staff' : 'Manager'}`,
     email: `${role.toLowerCase()}@${domain}`,
     localPassword: `${role.toLowerCase()}123`,

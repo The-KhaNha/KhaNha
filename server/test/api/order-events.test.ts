@@ -207,7 +207,7 @@ describe('order transitions emit their events', () => {
         store_id: storeId,
         payload: { orderNumber, from: i === 0 ? 'PLACED' : steps[i - 1], to },
         // The caller's standing at the order's store rides with the actor (P2 PR 04), as on the store routes.
-        actor: { ...userActor(staff, 'STAFF'), storeRole: 'STAFF' },
+        actor: { ...userActor(staff, 'CUSTOMER'), storeRole: 'STAFF' },
         request_id: requestIds[i],
       })),
     );

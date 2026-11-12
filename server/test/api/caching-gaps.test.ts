@@ -4,7 +4,13 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import type { MenuItemDto, MenuResponse } from '../../src/types/api';
 import { invalidate } from '../../src/utils/cache';
 import { supabaseAdmin } from '../../src/utils/supabase';
-import { createTestUser, deleteTestUser, resetDemoData, type TestUser } from '../setup/helpers';
+import {
+  createTestUser,
+  deleteTestUser,
+  menuPath,
+  resetDemoData,
+  type TestUser,
+} from '../setup/helpers';
 import { api } from '../setup/api';
 
 let customer: TestUser;
@@ -31,14 +37,14 @@ afterAll(async () => {
 });
 
 async function menuStockOf(name: string): Promise<number | null> {
-  const res = await api().get('/api/menu');
+  const res = await api().get(await menuPath());
   const items = (res.body as MenuResponse).categories.flatMap((c) => c.items);
   return items.find((item: MenuItemDto) => item.name === name)!.stockQuantity;
 }
 
 describe('menu cache invalidation on an insufficient-stock refusal', () => {
   it('drops the cached menu even when the order is refused for stock, not just when it succeeds', async () => {
-    const menu = (await api().get('/api/menu')).body as MenuResponse;
+    const menu = (await api().get(await menuPath())).body as MenuResponse;
     const muffin = menu.categories
       .flatMap((c) => c.items)
       .find((i) => i.name === 'Blueberry Muffin')!;
@@ -60,7 +66,7 @@ describe('menu cache invalidation on an insufficient-stock refusal', () => {
     const refused = await api()
       .post('/api/orders')
       .set('Authorization', `Bearer ${customer.token}`)
-      .send({ items: [{ menuItemId: muffin.id, quantity: 3 }] });
+      .send({ storeId, items: [{ menuItemId: muffin.id, quantity: 3 }] });
     expect(refused.status).toBe(400);
     expect(refused.body.error.code).toBe('INSUFFICIENT_STOCK');
 
@@ -69,31 +75,11 @@ describe('menu cache invalidation on an insufficient-stock refusal', () => {
   });
 });
 
-describe('cached store reflects an update once invalidated', () => {
-  afterEach(async () => {
-    await supabaseAdmin.from('stores').update({ is_open: true }).eq('id', storeId).throwOnError();
-    invalidate('store');
-  });
-
-  it('keeps serving the cached value within the TTL, then serves the fresh one after invalidate()', async () => {
-    const before = await api().get('/api/store');
-    expect(before.body.store.isOpen).toBe(true); // warms the cache
-
-    await supabaseAdmin.from('stores').update({ is_open: false }).eq('id', storeId).throwOnError();
-    const stillCached = await api().get('/api/store');
-    expect(stillCached.body.store.isOpen).toBe(true); // stale on purpose: within the TTL
-
-    invalidate('store');
-    const fresh = await api().get('/api/store');
-    expect(fresh.body.store.isOpen).toBe(false);
-  });
-});
-
 describe('site_settings cache reflects a direct DB change once invalidated', () => {
   afterEach(async () => {
     await supabaseAdmin
       .from('site_settings')
-      .update({ staff_order_list_limit: 100 })
+      .update({ customer_order_history_limit: 20 })
       .eq('id', true)
       .throwOnError();
     invalidate('site_settings');
@@ -103,49 +89,49 @@ describe('site_settings cache reflects a direct DB change once invalidated', () 
     const before = await api()
       .get('/api/admin/settings')
       .set('Authorization', `Bearer ${admin.token}`);
-    expect(before.body.settings.staffOrderListLimit).toBe(100); // warms the cache
+    expect(before.body.settings.customerOrderHistoryLimit).toBe(20); // warms the cache
 
     // Bypasses the cache and the PATCH endpoint, the way a dashboard edit or another API instance would.
     await supabaseAdmin
       .from('site_settings')
-      .update({ staff_order_list_limit: 42 })
+      .update({ customer_order_history_limit: 42 })
       .eq('id', true)
       .throwOnError();
     const stillCached = await api()
       .get('/api/admin/settings')
       .set('Authorization', `Bearer ${admin.token}`);
-    expect(stillCached.body.settings.staffOrderListLimit).toBe(100); // stale on purpose: within the TTL
+    expect(stillCached.body.settings.customerOrderHistoryLimit).toBe(20); // stale on purpose: within the TTL
 
     invalidate('site_settings');
     const fresh = await api()
       .get('/api/admin/settings')
       .set('Authorization', `Bearer ${admin.token}`);
-    expect(fresh.body.settings.staffOrderListLimit).toBe(42);
+    expect(fresh.body.settings.customerOrderHistoryLimit).toBe(42);
   });
 
   it('a PATCH invalidates immediately: the next GET never serves the pre-PATCH value', async () => {
     await supabaseAdmin
       .from('site_settings')
-      .update({ staff_order_list_limit: 7 })
+      .update({ customer_order_history_limit: 7 })
       .eq('id', true)
       .throwOnError();
     invalidate('site_settings');
     const warm = await api()
       .get('/api/admin/settings')
       .set('Authorization', `Bearer ${admin.token}`);
-    expect(warm.body.settings.staffOrderListLimit).toBe(7); // warms the cache at 7
+    expect(warm.body.settings.customerOrderHistoryLimit).toBe(7); // warms the cache at 7
 
     const patched = await api()
       .patch('/api/admin/settings')
       .set('Authorization', `Bearer ${admin.token}`)
-      .send({ staffOrderListLimit: 55 });
+      .send({ customerOrderHistoryLimit: 55 });
     expect(patched.status).toBe(200);
-    expect(patched.body.settings.staffOrderListLimit).toBe(55);
+    expect(patched.body.settings.customerOrderHistoryLimit).toBe(55);
 
     const after = await api()
       .get('/api/admin/settings')
       .set('Authorization', `Bearer ${admin.token}`);
-    expect(after.body.settings.staffOrderListLimit).toBe(55);
+    expect(after.body.settings.customerOrderHistoryLimit).toBe(55);
   });
 });
 
