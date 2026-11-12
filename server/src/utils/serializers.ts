@@ -4,6 +4,8 @@ import type { StoreRole } from '../types/enums';
 import type {
   AuditEntryDto,
   FeatureFlagDto,
+  InviteDto,
+  MemberDto,
   MenuItemDto,
   OrderDto,
   OrderItemDto,
@@ -81,6 +83,33 @@ export function toStoreSettingsDto(settings: StoreSettings): StoreSettingsDto {
     lowStockThreshold: settings.low_stock_threshold,
     staffOrderListLimit: settings.staff_order_list_limit,
     lastOrderMinutesBeforeClose: settings.last_order_minutes_before_close,
+  };
+}
+
+type MemberRow = Pick<Tables<'store_memberships'>, 'id' | 'role' | 'created_at'> & {
+  user: Pick<Tables<'profiles'>, 'id' | 'name' | 'email'>;
+};
+
+export function toMemberDto(member: MemberRow): MemberDto {
+  return {
+    id: member.id,
+    userId: member.user.id,
+    name: member.user.name,
+    email: member.user.email,
+    role: member.role,
+    joinedAt: toIso(member.created_at),
+  };
+}
+
+export function toInviteDto(
+  invite: Pick<Tables<'store_invites'>, 'id' | 'email' | 'role' | 'expires_at' | 'created_at'>,
+): InviteDto {
+  return {
+    id: invite.id,
+    email: invite.email,
+    role: invite.role,
+    expiresAt: toIso(invite.expires_at),
+    createdAt: toIso(invite.created_at),
   };
 }
 

@@ -164,6 +164,25 @@ export interface ApiErrorEnvelope {
 }
 
 /** A store's own limits (GET/PATCH /api/stores/:storeId/settings), edited by its manager or owner. */
+/** One person on a store's team (GET /api/stores/:storeId/members). */
+export interface Member {
+  id: string;
+  userId: string;
+  name: string;
+  email: string;
+  role: StoreRole;
+  joinedAt: string;
+}
+
+/** An open invite; one past `expiresAt` can no longer be accepted. */
+export interface Invite {
+  id: string;
+  email: string;
+  role: StoreRole;
+  expiresAt: string;
+  createdAt: string;
+}
+
 export interface StoreSettings {
   maxQuantityPerItem: number;
   lowStockThreshold: number;

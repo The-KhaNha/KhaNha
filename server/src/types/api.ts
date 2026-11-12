@@ -113,6 +113,26 @@ export interface StoreSettingsDto {
   lastOrderMinutesBeforeClose: number;
 }
 
+/** One person on a store's team (GET /api/stores/:storeId/members). The brand's owner is not a member. */
+export interface MemberDto {
+  /** The membership's id, which DELETE /api/stores/:storeId/members/:membershipId takes. */
+  id: string;
+  userId: string;
+  name: string;
+  email: string;
+  role: StoreRole;
+  joinedAt: string;
+}
+
+/** An open invite: not accepted, not revoked. One past `expiresAt` can no longer be accepted. */
+export interface InviteDto {
+  id: string;
+  email: string;
+  role: StoreRole;
+  expiresAt: string;
+  createdAt: string;
+}
+
 /** Site-wide limits edited on the admin dashboard (the site_settings row). */
 export interface SiteSettingsDto {
   customerOrderHistoryLimit: number;
