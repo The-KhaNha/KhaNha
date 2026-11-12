@@ -105,7 +105,13 @@ export function computeOpenState(
   now = new Date(),
 ): OpenState {
   return openState(
-    { status: store.status, isOpen: store.is_open, timezone: store.timezone },
+    {
+      status: store.status,
+      isOpen: store.is_open,
+      timezone: store.timezone,
+      acceptingOrders: store.accepting_orders,
+      pausedUntil: store.paused_until ? new Date(store.paused_until) : null,
+    },
     schedule.hours,
     schedule.exceptions,
     store.last_order_minutes_before_close,

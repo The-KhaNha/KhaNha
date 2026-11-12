@@ -12,6 +12,7 @@ import { updateStoreSettingsSchema } from '../schemas/storeSettings.schema';
 import { storeListQuerySchema, storeRefParamsSchema } from '../schemas/store.schema';
 import { createExceptionSchema, setStoreHoursSchema } from '../schemas/storeHours.schema';
 import { createInviteSchema } from '../schemas/team.schema';
+import { pauseStoreSchema } from '../schemas/storePause.schema';
 
 export const storeRouter = Router();
 
@@ -108,4 +109,20 @@ storesRouter.delete(
   requireStore('team.manageStaff'),
   writeLimiter,
   team.removeMember,
+);
+// Pause and resume (P2.5): staff, managers, the owner, and an admin as support.
+storesRouter.post(
+  '/:storeId/pause',
+  requireAuth,
+  requireStore('store.pause'),
+  writeLimiter,
+  validate(pauseStoreSchema),
+  store.pauseStore,
+);
+storesRouter.post(
+  '/:storeId/resume',
+  requireAuth,
+  requireStore('store.pause'),
+  writeLimiter,
+  store.resumeStore,
 );

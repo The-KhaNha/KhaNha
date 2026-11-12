@@ -25,7 +25,7 @@ export interface ScheduleStore {
   /** The manual "closed now" switch. */
   isOpen: boolean;
   timezone: string;
-  /** Wired in P2.5; until then a store is never paused. */
+  /** A pause (P2.5): no orders until `pausedUntil`, or until resumed when it is null. */
   acceptingOrders?: boolean;
   pausedUntil?: Date | null;
 }

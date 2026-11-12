@@ -65,6 +65,8 @@ it has (so a visible store answers 403), else none. An ADMIN who is also a STAFF
 
 `ADMIN` holds only `store.pause`, `team.*` and `audit.store`: no kitchen power of its own (an ADMIN with a store membership still has that membership's kitchen access).
 
+`store.pause` guards `POST /stores/:storeId/pause` and `POST /stores/:storeId/resume` ([API.md](API.md#post-storesstoreidpause)); STAFF, MANAGER, OWNER and ADMIN may pause.
+
 `hours.edit` guards `PUT /stores/:storeId/hours` and the schedule-exception POST and DELETE ([API.md](API.md#put-storesstoreidhours)); STAFF get 403.
 
 `requireStore(capability)` (`server/src/middleware/auth.ts`, after `requireAuth`) guards a route with `:storeId`:
@@ -123,6 +125,8 @@ band, and it is shown once, stored only as a hash and never logged. Follow-up: v
 | `GET /api/admin/settings`                           | 401        | 403                                                  | 403                                                  | yes                                                  | `requireAuth` + `requireAdmin`                                                          |
 | `PATCH /api/admin/settings`                         | 401        | 403                                                  | 403                                                  | yes                                                  | `requireAuth` + `requireAdmin`                                                          |
 | `GET /api/stores/:storeId/audit`                    | 401        | 403                                                  | `audit.store` there (MANAGER, OWNER), else 403       | 403 unless a MANAGER/OWNER/ADMIN standing there      | `requireAuth` + `requireStore('audit.store')`                                           |
+| `POST /api/stores/:storeId/pause`                   | 401        | `store.pause` there, else 403 (404 if not visible)   | `store.pause` there, else 403 (404 if not visible)   | `store.pause` (ADMIN), else 403 (404 if not visible) | `requireAuth` + `requireStore('store.pause')` + `writeLimiter`; `storePause.service`    |
+| `POST /api/stores/:storeId/resume`                  | 401        | `store.pause` there, else 403 (404 if not visible)   | `store.pause` there, else 403 (404 if not visible)   | `store.pause` (ADMIN), else 403 (404 if not visible) | `requireAuth` + `requireStore('store.pause')` + `writeLimiter`; `storePause.service`    |
 | `GET /api/stores/:storeId/members`                  | 401        | 403                                                  | `team.manageStaff` there (MANAGER, OWNER), else 403  | `team.manageStaff` (ADMIN), else 403                 | `requireAuth` + `requireStore('team.manageStaff')`                                      |
 | `POST /api/stores/:storeId/invites`                 | 401        | 403                                                  | `team.manageStaff` there (MANAGER, OWNER), else 403  | `team.manageStaff` (ADMIN), else 403                 | same + `writeLimiter`; a `MANAGER` invite also needs `team.manageManagers`              |
 | `DELETE /api/stores/:storeId/invites/:inviteId`     | 401        | 403                                                  | `team.manageStaff` there (MANAGER, OWNER), else 403  | `team.manageStaff` (ADMIN), else 403                 | same; a `MANAGER` invite also needs `team.manageManagers`                               |
