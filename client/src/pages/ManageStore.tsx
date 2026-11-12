@@ -11,6 +11,7 @@ import { cn } from '../lib/cn';
 import { ManageSettingsTab } from './ManageSettings';
 import { ManageTeamTab } from './ManageTeam';
 import { NotFoundPage } from './NotFound';
+import { ManageHoursPage } from './ManageHours';
 
 const ComingNext = () => (
   <EmptyState
@@ -48,6 +49,7 @@ export function ManageStorePage() {
   // An admin holds no `settings.edit`: the tab is not offered (and its route is the not-found page).
   const tabs = MANAGE_TABS.filter((t) => t.path !== 'settings' || canEditSettings(user, store));
   const elements: Record<string, ReactNode> = {
+    hours: <ManageHoursPage store={store} onChanged={retry} />,
     settings: <ManageSettingsTab storeId={store.id} />,
     team: <ManageTeamTab store={store} user={user} />,
   };

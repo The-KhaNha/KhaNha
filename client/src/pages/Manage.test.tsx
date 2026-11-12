@@ -54,6 +54,8 @@ vi.mock('../features/stores/useStores', () => ({
     retry: () => {},
   }),
 }));
+// The hours tab loads its week through the services; it is tested in ManageHours.test.tsx.
+vi.mock('../services/stores', () => ({ fetchStoreHours: () => new Promise(() => {}) }));
 const { ManagePage } = await import('./Manage');
 const { ManageStorePage } = await import('./ManageStore');
 const { RequireAuth } = await import('../features/auth/RequireAuth');
@@ -159,7 +161,7 @@ describe('/manage/:storeSlug shell', () => {
     const nav = screen.getByRole('navigation', { name: 'Manage' });
     for (const tab of ['hours', 'settings', 'team'])
       expect(nav.querySelector(`a[href="/manage/a/${tab}"]`)).not.toBeNull();
-    expect(screen.getByText('Coming next')).toBeInTheDocument();
+    expect(screen.getByLabelText('Loading the hours')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Hours' })).toHaveAttribute('aria-current', 'page');
   });
 
