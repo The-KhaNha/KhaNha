@@ -239,7 +239,7 @@ flowchart TD
   RunSeed -->|"ok"| Start
   Start["Start API and worker (tsx watch) and Vite in the chosen mode<br/>logs → .logs/server.log, .logs/worker.log, .logs/client.log"] --> Wait{"/api/health, :8001/health and :5173 return 200<br/>within 45 s?"}
   Wait -->|"no"| X6["Stop all three, point at the logs"]
-  Wait -->|"yes"| Menu{"/api/menu returns 200?"}
+  Wait -->|"yes"| Menu{"/api/stores lists a store?"}
   Menu -->|"no"| X7["Stop all three: database empty or unreachable, run --seed"]
   Menu -->|"yes"| Ready["Print URLs, test logins and APP_ENV, wait for Ctrl+C"]
 ```

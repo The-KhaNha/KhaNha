@@ -73,7 +73,7 @@ A blank value (`RATE_LIMIT_IP_MAX=`) counts as unset and takes the default; writ
 
 | `RATE_LIMIT_WINDOW_MS` | 60000 | 1000–3600000 | `middleware/rateLimit.ts`: the fixed window every limit below counts in |
 | `RATE_LIMIT_IP_MAX` | 600 | ≥ 0 (0 = off) | requests per window on all of `/api`, per signed-in account (verified token) or else per address: a flood guard only; campus Wi-Fi puts many customers behind one address, so a signed-in customer never shares it ([ADR-009](adr/009-rate-limiting-token-buckets.md)) |
-| `RATE_LIMIT_WRITE_MAX` | 30 | ≥ 0 (0 = off) | writes per signed-in user per window (`POST /orders`, `PATCH /orders/:id/status`, `PATCH /admin/settings`, `PATCH /admin/flags/:key`): the real abuse limit |
+| `RATE_LIMIT_WRITE_MAX` | 30 | ≥ 0 (0 = off) | writes per signed-in user per window (`POST /orders`, the store writes under `/stores/:storeId` such as an order's status, hours, pause, settings and team, `PATCH /admin/settings`, `PATCH /admin/flags/:key`): the real abuse limit |
 | `RATE_LIMIT_REGISTER_MAX` | 10 | ≥ 0 (0 = off) | `POST /auth/register` per address per window |
 | `RATE_LIMIT_CLIENT_ERRORS_MAX` | 30 | ≥ 0 (0 = off) | `POST /client-errors` requests (each up to 5 reports) per address per window |
 | `RATE_LIMIT_INVITE_ACCEPT_MAX` | 10 | ≥ 0 (0 = off) | `POST /me/invites/accept` per signed-in user per window (`inviteAcceptLimiter`) |
@@ -111,7 +111,7 @@ Server-only platform constants (no client copy, so not in the parity test):
 | `STORE_LIST_MAX`                  | 200                                           | `schemas/limits.ts`: most stores `GET /api/stores` returns (not paginated)                                                                                                                                                                                                                  |
 | `HOURS_LIMITS.intervalsPerDay`    | 6                                             | `schemas/limits.ts`: most opening intervals one day of a store's week holds                                                                                                                                                                                                                 |
 | `HOURS_LIMITS.upcomingExceptions` | 50                                            | `schemas/limits.ts`: most upcoming schedule exceptions (ending today or later) a store holds                                                                                                                                                                                                |
-| `MENU_ITEMS_MAX`                  | 500                                           | `menu.service.ts`: most items one `GET /api/menu` carries (lowest `sort_order` first, ties by `id`); logs `warn` \"Menu truncated\" with the total when it bites; pagination comes with the P3.1 catalog                                                                                    |
+| `MENU_ITEMS_MAX`                  | 500                                           | `menu.service.ts`: most items one `GET /api/stores/:storeRef/menu` carries (lowest `sort_order` first, ties by `id`); logs `warn` \"Menu truncated\" with the total when it bites; pagination comes with the P3.1 catalog                                                                   |
 
 ## What stays in code
 

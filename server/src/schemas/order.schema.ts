@@ -76,7 +76,7 @@ export const createOrderSchema = z
     // server answers a repeat with the order it already placed (place_order). Optional, so the deployed client
     // that sends none keeps working.
     idempotencyKey: z.string().uuid('idempotencyKey must be a UUID.').optional(),
-    // The store the order is for. Optional until P2 PR 16 (the deployed client sends none): without it, the oldest.
+    // The store the order is for: required (400 without), every order belongs to one store.
     storeId: z.string('storeId is required.').uuid('storeId must be a UUID.'),
   })
   // Lines are counted as sent, before duplicates merge (docs/API.md): the lines limit applies to lineCount.
