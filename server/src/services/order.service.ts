@@ -129,11 +129,7 @@ export async function createOrder(
     throw validationError(`An order can have at most ${maxLines} items.`);
 
   const now = new Date();
-  const { state, nextChangeAt } = computeOpenState(
-    store,
-    schedule,
-    now,
-  );
+  const { state, nextChangeAt } = computeOpenState(store, schedule, now);
   if (state === 'PAUSED')
     throw storePaused(store.name, pausedBack(nextChangeAt, now, store.timezone));
   if (state !== 'OPEN' && state !== 'CLOSING_SOON')
