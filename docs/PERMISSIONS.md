@@ -188,9 +188,9 @@ Code: `client/src/features/auth/RequireAuth.tsx`, `RequireRole.tsx`, `useAuthRed
 - Guards read `token` (and `user.role` for a role guard) from `authStore`, which mirrors the supabase-js session so
   the check is synchronous.
 - Which routes use which guard: [FRONTEND_STRUCTURE.md](FRONTEND_STRUCTURE.md#routes).
-- After sign-in or registration, `useAuthRedirect` sends non-customers to `roles.homeFor(user.role)` (`STAFF` →
-  `/staff`, `ADMIN` → `/admin`) and everyone else to `?next`, but only when `next` starts with `/` and not `//`
-  (same-site paths only), otherwise to `/`.
+- After sign-in or registration, `useAuthRedirect` sends every account to `?next` when `next` starts with `/` and not
+  `//` (same-site paths only: an invite's `/join` comes back this way for staff too), otherwise to `roles.homeFor(user)`
+  (`ADMIN` → `/admin`, an owner or manager → `/manage`, a store member → `/staff`, anyone else → `/`).
 - On any 401 from the API for a request that carried a token, `services/api.ts` calls `authStore.clearSession()`, so
   the guard redirects to sign-in on the next render.
 - The guards only improve the UX. The API enforces every rule again.

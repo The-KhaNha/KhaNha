@@ -82,20 +82,25 @@ export function WeekGrid({ week, onChange, disabled = false }: WeekGridProps) {
                   intervals.length >= MAX_INTERVALS_PER_DAY ||
                   !canAddInterval(intervals)
                 }
-                aria-label={`Add ${name} hours`}
+                // The visible label comes first, so a voice command of what is on screen matches (WCAG 2.5.3).
+                aria-label={`Add hours, ${name}`}
                 onClick={() => onChange(addInterval(week, day))}
               >
                 Add
               </Button>
-              <Button
-                variant="ghost"
-                iconLeft={<Copy className="h-4 w-4" aria-hidden />}
-                disabled={disabled}
-                aria-label={`Copy ${name} to all days`}
-                onClick={() => onChange(copyDayToAll(week, day))}
-              >
-                Copy to all days
-              </Button>
+              <div className="grow">
+                <Button
+                  variant="ghost"
+                  // Its own line when the row is too narrow (large text), where its label may wrap.
+                  fullWidth
+                  iconLeft={<Copy className="h-4 w-4" aria-hidden />}
+                  disabled={disabled}
+                  aria-label={`Copy to all days, ${name}`}
+                  onClick={() => onChange(copyDayToAll(week, day))}
+                >
+                  Copy to all days
+                </Button>
+              </div>
             </div>
           </li>
         );

@@ -66,7 +66,7 @@ describe('ManageHoursPage', () => {
     api.saveStoreHours.mockResolvedValue(week());
     show();
     fireEvent.change(await screen.findByLabelText('Monday closes'), { target: { value: '18:00' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Add Tuesday hours' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add hours, Tuesday' }));
     fireEvent.click(screen.getByRole('button', { name: 'Save hours' }));
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
     expect(api.saveStoreHours).toHaveBeenCalledWith('s1', [
@@ -82,7 +82,7 @@ describe('ManageHoursPage', () => {
       new ApiError(400, 'VALIDATION_ERROR', 'Monday 09:00-17:00 overlaps Monday 16:00-20:00.'),
     );
     show();
-    fireEvent.click(await screen.findByRole('button', { name: 'Add Monday hours' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Add hours, Monday' }));
     fireEvent.click(screen.getByRole('button', { name: 'Save hours' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('overlaps');
     expect(screen.getAllByLabelText('Monday opens')).toHaveLength(2);
@@ -90,7 +90,7 @@ describe('ManageHoursPage', () => {
 
   it('removes an interval and copies a day to all days', async () => {
     show();
-    fireEvent.click(await screen.findByRole('button', { name: 'Copy Monday to all days' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Copy to all days, Monday' }));
     expect(screen.getAllByLabelText(/ opens$/)).toHaveLength(7);
     fireEvent.click(screen.getByRole('button', { name: 'Remove Sunday interval 1' }));
     expect(screen.getAllByLabelText(/ opens$/)).toHaveLength(6);
