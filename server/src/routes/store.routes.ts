@@ -8,7 +8,12 @@ import { requireAuth, requireStore } from '../middleware/auth';
 import { writeLimiter } from '../middleware/rateLimit';
 import { validate } from '../middleware/validate';
 import { auditQuerySchema } from '../schemas/admin.schema';
-import { createMenuItemSchema, updateMenuItemSchema } from '../schemas/menuItem.schema';
+import {
+  bulkAvailabilitySchema,
+  createMenuItemSchema,
+  reorderMenuSchema,
+  updateMenuItemSchema,
+} from '../schemas/menuItem.schema';
 import { listOrdersQuerySchema, updateOrderStatusSchema } from '../schemas/order.schema';
 import { updateStoreSettingsSchema } from '../schemas/storeSettings.schema';
 import {
@@ -142,6 +147,22 @@ storesRouter.post(
   writeLimiter,
   validate(createMenuItemSchema),
   menu.createMenuItem,
+);
+storesRouter.post(
+  '/:storeId/menu-items/bulk',
+  requireAuth,
+  requireStore('menu.edit'),
+  writeLimiter,
+  validate(bulkAvailabilitySchema),
+  menu.setAvailability,
+);
+storesRouter.put(
+  '/:storeId/menu-items/order',
+  requireAuth,
+  requireStore('menu.edit'),
+  writeLimiter,
+  validate(reorderMenuSchema),
+  menu.reorderMenu,
 );
 storesRouter.patch(
   '/:storeId/menu-items/:itemId',

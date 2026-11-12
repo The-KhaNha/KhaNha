@@ -911,6 +911,7 @@ export type Database = {
         Args: { p_actor?: Json; p_brand_id: string; p_request_id?: string };
         Returns: string;
       };
+      lock_store_menu: { Args: { p_store_id: string }; Returns: undefined };
       pause_store: {
         Args: {
           p_actor?: Json;
@@ -986,6 +987,15 @@ export type Database = {
         Args: { p_delay_seconds: number; p_msg_id: number; p_queue: string };
         Returns: undefined;
       };
+      reorder_menu: {
+        Args: {
+          p_actor?: Json;
+          p_item_ids: string[];
+          p_request_id?: string;
+          p_store_id: string;
+        };
+        Returns: undefined;
+      };
       reset_demo_orders: { Args: never; Returns: undefined };
       resume_store: {
         Args: {
@@ -995,6 +1005,17 @@ export type Database = {
           p_store_id: string;
         };
         Returns: boolean;
+      };
+      set_menu_availability: {
+        Args: {
+          p_actor?: Json;
+          p_category?: string;
+          p_is_available: boolean;
+          p_item_ids?: string[];
+          p_request_id?: string;
+          p_store_id: string;
+        };
+        Returns: number;
       };
       set_store_hours: {
         Args: {

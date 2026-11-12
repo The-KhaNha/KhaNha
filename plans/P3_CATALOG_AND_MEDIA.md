@@ -207,7 +207,7 @@ template as a never-public store row (D1). Intent: `--server minor`.
 
 ### PR 01b — Owner opens a branch: create, profile, publish (P3.1, D6)
 
-- [ ] Merged
+- [x] Merged (#79, 6ed58df)
 
 `/before-write`: reuse-scout, expected EXTEND (`store.service.ts`, `requireStore`, `toStoreDto`); schema-guard,
 expected REUSE (`stores`, `store_hours`, `menu_items`), one new function. Skill: `/new-endpoint`. The main agent
@@ -307,6 +307,15 @@ Tests: `test/api/menu-quick-edits.test.ts` (matrices; a list with another store'
 concurrent reorders leave one complete order, never a mix; bulk by category touches only that store).
 
 Docs: `docs/API.md`, `docs/SCHEMA.md`. Intent: `--server minor`.
+
+As built: both quick edits are SQL functions (`reorder_menu`, `set_menu_availability`) that take the store's menu
+lock (`lock_store_menu`, a transaction advisory lock: they queue and never deadlock; `place_order` takes no such lock,
+but its stock update waits on an item row a quick edit holds until it commits) and
+leave the event to the PR 02 statement trigger (none when nothing changed). An id that is not the store's item is
+`NOT_FOUND` (404, as for any other store's resource); a stale reorder list is `VALIDATION_ERROR`. Bulk answers
+`{ updated }`; a list with another store's or an archived item, or a category with no live item, is 404 and changes
+nothing. `MANAGED_ITEMS_MAX` moved to `schemas/limits.ts`. Not handled: an item created while a reorder runs may tie
+on `sort_order` (ties fall back to id).
 
 ### PR 04 — Stock: one function, its trail, the staff setting (P3.4, P3.5)
 
