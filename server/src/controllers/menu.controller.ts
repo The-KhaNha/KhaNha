@@ -1,6 +1,11 @@
 import type { RequestHandler } from 'express';
 import { currentStore, requestContext } from '../middleware/auth';
-import type { CreateMenuItemInput, UpdateMenuItemInput } from '../schemas/menuItem.schema';
+import type {
+  BulkAvailabilityInput,
+  CreateMenuItemInput,
+  ReorderMenuInput,
+  UpdateMenuItemInput,
+} from '../schemas/menuItem.schema';
 import * as menuService from '../services/menu.service';
 import type { BodyHandler } from '../types/http';
 import { toManagedMenuItemDto } from '../utils/serializers';
@@ -41,5 +46,21 @@ export const archiveMenuItem: RequestHandler = async (req, res) => {
     String(req.params.itemId),
     requestContext(req),
   );
+  res.status(204).end();
+};
+
+/** POST /api/stores/:storeId/menu-items/bulk: switch many items on or off. */
+export const setAvailability: BodyHandler<BulkAvailabilityInput> = async (req, res) => {
+  const updated = await menuService.setAvailability(
+    currentStore(req).id,
+    req.body,
+    requestContext(req),
+  );
+  res.json({ updated });
+};
+
+/** PUT /api/stores/:storeId/menu-items/order: the whole menu's new order. */
+export const reorderMenu: BodyHandler<ReorderMenuInput> = async (req, res) => {
+  await menuService.reorderMenu(currentStore(req).id, req.body, requestContext(req));
   res.status(204).end();
 };

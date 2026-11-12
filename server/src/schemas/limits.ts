@@ -44,3 +44,10 @@ export const STORE_LIST_MAX = 200;
 
 /** Opening hours (docs/CONFIGURATION.md, platform constants): most intervals a day, most upcoming exceptions a store holds. */
 export const HOURS_LIMITS = { intervalsPerDay: 6, upcomingExceptions: 50 } as const;
+
+/**
+ * Most items the menu editor's list returns, and most a bulk edit or a reorder may name (docs/CONFIGURATION.md,
+ * platform constant): archived items stay in the list, so it may run past MENU_ITEMS_MAX. PostgREST's own row cap
+ * (1000) would cut it silently anyway.
+ */
+export const MANAGED_ITEMS_MAX = 1000;

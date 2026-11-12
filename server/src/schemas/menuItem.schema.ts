@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { typedText, visibleLength } from './common';
-import { LIMITS } from './limits';
+import { LIMITS, MANAGED_ITEMS_MAX } from './limits';
 
 const { nameMin, nameMax, descriptionMax, categoryMax, priceMin, priceMax, stockMax } =
   LIMITS.menuItem;
@@ -65,3 +65,26 @@ export const updateMenuItemSchema = z
 
 export type CreateMenuItemInput = z.infer<typeof createMenuItemSchema>;
 export type UpdateMenuItemInput = z.infer<typeof updateMenuItemSchema>;
+
+const itemIds = z
+  .array(z.uuid('Each item id must be a UUID.'), 'itemIds must be a list of item ids.')
+  .min(1, 'Send at least one item.')
+  .max(MANAGED_ITEMS_MAX, `Send at most ${MANAGED_ITEMS_MAX} items.`);
+
+/** "Sold out: all juices": the given items, or every item of one category, switched on or off at once. */
+export const bulkAvailabilitySchema = z
+  .strictObject({
+    itemIds: itemIds.optional(),
+    category: fields.category.optional(),
+    isAvailable: z.boolean('isAvailable must be true or false.'),
+  })
+  .refine((input) => (input.itemIds === undefined) !== (input.category === undefined), {
+    message: 'Send either itemIds or a category.',
+    path: ['itemIds'],
+  });
+
+/** The whole menu's new order: every unarchived item of the store, each once. */
+export const reorderMenuSchema = z.strictObject({ itemIds });
+
+export type BulkAvailabilityInput = z.infer<typeof bulkAvailabilitySchema>;
+export type ReorderMenuInput = z.infer<typeof reorderMenuSchema>;

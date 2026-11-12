@@ -1,13 +1,19 @@
-import type { CreateMenuItemInput, UpdateMenuItemInput } from '../schemas/menuItem.schema';
+import type {
+  BulkAvailabilityInput,
+  CreateMenuItemInput,
+  ReorderMenuInput,
+  UpdateMenuItemInput,
+} from '../schemas/menuItem.schema';
 import type { RequestContext } from '../types/auth';
 import type { MenuCategoryDto, MenuItemDto, MenuResponse } from '../types/api';
 import type { Tables, TablesUpdate } from '../types/database';
+import { MANAGED_ITEMS_MAX } from '../schemas/limits';
 import { cached, invalidate, PUBLIC_READ_TTL_MS } from '../utils/cache';
-import { notFound } from '../utils/errors';
+import { notFound, validationError } from '../utils/errors';
 import { isUuid } from '../utils/ids';
 import { logger } from '../utils/logger';
 import { rupeesToPaise } from '../utils/money';
-import { supabaseAdmin } from '../utils/supabase';
+import { raisedByDatabase, supabaseAdmin } from '../utils/supabase';
 import { toMenuItemDto, toStoreDto, type StoreWithBrand } from '../utils/serializers';
 import { getOpenFields } from './schedule.service';
 
@@ -77,12 +83,6 @@ function groupByCategory(items: MenuItemDto[]): MenuCategoryDto[] {
   }
   return [...groups].map(([name, categoryItems]) => ({ name, items: categoryItems }));
 }
-
-/**
- * Most items the editor's list returns: archived items stay in it, so it may run past MENU_ITEMS_MAX. PostgREST's
- * own row cap (1000) would cut it silently anyway.
- */
-export const MANAGED_ITEMS_MAX = 1000;
 
 /** Every item of the store for the editor, archived ones included. Never cached: the editor must see its own write. */
 export async function listManagedItems(storeId: string): Promise<Tables<'menu_items'>[]> {
@@ -234,4 +234,69 @@ export async function archiveMenuItem(
     .maybeSingle()
     .throwOnError();
   if (!existing) throw notFound('Item not found.');
+}
+
+/**
+ * Switches items on or off at once ("sold out: all juices"): the listed ones, or every item of a category
+ * (set_menu_availability). Archived items are never touched. A list naming anything but this store's unarchived items,
+ * or a category with none, is 404 and changes nothing. Returns how many items the edit covered.
+ */
+export async function setAvailability(
+  storeId: string,
+  input: BulkAvailabilityInput,
+  ctx: RequestContext,
+): Promise<number> {
+  let updated: number;
+  try {
+    const { data } = await supabaseAdmin
+      .rpc('set_menu_availability', {
+        p_store_id: storeId,
+        p_is_available: input.isAvailable,
+        p_item_ids: input.itemIds?.map((id) => id.toLowerCase()),
+        p_category: input.category,
+        p_actor: ctx.actor,
+        p_request_id: ctx.requestId,
+      })
+      .throwOnError();
+    updated = data;
+  } catch (err) {
+    if (raisedByDatabase(err, 'NOT_FOUND'))
+      throw notFound(
+        input.itemIds ? 'Some of those items were not found.' : 'No items in that category.',
+      );
+    throw err;
+  }
+  invalidateMenus(storeId);
+  return updated;
+}
+
+/**
+ * Puts the whole menu in the order of `itemIds` (reorder_menu: every unarchived item of the store, each once). An id
+ * that is not this store's item is 404; a stale list is VALIDATION_ERROR. Either changes nothing.
+ */
+export async function reorderMenu(
+  storeId: string,
+  input: ReorderMenuInput,
+  ctx: RequestContext,
+): Promise<void> {
+  try {
+    await supabaseAdmin
+      .rpc('reorder_menu', {
+        p_store_id: storeId,
+        p_item_ids: input.itemIds.map((id) => id.toLowerCase()),
+        p_actor: ctx.actor,
+        p_request_id: ctx.requestId,
+      })
+      .throwOnError();
+  } catch (err) {
+    if (raisedByDatabase(err, 'NOT_FOUND')) throw notFound('Some of those items were not found.');
+    // Almost always a stale list: someone added or archived an item since the editor loaded the menu.
+    if (raisedByDatabase(err, 'VALIDATION_ERROR'))
+      throw validationError(
+        'The menu changed since you opened it. Reload it and try again.',
+        'itemIds',
+      );
+    throw err;
+  }
+  invalidateMenus(storeId);
 }

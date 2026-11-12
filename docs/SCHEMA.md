@@ -51,6 +51,7 @@ a new file (see [DEPLOYMENT.md](DEPLOYMENT.md#schema-changes)).
 | `20261112144103_brand_template.sql`                | adds `stores.is_template` (`stores_template_is_draft`, `stores_one_template_per_brand`), `brands.template_store_id`, `menu_items.template_item_id` and `archived_at`; `ensure_brand_template()` and `create_store_from_template()`; backfills a template for every brand (below [stores](#stores))                                                                                                                                                                                                                                                                                                                                     |
 | `20261112173552_store_publish.sql`                 | adds the checks `stores_name_length`, `stores_address_line_length` and `stores_contact_phone_format`; `stores_audit` also watches `tagline` and `description`; the trigger `stores_changed` (`stores_emit_changed()`, emits `store.changed`); `set_store_status()` (`service_role` only)                                                                                                                                                                                                                                                                                                                                               |
 | `20261112163716_menu_item_lifecycle.sql`           | adds the `diet_marker` enum, `menu_items.diet` and `image_variants`; `menu_items.image_url` and `order_items.image_url` become nullable; the menu item bounds as check constraints; `menu_items_archived_unavailable` (an archived item is switched off, so `place_order` refuses it as `ITEM_UNAVAILABLE`); `menu_items_audit` also fires on insert and watches `description`, `diet`, `archived_at`, `is_popular` and `sort_order`; `menu_items_emit_changed()` and its two statement triggers emit `menu.changed`; `ensure_brand_template` and `create_store_from_template` (same signatures) also copy `diet` and `image_variants` |
+| `20261112183242_reorder_menu.sql`                  | adds `lock_store_menu()`, `reorder_menu()` and `set_menu_availability()` (`service_role` only): the menu editor's quick edits                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 
 ## Enums
 
@@ -197,6 +198,17 @@ moves a store between `DRAFT` and `ACTIVE` under its row lock. Publishing return
 (non-blank `address_line`), `hours` (at least one `store_hours` row) and `menu` (at least one available, unarchived
 item with `stock_quantity` null or above 0) and changes nothing when any is; otherwise it returns `{}`. A store already
 in `p_status` changes nothing and emits nothing.
+
+The menu editor's quick edits each take `lock_store_menu(p_store_id)` (`NOT_FOUND` for a missing store, then a
+transaction advisory lock on the store's menu), so two on one store run one after the other and never deadlock;
+`place_order` takes no such lock and is never held up. `reorder_menu(p_store_id, p_item_ids, p_actor, p_request_id)
+returns void` sets each item's `sort_order` to its position in `p_item_ids` in one statement. The list must be every
+unarchived item of the store, each once: an id that is not the store's item raises `NOT_FOUND`, any other mismatch
+`VALIDATION_ERROR`, and nothing changes. `set_menu_availability(p_store_id, p_is_available, p_item_ids, p_category,
+p_actor, p_request_id) returns integer` switches the listed items or a category's unarchived items on or off in one
+statement and returns how many it covered; a list naming anything else, or a category with none, is `NOT_FOUND`. All
+three are plpgsql, invoker, `service_role` only. `menu_items_changed_on_update` emits the one `menu.changed`; an edit
+that changes nothing emits none.
 
 | Message                     | When                                                               |
 | --------------------------- | ------------------------------------------------------------------ |
@@ -508,6 +520,9 @@ object (SQLSTATE `P0001`). How the API maps them is in [API.md](API.md#database-
 | `emit_event(...)`            | plpgsql  | definer  | uuid                | `place_order`, `update_order_status`, `accept_store_invite`, `menu_items_emit_changed`, `stores_emit_changed` | `service_role`       |
 | `accept_store_invite(...)`   | plpgsql  | invoker  | `store_memberships` | `team.service.acceptInvite`                                                                                   | `service_role`       |
 | `set_store_hours(...)`       | plpgsql  | definer  | boolean             | `storeHours.service.setStoreHours`                                                                            | `service_role`       |
+| `lock_store_menu(...)`       | plpgsql  | invoker  | void                | `reorder_menu`, `set_menu_availability`                                                                       | `service_role`       |
+| `reorder_menu(...)`          | plpgsql  | invoker  | void                | `menu.service.reorderMenu`                                                                                    | `service_role`       |
+| `set_menu_availability(...)` | plpgsql  | invoker  | integer             | `menu.service.setAvailability`                                                                                | `service_role`       |
 | `set_store_status(...)`      | plpgsql  | invoker  | `text[]`            | `store.service.setStoreStatus`                                                                                | `service_role`       |
 | `stores_emit_changed()`      | plpgsql  | invoker  | trigger             | `stores_changed`                                                                                              | nobody               |
 | `pause_store(...)`           | plpgsql  | invoker  | boolean             | `storePause.service.pauseStore`                                                                               | `service_role`       |

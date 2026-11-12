@@ -67,6 +67,8 @@ The API has no sign-in or sign-out route. The browser signs in and out with supa
 | POST   | `/stores/:storeId/menu-items`                       | user + `menu.edit`         | body: [`createMenuItemSchema`](#post-storesstoreidmenu-items)              | 201 `{ item: ManagedMenuItemDto }`                            |
 | PATCH  | `/stores/:storeId/menu-items/:itemId`               | user + `menu.edit`         | body: [`updateMenuItemSchema`](#patch-storesstoreidmenu-itemsitemid)       | 200 `{ item: ManagedMenuItemDto }`                            |
 | DELETE | `/stores/:storeId/menu-items/:itemId`               | user + `menu.edit`         | path: `itemId`                                                             | 204                                                           |
+| POST   | `/stores/:storeId/menu-items/bulk`                  | user + `menu.edit`         | body: [`bulkAvailabilitySchema`](#post-storesstoreidmenu-itemsbulk)        | 200 `{ updated: number }`                                     |
+| PUT    | `/stores/:storeId/menu-items/order`                 | user + `menu.edit`         | body: [`reorderMenuSchema`](#put-storesstoreidmenu-itemsorder)             | 204                                                           |
 | PUT    | `/stores/:storeId/hours`                            | user + `hours.edit`        | body: [`setStoreHoursSchema`](#put-storesstoreidhours)                     | 200 `StoreScheduleResponse`                                   |
 | POST   | `/stores/:storeId/schedule-exceptions`              | user + `hours.edit`        | body: [`createExceptionSchema`](#post-storesstoreidschedule-exceptions)    | 201 `{ exception: ScheduleExceptionDto }`                     |
 | DELETE | `/stores/:storeId/schedule-exceptions/:exceptionId` | user + `hours.edit`        | path: `exceptionId`                                                        | 204                                                           |
@@ -437,7 +439,27 @@ the public menu, is never copied to a new branch, and `POST /orders` refuses it 
 orders and lineage point at it, and the editor's list still shows it. 204; a repeat is 204 and changes nothing. Another
 store's item or an unknown id is 404.
 
-Every write goes through the Data API with the `x-actor` and `x-request-id` headers, leaves one `menu_item.changed`
+### POST /stores/:storeId/menu-items/bulk
+
+"Sold out: all juices". Code: as above with `validate(bulkAvailabilitySchema)` → `menu.controller.setAvailability` →
+`menu.service.setAvailability` → `set_menu_availability` RPC. Body: `isAvailable`, and either `itemIds` (1–1000 UUIDs,
+`MANAGED_ITEMS_MAX`) or a `category` (matched exactly), not both. Switches the listed items, or every item of the
+category, on or off in one statement; archived items are never touched. A list naming anything but this store's
+unarchived items (another store's item, an archived one, an unknown id), or a category with no unarchived item, is 404
+and changes nothing. Answers `{ updated }`, how many items the edit covered (a repeat counts them again but emits no
+event).
+
+### PUT /stores/:storeId/menu-items/order
+
+The editor's up and down buttons. Code: as above with `validate(reorderMenuSchema)` → `menu.controller.reorderMenu` →
+`menu.service.reorderMenu` → `reorder_menu` RPC. Body `{ itemIds }`: every unarchived item of the store, each once, in
+the new order; each item's `sort_order` becomes its position. An id that is not this store's item is 404; any other
+mismatch (an item left out, an archived one, a repeat: usually a list loaded before someone else's edit) is 400
+`VALIDATION_ERROR` on `itemIds`, "The menu changed since you opened it. Reload it and try again." Either changes
+nothing. Quick edits of one store run one after the other, so two reorders at once leave one of them whole. 204; the same order again
+is 204 with no event.
+
+Every write here goes through the Data API with the `x-actor` and `x-request-id` headers, leaves one `menu_item.changed`
 audit row and one `menu.changed` event ([JOBS.md](JOBS.md#menu-events)), and drops the store's cached menu, so the
 next `GET /stores/:storeRef/menu` shows it.
 
