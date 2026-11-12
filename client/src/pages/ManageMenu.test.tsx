@@ -78,17 +78,65 @@ describe('ManageMenuTab', () => {
   it('flips a switch at once and rolls it back when the server refuses', async () => {
     api.updateMenuItem.mockRejectedValue(new ApiError(500, 'X', 'Could not save'));
     render(<ManageMenuTab store={store} />);
-    const sw = await screen.findByRole('switch', { name: 'Tea available' });
+    const sw = await screen.findByRole('switch', { name: 'Tea on the menu' });
     fireEvent.click(sw);
     expect(sw).toHaveAttribute('aria-checked', 'false');
     expect(await screen.findByText('Could not save')).toBeInTheDocument();
     await waitFor(() =>
-      expect(screen.getByRole('switch', { name: 'Tea available' })).toHaveAttribute(
+      expect(screen.getByRole('switch', { name: 'Tea on the menu' })).toHaveAttribute(
         'aria-checked',
         'true',
       ),
     );
     expect(api.updateMenuItem).toHaveBeenCalledWith('s1', 'a', { isAvailable: false });
+  });
+
+  it('sends no second request while a switch write is pending', async () => {
+    let done: (v?: unknown) => void = () => {};
+    api.updateMenuItem.mockReturnValue(new Promise((r) => (done = r)));
+    render(<ManageMenuTab store={store} />);
+    const sw = await screen.findByRole('switch', { name: 'Tea on the menu' });
+    fireEvent.click(sw);
+    fireEvent.click(sw);
+    expect(sw).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Move Tea down' })).toBeDisabled();
+    expect(api.updateMenuItem).toHaveBeenCalledTimes(1);
+    done();
+    await waitFor(() => expect(sw).toBeEnabled());
+  });
+
+  it('flips a category sold out at once and rolls back on error', async () => {
+    api.setAvailability.mockRejectedValue(new ApiError(500, 'X', 'Could not save'));
+    render(<ManageMenuTab store={store} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Drinks' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sold out: this category' }));
+    expect(screen.getByRole('switch', { name: 'Tea on the menu' })).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
+    expect(screen.getByRole('switch', { name: 'Coffee on the menu' })).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
+    expect(await screen.findByText('Could not save')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole('switch', { name: 'Tea on the menu' })).toHaveAttribute(
+        'aria-checked',
+        'true',
+      ),
+    );
+  });
+
+  it('marks an enabled item with no stock as sold out', async () => {
+    api.fetchManagedMenu.mockResolvedValue([
+      item('a', 'Tea', 'Drinks', { isAvailable: false, stockQuantity: 0 }),
+    ]);
+    render(<ManageMenuTab store={store} />);
+    expect(await screen.findByText(/Sold out/)).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: 'Tea on the menu' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
   });
 
   it('disables the move buttons at the edges of a category', async () => {
@@ -126,6 +174,8 @@ describe('ManageMenuTab', () => {
 
   it('adds an item through the editor and reloads the list', async () => {
     api.createMenuItem.mockResolvedValue(item('d', 'Chai', 'Drinks'));
+    // The reload never answers: the new item must already be on screen.
+    api.fetchManagedMenu.mockResolvedValueOnce(list()).mockReturnValue(new Promise(() => {}));
     render(<ManageMenuTab store={store} />);
     fireEvent.click(await screen.findByRole('button', { name: /Add item/ }));
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Chai' } });
@@ -140,6 +190,8 @@ describe('ManageMenuTab', () => {
       price: 30,
       category: 'Drinks',
     });
+    // Shown from the create's response, before the reload answers.
+    expect(await screen.findByText('Chai')).toBeInTheDocument();
     await waitFor(() => expect(api.fetchManagedMenu).toHaveBeenCalledTimes(2));
   });
 

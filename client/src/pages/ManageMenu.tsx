@@ -59,6 +59,7 @@ export function ManageMenuTab({ store }: ManageMenuTabProps) {
 
   const categories = categoryNames(menu.items);
   const shown = filterItems(menu.items, query, category);
+  const listLocked = !!menu.listBusy || menu.pendingIds.size > 0;
   const filtering = query.trim() !== '' || category !== null;
 
   return (
@@ -111,6 +112,8 @@ export function ManageMenuTab({ store }: ManageMenuTabProps) {
         <Button
           variant="ghost-danger"
           className="mt-2"
+          loading={menu.listBusy === 'soldOut'}
+          disabled={listLocked}
           onClick={() => menu.soldOutCategory(category)}
         >
           Sold out: this category
@@ -142,6 +145,9 @@ export function ManageMenuTab({ store }: ManageMenuTabProps) {
                 <span className="block truncate font-semibold">{item.name}</span>
                 <span className="block truncate text-caption text-muted">
                   {item.category} · <Price value={item.price} />
+                  {item.isEnabled && !item.isAvailable && (
+                    <span className="font-semibold text-brand-700"> · Sold out</span>
+                  )}
                 </span>
               </button>
               {/* Reordering inside a filter would move items past ones that are hidden: only the full list. */}
@@ -150,13 +156,13 @@ export function ManageMenuTab({ store }: ManageMenuTabProps) {
                   <IconButton
                     label={`Move ${item.name} up`}
                     icon={<ArrowUp className="h-4 w-4" />}
-                    disabled={!canMove(menu.items!, item.id, -1)}
+                    disabled={listLocked || !canMove(menu.items!, item.id, -1)}
                     onClick={() => menu.move(item.id, -1)}
                   />
                   <IconButton
                     label={`Move ${item.name} down`}
                     icon={<ArrowDown className="h-4 w-4" />}
-                    disabled={!canMove(menu.items!, item.id, 1)}
+                    disabled={listLocked || !canMove(menu.items!, item.id, 1)}
                     onClick={() => menu.move(item.id, 1)}
                   />
                 </>
@@ -165,7 +171,8 @@ export function ManageMenuTab({ store }: ManageMenuTabProps) {
                 type="button"
                 role="switch"
                 aria-checked={item.isEnabled}
-                aria-label={`${item.name} available`}
+                aria-label={`${item.name} on the menu`}
+                disabled={!!menu.listBusy || menu.pendingIds.has(item.id)}
                 onClick={() => menu.toggle(item)}
                 className={cn(
                   'relative h-11 w-14 shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus',
@@ -173,14 +180,14 @@ export function ManageMenuTab({ store }: ManageMenuTabProps) {
               >
                 <span
                   className={cn(
-                    'absolute inset-x-1 top-2.5 h-6 rounded-full transition-colors',
+                    'absolute inset-x-1 top-2.5 h-6 rounded-full',
                     item.isEnabled ? 'bg-success-500' : 'bg-hint',
                   )}
                 />
                 <span
                   className={cn(
-                    'absolute top-3 h-4 w-4 rounded-full bg-surface transition-transform',
-                    item.isEnabled ? 'left-8' : 'left-2',
+                    'absolute left-2 top-3 h-4 w-4 rounded-full bg-surface transition-transform motion-reduce:transition-none',
+                    item.isEnabled && 'translate-x-6',
                   )}
                 />
               </button>

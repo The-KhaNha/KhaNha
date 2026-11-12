@@ -68,8 +68,20 @@ export function ItemEditor({ item, categories, onSave, onClose }: ItemEditorProp
     };
   }, [onClose]);
 
-  const set = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) =>
+  // A save can outlive the editor (Escape while pending); only a mounted instance may close or set state.
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  const set = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) => {
     setForm((f) => ({ ...f, [key]: value }));
+    setFieldErrors(({ [key]: _gone, ...rest }) => rest);
+    setFormError(null);
+  };
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -87,8 +99,9 @@ export function ItemEditor({ item, categories, onSave, onClose }: ItemEditorProp
         diet: form.diet,
         isPopular: form.isPopular,
       });
-      onClose();
+      if (mounted.current) onClose();
     } catch (err) {
+      if (!mounted.current) return;
       const field = err instanceof ApiError ? err.details?.field : undefined;
       if (err instanceof ApiError && field) setFieldErrors({ [field]: err.message });
       else
