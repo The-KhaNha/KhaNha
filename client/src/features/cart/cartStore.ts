@@ -43,7 +43,8 @@ interface CartState {
    * menu's store: an empty cart takes it, and a cart holding another store's items refuses (the caller confirms the
    * replacement first, then clears).
    */
-  add: (item: MenuItem, quantity?: number, store?: CartStoreRef) => void;
+  /** Every line belongs to `store`: an order is placed for exactly one store, so a cart never holds lines without one. */
+  add: (item: MenuItem, quantity: number, store: CartStoreRef) => void;
   /** No-op once the line is at its limit (the stepper shakes instead). */
   increment: (menuItemId: string) => void;
   /** Never goes below 1: at quantity 1 the line is removed instead. */
@@ -136,7 +137,7 @@ export const useCartStore = create<CartState>()(
 
       add(item, quantity = 1, store) {
         set((state) => {
-          if (store && state.lines.length > 0 && state.storeId !== store.id) return state;
+          if (state.lines.length > 0 && state.storeId !== store.id) return state;
           const maxQuantity = availableQuantity(item);
           const limit = lineLimit(maxQuantity, state.limits);
           if (limit <= 0) return state;
@@ -153,7 +154,9 @@ export const useCartStore = create<CartState>()(
             };
             return {
               lines: [...state.lines, line],
-              ...(store && { storeId: store.id, storeSlug: store.slug, storeName: store.name }),
+              storeId: store.id,
+              storeSlug: store.slug,
+              storeName: store.name,
             };
           }
           // A line already over its limit is left as is (the cart flags it); otherwise top it up to the limit.

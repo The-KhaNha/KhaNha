@@ -55,3 +55,12 @@ describe('adding from another store', () => {
     expect(useCartStore.getState().lines.map((l) => l.menuItemId)).toEqual(['b1']);
   });
 });
+
+describe('outside a store menu', () => {
+  it('adds nothing: a line without its store could never be ordered', () => {
+    useCartStore.setState({ storeId: null, storeSlug: null, storeName: null, lines: [] });
+    render(<AddButton />);
+    fireEvent.click(screen.getByText('Add'));
+    expect(useCartStore.getState().lines).toEqual([]);
+  });
+});

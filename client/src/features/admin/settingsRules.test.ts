@@ -11,7 +11,6 @@ import type { SiteSettings } from '../../types/api';
 
 const saved: SiteSettings = {
   customerOrderHistoryLimit: 20,
-  staffOrderListLimit: 100,
   maxLinesPerOrder: 30,
   orderPollMs: 4000,
   ordersPollMs: 8000,
@@ -25,7 +24,7 @@ describe('SETTING_FIELDS', () => {
   it('covers every editable SiteSettings field', () => {
     expect(SETTING_KEYS.sort()).toEqual(
       Object.keys(saved)
-        .filter((k) => k !== 'updatedAt' && k !== 'staffOrderListLimit')
+        .filter((k) => k !== 'updatedAt')
         .sort(),
     );
   });

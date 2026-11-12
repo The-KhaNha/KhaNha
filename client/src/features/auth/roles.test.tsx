@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { User } from '../../types/api';
-import { homeFor } from './roles';
+import { homeFor, worksAStore } from './roles';
 
 const auth = vi.hoisted(() => ({ token: null as string | null, user: null as User | null }));
 vi.mock('./authStore', () => ({
@@ -52,7 +52,7 @@ describe('homeFor', () => {
     expect(homeFor({ ...user('CUSTOMER'), memberships: [{ ...cafe, role: 'STAFF' }] })).toBe(
       '/staff',
     );
-    expect(homeFor(user('STAFF'))).toBe('/staff');
+    expect(homeFor(user('STAFF'))).toBe('/');
     expect(homeFor({ ...user('CUSTOMER'), memberships: [{ ...cafe, role: 'MANAGER' }] })).toBe(
       '/manage',
     );
@@ -61,6 +61,16 @@ describe('homeFor', () => {
     ).toBe('/manage');
     // A profile saved before ownedBrands and memberships existed.
     expect(homeFor({ role: 'CUSTOMER' } as User)).toBe('/');
+  });
+});
+
+describe('worksAStore', () => {
+  it('follows memberships, not the profile role', () => {
+    expect(worksAStore({ ...user('CUSTOMER'), memberships: [{ ...cafe, role: 'STAFF' }] })).toBe(
+      true,
+    );
+    expect(worksAStore(user('STAFF'))).toBe(false);
+    expect(worksAStore({ role: 'CUSTOMER' } as User)).toBe(false);
   });
 });
 
