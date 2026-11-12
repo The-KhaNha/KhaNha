@@ -1,8 +1,9 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { useState } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const state = vi.hoisted(() => ({ user: null as { id: string } | null, hydrate: vi.fn() }));
+const state = vi.hoisted(() => ({ user: null as { id: string } | null, addMembership: vi.fn() }));
 vi.mock('../features/auth/authStore', () => ({
   selectUser: (s: { user: unknown }) => s.user,
   useAuthStore: Object.assign((select: (s: typeof state) => unknown) => select(state), {
@@ -30,7 +31,6 @@ beforeEach(() => {
   vi.resetModules();
   vi.resetAllMocks();
   state.user = null;
-  state.hydrate.mockResolvedValue(undefined);
   window.history.replaceState(null, '', '/join#tok123');
 });
 
@@ -44,7 +44,45 @@ describe('/join', () => {
     await renderJoin();
     expect(await screen.findByText('manage page')).toBeInTheDocument();
     expect(accept).toHaveBeenCalledWith('tok123');
-    expect(state.hydrate).toHaveBeenCalled();
+    expect(state.addMembership).toHaveBeenCalledWith({
+      storeId: 's',
+      storeSlug: 'cafe',
+      storeName: 'Cafe',
+      role: 'MANAGER',
+    });
+  });
+
+  it('says it is joining while the invite is checked', async () => {
+    state.user = { id: 'u' };
+    accept.mockReturnValue(new Promise(() => {}));
+    await renderJoin();
+    expect(screen.getByRole('status')).toHaveTextContent('Joining the team');
+  });
+
+  it('does not navigate once the page is gone', async () => {
+    state.user = { id: 'u' };
+    let resolve!: (m: unknown) => void;
+    accept.mockReturnValue(new Promise((r) => (resolve = r)));
+    const { JoinPage } = await import('./Join');
+    // The router stays: only the page leaves, as when the person taps elsewhere mid-request.
+    function Harness() {
+      const [on, setOn] = useState(true);
+      return (
+        <MemoryRouter initialEntries={['/join']}>
+          <button onClick={() => setOn(false)}>leave</button>
+          <Routes>
+            <Route path="/join" element={on ? <JoinPage /> : <p>left</p>} />
+            <Route path="/staff/:slug" element={<p>staff page</p>} />
+          </Routes>
+        </MemoryRouter>
+      );
+    }
+    render(<Harness />);
+    fireEvent.click(screen.getByText('leave'));
+    resolve({ id: 'm', role: 'STAFF', store: { id: 's', slug: 'cafe', name: 'C' } });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(screen.getByText('left')).toBeInTheDocument();
+    expect(screen.queryByText('staff page')).toBeNull();
   });
 
   it('sends staff to their store board', async () => {

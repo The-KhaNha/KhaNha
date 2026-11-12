@@ -32,19 +32,31 @@ export function JoinPage() {
   const [error, setError] = useState<ApiError | null>(null);
   const [attempt, setAttempt] = useState(0);
   const started = useRef(-1);
+  // A ref, not an effect cleanup: StrictMode's second effect run would otherwise drop the only completion.
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!token || !user || started.current === attempt) return;
     started.current = attempt;
     setError(null);
     acceptInvite(token)
-      .then(async (membership) => {
+      .then((membership) => {
         pendingToken = null;
-        // The memberships in the session are stale now: reload them before landing on a page that checks them.
-        await useAuthStore
-          .getState()
-          .hydrate()
-          .catch(() => undefined);
+        // The session's memberships predate this one: add it from the answer itself (a profile reload could be one
+        // already in flight, or fail) before landing on a page that checks it.
+        useAuthStore.getState().addMembership({
+          storeId: membership.store.id,
+          storeSlug: membership.store.slug,
+          storeName: membership.store.name,
+          role: membership.role,
+        });
+        if (!mounted.current) return;
         navigate(
           membership.role === 'MANAGER'
             ? `/manage/${membership.store.slug}`
@@ -85,5 +97,10 @@ export function JoinPage() {
         </ButtonLink>
       </div>
     );
-  return <Skeleton className="mt-4 h-24" aria-busy aria-label="Joining the team" />;
+  return (
+    <div role="status" aria-busy className="mt-4">
+      <span className="sr-only">Joining the team</span>
+      <Skeleton className="h-24" />
+    </div>
+  );
 }
