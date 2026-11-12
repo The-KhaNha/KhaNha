@@ -101,7 +101,7 @@ describe('profiles made from Auth metadata keep the API bounds', () => {
     const res = await api()
       .post('/api/orders')
       .set('Authorization', `Bearer ${session.session.access_token}`)
-      .send({ items: [{ menuItemId: item.id, quantity: 1 }] });
+      .send({ storeId: await oldestStoreId(), items: [{ menuItemId: item.id, quantity: 1 }] });
     expect(res.status).toBe(201);
     expect(res.body.order.customerName).toHaveLength(LIMITS.nameMax);
   });

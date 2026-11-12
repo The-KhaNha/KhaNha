@@ -3,7 +3,7 @@ import type { Server } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { createTestUser, deleteTestUser, type TestUser } from '../setup/helpers';
+import { createTestUser, deleteTestUser, oldestStoreId, type TestUser } from '../setup/helpers';
 
 // Loads its own copy of the app with small write and register limits, to check which routes carry which limiter
 // (rate-limit.safe.test.ts checks how counting works). Every request below is refused by validation or lookup, so
@@ -86,15 +86,16 @@ describe('write limiter is per signed-in account', () => {
     expect(other.status).toBe(400);
   });
 
-  it('PATCH /api/orders/:id/status: staff past the limit get 429; a customer is refused 403 before counting', async () => {
+  it('PATCH /api/stores/:storeId/orders/:id/status: staff past the limit get 429; a non-member is refused 403 before counting', async () => {
+    const storeId = await oldestStoreId();
     const patch = (u: TestUser) =>
       request(server)
-        .patch(`/api/orders/${randomUUID()}/status`)
+        .patch(`/api/stores/${storeId}/orders/${randomUUID()}/status`)
         .set('Authorization', bearer(u))
         .send({ status: 'PREPARING' });
     for (let i = 0; i < WRITE_MAX; i += 1) expect((await patch(staff)).status).toBe(404);
     expectRateLimited(await patch(staff));
-    // customer's own bucket was spent on POST /orders above, so a 403 here proves requireStaff runs first
+    // customer's own bucket was spent on POST /orders above, so a 403 here proves requireStore runs first
     expect((await patch(customer)).status).toBe(403);
   });
 

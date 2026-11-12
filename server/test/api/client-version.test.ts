@@ -19,7 +19,7 @@ afterAll(() => resetDemoData());
 
 describe('client version gate', () => {
   it('426 CLIENT_OUTDATED for an older client', async () => {
-    const res = await api().get('/api/menu').set('X-Client-Version', '0.1.0');
+    const res = await api().get('/api/stores').set('X-Client-Version', '0.1.0');
     expect(res.status).toBe(426);
     expect(res.body).toEqual({
       error: { code: 'CLIENT_OUTDATED', message: expect.stringContaining('Refresh the page') },
@@ -27,13 +27,15 @@ describe('client version gate', () => {
   });
 
   it('treats a missing or malformed header as the legacy 0.1.0 client', async () => {
-    expect((await api().get('/api/menu')).status).toBe(426);
-    expect((await api().get('/api/menu').set('X-Client-Version', 'nope')).status).toBe(426);
+    expect((await api().get('/api/stores')).status).toBe(426);
+    expect((await api().get('/api/stores').set('X-Client-Version', 'nope')).status).toBe(426);
   });
 
   it('serves a client at or above the minimum, prerelease included', async () => {
-    expect((await api().get('/api/menu').set('X-Client-Version', '9.0.0')).status).toBe(200);
-    expect((await api().get('/api/menu').set('X-Client-Version', '9.0.0-dev.1')).status).toBe(200);
+    expect((await api().get('/api/stores').set('X-Client-Version', '9.0.0')).status).toBe(200);
+    expect((await api().get('/api/stores').set('X-Client-Version', '9.0.0-dev.1')).status).toBe(
+      200,
+    );
   });
 
   it('never gates the probes', async () => {

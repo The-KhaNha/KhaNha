@@ -50,12 +50,12 @@ function place(requestId: string, body: object = {}) {
     .post('/api/orders')
     .set(auth(customer))
     .set('x-request-id', requestId)
-    .send({ items: [{ menuItemId: untracked, quantity: 1 }], ...body });
+    .send({ storeId, items: [{ menuItemId: untracked, quantity: 1 }], ...body });
 }
 
 function move(orderId: string, status: string, requestId = randomUUID()) {
   return api()
-    .patch(`/api/orders/${orderId}/status`)
+    .patch(`/api/stores/${storeId}/orders/${orderId}/status`)
     .set(auth(staff))
     .set('x-request-id', requestId)
     .send({ status });

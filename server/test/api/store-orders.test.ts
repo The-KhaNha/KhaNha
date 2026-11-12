@@ -193,43 +193,16 @@ testStoreIsolation(
   (storeId) => insertOrder(storeId),
 );
 
-// The old routes until P2 PR 16. Before P2 PR 04 a STAFF profile read and moved every store's orders.
-describe('the old order routes are scoped to the caller’s stores', () => {
-  it("a STAFF profile's GET /api/orders leaves out a store they do not work at", async () => {
-    const elsewhere = await insertOrder(store.y);
-    const res = await api().get('/api/orders').set(auth(legacyStaff));
-    expect(res.status).toBe(200);
-    expect((res.body.orders as { id: string }[]).map((o) => o.id)).not.toContain(elsewhere);
-  });
-
-  it("a STAFF profile who owns the brand lists its stores' orders, as they may move them", async () => {
-    const atY = await insertOrder(store.y);
-    await supabaseAdmin
-      .from('brands')
-      .update({ owner_id: legacyStaff.id })
-      .eq('id', brandId)
-      .throwOnError();
-    try {
-      const res = await api().get('/api/orders').set(auth(legacyStaff));
-      expect((res.body.orders as { id: string }[]).map((o) => o.id)).toContain(atY);
-    } finally {
-      await supabaseAdmin
-        .from('brands')
-        .update({ owner_id: owner.id })
-        .eq('id', brandId)
-        .throwOnError();
-    }
-  });
-
-  it("another store's order is 404 on GET /api/orders/:id and PATCH /api/orders/:id/status", async () => {
+describe('an order of a store the caller does not work at', () => {
+  it("another store's order is 404 on GET /api/orders/:id and 403 on the store status route", async () => {
     const elsewhere = await insertOrder(store.y);
     const read = await api().get(`/api/orders/${elsewhere}`).set(auth(legacyStaff));
     expect(read.status).toBe(404);
     const move = await api()
-      .patch(`/api/orders/${elsewhere}/status`)
+      .patch(`/api/stores/${store.y}/orders/${elsewhere}/status`)
       .set(auth(legacyStaff))
       .send({ status: 'PREPARING' });
-    expect(move.status).toBe(404);
+    expect(move.status).toBe(403);
     const { data } = await supabaseAdmin
       .from('orders')
       .select('status')

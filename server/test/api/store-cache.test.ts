@@ -105,7 +105,7 @@ describe('menu:<storeId> stays in step with orders', () => {
     const placed = await api()
       .post('/api/orders')
       .set('Authorization', `Bearer ${customer.token}`)
-      .send({ items: [{ menuItemId: muffin.id, quantity: 5 }] });
+      .send({ storeId, items: [{ menuItemId: muffin.id, quantity: 5 }] });
     expect(placed.status).toBe(201);
     const afterOrder = (await menuOf()).categories
       .flatMap((c) => c.items)
@@ -114,7 +114,7 @@ describe('menu:<storeId> stays in step with orders', () => {
     expect(afterOrder.isAvailable).toBe(false);
 
     const cancelled = await api()
-      .patch(`/api/orders/${placed.body.order.id}/status`)
+      .patch(`/api/stores/${storeId}/orders/${placed.body.order.id}/status`)
       .set('Authorization', `Bearer ${staff.token}`)
       .send({ status: 'CANCELLED' });
     expect(cancelled.status).toBe(200);
@@ -128,7 +128,7 @@ describe('menu:<storeId> stays in step with orders', () => {
     const placed = await api()
       .post('/api/orders')
       .set('Authorization', `Bearer ${customer.token}`)
-      .send({ items: [{ menuItemId: muffin.id, quantity: 5 }] });
+      .send({ storeId, items: [{ menuItemId: muffin.id, quantity: 5 }] });
     expect(placed.status).toBe(201);
     expect(await stockOf('Blueberry Muffin')).toBe(0); // menu:<id> now holds the sold-out copy
 
@@ -147,7 +147,7 @@ describe('menu:<storeId> stays in step with orders', () => {
       .mockImplementation(fake as unknown as typeof supabaseAdmin.from);
     try {
       const cancelled = await api()
-        .patch(`/api/orders/${placed.body.order.id}/status`)
+        .patch(`/api/stores/${storeId}/orders/${placed.body.order.id}/status`)
         .set('Authorization', `Bearer ${staff.token}`)
         .send({ status: 'CANCELLED' });
       expect(cancelled.status).toBe(500);

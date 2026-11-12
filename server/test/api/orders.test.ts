@@ -91,6 +91,7 @@ function menuItem(name: string): MenuItemRow {
 
 function orderBody(overrides: OrderBodyOverrides = {}): OrderBodyOverrides {
   return {
+    storeId,
     items: [{ menuItemId: menuItem('Cold Coffee').id, quantity: 1 }],
     ...overrides,
   };
@@ -101,7 +102,10 @@ function placeOrder(user: TestUser, overrides: OrderBodyOverrides = {}) {
 }
 
 function patchStatus(orderId: string, status: string, token = staff.token) {
-  return api().patch(`/api/orders/${orderId}/status`).set(auth(token)).send({ status });
+  return api()
+    .patch(`/api/stores/${storeId}/orders/${orderId}/status`)
+    .set(auth(token))
+    .send({ status });
 }
 
 const NO_STACK_TRACE = /\bat .*\.(ts|js)|stack|PGRST|SQLSTATE|select |insert |update /i;
@@ -113,8 +117,8 @@ const NO_STACK_TRACE = /\bat .*\.(ts|js)|stack|PGRST|SQLSTATE|select |insert |up
 testAuthMatrix('POST /api/orders', (http) => http.post('/api/orders').send(orderBody()));
 testAuthMatrix('GET /api/orders', (http) => http.get('/api/orders'));
 testAuthMatrix('GET /api/orders/:id', (http) => http.get(`/api/orders/${randomUUID()}`));
-testAuthMatrix('PATCH /api/orders/:id/status', (http) =>
-  http.patch(`/api/orders/${randomUUID()}/status`).send({ status: 'PREPARING' }),
+testAuthMatrix('PATCH /api/stores/:storeId/orders/:id/status', (http) =>
+  http.patch(`/api/stores/${storeId}/orders/${randomUUID()}/status`).send({ status: 'PREPARING' }),
 );
 
 // ---------------------------------------------------------------------------
@@ -874,7 +878,7 @@ describe('the staff board keeps every active order', () => {
       .in('id', newer)
       .throwOnError();
 
-    const res = await api().get('/api/orders').set(auth(staff.token));
+    const res = await api().get(`/api/stores/${storeId}/orders`).set(auth(staff.token));
     expect(res.status).toBe(200);
     const ids = (res.body.orders as { id: string; status: OrderStatus }[]).map((o) => o.id);
     expect(ids).toContain(oldest);
@@ -888,9 +892,11 @@ describe('the staff board keeps every active order', () => {
     await supabaseAdmin.rpc('reset_demo_orders').throwOnError();
     await setLimit(FINISHED_LIMIT);
     for (let i = 0; i < FINISHED_LIMIT + 2; i += 1) await placeOrder(customer1);
-    const res = await api().get('/api/orders').set(auth(staff.token));
+    const res = await api().get(`/api/stores/${storeId}/orders`).set(auth(staff.token));
     expect(res.body.orders).toHaveLength(FINISHED_LIMIT + 2);
-    const placed = await api().get('/api/orders?status=PLACED').set(auth(staff.token));
+    const placed = await api()
+      .get(`/api/stores/${storeId}/orders?status=PLACED`)
+      .set(auth(staff.token));
     expect(placed.body.orders).toHaveLength(FINISHED_LIMIT + 2);
   });
 });

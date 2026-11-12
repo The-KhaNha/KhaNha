@@ -38,7 +38,7 @@ it('an order reads the same after its item and store are edited (P1.5 snapshots)
   const placed = await api()
     .post('/api/orders')
     .set(auth)
-    .send({ items: [{ menuItemId: item.id, quantity: 1 }] });
+    .send({ storeId: await oldestStoreId(), items: [{ menuItemId: item.id, quantity: 1 }] });
   expect(placed.status).toBe(201);
   const before = await api().get(`/api/orders/${placed.body.order.id}`).set(auth);
   expect(before.status).toBe(200);
@@ -91,13 +91,15 @@ it('the customer list and the staff list read the snapshots too, even after the 
     const placed = await api()
       .post('/api/orders')
       .set(auth)
-      .send({ items: [{ menuItemId: item.id, quantity: 2 }] });
+      .send({ storeId: await oldestStoreId(), items: [{ menuItemId: item.id, quantity: 2 }] });
     expect(placed.status).toBe(201);
     const id: string = placed.body.order.id;
     const pick = (body: { orders: { id: string }[] }) => body.orders.find((o) => o.id === id);
 
     const mine = await api().get('/api/orders').set(auth);
-    const board = await api().get('/api/orders').set(staffAuth);
+    const board = await api()
+      .get(`/api/stores/${await oldestStoreId()}/orders`)
+      .set(staffAuth);
     expect(pick(mine.body)).toBeDefined();
     expect(pick(board.body)).toBeDefined();
 
@@ -118,7 +120,9 @@ it('the customer list and the staff list read the snapshots too, even after the 
       .throwOnError();
 
     const mineAfter = await api().get('/api/orders').set(auth);
-    const boardAfter = await api().get('/api/orders').set(staffAuth);
+    const boardAfter = await api()
+      .get(`/api/stores/${await oldestStoreId()}/orders`)
+      .set(staffAuth);
     expect(pick(mineAfter.body)).toEqual(pick(mine.body));
     expect(pick(boardAfter.body)).toEqual(pick(board.body));
   } finally {
