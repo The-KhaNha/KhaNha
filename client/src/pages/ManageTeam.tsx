@@ -10,12 +10,13 @@ import { Skeleton } from '../components/Skeleton';
 import { TimeText } from '../components/TimeText';
 import { canManageManagers, canRemoveMember } from '../features/manage/manageRules';
 import { validateEmail } from '../features/auth/validation';
-import { useResource } from '../lib/useResource';
+import { useTeam } from '../features/manage/useManage';
+import { useAuthStore } from '../features/auth/authStore';
 import { ApiError } from '../services/api';
-import { createInvite, fetchTeam, removeMember, revokeInvite } from '../services/manage';
+import { createInvite, removeMember, revokeInvite } from '../services/manage';
 import type { StoreRole, StoreSummary, User } from '../types/api';
 
-type Pending = { kind: 'revoke' | 'remove'; id: string; label: string } | null;
+type Pending = { kind: 'revoke' | 'remove'; id: string; label: string; self?: boolean } | null;
 
 /** `/manage/:storeSlug/team`: members, open invites, and inviting by email. */
 export function ManageTeamTab({
@@ -25,9 +26,7 @@ export function ManageTeamTab({
   store: Pick<StoreSummary, 'id' | 'brand'>;
   user: User;
 }) {
-  const { data, isLoading, error, reload } = useResource(() => fetchTeam(store.id), {
-    key: `manage:team:${store.id}`,
-  });
+  const { data, isLoading, error, reload } = useTeam(store.id);
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<StoreRole>('STAFF');
   const [formError, setFormError] = useState<string | null>(null);
@@ -66,6 +65,8 @@ export function ManageTeamTab({
       await (pending.kind === 'revoke' ? revokeInvite : removeMember)(store.id, pending.id);
       setPending(null);
       reload();
+      // Leaving the team: the account's own memberships change, so /manage must stop offering this store.
+      if (pending.self) void useAuthStore.getState().hydrate();
     } catch (err) {
       setPending(null);
       setActionError(err instanceof ApiError ? err.message : 'Something went wrong.');
@@ -184,7 +185,14 @@ export function ManageTeamTab({
                       <Button
                         variant="ghost-danger"
                         aria-label={`Remove ${m.name}`}
-                        onClick={() => setPending({ kind: 'remove', id: m.id, label: m.name })}
+                        onClick={() =>
+                          setPending({
+                            kind: 'remove',
+                            id: m.id,
+                            label: m.name,
+                            self: m.userId === user.id,
+                          })
+                        }
                       >
                         Remove
                       </Button>

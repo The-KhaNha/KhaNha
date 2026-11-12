@@ -41,6 +41,8 @@ describe('ManageSettingsTab', () => {
     fireEvent.change(input, { target: { value: '99' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('at most 50');
+    fireEvent.change(input, { target: { value: '40' } });
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 
   it('keeps Save off for a non-number and offers a retry when the load fails', async () => {

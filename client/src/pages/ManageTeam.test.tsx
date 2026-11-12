@@ -10,6 +10,7 @@ const svc = vi.hoisted(() => ({
 }));
 vi.mock('../services/manage', () => svc);
 const { ManageTeamTab } = await import('./ManageTeam');
+const { useAuthStore } = await import('../features/auth/authStore');
 
 const store = { id: 's1', brand: { id: 'b1', name: 'B', slug: 'b' } };
 const person = (over: Partial<User>) =>
@@ -18,42 +19,17 @@ const owner = person({ ownedBrands: [store.brand] });
 const manager = person({
   memberships: [{ storeId: 's1', storeSlug: 's', storeName: 'S', role: 'MANAGER' }],
 });
+const member = (id: string, userId: string, name: string, role: string) =>
+  ({ id, userId, name, email: `${id}@x.test`, role, joinedAt: '' }) as const;
+const invite = (id: string, email: string, role: string) =>
+  ({ id, email, role, expiresAt: '2026-12-01T00:00:00Z', createdAt: '' }) as const;
 const team = {
   members: [
-    {
-      id: 'm1',
-      userId: 'me',
-      name: 'Me Manager',
-      email: 'me@x.test',
-      role: 'MANAGER',
-      joinedAt: '',
-    },
-    {
-      id: 'm2',
-      userId: 'u2',
-      name: 'Other Manager',
-      email: 'o@x.test',
-      role: 'MANAGER',
-      joinedAt: '',
-    },
-    { id: 'm3', userId: 'u3', name: 'Sam Staff', email: 's@x.test', role: 'STAFF', joinedAt: '' },
+    member('m1', 'me', 'Me Manager', 'MANAGER'),
+    member('m2', 'u2', 'Other Manager', 'MANAGER'),
+    member('m3', 'u3', 'Sam Staff', 'STAFF'),
   ],
-  invites: [
-    {
-      id: 'i1',
-      email: 'mgr@x.test',
-      role: 'MANAGER',
-      expiresAt: '2026-12-01T00:00:00Z',
-      createdAt: '',
-    },
-    {
-      id: 'i2',
-      email: 'stf@x.test',
-      role: 'STAFF',
-      expiresAt: '2026-12-01T00:00:00Z',
-      createdAt: '',
-    },
-  ],
+  invites: [invite('i1', 'mgr@x.test', 'MANAGER'), invite('i2', 'stf@x.test', 'STAFF')],
 };
 
 beforeEach(() => {
@@ -98,5 +74,14 @@ describe('ManageTeamTab', () => {
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }));
     expect(svc.removeMember).toHaveBeenCalledWith('s1', 'm3');
     await vi.waitFor(() => expect(svc.fetchTeam).toHaveBeenCalledTimes(2));
+  });
+
+  it('re-reads the account after a manager removes themselves', async () => {
+    const hydrate = vi.spyOn(useAuthStore.getState(), 'hydrate').mockResolvedValue();
+    svc.removeMember.mockResolvedValue(undefined);
+    render(<ManageTeamTab store={store} user={manager} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove Me Manager' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }));
+    await vi.waitFor(() => expect(hydrate).toHaveBeenCalledOnce());
   });
 });

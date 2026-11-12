@@ -11,19 +11,14 @@ import {
   toStoreDraft,
   validateStoreSetting,
 } from '../features/manage/storeSettingsRules';
-import { useResource } from '../lib/useResource';
+import { useStoreSettings } from '../features/manage/useManage';
 import { ApiError } from '../services/api';
-import { fetchStoreSettings, updateStoreSettings } from '../services/manage';
+import { updateStoreSettings } from '../services/manage';
 import type { StoreSettings } from '../types/api';
 
 /** `/manage/:storeSlug/settings`: the store's four limits. Not persisted: it is the manager's own data. */
 export function ManageSettingsTab({ storeId }: { storeId: string }) {
-  const { data, isLoading, error, reload, mutate } = useResource(
-    () => fetchStoreSettings(storeId),
-    {
-      key: `manage:settings:${storeId}`,
-    },
-  );
+  const { data, isLoading, error, reload, mutate } = useStoreSettings(storeId);
   if (isLoading)
     return (
       <Card as="section" padding="lg" className="mt-4" aria-busy aria-label="Loading settings">
@@ -88,9 +83,12 @@ function SettingsForm({
             hintPlacement="below"
             inputMode="numeric"
             value={draft[key]}
+            // Locked while saving, so "Saved" never stands beside a value the request did not carry.
+            disabled={saving}
             error={validateStoreSetting(draft[key]) ?? undefined}
             onChange={(e) => {
               setSaved(false);
+              setSaveError(null);
               setDraft((d) => ({ ...d, [key]: e.target.value }));
             }}
           />

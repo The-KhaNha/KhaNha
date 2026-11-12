@@ -40,11 +40,10 @@ export function ConfirmSheet({
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center md:items-center md:p-6">
-      <button
-        type="button"
-        aria-label="Close"
+      {/* Pointer-only: Keep and Escape are the keyboard and screen-reader ways out. */}
+      <div
+        aria-hidden="true"
         onClick={onCancel}
-        tabIndex={-1}
         className="absolute inset-0 animate-fade-in bg-overlay/45 backdrop-blur-[2px]"
       />
       <div
