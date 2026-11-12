@@ -12,7 +12,8 @@ import { Skeleton } from './Skeleton';
 type StoreCardProps = { className?: string } & (
   | { variant?: 'full'; store: Store }
   // `priority`: the first card on a list, whose photo is the page's largest paint (eager, the rest lazy).
-  | { variant: 'compact'; store: StoreSummary; priority?: boolean }
+  // `to`: where the row goes (default the store's page; `/manage` points it at the store's management).
+  | { variant: 'compact'; store: StoreSummary; priority?: boolean; to?: string }
 );
 
 /**
@@ -21,10 +22,10 @@ type StoreCardProps = { className?: string } & (
  */
 export function StoreCard(props: StoreCardProps) {
   if (props.variant === 'compact') {
-    const { store, priority = false, className } = props;
+    const { store, priority = false, className, to = `/s/${store.slug}` } = props;
     return (
       <Link
-        to={`/s/${store.slug}`}
+        to={to}
         className={cn(
           cardClasses('flex min-h-11 items-center gap-3 p-3 active:bg-surface-2', 'tile'),
           className,

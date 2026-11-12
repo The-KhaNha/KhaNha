@@ -140,7 +140,7 @@ describe('shell by route', () => {
       '/profile',
     ])
       expect(getShellConfig(path).bottomNav, path).toBe(true);
-    for (const path of ['/admin', '/staff'])
+    for (const path of ['/admin', '/staff', '/manage', '/manage/a/hours'])
       expect(getShellConfig(path).bottomNav, path).toBe(false);
   });
 });
