@@ -12,9 +12,12 @@ import { useStores } from '../features/stores/useStores';
  * visitor goes straight to its page.
  */
 export function StoreListPage() {
-  const { stores, isLoading, error, retry } = useStores();
+  const { stores, isLoading, error, retry, updatedAt } = useStores();
 
-  if (stores?.length === 1) return <Navigate to={`/s/${stores[0]!.slug}`} replace />;
+  // Only on a fresh answer: leaving on a saved one would drop the refresh, and the saved list would never learn of a
+  // second store.
+  if (stores?.length === 1 && updatedAt !== null)
+    return <Navigate to={`/s/${stores[0]!.slug}`} replace />;
 
   return (
     <div className="pb-6">
@@ -26,7 +29,7 @@ export function StoreListPage() {
               <StoreCardSkeleton key={i} variant="compact" />
             ))}
           </div>
-        ) : error && !stores ? (
+        ) : error && !stores?.length ? (
           <ErrorState
             compact
             title="Unable to load the stores."
@@ -56,7 +59,10 @@ export function StoreListPage() {
                 />
               )}
               {groupByArea(stores).map((group, g) => (
-                <section key={group.area ?? 'other'} className={g > 0 ? 'mt-6' : undefined}>
+                <section
+                  key={group.area === null ? 'no-area' : `area:${group.area}`}
+                  className={g > 0 ? 'mt-6' : undefined}
+                >
                   {group.area && <h2 className="eyebrow mb-3 text-muted">{group.area}</h2>}
                   <ul className="space-y-3">
                     {group.stores.map((store, i) => (

@@ -12,6 +12,7 @@ import { Skeleton } from '../components/Skeleton';
 import { CategoryChips, type MenuSection } from '../features/menu/CategoryChips';
 import { ItemDetailSheet } from '../features/menu/ItemDetailSheet';
 import { useStoreMenu } from '../features/stores/useStoreMenu';
+import { NotFoundPage } from './NotFound';
 import { formatPrepRange } from '../lib/format';
 import { LCP_IMAGE_PROPS, photoSrcSet } from '../lib/photo';
 import { useImagePainted } from '../lib/useImagePainted';
@@ -85,6 +86,8 @@ export function MenuPage() {
 
   if (isLoading) return <MenuSkeleton />;
 
+  // No such store: a retry cannot fix it, so the 404 page, as on the store's own page.
+  if (error?.status === 404 && !menu) return <NotFoundPage />;
   if (error && !menu) {
     return (
       <ErrorState

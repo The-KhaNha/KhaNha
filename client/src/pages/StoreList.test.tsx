@@ -21,6 +21,7 @@ const state = vi.hoisted(() => ({
   isLoading: false,
   error: null as null | { message: string; isUnreachable: boolean },
   retry: () => {},
+  updatedAt: null as number | null,
 }));
 vi.mock('../features/stores/useStores', () => ({ useStores: () => state }));
 const { StoreListPage } = await import('./StoreList');
@@ -41,6 +42,7 @@ describe('StoreListPage', () => {
     state.isLoading = false;
     state.error = null;
     state.retry = vi.fn();
+    state.updatedAt = 1;
   });
 
   it('lists the stores grouped by area', () => {
@@ -56,6 +58,22 @@ describe('StoreListPage', () => {
     state.stores = [summary('a', 'Alpha', null)];
     renderHome();
     expect(screen.getByText('Store page')).toBeInTheDocument();
+  });
+
+  it('stays on a saved single store until a fresh answer, so the refresh is not dropped', () => {
+    state.stores = [summary('a', 'Alpha', null)];
+    state.updatedAt = null;
+    renderHome();
+    expect(screen.queryByText('Store page')).toBeNull();
+    expect(screen.getByRole('link', { name: /Alpha/ })).toBeInTheDocument();
+  });
+
+  it('offers a retry when the saved list is empty and the refresh failed', () => {
+    state.stores = [];
+    state.error = { message: 'offline', isUnreachable: true };
+    renderHome();
+    fireEvent.click(screen.getByRole('button', { name: /retry|try again/i }));
+    expect(state.retry).toHaveBeenCalledOnce();
   });
 
   it('shows a loading state', () => {

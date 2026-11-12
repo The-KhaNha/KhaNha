@@ -16,3 +16,13 @@ export function groupByArea(stores: StoreSummary[]): AreaGroup[] {
     ...(unnamed ? [{ area: null, stores: unnamed }] : []),
   ];
 }
+
+/**
+ * Whether a menu's limits and stock may be applied to the cart: it is empty, or holds this menu's items. Browsing
+ * another store must not flag the cart's lines as gone (a cart names no store until P2 PR 12).
+ */
+export function menuMatchesCart(lines: { menuItemId: string }[], items: { id: string }[]): boolean {
+  if (lines.length === 0) return true;
+  const ids = new Set(items.map((item) => item.id));
+  return lines.some((line) => ids.has(line.menuItemId));
+}

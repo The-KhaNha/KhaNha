@@ -30,6 +30,20 @@ function prefetch(key: string, make: () => Promise<unknown>): void {
   pending.catch(() => {});
 }
 
+/** The landing page's public data, started before the first render (main.tsx). A malformed path prefetches nothing. */
+export function prefetchForPath(pathname: string): void {
+  const landedMenu = /^\/s\/([^/]+)\/menu$/.exec(pathname);
+  if (landedMenu) {
+    let ref: string;
+    try {
+      ref = decodeURIComponent(landedMenu[1]!);
+    } catch {
+      return; // `/s/%/menu`: the router shows its own answer
+    }
+    prefetchStoreMenu(ref);
+  } else if (pathname === '/') prefetchStores();
+}
+
 export const prefetchStores = () => prefetch('stores', requestStores);
 export const prefetchStoreMenu = (ref: string) =>
   prefetch(`menu:${ref}`, () => requestStoreMenu(ref));

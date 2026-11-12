@@ -1,4 +1,5 @@
 import { Navigate } from 'react-router-dom';
+import { StoreCardSkeleton } from '../../components/StoreCard';
 import { useStores } from './useStores';
 
 /**
@@ -7,6 +8,13 @@ import { useStores } from './useStores';
  */
 export function MenuRedirect() {
   const { stores, isLoading } = useStores();
-  if (isLoading) return null;
+  if (isLoading)
+    return (
+      <div className="space-y-3 p-4" aria-busy aria-label="Loading stores">
+        {[0, 1, 2].map((i) => (
+          <StoreCardSkeleton key={i} variant="compact" />
+        ))}
+      </div>
+    );
   return <Navigate to={stores?.length === 1 ? `/s/${stores[0]!.slug}/menu` : '/'} replace />;
 }
