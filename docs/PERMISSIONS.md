@@ -56,6 +56,7 @@ it has (so a visible store answers 403), else none. An ADMIN who is also a STAFF
 | `store.pause`         | yes   | yes     | yes   | yes   |
 | `hours.edit`          |       | yes     | yes   |       |
 | `settings.edit`       |       | yes     | yes   |       |
+| `menu.edit`           |       | yes     | yes   |       |
 | `team.manageStaff`    |       | yes     | yes   | yes   |
 | `team.manageManagers` |       |         | yes   | yes   |
 | `audit.store`         |       | yes     | yes   | yes   |
@@ -63,6 +64,8 @@ it has (so a visible store answers 403), else none. An ADMIN who is also a STAFF
 `ADMIN` holds only `store.pause`, `team.*` and `audit.store`: no kitchen power of its own (an ADMIN with a store membership still has that membership's kitchen access).
 
 `store.pause` guards `POST /stores/:storeId/pause` and `POST /stores/:storeId/resume` ([API.md](API.md#post-storesstoreidpause)); STAFF, MANAGER, OWNER and ADMIN may pause.
+
+`menu.edit` guards the menu editor, `GET`, `POST`, `PATCH` and `DELETE /stores/:storeId/menu-items` ([API.md](API.md#get-storesstoreidmenu-items)); STAFF get 403 (stock edits for staff arrive with `stock.update`, P3 PR 04).
 
 `hours.edit` guards `PUT /stores/:storeId/hours` and the schedule-exception POST and DELETE ([API.md](API.md#put-storesstoreidhours)); STAFF get 403.
 
@@ -72,7 +75,7 @@ it has (so a visible store answers 403), else none. An ADMIN who is also a STAFF
   access to it (a draft store does not exist to outsiders).
 - A store the caller can see but lacks the capability for is 403 `FORBIDDEN`.
 - A brand template (`stores.is_template`, [SCHEMA.md](SCHEMA.md#stores)) is 404 to everyone but the brand's owner,
-  and to the owner too for any capability a copy does not inherit: only `settings.edit` and `audit.store` reach it
+  and to the owner too for any capability a copy does not inherit: only `settings.edit`, `menu.edit` and `audit.store` reach it
   (`canAtTemplate` in `domain/permissions.ts`). A template has no kitchen and no team, so its orders, pause and team
   routes are 404, and no invite to it can be made.
 - It sets `req.store` and `req.storeAccess`; `requestContext` then records `storeRole` in the actor, which the audit row

@@ -217,7 +217,7 @@ export function testAuthMatrix(
 
 /**
  * Removes what a test made on its own stores: their events and orders, the users (with their orders at any store),
- * then the stores and brands. Nothing cascades from a store to its orders or events.
+ * the stores' menus, then the stores and brands. Nothing cascades from a store to its orders or events.
  */
 export async function deleteTestStores(
   storeIds: string[],
@@ -228,6 +228,8 @@ export async function deleteTestStores(
   await supabaseAdmin.from('orders').delete().in('store_id', storeIds).throwOnError();
   const userIds = users.map((user) => user.id);
   await supabaseAdmin.from('orders').delete().in('user_id', userIds).throwOnError();
+  // After the orders: their lines point at the items. Nothing cascades from a store to its menu.
+  await supabaseAdmin.from('menu_items').delete().in('store_id', storeIds).throwOnError();
   await Promise.all(users.map((user) => deleteTestUser(user)));
   await supabaseAdmin.from('stores').delete().in('id', storeIds).throwOnError();
   await supabaseAdmin.from('brands').delete().in('id', brandIds).throwOnError();

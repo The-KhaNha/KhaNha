@@ -73,6 +73,8 @@ function menuItem(overrides: Partial<Tables<'menu_items'>> = {}): Tables<'menu_i
     stock_quantity: null,
     template_item_id: null,
     archived_at: null,
+    diet: 'VEG',
+    image_variants: null,
     ...overrides,
   };
 }
@@ -198,6 +200,7 @@ describe('toMenuItemDto', () => {
       description: 'Creamy chilled coffee',
       price: 120,
       imageUrl: '/images/cold-coffee.jpg',
+      diet: 'VEG',
       isAvailable: false,
       isPopular: true,
       sortOrder: 1,

@@ -41,6 +41,15 @@
       "messageMax": 500,
       "stackMax": 3500,
       "routeMax": 200
+    },
+    "menuItem": {
+      "nameMin": 2,
+      "nameMax": 80,
+      "descriptionMax": 300,
+      "categoryMax": 40,
+      "priceMin": 1,
+      "priceMax": 100000,
+      "stockMax": 100000
     }
   }
 }

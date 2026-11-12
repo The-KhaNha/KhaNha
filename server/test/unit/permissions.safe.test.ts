@@ -14,6 +14,7 @@ const EXPECTED: Record<Capability, Record<StoreAccess, boolean>> = {
   'store.pause': { STAFF: true, MANAGER: true, OWNER: true, ADMIN: true },
   'hours.edit': { STAFF: false, MANAGER: true, OWNER: true, ADMIN: false },
   'settings.edit': { STAFF: false, MANAGER: true, OWNER: true, ADMIN: false },
+  'menu.edit': { STAFF: false, MANAGER: true, OWNER: true, ADMIN: false },
   'team.manageStaff': { STAFF: false, MANAGER: true, OWNER: true, ADMIN: true },
   'team.manageManagers': { STAFF: false, MANAGER: false, OWNER: true, ADMIN: true },
   'audit.store': { STAFF: false, MANAGER: true, OWNER: true, ADMIN: true },
@@ -82,7 +83,7 @@ describe('accessFor', () => {
 });
 
 // A brand template (P3 PR 01): the owner only, and only what a copy inherits. Written out so a widened list fails here.
-const AT_TEMPLATE: Capability[] = ['settings.edit', 'audit.store'];
+const AT_TEMPLATE: Capability[] = ['settings.edit', 'audit.store', 'menu.edit'];
 
 describe('canAtTemplate', () => {
   for (const capability of Object.keys(EXPECTED) as Capability[]) {

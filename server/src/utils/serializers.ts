@@ -6,6 +6,7 @@ import type {
   FeatureFlagDto,
   InviteDto,
   MemberDto,
+  ManagedMenuItemDto,
   MenuItemDto,
   OrderDto,
   OrderItemDto,
@@ -179,11 +180,16 @@ export function toMenuItemDto(item: Tables<'menu_items'>): MenuItemDto {
     description: item.description,
     price: paiseToRupees(item.price_paise),
     imageUrl: item.image_url,
+    diet: item.diet,
     isAvailable: isPurchasable(item),
     isPopular: item.is_popular,
     sortOrder: item.sort_order,
     stockQuantity: item.stock_quantity,
   };
+}
+
+export function toManagedMenuItemDto(item: Tables<'menu_items'>): ManagedMenuItemDto {
+  return { ...toMenuItemDto(item), isEnabled: item.is_available, archivedAt: item.archived_at };
 }
 
 function toOrderItemDto(item: OrderItemRow): OrderItemDto {

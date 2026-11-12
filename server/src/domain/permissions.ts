@@ -13,6 +13,7 @@ const MATRIX = {
   'store.pause': ['STAFF', 'MANAGER', 'OWNER', 'ADMIN'],
   'hours.edit': ['MANAGER', 'OWNER'],
   'settings.edit': ['MANAGER', 'OWNER'],
+  'menu.edit': ['MANAGER', 'OWNER'],
   'team.manageStaff': ['MANAGER', 'OWNER', 'ADMIN'],
   'team.manageManagers': ['OWNER', 'ADMIN'],
   'audit.store': ['MANAGER', 'OWNER', 'ADMIN'],
@@ -21,7 +22,7 @@ const MATRIX = {
 export type Capability = keyof typeof MATRIX;
 
 // A brand template (P3.1) has no kitchen and no team: only its owner works on it, and only on what a copy inherits.
-const TEMPLATE_CAPABILITIES: readonly Capability[] = ['settings.edit', 'audit.store'];
+const TEMPLATE_CAPABILITIES: readonly Capability[] = ['settings.edit', 'audit.store', 'menu.edit'];
 
 /** Whether `access` may use `capability` at a brand template; anything else there is 404, like a store not seen. */
 export function canAtTemplate(access: StoreAccess | null, capability: Capability): boolean {
