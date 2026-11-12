@@ -245,9 +245,16 @@ leaves none.
 Docs: `docs/API.md`, `docs/PERMISSIONS.md`, `docs/SCHEMA.md` (the function), `docs/ARCHITECTURE.md` (a store's life:
 draft, published, unpublished). Intent: `--server minor --client patch`.
 
+As built: `store.changed` comes from a row trigger on `stores` (`stores_changed`), not from `set_store_status` itself,
+so a profile edit, a publish, an unpublish and an operator's status change in SQL each emit one, and a write of the
+same values none; its payload names the changed fields and the status, never their values. The store name's bound is
+2–80, not 60, because a template takes its brand's name (`brands.name` allows 80). Tagline (≤ 120), description
+(≤ 300) and area (≤ 60) are bounded in zod only. A suspended or archived store answers 409
+`INVALID_STATUS_TRANSITION`.
+
 ### PR 02 — Menu editing API (P3.4)
 
-- [ ] Merged
+- [x] Merged (#78, bb61db4)
 
 `/before-write`: reuse-scout, expected EXTEND (`menu.service.ts`, `toMenuItemDto`); schema-guard, EXTEND
 (`menu_items`). Skills: `/new-endpoint`, `agent-skills:api-and-interface-design`.

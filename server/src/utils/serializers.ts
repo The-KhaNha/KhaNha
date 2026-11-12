@@ -7,6 +7,7 @@ import type {
   InviteDto,
   MemberDto,
   ManagedMenuItemDto,
+  ManagedStoreDto,
   MenuItemDto,
   OrderDto,
   OrderItemDto,
@@ -149,6 +150,23 @@ export function toStoreDto(store: StoreWithBrand, open: OpenFields): StoreDto {
     ...open,
     prepTimeMinMinutes: store.prep_time_min_minutes,
     prepTimeMaxMinutes: store.prep_time_max_minutes,
+  };
+}
+
+export function toManagedStoreDto(store: Tables<'stores'>): ManagedStoreDto {
+  return {
+    id: store.id,
+    slug: store.slug,
+    name: store.name,
+    status: store.status,
+    isTemplate: store.is_template,
+    area: store.area,
+    address: store.address_line,
+    contactPhone: store.contact_phone,
+    tagline: store.tagline,
+    description: store.description,
+    imageUrl: store.image_url,
+    createdAt: toIso(store.created_at),
   };
 }
 

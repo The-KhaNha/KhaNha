@@ -50,6 +50,16 @@
       "priceMin": 1,
       "priceMax": 100000,
       "stockMax": 100000
+    },
+    "store": {
+      "nameMin": 2,
+      "nameMax": 80,
+      "slugMin": 3,
+      "slugMax": 48,
+      "taglineMax": 120,
+      "descriptionMax": 300,
+      "areaMax": 60,
+      "addressMax": 200
     }
   }
 }

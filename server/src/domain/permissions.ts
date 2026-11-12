@@ -14,6 +14,9 @@ const MATRIX = {
   'hours.edit': ['MANAGER', 'OWNER'],
   'settings.edit': ['MANAGER', 'OWNER'],
   'menu.edit': ['MANAGER', 'OWNER'],
+  'store.profile': ['MANAGER', 'OWNER'],
+  // Making a store public (P3.1, D6) is the brand's call: its owner, not a manager or an operator.
+  'store.publish': ['OWNER'],
   'team.manageStaff': ['MANAGER', 'OWNER', 'ADMIN'],
   'team.manageManagers': ['OWNER', 'ADMIN'],
   'audit.store': ['MANAGER', 'OWNER', 'ADMIN'],
@@ -22,7 +25,13 @@ const MATRIX = {
 export type Capability = keyof typeof MATRIX;
 
 // A brand template (P3.1) has no kitchen and no team: only its owner works on it, and only on what a copy inherits.
-const TEMPLATE_CAPABILITIES: readonly Capability[] = ['settings.edit', 'audit.store', 'menu.edit'];
+const TEMPLATE_CAPABILITIES: readonly Capability[] = [
+  'settings.edit',
+  'audit.store',
+  'menu.edit',
+  // The tagline and description a new branch copies.
+  'store.profile',
+];
 
 /** Whether `access` may use `capability` at a brand template; anything else there is 404, like a store not seen. */
 export function canAtTemplate(access: StoreAccess | null, capability: Capability): boolean {

@@ -1,13 +1,17 @@
 import { STORE_LIST_MAX } from '../schemas/limits';
-import type { StoreSummaryDto } from '../types/api';
-import { cached, PUBLIC_READ_TTL_MS } from '../utils/cache';
-import { notFound } from '../utils/errors';
+import type { UpdateStoreProfileInput } from '../schemas/store.schema';
+import type { ManagedStoreDto, StoreSummaryDto } from '../types/api';
+import type { RequestContext } from '../types/auth';
+import type { Tables, TablesUpdate } from '../types/database';
+import { cached, invalidate, PUBLIC_READ_TTL_MS } from '../utils/cache';
+import { AppError, notFound, storeNotReady, validationError } from '../utils/errors';
 import { isUuid } from '../utils/ids';
 import { logger } from '../utils/logger';
 import { STORE_SLUG_PATTERN } from '../schemas/store.schema';
 import { computeOpenState, getSchedules, toOpenFields } from './schedule.service';
-import { toStoreSummaryDto, type StoreWithBrand } from '../utils/serializers';
-import { supabaseAdmin } from '../utils/supabase';
+import { toManagedStoreDto, toStoreSummaryDto, type StoreWithBrand } from '../utils/serializers';
+import { raisedByDatabase, supabaseAdmin } from '../utils/supabase';
+import { invalidateMenus } from './menu.service';
 
 // Named: brands.template_store_id is a second foreign key between the two tables (P3 PR 01).
 const STORE_SELECT = '*, brand:brands!stores_brand_id_fkey!inner(id, name, slug)';
@@ -91,4 +95,86 @@ export async function listStores(area?: string): Promise<StoreSummaryDto[]> {
     );
   });
   return area === undefined ? all : all.filter((store) => store.area === area);
+}
+
+/** Every cached read a store's profile or status shows in: its row, the public list, and its menus. */
+function invalidateStore(storeId: string): void {
+  invalidate(`store:${storeId}`);
+  invalidate('stores:list');
+  invalidateMenus(storeId);
+}
+
+const PROFILE_COLUMN = {
+  name: 'name',
+  tagline: 'tagline',
+  description: 'description',
+  area: 'area',
+  addressLine: 'address_line',
+  contactPhone: 'contact_phone',
+} as const satisfies Record<keyof UpdateStoreProfileInput, keyof Tables<'stores'>>;
+
+/** Edits a store's profile; never its slug or status. stores_changed emits store.changed when a value changed. */
+export async function updateStoreProfile(
+  storeId: string,
+  status: string,
+  input: UpdateStoreProfileInput,
+  ctx: RequestContext,
+): Promise<ManagedStoreDto> {
+  // Publishing needed an address; a public store keeps one (unpublish first to clear it).
+  if (status === 'ACTIVE' && input.addressLine === null)
+    throw validationError('A published store needs an address.', 'addressLine');
+  const update: TablesUpdate<'stores'> = {};
+  for (const [field, column] of Object.entries(PROFILE_COLUMN)) {
+    const value = input[field as keyof UpdateStoreProfileInput];
+    if (value !== undefined) Object.assign(update, { [column]: value });
+  }
+  let query = supabaseAdmin.from('stores').update(update).eq('id', storeId);
+  // Clearing the address only matches a store that is not ACTIVE at write time, so a publish that lands after the
+  // check above cannot leave a public store without one.
+  if (input.addressLine === null) query = query.neq('status', 'ACTIVE');
+  const { data } = await query
+    .select('*')
+    .maybeSingle()
+    // The audit and event triggers read who and which request from these.
+    .setHeader('x-actor', JSON.stringify(ctx.actor))
+    .setHeader('x-request-id', ctx.requestId)
+    .throwOnError();
+  if (!data) throw validationError('A published store needs an address.', 'addressLine');
+  invalidateStore(storeId);
+  return toManagedStoreDto(data);
+}
+
+/**
+ * Publishes (ACTIVE) or unpublishes (DRAFT) a branch through set_store_status. A store that is not ready is
+ * STORE_NOT_READY with what is missing; one an operator suspended or archived is INVALID_STATUS_TRANSITION.
+ */
+export async function setStoreStatus(
+  storeId: string,
+  status: 'ACTIVE' | 'DRAFT',
+  ctx: RequestContext,
+): Promise<ManagedStoreDto> {
+  let missing: string[];
+  try {
+    const { data } = await supabaseAdmin
+      .rpc('set_store_status', {
+        p_store_id: storeId,
+        p_status: status,
+        p_actor: ctx.actor,
+        p_request_id: ctx.requestId,
+      })
+      .throwOnError();
+    missing = data;
+  } catch (err) {
+    if (raisedByDatabase(err, 'INVALID_STATUS_TRANSITION'))
+      throw new AppError(
+        409,
+        'INVALID_STATUS_TRANSITION',
+        'This store was suspended or archived. Contact support to bring it back.',
+      );
+    if (raisedByDatabase(err, 'NOT_FOUND')) throw notFound('Store not found.');
+    throw err;
+  }
+  if (missing.length > 0) throw storeNotReady(missing);
+  invalidateStore(storeId);
+  return toManagedStoreDto(await getStore(storeId));
 }

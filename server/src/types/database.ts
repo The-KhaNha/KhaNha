@@ -1005,6 +1005,15 @@ export type Database = {
         };
         Returns: boolean;
       };
+      set_store_status: {
+        Args: {
+          p_actor?: Json;
+          p_request_id?: string;
+          p_status: Database['public']['Enums']['store_status'];
+          p_store_id: string;
+        };
+        Returns: string[];
+      };
       touch_session: {
         Args: {
           p_idle: string;
