@@ -408,7 +408,7 @@ for (const { path, role, width } of [
     await page.setViewportSize({ width, height: 640 });
     if (role) {
       await signIn(page, role);
-      await page.route('**/api/orders**', async (route) => {
+      await page.route(/\/api\/(stores\/s1\/)?orders/, async (route) => {
         await new Promise((resolve) => setTimeout(resolve, 800));
         await route.fallback();
       });

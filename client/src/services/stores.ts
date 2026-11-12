@@ -15,6 +15,18 @@ const requestStoreMenu = (ref: string) =>
 export const fetchStoreHours = (ref: string) =>
   request<StoreScheduleResponse>(path(ref, '/hours'), { auth: false });
 
+/** Stops new orders at a store for `minutes` (or `until`), or until resumed when neither is given. */
+export async function pauseStore(
+  storeId: string,
+  body: { minutes?: number; until?: string; reason?: string } = {},
+) {
+  return (await request<{ store: Store }>(path(storeId, '/pause'), { method: 'POST', body })).store;
+}
+
+export async function resumeStore(storeId: string) {
+  return (await request<{ store: Store }>(path(storeId, '/resume'), { method: 'POST' })).store;
+}
+
 // Started while the app boots (main.tsx): handed out once, so later calls ask the server again.
 const prefetched = new Map<string, Promise<unknown>>();
 

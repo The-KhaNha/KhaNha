@@ -11,10 +11,12 @@ export function useStores() {
 }
 
 /** One store by slug or id (`/s/:storeSlug`). */
-export function useStoreByRef(storeRef: string) {
-  const { data, isLoading, error, reload } = useResource(() => fetchStoreByRef(storeRef), {
+export function useStoreByRef(storeRef: string, pollMs?: number) {
+  const { data, isLoading, error, reload, mutate } = useResource(() => fetchStoreByRef(storeRef), {
     key: `store:${storeRef}`,
     persist: true,
+    // The staff board polls it: a pause or resume from another device shows up without a reload.
+    pollInterval: pollMs ? () => pollMs : undefined,
   });
-  return { store: data, isLoading, error, retry: reload };
+  return { store: data, isLoading, error, retry: reload, mutate };
 }

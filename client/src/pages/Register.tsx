@@ -42,7 +42,7 @@ export function RegisterPage() {
   const [serverError, setServerError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  if (user) return <Navigate to={homeFor(user.role)} replace />;
+  if (user) return <Navigate to={homeFor(user)} replace />;
 
   const validators: Record<Field, (value: string) => string | undefined> = {
     name: validateName,
