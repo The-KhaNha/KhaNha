@@ -1,12 +1,15 @@
+import type { ReactNode } from 'react';
 import { Navigate, NavLink, Route, Routes, useParams } from 'react-router-dom';
 import { Hourglass } from 'lucide-react';
 import { EmptyState } from '../components/EmptyState';
 import { ErrorState } from '../components/ErrorState';
 import { Skeleton } from '../components/Skeleton';
 import { useAuthStore } from '../features/auth/authStore';
-import { MANAGE_TABS, canManage } from '../features/manage/manageRules';
+import { MANAGE_TABS, canEditSettings, canManage } from '../features/manage/manageRules';
 import { useStoreByRef } from '../features/stores/useStores';
 import { cn } from '../lib/cn';
+import { ManageSettingsTab } from './ManageSettings';
+import { ManageTeamTab } from './ManageTeam';
 import { NotFoundPage } from './NotFound';
 
 const ComingNext = () => (
@@ -42,6 +45,13 @@ export function ManageStorePage() {
       </div>
     );
 
+  // An admin holds no `settings.edit`: the tab is not offered (and its route is the not-found page).
+  const tabs = MANAGE_TABS.filter((t) => t.path !== 'settings' || canEditSettings(user, store));
+  const elements: Record<string, ReactNode> = {
+    settings: <ManageSettingsTab storeId={store.id} />,
+    team: <ManageTeamTab store={store} user={user} />,
+  };
+
   return (
     <div className="pt-4">
       {error && (
@@ -57,7 +67,7 @@ export function ManageStorePage() {
       )}
       <h1 className="text-xl font-extrabold">{store.name}</h1>
       <nav aria-label="Manage" className="mt-3 flex gap-1 border-b border-line/70">
-        {MANAGE_TABS.map(({ path, label }) => (
+        {tabs.map(({ path, label }) => (
           <NavLink
             key={path}
             to={`/manage/${store.slug}/${path}`}
@@ -75,8 +85,8 @@ export function ManageStorePage() {
       </nav>
       <Routes>
         <Route index element={<Navigate to="hours" replace />} />
-        {MANAGE_TABS.map(({ path }) => (
-          <Route key={path} path={path} element={<ComingNext />} />
+        {tabs.map(({ path }) => (
+          <Route key={path} path={path} element={elements[path] ?? <ComingNext />} />
         ))}
         <Route path="*" element={<NotFoundPage />} />
       </Routes>

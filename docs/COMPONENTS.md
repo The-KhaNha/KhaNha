@@ -321,6 +321,8 @@ with `selectLimits`.
 
 Selectors: `selectLines`, `selectCount`, `selectTotal`, `selectQuantityOf(id)`, `selectLimits`, `selectStoreName`.
 
+**`ConfirmSheet({ title, text, confirmLabel, onConfirm, onCancel, busy? })`** (`components/ConfirmSheet.tsx`): "Are you sure?" for a destructive tap (remove a member, revoke an invite), the `ReplaceCartSheet` pattern: `useFocusTrap`, Escape and the backdrop cancel, Keep takes the first focus, 44px+ buttons. Mount it only while the question is open.
+
 **`AddToCartProvider({ store, rules, children })`** (`features/cart/AddToCart.tsx`): the column of one store's menu; everything under it adds through `useAddToCart()` → `(item, quantity?) => boolean`, which is false while it asks. When the cart holds another store's items it renders **`ReplaceCartSheet({ fromName, toName, onReplace, onKeep })`** ("Start a new cart?": the `ItemDetailSheet` sheet pattern, `useFocusTrap`, Escape and the backdrop keep, Keep takes focus, 44px+ buttons). Replace clears the cart, applies the new store's limits and adds. `cartHoldsOtherStore(cart, storeId)` (`features/stores/storeRules.ts`) is the rule, also used so another store's menu never touches the cart's limits or stock.
 
 **`useReorder.ts`**: `useReorder()` → `{ reorder(order), reorderingId, replace }`. Fetches the current menu of `order.store`, adds the order's
