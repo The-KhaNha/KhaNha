@@ -201,6 +201,8 @@ describe('inviting', () => {
     const asMember = await invite({ email: staff.email, role: 'STAFF' });
     expect(asMember.status).toBe(409);
     expect(asMember.body.error.code).toBe('MEMBERSHIP_EXISTS');
+    // The brand's owner has no membership row, yet is already OWNER here.
+    expect((await invite({ email: owner.email, role: 'STAFF' }, manager)).status).toBe(409);
     const email = `twice-${tag}@example.test`;
     const first = await invite({ email, role: 'STAFF' });
     expect((await invite({ email, role: 'STAFF' })).body.error.code).toBe('MEMBERSHIP_EXISTS');
@@ -236,6 +238,14 @@ describe('revoking and removing', () => {
     expect((await revoke(staffInvite.body.invite.id, manager)).status).toBe(204);
     expect((await revoke(randomUUID(), manager)).status).toBe(404);
     expect((await revoke('not-a-uuid', manager)).status).toBe(404);
+    // Accepted (here behind the API's back, as a racing accept would): 404, never a revoked accepted invite.
+    const used = await invite({ email: `rv-u-${tag}@example.test`, role: 'STAFF' });
+    await supabaseAdmin
+      .from('store_invites')
+      .update({ accepted_at: new Date().toISOString() })
+      .eq('id', used.body.invite.id)
+      .throwOnError();
+    expect((await revoke(used.body.invite.id, manager)).status).toBe(404);
   });
 
   it('removal takes effect on the next request, and is audited with the actor', async () => {

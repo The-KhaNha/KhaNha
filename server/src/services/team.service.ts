@@ -51,7 +51,7 @@ export async function listTeam(
  * standing for `team.manageManagers`, which inviting a MANAGER needs.
  */
 export async function createInvite(
-  storeId: string,
+  { id: storeId, brandId }: { id: string; brandId: string },
   input: CreateInviteInput,
   canManageManagers: boolean,
   ctx: RequestContext,
@@ -68,6 +68,15 @@ export async function createInvite(
     .maybeSingle()
     .throwOnError();
   if (member) throw membershipExists();
+  // The brand's owner is OWNER of every store with no membership row: an invite would only add a lesser one.
+  const { data: owned } = await supabaseAdmin
+    .from('brands')
+    .select('id, owner:profiles!brands_owner_id_fkey!inner (email)')
+    .eq('id', brandId)
+    .eq('owner.email', input.email)
+    .maybeSingle()
+    .throwOnError();
+  if (owned) throw membershipExists();
 
   // An expired invite still holds the open-invite unique index: close it so the email can be invited again.
   await audited(
@@ -131,6 +140,8 @@ export async function revokeInvite(
       .from('store_invites')
       .update({ revoked_at: new Date().toISOString() })
       .eq('id', inviteId)
+      // Accepted since the read above: the CHECK forbids revoking it, and there is nothing left to revoke.
+      .is('accepted_at', null)
       .is('revoked_at', null),
     ctx,
   ).throwOnError();

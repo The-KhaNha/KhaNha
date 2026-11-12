@@ -23,7 +23,7 @@ export const listTeam: RequestHandler = async (req, res) => {
 /** POST /api/stores/:storeId/invites, after requireStore('team.manageStaff'). The token is in this answer only. */
 export const createInvite: BodyHandler<CreateInviteInput> = async (req, res) => {
   const created = await team.createInvite(
-    currentStore(req).id,
+    currentStore(req),
     req.body,
     managesManagers(req),
     requestContext(req),

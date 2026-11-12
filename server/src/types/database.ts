@@ -811,30 +811,6 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
-      accept_store_invite: {
-        Args: {
-          p_actor?: Json;
-          p_email: string;
-          p_now?: string;
-          p_request_id?: string;
-          p_token_hash: string;
-          p_user_id: string;
-        };
-        Returns: {
-          created_at: string;
-          created_by: string | null;
-          id: string;
-          role: Database['public']['Enums']['store_role'];
-          store_id: string;
-          user_id: string;
-        };
-        SetofOptions: {
-          from: '*';
-          to: 'store_memberships';
-          isOneToOne: true;
-          isSetofReturn: false;
-        };
-      };
       emit_event: {
         Args: {
           p_actor: Json;

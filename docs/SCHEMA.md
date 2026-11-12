@@ -43,7 +43,7 @@ a new file (see [DEPLOYMENT.md](DEPLOYMENT.md#schema-changes)).
 | `20261112053921_store_settings_on_stores.sql`      | adds the four store settings columns (with checks) to `stores`, copies `staff_order_list_limit` from `site_settings` once without audit rows, and `stores_settings_audit`                                                                                                                                                                                                                                                                                                                                                         |
 | `20261112063852_store_hours.sql`                   | adds `schedule_exception_kind`, `store_hours` and `store_schedule_exceptions` (RLS on, revoked, cascade from `stores`) with `store_hours_audit` and `store_schedule_exceptions_audit`                                                                                                                                                                                                                                                                                                                                             |
 | `20261111123222_store_memberships.sql`             | adds `store_role`, `store_memberships` (RLS, revoked) with its backfill of `STAFF` profiles into the oldest store and `store_memberships_audit`; redefines `audit_row_change()` to record inserts and deletes and the actor's `storeRole`                                                                                                                                                                                                                                                                                         |
-| `20261112083000_store_invites.sql`                 | adds `store_invites` (RLS on, revoked; two CHECKs, `store_invites_open_email_key` and three more indexes) with `store_invites_audit`, and `accept_store_invite()` (`service_role` only)                                                                                                                                                                                                                                                                                                                                           |
+| `20261112083000_store_invites.sql`                 | adds `store_invites` (RLS on, revoked; two CHECKs, `store_invites_open_email_key` and three more indexes) with `store_invites_audit`                                                                                                                                                                                                                                                                                                                                                                                              |
 
 ## Enums
 
@@ -119,7 +119,7 @@ migration backfills every `profiles.role = 'STAFF'` account as a `STAFF` member 
 ### store_invites
 
 An open invitation to join a store's team (`20261112083000_store_invites.sql`). The API creates one with a random token
-and keeps only the token's sha-256 (`token_hash`). `accept_store_invite` turns it into a `store_memberships` row.
+and keeps only the token's sha-256 (`token_hash`). Accepting one (the next PR) turns it into a `store_memberships` row.
 Nothing but the API (secret key) reads or writes it. Who may invite and remove: [PERMISSIONS.md](PERMISSIONS.md#team-invites-and-removals).
 
 | Column        | Type         | Null | Default             | Notes                                                                             |
@@ -429,26 +429,25 @@ All functions set `search_path = ''` and use schema-qualified names. Each call i
 raises leaves nothing behind. Expected failures are raised with `message` = an API error code and `detail` = a JSON
 object (SQLSTATE `P0001`). How the API maps them is in [API.md](API.md#database-errors-p0001).
 
-| Function                     | Language | Security | Returns             | Called by                                                                               | `EXECUTE` granted to |
-| ---------------------------- | -------- | -------- | ------------------- | --------------------------------------------------------------------------------------- | -------------------- |
-| `set_updated_at()`           | plpgsql  | invoker  | trigger             | `orders_set_updated_at`, `site_settings_set_updated_at`, `feature_flags_set_updated_at` | nobody               |
-| `handle_new_user()`          | plpgsql  | definer  | trigger             | `on_auth_user_created`                                                                  | nobody               |
-| `handle_user_email_change()` | plpgsql  | definer  | trigger             | `on_auth_user_email_changed`                                                            | nobody               |
-| `profile_name(text, text)`   | plpgsql  | invoker  | text                | `handle_new_user()`, `20261103173300_profile_name_bounds.sql`                           | nobody               |
-| `profile_phone(text)`        | sql      | invoker  | text                | `handle_new_user()`, `20261103173300_profile_name_bounds.sql`                           | nobody               |
-| `place_order(...)`           | plpgsql  | invoker  | uuid                | `order.service.createOrder`                                                             | `service_role`       |
-| `update_order_status(...)`   | plpgsql  | invoker  | boolean             | `order.service.updateOrderStatus`                                                       | `service_role`       |
-| `reset_demo_orders()`        | sql      | definer  | void                | `server/scripts/seed.ts`                                                                | `service_role`       |
-| `emit_event(...)`            | plpgsql  | definer  | uuid                | `place_order`, `update_order_status`, `accept_store_invite`                             | `service_role`       |
-| `accept_store_invite(...)`   | plpgsql  | invoker  | `store_memberships` | none yet (the accept route is the next PR)                                              | `service_role`       |
-| `queue_read(...)`            | plpgsql  | definer  | table               | the worker (P1 PR 03)                                                                   | `service_role`       |
-| `queue_delete(...)`          | sql      | definer  | boolean             | the worker                                                                              | `service_role`       |
-| `queue_retry(...)`           | sql      | definer  | void                | the worker                                                                              | `service_role`       |
-| `queue_dead_letter(...)`     | sql      | definer  | boolean             | the worker                                                                              | `service_role`       |
-| `queue_metrics(text)`        | sql      | definer  | table               | the worker's health report                                                              | `service_role`       |
-| `purge_domain_events(...)`   | sql      | invoker  | integer             | pg_cron `purge-domain-events`                                                           | `service_role`       |
-| `audit_row_change()`         | plpgsql  | definer  | trigger             | the `*_audit` triggers                                                                  | nobody               |
-| `audit_log_append_only()`    | plpgsql  | invoker  | trigger             | `audit_log_no_change`, `_no_truncate`                                                   | nobody               |
+| Function                     | Language | Security | Returns | Called by                                                                               | `EXECUTE` granted to |
+| ---------------------------- | -------- | -------- | ------- | --------------------------------------------------------------------------------------- | -------------------- |
+| `set_updated_at()`           | plpgsql  | invoker  | trigger | `orders_set_updated_at`, `site_settings_set_updated_at`, `feature_flags_set_updated_at` | nobody               |
+| `handle_new_user()`          | plpgsql  | definer  | trigger | `on_auth_user_created`                                                                  | nobody               |
+| `handle_user_email_change()` | plpgsql  | definer  | trigger | `on_auth_user_email_changed`                                                            | nobody               |
+| `profile_name(text, text)`   | plpgsql  | invoker  | text    | `handle_new_user()`, `20261103173300_profile_name_bounds.sql`                           | nobody               |
+| `profile_phone(text)`        | sql      | invoker  | text    | `handle_new_user()`, `20261103173300_profile_name_bounds.sql`                           | nobody               |
+| `place_order(...)`           | plpgsql  | invoker  | uuid    | `order.service.createOrder`                                                             | `service_role`       |
+| `update_order_status(...)`   | plpgsql  | invoker  | boolean | `order.service.updateOrderStatus`                                                       | `service_role`       |
+| `reset_demo_orders()`        | sql      | definer  | void    | `server/scripts/seed.ts`                                                                | `service_role`       |
+| `emit_event(...)`            | plpgsql  | definer  | uuid    | `place_order`, `update_order_status`                                                    | `service_role`       |
+| `queue_read(...)`            | plpgsql  | definer  | table   | the worker (P1 PR 03)                                                                   | `service_role`       |
+| `queue_delete(...)`          | sql      | definer  | boolean | the worker                                                                              | `service_role`       |
+| `queue_retry(...)`           | sql      | definer  | void    | the worker                                                                              | `service_role`       |
+| `queue_dead_letter(...)`     | sql      | definer  | boolean | the worker                                                                              | `service_role`       |
+| `queue_metrics(text)`        | sql      | definer  | table   | the worker's health report                                                              | `service_role`       |
+| `purge_domain_events(...)`   | sql      | invoker  | integer | pg_cron `purge-domain-events`                                                           | `service_role`       |
+| `audit_row_change()`         | plpgsql  | definer  | trigger | the `*_audit` triggers                                                                  | nobody               |
+| `audit_log_append_only()`    | plpgsql  | invoker  | trigger | `audit_log_no_change`, `_no_truncate`                                                   | nobody               |
 
 ### set_updated_at
 
@@ -589,19 +588,6 @@ The transition rules live in the API, not here. The function only enforces "the 
 | --------------------------- | ------------------------- |
 | `NOT_FOUND`                 | none                      |
 | `INVALID_STATUS_TRANSITION` | `{ orderNumber, status }` |
-
-### accept_store_invite
-
-`accept_store_invite(p_token_hash, p_user_id, p_email, p_actor, p_request_id, p_now)` (security invoker, `EXECUTE` for
-`service_role` only; `20261112083000_store_invites.sql`) accepts an invite in one transaction and returns the
-`store_memberships` row. It locks the invite by `token_hash`, inserts the membership (`created_by` is the inviter) and
-sets `accepted_at` and `accepted_by`, then emits `store.member_joined` (`store_invite`, ids and the role only) with the
-actor and request id. A repeat by the account that accepted it returns the membership and changes nothing. An existing
-member with the same role consumes the invite; one with another role is refused, since an invite never changes a role.
-
-| Message     | When                                                                                                                                                        |
-| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `NOT_FOUND` | every refusal, with no detail: unknown token, another account's email, expired, revoked, accepted by someone else, a member of another role (it stays open) |
 
 ### reset_demo_orders
 
