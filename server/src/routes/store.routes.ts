@@ -11,7 +11,11 @@ import { auditQuerySchema } from '../schemas/admin.schema';
 import { createMenuItemSchema, updateMenuItemSchema } from '../schemas/menuItem.schema';
 import { listOrdersQuerySchema, updateOrderStatusSchema } from '../schemas/order.schema';
 import { updateStoreSettingsSchema } from '../schemas/storeSettings.schema';
-import { storeListQuerySchema, storeRefParamsSchema } from '../schemas/store.schema';
+import {
+  storeListQuerySchema,
+  storeRefParamsSchema,
+  updateStoreProfileSchema,
+} from '../schemas/store.schema';
 import { createExceptionSchema, setStoreHoursSchema } from '../schemas/storeHours.schema';
 import { createInviteSchema } from '../schemas/team.schema';
 import { pauseStoreSchema } from '../schemas/storePause.schema';
@@ -153,4 +157,27 @@ storesRouter.delete(
   requireStore('menu.edit'),
   writeLimiter,
   menu.archiveMenuItem,
+);
+// A branch's profile and whether it is public (P3.1, D6): managers edit the profile; only the owner publishes.
+storesRouter.patch(
+  '/:storeId/profile',
+  requireAuth,
+  requireStore('store.profile'),
+  writeLimiter,
+  validate(updateStoreProfileSchema),
+  store.updateStoreProfile,
+);
+storesRouter.post(
+  '/:storeId/publish',
+  requireAuth,
+  requireStore('store.publish'),
+  writeLimiter,
+  store.publishStore,
+);
+storesRouter.post(
+  '/:storeId/unpublish',
+  requireAuth,
+  requireStore('store.publish'),
+  writeLimiter,
+  store.unpublishStore,
 );

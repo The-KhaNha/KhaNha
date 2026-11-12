@@ -25,6 +25,18 @@ export const LIMITS = {
     priceMax: 100000,
     stockMax: 100000,
   },
+  // A store's profile (P3.1), with the matching CHECK constraints on public.stores (name, address). The slug bounds
+  // are for a new branch only; existing slugs keep the wider stores.slug check.
+  store: {
+    nameMin: 2,
+    nameMax: 80,
+    slugMin: 3,
+    slugMax: 48,
+    taglineMax: 120,
+    descriptionMax: 300,
+    areaMax: 60,
+    addressMax: 200,
+  },
 } as const;
 
 /** Most stores `GET /api/stores` returns (docs/CONFIGURATION.md, platform constant); the list is not paginated. */

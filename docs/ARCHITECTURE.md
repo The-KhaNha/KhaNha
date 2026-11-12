@@ -1113,6 +1113,13 @@ erDiagram
 changes freely: there is no override layer, and a template edit reaches an existing branch only through an explicit
 push (P3 PR 07). Details: [SCHEMA.md](SCHEMA.md#stores).
 
+**A store's life (P3.1 PR 01b).** The brand's owner opens a branch (`POST /api/brands/:brandId/stores`), which is a
+`DRAFT` copy of the template: invisible to the public, so it is out of `GET /api/stores` and `POST /orders` for it is 404. Owners and managers fill in its profile, hours and menu; the owner publishes it (`set_store_status`, `DRAFT` →
+`ACTIVE`), which succeeds only with an address, weekly hours and an orderable item, and can unpublish it back to
+`DRAFT`: orders already placed stay on the staff board and move on. `SUSPENDED` and `ARCHIVED` are operator states,
+set in SQL; the API refuses to publish or unpublish them. Every profile or status change emits `store.changed`.
+Details: [SCHEMA.md](SCHEMA.md#stores), [API.md](API.md#post-storesstoreidpublish).
+
 Six tables: `profiles` (one per Auth user, holds the role), `brands` (the business, with its owner) and `stores` (each belongs to a brand; three in the demo seed), `menu_items` (with optional tracked stock), `orders` and `order_items` (name, price, photo and category on each line, and the store name, snapshotted at order time). Columns with their types, defaults and constraints, the indexes, triggers and the `place_order` / `update_order_status` / `reset_demo_orders` functions are in [SCHEMA.md](SCHEMA.md).
 
 ---

@@ -70,6 +70,11 @@ The API has no sign-in or sign-out route. The browser signs in and out with supa
 | PUT    | `/stores/:storeId/hours`                            | user + `hours.edit`        | body: [`setStoreHoursSchema`](#put-storesstoreidhours)                     | 200 `StoreScheduleResponse`                                   |
 | POST   | `/stores/:storeId/schedule-exceptions`              | user + `hours.edit`        | body: [`createExceptionSchema`](#post-storesstoreidschedule-exceptions)    | 201 `{ exception: ScheduleExceptionDto }`                     |
 | DELETE | `/stores/:storeId/schedule-exceptions/:exceptionId` | user + `hours.edit`        | path: `exceptionId`                                                        | 204                                                           |
+| GET    | `/brands/mine`                                      | user                       | none                                                                       | 200 `{ brands: MyBrandDto[] }`                                |
+| POST   | `/brands/:brandId/stores`                           | user, owner of the brand   | body: [`createStoreSchema`](#post-brandsbrandidstores)                     | 201 `{ store: ManagedStoreDto }`                              |
+| PATCH  | `/stores/:storeId/profile`                          | user + `store.profile`     | body: [`updateStoreProfileSchema`](#patch-storesstoreidprofile)            | 200 `{ store: ManagedStoreDto }`                              |
+| POST   | `/stores/:storeId/publish`                          | user + `store.publish`     | none                                                                       | 200 `{ store: ManagedStoreDto }`                              |
+| POST   | `/stores/:storeId/unpublish`                        | user + `store.publish`     | none                                                                       | 200 `{ store: ManagedStoreDto }`                              |
 | GET    | `/stores/:storeId/members`                          | user + `team.manageStaff`  | none                                                                       | 200 `{ members: MemberDto[], invites: InviteDto[] }`          |
 | POST   | `/stores/:storeId/invites`                          | user + `team.manageStaff`  | body: [`createInviteSchema`](#post-storesstoreidinvites)                   | 201 `{ invite: InviteDto, token: string }`                    |
 | DELETE | `/stores/:storeId/invites/:inviteId`                | user + `team.manageStaff`  | path: `inviteId`                                                           | 204, no body                                                  |
@@ -308,6 +313,8 @@ A new order is `paymentStatus: "PAID"`, `status: "PLACED"`, `estimatedReadyAt = 
 | 401    | `UNAUTHORIZED`                                                                                                                |
 | 404    | `NOT_FOUND` (no such store, or it is not `ACTIVE`)                                                                            |
 | 409    | `STORE_PAUSED` (the store paused new orders; `details: { kind: 'storePaused', pausedUntil }`)                                 |
+| 409    | `SLUG_TAKEN`                                                                                                                  | `POST /brands/:brandId/stores`: another store already uses the slug (given, or made from the name); `details: { field: 'slug' }` |
+| 409    | `STORE_NOT_READY`                                                                                                             | `POST /stores/:storeId/publish`: no address, no weekly hours or no orderable item; `details: { kind: 'storeNotReady', missing }` |
 | 409    | `IDEMPOTENCY_KEY_REUSED` (the key already placed a different order; `details: { orderId, orderNumber }`)                      |
 | 409    | `PRICE_CHANGED` (a stale `expectedUnitPrice`, or a price changed after the charge; no `details`; the client reloads the menu) |
 | 413    | `PAYLOAD_TOO_LARGE`                                                                                                           |
@@ -482,6 +489,58 @@ pause (same end and reason) is 200 and emits no event; a new end or reason is a 
 Code: as above without a body schema → `store.controller.resumeStore` → `storePause.service.resumeStore` →
 `resume_store` RPC. Answers 200 `{ store: StoreDto }`. A store that is not paused is 200 and emits nothing; resuming a
 pause that already ran out clears its columns without an event. Otherwise emits `store.resumed`. Same invalidation.
+
+### GET /brands/mine
+
+Code: `requireAuth` → `brand.controller.listMyBrands` → `brand.service.listMyBrands`. Returns
+`{ brands: MyBrandDto[] }`: the brands the caller owns (`req.user.ownedBrandIds`), by name, each with its branches of
+every status (oldest first, at most `STORE_LIST_MAX` stores in all) and its template. `[]` for everyone who owns none.
+Never cached.
+
+### POST /brands/:brandId/stores
+
+Code: `requireAuth` → `writeLimiter` → `validate(createStoreSchema)` → `brand.controller.createStore` →
+`brand.service.createStore` → `create_store_from_template` RPC ([SCHEMA.md](SCHEMA.md#stores)). Only the brand's owner
+may open a branch: anyone else, an admin included, and a malformed or unknown id get 404 `NOT_FOUND` "Brand not found.".
+
+Body (unknown fields are 400): `name` (2–80), `slug?` (3–48 lower-case letters, digits and dashes, no dash at either
+end), `area?` (at most 60) and `addressLine?` (at most 200); a blank `area` or `addressLine` is stored as null. Without a
+`slug` it is made from the name: NFKD-folded to ASCII, lower-cased, every other run one dash, cut to 48. A name that
+makes no slug is 400 `VALIDATION_ERROR` (`field` `slug`). A slug another store uses is 409 `SLUG_TAKEN` with `details`
+`{ field: 'slug' }`; nothing is left behind. Answers 201 `{ store: ManagedStoreDto }`: a `DRAFT` copy of the brand's
+template (menu, settings, tagline, description, photo; no hours), emitting `store.created`. Limits: [`LIMITS.store`](CONFIGURATION.md#platform-constants).
+
+### PATCH /stores/:storeId/profile
+
+Code: `requireAuth` → `requireStore('store.profile')` → `writeLimiter` → `validate(updateStoreProfileSchema)` →
+`store.controller.updateStoreProfile` → `store.service.updateStoreProfile`. `store.profile` is held by MANAGER and OWNER
+(staff: 403); it does not reach a brand template.
+
+Body, at least one field, unknown fields 400: `name` (2–80), `tagline` (at most 120), `description` (at most 300), `area`
+(at most 60), `addressLine` (at most 200) and `contactPhone` (the phone rule of [Shared field rules](#shared-field-rules)).
+A blank or `null` `area`, `addressLine` or `contactPhone` clears it. The slug and the status are never edited here. A published (`ACTIVE`) store cannot clear its `addressLine` (400, `details: { field: 'addressLine' }`): unpublish first. The brand's owner may also edit the template's profile, whose tagline and description new branches copy.
+Answers `{ store: ManagedStoreDto }`. The write goes through the Data API with the `x-actor` and `x-request-id`
+headers: `stores_audit` leaves a `store.changed` audit row, and `stores_changed` emits a `store.changed` event
+([JOBS.md](JOBS.md#store-events)) when a value really changed (a same-value write emits none). Drops `store:<id>`,
+`stores:list` and the store's menus.
+
+### POST /stores/:storeId/publish
+
+Code: `requireAuth` → `requireStore('store.publish')` → `writeLimiter` → `store.controller.publishStore` →
+`store.service.setStoreStatus` → `set_store_status` RPC. `store.publish` is the brand's owner only (MANAGER and STAFF:
+403, ADMIN: 404 or 403 as for any capability it lacks). No body. Moves a `DRAFT` store to `ACTIVE` once it has an
+address, at least one weekly hour and at least one item that is available, not archived and not sold out; otherwise 409
+`STORE_NOT_READY` with `details` `{ kind: 'storeNotReady', missing }`, `missing` any of `address`, `hours`, `menu`, and
+nothing changes. A store already `ACTIVE` is 200 and changes nothing. A `SUSPENDED` or `ARCHIVED` store (only an
+operator moves it) is 409 `INVALID_STATUS_TRANSITION`. Answers `{ store: ManagedStoreDto }`. Emits `store.changed`
+(`status`) and drops the same cache keys as the profile edit; the store then appears in `GET /stores` within the read
+cache's TTL at most.
+
+### POST /stores/:storeId/unpublish
+
+As publish, back to `DRAFT`: no readiness check, the store leaves `GET /stores` and `GET /stores/:storeRef`, and
+`POST /orders` for it is 404 `NOT_FOUND`. Orders already placed stay on the staff board and move on normally. A `DRAFT`
+store is 200 and changes nothing; `SUSPENDED` or `ARCHIVED` is 409 `INVALID_STATUS_TRANSITION`.
 
 ### GET /stores/:storeId/members
 
@@ -735,6 +794,13 @@ fields of `StoreDto` a store picker needs (client: `StoreSummary`).
 `ManagedMenuItemDto` (the editor's list): `MenuItemDto` plus `isEnabled` (boolean, the switch alone; `isAvailable` also
 counts stock) and `archivedAt` (ISO 8601 \| null). The public menu never carries archived items.
 
+`ManagedStoreDto` (a store as its owner and managers see it, any status): `id`, `slug`, `name`, `status` (`DRAFT`,
+`ACTIVE`, `SUSPENDED`, `ARCHIVED`), `isTemplate`, `area`, `address` (both string \| null), `contactPhone` (string \|
+null), `tagline`, `description`, `imageUrl` (string \| null), `createdAt` (client: `ManagedStore`).
+
+`MyBrandDto`: `{ id, name, slug, template: ManagedStoreDto | null, stores: ManagedStoreDto[] }`, the branches without the
+template (client: `MyBrand`).
+
 `MenuResponse`: `{ rules: { maxQuantityPerItem, lowStockThreshold }, store: StoreDto, popular: MenuItemDto[], categories: { name: string, items: MenuItemDto[] }[] }`.
 
 `OrderDto`
@@ -864,14 +930,15 @@ Every error response has this shape (`server/src/middleware/errorHandler.ts`):
 **Rule:** the three shapes that predate P1 stay untagged, because the deployed client reads them by `code`; every new
 shape carries a `kind`, and the client narrows on it.
 
-| Shape                  | On                                                          | Fields                                                                                                                                                                                           |
-| ---------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `ItemErrorDetails`     | `INSUFFICIENT_STOCK`, `ITEM_UNAVAILABLE`, `ITEM_NOT_FOUND`  | `{ menuItemId: string, name?: string, available: number }`; `available` is 0 for a sold-out, unavailable or missing item                                                                         |
-| `ReplayedOrderDetails` | `IDEMPOTENCY_KEY_REUSED`                                    | `{ orderId, orderNumber }`                                                                                                                                                                       |
-| `FieldErrorDetails`    | a `VALIDATION_ERROR` about one request field, `EMAIL_TAKEN` | `{ field }`: the top-level field at fault (`customerPhone`, `email`, `items` for `items[2].quantity`), so a form shows the message on it; a rule with no single field (the lines limit) has none |
-| `StorePausedDetails`   | `STORE_PAUSED`                                              | `{ kind: 'storePaused', pausedUntil }`: when the pause ends (ISO 8601); null when it lasts until someone resumes                                                                                 |
-| `StoreClosedDetails`   | `STORE_CLOSED`                                              | `{ kind: 'storeClosed', nextChangeAt }`: when the store next opens (ISO 8601); absent when no opening is known                                                                                   |
-| `RateLimitDetails`     | `RATE_LIMITED`                                              | `{ kind: 'rateLimit', retryAfterSeconds }`: the same number as the `Retry-After` header, the seconds until that key's window resets                                                              |
+| Shape                  | On                                                                        | Fields                                                                                                                                                                                           |
+| ---------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ItemErrorDetails`     | `INSUFFICIENT_STOCK`, `ITEM_UNAVAILABLE`, `ITEM_NOT_FOUND`                | `{ menuItemId: string, name?: string, available: number }`; `available` is 0 for a sold-out, unavailable or missing item                                                                         |
+| `ReplayedOrderDetails` | `IDEMPOTENCY_KEY_REUSED`                                                  | `{ orderId, orderNumber }`                                                                                                                                                                       |
+| `FieldErrorDetails`    | a `VALIDATION_ERROR` about one request field, `EMAIL_TAKEN`, `SLUG_TAKEN` | `{ field }`: the top-level field at fault (`customerPhone`, `email`, `items` for `items[2].quantity`), so a form shows the message on it; a rule with no single field (the lines limit) has none |
+| `StorePausedDetails`   | `STORE_PAUSED`                                                            | `{ kind: 'storePaused', pausedUntil }`: when the pause ends (ISO 8601); null when it lasts until someone resumes                                                                                 |
+| `StoreClosedDetails`   | `STORE_CLOSED`                                                            | `{ kind: 'storeClosed', nextChangeAt }`: when the store next opens (ISO 8601); absent when no opening is known                                                                                   |
+| `StoreNotReadyDetails` | `STORE_NOT_READY`                                                         | `{ kind: 'storeNotReady', missing }`: what to add before publishing, any of `address`, `hours`, `menu`                                                                                           |
+| `RateLimitDetails`     | `RATE_LIMITED`                                                            | `{ kind: 'rateLimit', retryAfterSeconds }`: the same number as the `Retry-After` header, the seconds until that key's window resets                                                              |
 
 ### Error codes
 
@@ -890,7 +957,7 @@ shape carries a `kind`, and the client narrows on it.
 | 426    | `CLIENT_OUTDATED`           | every route mounted after the [client version gate](#client-version-gate): the client's `X-Client-Version` is below `site_settings.min_client_version`. "A new version of Food Pickup is available. Refresh the page to continue." Logged at `debug`                                                                                                                                                                               |
 | 404    | `NOT_FOUND`                 | missing store, order or profile; an unmatched route ("No route matches <METHOD> <path>.")                                                                                                                                                                                                                                                                                                                                          |
 | 409    | `EMAIL_TAKEN`               | `POST /auth/register`                                                                                                                                                                                                                                                                                                                                                                                                              |
-| 409    | `INVALID_STATUS_TRANSITION` | `PATCH /orders/:id/status` (from `update_order_status`)                                                                                                                                                                                                                                                                                                                                                                            |
+| 409    | `INVALID_STATUS_TRANSITION` | `PATCH /orders/:id/status` (from `update_order_status`); `POST /stores/:storeId/publish` and `/unpublish` on a `SUSPENDED` or `ARCHIVED` store (from `set_store_status`)                                                                                                                                                                                                                                                           |
 | 409    | `IDEMPOTENCY_KEY_REUSED`    | `POST /orders`: the `idempotencyKey` already placed an order that differs from this request. "Your earlier order #<n> already went through. Pay again to order what is in your cart now." with `details: { orderId, orderNumber }` (`ReplayedOrderDetails`)                                                                                                                                                                        |
 | 409    | `PRICE_CHANGED`             | `POST /orders`: an `expectedUnitPrice` is not the item's current price, or (from `place_order`) an item's price changed after the API charged for it. "The price of <name> just changed to ₹<price>. Please review your order.", no `details`; nothing is placed                                                                                                                                                                   |
 | 413    | `PAYLOAD_TOO_LARGE`         | JSON body over 100 kB (`JSON_BODY_LIMIT_BYTES`), refused on the declared `Content-Length` before auth runs: the rest of the upload is read and thrown away (at most 1 MB or 2 s), then 413 with `Connection: close`; a chunked body when it passes the limit ("The request body is too large.")                                                                                                                                    |
@@ -918,6 +985,8 @@ SQLSTATE `P0001` and that message. `order.service.ts` and `team.service.ts` map 
 | `update_order_status` | `NOT_FOUND`                 | none                              | 404 `NOT_FOUND` "Order not found."                                       |
 | `accept_store_invite` | `NOT_FOUND`                 | none                              | 404 `NOT_FOUND` "That invite is not valid any more." (`team.service.ts`) |
 | `update_order_status` | `INVALID_STATUS_TRANSITION` | `{ orderNumber, status }`         | 409 `INVALID_STATUS_TRANSITION`                                          |
+| `set_store_status`    | `INVALID_STATUS_TRANSITION` | none                              | 409 `INVALID_STATUS_TRANSITION` (suspended or archived store)            |
+| `set_store_status`    | `NOT_FOUND`                 | none                              | 404 `NOT_FOUND` "Store not found." (unknown store or a template)         |
 
 Any other `P0001` or database error is a 500.
 
@@ -996,9 +1065,9 @@ share one database round-trip instead of repeating it:
 
 | Cached endpoint                                                           | Key                  | Loader                                                                                                                                                                         | Invalidated by                                                                                                           |
 | ------------------------------------------------------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
-| `GET /api/stores`                                                         | `'stores:list'`      | `store.service.listStores` (every `ACTIVE` store; `area` filters in memory afterwards)                                                                                         | nothing today; a store-editing endpoint must call `invalidate('stores:list')`                                            |
-| `GET /api/stores/:storeRef`, `/menu` (the store)                          | `'store:<id>'`       | `store.service.getActiveStore`; the ref → id step is `'store_ref:<slug>'` (`resolveStoreRef`)                                                                                  | nothing today; a store-editing endpoint must call `invalidate('store:<id>')`                                             |
-| `GET /api/stores/:storeRef/hours`, and the open state of every store read | `'store_hours:<id>'` | `schedule.service.getSchedule` (the week and the exceptions; the list reads them in two paged queries; the menu's open fields are computed per read, outside `menu:<storeId>`) | nothing today; the hours editor must call `invalidate('store_hours:<id>')` with `store:<id>`, `stores:list` and the menu |
+| `GET /api/stores`                                                         | `'stores:list'`      | `store.service.listStores` (every `ACTIVE` store; `area` filters in memory afterwards)                                                                                         | pause, resume, hours, profile, publish and unpublish (`invalidate('stores:list')`)                                       |
+| `GET /api/stores/:storeRef`, `/menu` (the store)                          | `'store:<id>'`       | `store.service.getActiveStore`; the ref → id step is `'store_ref:<slug>'` (`resolveStoreRef`)                                                                                  | settings, pause, resume, hours, profile, publish and unpublish (`invalidate('store:<id>')`)                              |
+| `GET /api/stores/:storeRef/hours`, and the open state of every store read | `'store_hours:<id>'` | `schedule.service.getSchedule` (the week and the exceptions; the list reads them in two paged queries; the menu's open fields are computed per read, outside `menu:<storeId>`) | the hours and exception writes (`storeHours.service`), with `store:<id>`, `stores:list` and the menu                     |
 | `GET /api/stores/:storeRef/menu`                                          | `'menu:<id>'`        | `menu.service.getStoreMenu` → `loadMenu`                                                                                                                                       | `menu.service.invalidateMenus(storeId)` from `order.service.createOrder` (in a `finally`), a cancel and the hours editor |
 | `GET /api/orders`, `GET /api/admin/settings`, `GET /api/config`           | `'site_settings'`    | `settings.service.getSettings`                                                                                                                                                 | `settings.service.updateSettings` (`PATCH /api/admin/settings`), at once                                                 |
 | `GET /api/config` (`features`), every `flags.service.isEnabled` call      | `'feature_flags'`    | `flags.service.getFlags` (every flag, rules parsed; evaluated per caller, never cached per caller)                                                                             | `flags.service.setFlag` (`PATCH /api/admin/flags/:key`), at once                                                         |

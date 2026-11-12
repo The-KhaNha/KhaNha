@@ -57,6 +57,8 @@ it has (so a visible store answers 403), else none. An ADMIN who is also a STAFF
 | `hours.edit`          |       | yes     | yes   |       |
 | `settings.edit`       |       | yes     | yes   |       |
 | `menu.edit`           |       | yes     | yes   |       |
+| `store.profile`       |       | yes     | yes   |       |
+| `store.publish`       |       |         | yes   |       |
 | `team.manageStaff`    |       | yes     | yes   | yes   |
 | `team.manageManagers` |       |         | yes   | yes   |
 | `audit.store`         |       | yes     | yes   | yes   |
@@ -67,6 +69,8 @@ it has (so a visible store answers 403), else none. An ADMIN who is also a STAFF
 
 `menu.edit` guards the menu editor, `GET`, `POST`, `PATCH` and `DELETE /stores/:storeId/menu-items` ([API.md](API.md#get-storesstoreidmenu-items)); STAFF get 403 (stock edits for staff arrive with `stock.update`, P3 PR 04).
 
+`store.profile` guards `PATCH /stores/:storeId/profile` ([API.md](API.md#patch-storesstoreidprofile)); STAFF get 403. `store.publish` guards `POST /stores/:storeId/publish` and `/unpublish` ([API.md](API.md#post-storesstoreidpublish)) and is the OWNER's alone: making a store public or taking it down is the brand's call, so a MANAGER or an ADMIN cannot. `store.profile` is also a template capability (the owner edits the tagline and description new branches copy); `store.publish` is not. A published store cannot have its address cleared (400 on `addressLine`): unpublish first. Opening a branch (`POST /brands/:brandId/stores`) is not a store capability: the route checks that the brand is in the caller's `ownedBrandIds`, and everyone else, an admin included, gets 404.
+
 `hours.edit` guards `PUT /stores/:storeId/hours` and the schedule-exception POST and DELETE ([API.md](API.md#put-storesstoreidhours)); STAFF get 403.
 
 `requireStore(capability)` (`server/src/middleware/auth.ts`, after `requireAuth`) guards a route with `:storeId`:
@@ -75,7 +79,7 @@ it has (so a visible store answers 403), else none. An ADMIN who is also a STAFF
   access to it (a draft store does not exist to outsiders).
 - A store the caller can see but lacks the capability for is 403 `FORBIDDEN`.
 - A brand template (`stores.is_template`, [SCHEMA.md](SCHEMA.md#stores)) is 404 to everyone but the brand's owner,
-  and to the owner too for any capability a copy does not inherit: only `settings.edit`, `menu.edit` and `audit.store` reach it
+  and to the owner too for any capability a copy does not inherit: only `settings.edit`, `menu.edit`, `store.profile` and `audit.store` reach it
   (`canAtTemplate` in `domain/permissions.ts`). A template has no kitchen and no team, so its orders, pause and team
   routes are 404, and no invite to it can be made.
 - It sets `req.store` and `req.storeAccess`; `requestContext` then records `storeRole` in the actor, which the audit row

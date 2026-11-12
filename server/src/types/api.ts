@@ -51,6 +51,33 @@ export type StoreSummaryDto = Pick<
   | 'openLabel'
 >;
 
+export type StoreStatus = 'DRAFT' | 'ACTIVE' | 'SUSPENDED' | 'ARCHIVED';
+
+/** A store as its brand's owner and managers edit it (P3.1): any status, with its contact phone. */
+export interface ManagedStoreDto {
+  id: string;
+  slug: string;
+  name: string;
+  status: StoreStatus;
+  isTemplate: boolean;
+  area: string | null;
+  address: string | null;
+  contactPhone: string | null;
+  tagline: string;
+  description: string;
+  imageUrl: string | null;
+  createdAt: string;
+}
+
+/** One brand of GET /api/brands/mine: its branches (every status) and its template, which branches copy. */
+export interface MyBrandDto {
+  id: string;
+  name: string;
+  slug: string;
+  template: ManagedStoreDto | null;
+  stores: ManagedStoreDto[];
+}
+
 /** One weekly interval of GET /api/stores/:storeRef/hours; `HH:MM`, `closesAt` before `opensAt` runs past midnight. */
 export interface StoreHoursDto {
   /** ISO weekday: 1 = Monday ... 7 = Sunday. */

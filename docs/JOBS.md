@@ -41,13 +41,15 @@ the change: a transition that raises (a stock refusal, an invalid move) leaves n
 
 ## Store events
 
-Emitted by `pause_store` and `resume_store` ([SCHEMA.md](SCHEMA.md#stores)) in the same transaction as the change.
+Emitted by `pause_store` and `resume_store`, `create_store_from_template` and the `stores_changed` trigger ([SCHEMA.md](SCHEMA.md#stores)) in the same transaction as the change.
 `aggregateId` and `storeId` are the store id. Nothing subscribes to them yet.
 
-| Type            | Emitted when                            | Payload           |
-| --------------- | --------------------------------------- | ----------------- |
-| `store.paused`  | a store is paused, or its pause changes | `{ pausedUntil }` |
-| `store.resumed` | a paused store is resumed               | `{}`              |
+| Type            | Emitted when                                                                                                                                             | Payload                                                                  |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `store.paused`  | a store is paused, or its pause changes                                                                                                                  | `{ pausedUntil }`                                                        |
+| `store.resumed` | a paused store is resumed                                                                                                                                | `{}`                                                                     |
+| `store.created` | a branch is opened from the template                                                                                                                     | `{ brandId, templateStoreId }`                                           |
+| `store.changed` | a store's name, tagline, description, area, address, contact phone or status really changes (a profile edit, a publish, an unpublish, an operator's SQL) | `{ fields, status }`: the changed column names, sorted; never the values |
 
 A repeated pause or resume emits nothing, and neither does a resume of a pause that already ran out. A pause that ends
 by itself emits nothing either: it is derived, and a sweep comes with the first consumer.

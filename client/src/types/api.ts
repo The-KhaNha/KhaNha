@@ -57,6 +57,33 @@ export type StoreSummary = Pick<
   | 'openLabel'
 >;
 
+export type StoreStatus = 'DRAFT' | 'ACTIVE' | 'SUSPENDED' | 'ARCHIVED';
+
+/** A store as its brand's owner and managers edit it (P3.1): any status, with its contact phone. */
+export interface ManagedStore {
+  id: string;
+  slug: string;
+  name: string;
+  status: StoreStatus;
+  isTemplate: boolean;
+  area: string | null;
+  address: string | null;
+  contactPhone: string | null;
+  tagline: string;
+  description: string;
+  imageUrl: string | null;
+  createdAt: string;
+}
+
+/** One brand of GET /api/brands/mine: its branches (every status) and its template. */
+export interface MyBrand {
+  id: string;
+  name: string;
+  slug: string;
+  template: ManagedStore | null;
+  stores: ManagedStore[];
+}
+
 /** One weekly interval of GET /api/stores/:storeRef/hours; `HH:MM`, `closesAt` before `opensAt` runs past midnight. */
 export interface StoreHours {
   /** ISO weekday: 1 = Monday ... 7 = Sunday. */
@@ -160,11 +187,13 @@ export interface ApiErrorDetails {
   orderId?: string;
   orderNumber?: number;
   /** Shapes added since P1 carry a `kind`; the ones above predate it and are told apart by `code`. */
-  kind?: 'rateLimit' | 'storeClosed' | 'storePaused';
+  kind?: 'rateLimit' | 'storeClosed' | 'storePaused' | 'storeNotReady';
   /** STORE_CLOSED: when the store next opens, when known. */
   nextChangeAt?: string;
   /** STORE_PAUSED: when the pause ends, or null when it lasts until someone resumes. */
   pausedUntil?: string | null;
+  /** STORE_NOT_READY: what a store still needs before it can be published: 'address', 'hours', 'menu'. */
+  missing?: string[];
   /** RATE_LIMITED: seconds until the window resets, the same number as the Retry-After header. */
   retryAfterSeconds?: number;
 }

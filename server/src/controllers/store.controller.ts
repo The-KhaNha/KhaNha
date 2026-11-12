@@ -1,7 +1,7 @@
 import type { RequestHandler } from 'express';
 import * as menuService from '../services/menu.service';
 import * as storeService from '../services/store.service';
-import type { StoreListQuery } from '../schemas/store.schema';
+import type { StoreListQuery, UpdateStoreProfileInput } from '../schemas/store.schema';
 import { currentStore, requestContext } from '../middleware/auth';
 import type { UpdateStoreSettingsInput } from '../schemas/storeSettings.schema';
 import * as scheduleService from '../services/schedule.service';
@@ -99,4 +99,25 @@ export const resumeStore: RequestHandler = async (req, res) => {
   const { id } = currentStore(req);
   await pauseService.resumeStore(id, requestContext(req));
   res.json({ store: await freshStore(id) });
+};
+
+/** PATCH /api/stores/:storeId/profile, after requireStore('store.profile'). */
+export const updateStoreProfile: BodyHandler<UpdateStoreProfileInput> = async (req, res) => {
+  const { id, status } = currentStore(req);
+  const store = await storeService.updateStoreProfile(id, status, req.body, requestContext(req));
+  res.json({ store });
+};
+
+/** POST /api/stores/:storeId/publish, after requireStore('store.publish'). */
+export const publishStore: RequestHandler = async (req, res) => {
+  res.json({
+    store: await storeService.setStoreStatus(currentStore(req).id, 'ACTIVE', requestContext(req)),
+  });
+};
+
+/** POST /api/stores/:storeId/unpublish, after requireStore('store.publish'). */
+export const unpublishStore: RequestHandler = async (req, res) => {
+  res.json({
+    store: await storeService.setStoreStatus(currentStore(req).id, 'DRAFT', requestContext(req)),
+  });
 };

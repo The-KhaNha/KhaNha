@@ -15,6 +15,8 @@ export type ErrorCode =
   | 'IDEMPOTENCY_KEY_REUSED'
   | 'MEMBERSHIP_EXISTS'
   | 'PRICE_CHANGED'
+  | 'SLUG_TAKEN'
+  | 'STORE_NOT_READY'
   | 'CLIENT_OUTDATED'
   | 'RATE_LIMITED'
   | 'UPSTREAM_UNAVAILABLE'
@@ -63,13 +65,20 @@ export interface StorePausedDetails {
   pausedUntil: string | null;
 }
 
+/** What a store still needs before it can be published (P3.1): `address`, `hours`, `menu`. */
+export interface StoreNotReadyDetails {
+  kind: 'storeNotReady';
+  missing: string[];
+}
+
 export type ErrorDetails =
   | ItemErrorDetails
   | ReplayedOrderDetails
   | FieldErrorDetails
   | RateLimitDetails
   | StoreClosedDetails
-  | StorePausedDetails;
+  | StorePausedDetails
+  | StoreNotReadyDetails;
 
 /**
  * A dependency (Supabase's database or Auth, later the payment provider) failed or could not be reached. The error
@@ -211,6 +220,21 @@ export const itemUnavailable = (menuItemId: string, name: string): AppError =>
       name,
       available: 0,
     },
+  );
+
+/** Another store already has the slug a new branch asked for (or was given from its name). */
+export const slugTaken = (): AppError =>
+  new AppError(409, 'SLUG_TAKEN', 'Another store already uses that web address. Choose another.', {
+    field: 'slug',
+  });
+
+/** A publish refused because the store is not ready; `missing` says what to add. */
+export const storeNotReady = (missing: string[]): AppError =>
+  new AppError(
+    409,
+    'STORE_NOT_READY',
+    'Add an address, weekly hours and at least one available item before publishing.',
+    { kind: 'storeNotReady', missing },
   );
 
 /** The email already works at the store, or already has an open invite there (P2.2). */
