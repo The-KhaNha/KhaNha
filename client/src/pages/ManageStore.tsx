@@ -12,6 +12,7 @@ import { ManageSettingsTab } from './ManageSettings';
 import { ManageTeamTab } from './ManageTeam';
 import { NotFoundPage } from './NotFound';
 import { ManageHoursPage } from './ManageHours';
+import { ManageMenuTab } from './ManageMenu';
 
 const ComingNext = () => (
   <EmptyState
@@ -49,6 +50,7 @@ export function ManageStorePage() {
   // An admin holds no `settings.edit`: the tab is not offered (and its route is the not-found page).
   const tabs = MANAGE_TABS.filter((t) => t.path !== 'settings' || canEditSettings(user, store));
   const elements: Record<string, ReactNode> = {
+    menu: <ManageMenuTab store={store} />,
     hours: <ManageHoursPage store={store} onChanged={retry} />,
     settings: <ManageSettingsTab storeId={store.id} />,
     team: <ManageTeamTab store={store} user={user} />,
@@ -68,14 +70,15 @@ export function ManageStorePage() {
         />
       )}
       <h1 className="text-xl font-extrabold">{store.name}</h1>
-      <nav aria-label="Manage" className="mt-3 flex gap-1 border-b border-line/70">
+      {/* Wraps at large text sizes: four tabs no longer fit one row of a phone at 200%. */}
+      <nav aria-label="Manage" className="mt-3 flex flex-wrap gap-1 border-b border-line/70">
         {tabs.map(({ path, label }) => (
           <NavLink
             key={path}
             to={`/manage/${store.slug}/${path}`}
             className={({ isActive }) =>
               cn(
-                'grid min-h-11 flex-1 place-items-center border-b-2 text-sm font-semibold',
+                'grid min-h-11 flex-auto place-items-center whitespace-nowrap border-b-2 px-3 text-sm font-semibold',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus',
                 isActive ? 'border-brand-600 text-brand-600' : 'border-transparent text-muted',
               )

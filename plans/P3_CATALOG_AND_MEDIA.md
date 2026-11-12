@@ -362,6 +362,11 @@ Docs: `docs/FRONTEND_STRUCTURE.md`, `docs/COMPONENTS.md` (`ItemEditor`). Intent:
 
 Split seam: the list as 05a, the editor as 05b.
 
+As built: one PR (no split). The Menu tab is the first `/manage` tab; the tab row wraps at large text sizes. Archived
+items are not listed (read-only), and archiving has no button yet. The editor's bounds come from
+`VALIDATION.menuItem`. The template in the owner's store picker moved to PR 07b, which adds the `/brands/mine` client
+the picker needs (the store page reads the public store route, which never serves a template).
+
 ### PR 06 — Client: stock in `/manage` and on the staff board (P3.4, P3.5)
 
 - [ ] Merged
@@ -406,6 +411,7 @@ Docs: `docs/API.md`, `docs/SCHEMA.md`, `docs/PERMISSIONS.md`, `docs/ARCHITECTURE
 Depends on PR 05 too: the checklist links to the menu screen. `/before-write`: reuse-scout (the `/manage` shell and store picker from P2 PR 14a, the Settings form from PR 15,
 `Input`, `Button`, `Skeleton`, `EmptyState`, `ErrorState`).
 
+- The owner's store picker lists the brand template first, labelled "Brand template" (moved from PR 05).
 - The owner's store picker gains "Open a branch": a form (name, area, address; the slug shown, editable) that
   lands on the new store's `/manage` page.
 - `/manage/:storeSlug/profile` (lazy): the profile form for managers and owners.

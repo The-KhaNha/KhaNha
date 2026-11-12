@@ -26,6 +26,7 @@ export const managedStores = (user: User, stores: StoreSummary[]): StoreSummary[
   stores.filter((s) => canManage(user, s));
 
 export const MANAGE_TABS = [
+  { path: 'menu', label: 'Menu' },
   { path: 'hours', label: 'Hours' },
   { path: 'settings', label: 'Settings' },
   { path: 'team', label: 'Team' },
@@ -51,3 +52,6 @@ export const canRemoveMember = (
   member: { role: StoreRole; userId: string },
 ): boolean =>
   member.role === 'STAFF' || member.userId === user.id || canManageManagers(user, store);
+
+/** `menu.edit`: MANAGER and OWNER (an admin holds no menu capability). */
+export const canEditMenu = canEditHours;
