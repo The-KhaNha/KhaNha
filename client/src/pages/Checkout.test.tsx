@@ -25,6 +25,8 @@ const renderCheckout = () =>
     </MemoryRouter>,
   );
 
+beforeEach(() => useCartStore.setState({ storeId: 's1', storeSlug: 'cafe', storeName: 'Cafe' }));
+
 describe('CheckoutPage when the key already placed a different order', () => {
   beforeEach(() => {
     sessionStorage.clear();
@@ -32,9 +34,6 @@ describe('CheckoutPage when the key already placed a different order', () => {
     useCheckoutDraftStore.getState().reset();
     useCheckoutDraftStore.getState().setField('name', 'Ravi');
     useCartStore.setState({
-      storeId: 's1',
-      storeSlug: 'cafe',
-      storeName: 'Cafe',
       lines: [
         {
           menuItemId: 'i1',
@@ -95,9 +94,6 @@ describe('CheckoutPage when the server rejects one field', () => {
     useCheckoutDraftStore.getState().setField('name', 'Ravi');
     useCheckoutDraftStore.getState().setField('phone', '98765 43210');
     useCartStore.setState({
-      storeId: 's1',
-      storeSlug: 'cafe',
-      storeName: 'Cafe',
       lines: [
         {
           menuItemId: 'i1',
@@ -200,9 +196,6 @@ describe('CheckoutPage when a price changed before the order was placed', () => 
     useCheckoutDraftStore.getState().reset();
     useCheckoutDraftStore.getState().setField('name', 'Ravi');
     useCartStore.setState({
-      storeId: 's1',
-      storeSlug: 'cafe',
-      storeName: 'Cafe',
       lines: [
         {
           menuItemId: 'i1',
