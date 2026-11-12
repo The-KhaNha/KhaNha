@@ -13,7 +13,7 @@ import { cn } from '../../lib/cn';
 import { useFocusTrap } from '../../lib/useFocusTrap';
 import { useReducedMotion } from '../../lib/useReducedMotion';
 import { availableQuantity, lineLimit } from '../cart/cartRules';
-import { selectQuantityOf, useCartStore } from '../cart/cartStore';
+import { selectLimits, selectQuantityOf, useCartStore } from '../cart/cartStore';
 
 interface ItemDetailSheetProps {
   item: MenuItem | null;
@@ -36,6 +36,7 @@ const CLOSE_FALLBACK_MS = 400;
 export function ItemDetailSheet({ item, onClose }: ItemDetailSheetProps) {
   const add = useCartStore((s) => s.add);
   const inCart = useCartStore(selectQuantityOf(item?.id ?? ''));
+  const limits = useCartStore(selectLimits);
   const reducedMotion = useReducedMotion();
   const [quantity, setQuantity] = useState(1);
   const [phase, setPhase] = useState<Phase>('open');
@@ -82,7 +83,7 @@ export function ItemDetailSheet({ item, onClose }: ItemDetailSheetProps) {
   const unavailable = !item.isAvailable;
   const maxQuantity = availableQuantity(item);
   // How many more can still go in the cart: the stock (or per-order cap) minus what is already there.
-  const room = Math.max(0, lineLimit(maxQuantity) - inCart);
+  const room = Math.max(0, lineLimit(maxQuantity, limits) - inCart);
   const canAdd = !unavailable && room > 0;
   // The stepper's note explains the limit; while it shows, the "Only N left" chip would only repeat it.
   const showNote = canAdd ? quantity >= room : !unavailable;

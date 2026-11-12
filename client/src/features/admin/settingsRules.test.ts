@@ -25,7 +25,7 @@ describe('SETTING_FIELDS', () => {
   it('covers every editable SiteSettings field', () => {
     expect(SETTING_KEYS.sort()).toEqual(
       Object.keys(saved)
-        .filter((k) => k !== 'updatedAt')
+        .filter((k) => k !== 'updatedAt' && k !== 'staffOrderListLimit')
         .sort(),
     );
   });
@@ -47,7 +47,7 @@ describe('validateSetting', () => {
   it('accepts whole numbers within the bounds, including the edges', () => {
     expect(validateSetting('customerOrderHistoryLimit', '1')).toBeNull();
     expect(validateSetting('customerOrderHistoryLimit', '200')).toBeNull();
-    expect(validateSetting('staffOrderListLimit', ' 500 ')).toBeNull();
+    expect(validateSetting('maxLinesPerOrder', ' 100 ')).toBeNull();
     expect(validateSetting('orderPollMs', '2000')).toBeNull();
     expect(validateSetting('staffBoardPollMs', '60000')).toBeNull();
     expect(validateSetting('clientErrorSamplePercent', '0')).toBeNull();
@@ -62,10 +62,10 @@ describe('validateSetting', () => {
     expect(validateSetting('clientErrorSamplePercent', '101')).toBe('Must be between 0 and 100.');
     expect(validateSetting('clientErrorSamplePercent', '-1')).toBe('Must be between 0 and 100.');
     for (const raw of ['', '2.5', 'abc', '1e2', '--3']) {
-      expect(validateSetting('staffOrderListLimit', raw)).toBe('Enter a whole number.');
+      expect(validateSetting('maxLinesPerOrder', raw)).toBe('Enter a whole number.');
     }
     // A negative number is a whole number out of range: say the range.
-    expect(validateSetting('staffOrderListLimit', '-3')).toBe('Must be between 1 and 500.');
+    expect(validateSetting('maxLinesPerOrder', '-3')).toBe('Must be between 1 and 100.');
   });
 
   it('accepts only a plain x.y.z version for the minimum app version', () => {

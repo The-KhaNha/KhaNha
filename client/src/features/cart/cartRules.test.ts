@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  MAX_LINE_QUANTITY,
   availableQuantity,
   describeProblem,
   describeProblems,
@@ -12,8 +11,12 @@ import {
   lineProblem,
   problemLabel,
   unavailableLabel,
+  type CartLimits,
 } from './cartRules';
 import type { CartLine } from './cartStore';
+
+const LIMITS: CartLimits = { maxQuantityPerItem: 10, lowStockThreshold: 5 };
+const CAP = LIMITS.maxQuantityPerItem;
 
 describe('availableQuantity', () => {
   it('is 0 when the item is unavailable, regardless of stock', () => {
@@ -32,14 +35,20 @@ describe('availableQuantity', () => {
 
 describe('isLowStock', () => {
   it('is true for a tracked item at or below the threshold', () => {
-    expect(isLowStock({ isAvailable: true, stockQuantity: 5 })).toBe(true);
-    expect(isLowStock({ isAvailable: true, stockQuantity: 1 })).toBe(true);
+    expect(isLowStock({ isAvailable: true, stockQuantity: 5 }, LIMITS)).toBe(true);
+    expect(isLowStock({ isAvailable: true, stockQuantity: 1 }, LIMITS)).toBe(true);
+  });
+
+  it('uses the store’s own threshold', () => {
+    const store = { ...LIMITS, lowStockThreshold: 2 };
+    expect(isLowStock({ isAvailable: true, stockQuantity: 3 }, store)).toBe(false);
+    expect(isLowStock({ isAvailable: true, stockQuantity: 2 }, store)).toBe(true);
   });
 
   it('is false above the threshold, when unavailable, or when untracked', () => {
-    expect(isLowStock({ isAvailable: true, stockQuantity: 6 })).toBe(false);
-    expect(isLowStock({ isAvailable: false, stockQuantity: 1 })).toBe(false);
-    expect(isLowStock({ isAvailable: true, stockQuantity: null })).toBe(false);
+    expect(isLowStock({ isAvailable: true, stockQuantity: 6 }, LIMITS)).toBe(false);
+    expect(isLowStock({ isAvailable: false, stockQuantity: 1 }, LIMITS)).toBe(false);
+    expect(isLowStock({ isAvailable: true, stockQuantity: null }, LIMITS)).toBe(false);
   });
 });
 
@@ -54,21 +63,26 @@ describe('unavailableLabel', () => {
   });
 });
 
-describe('MAX_LINE_QUANTITY', () => {
-  it('is fixed at 10, matching the server cap', () => {
-    expect(MAX_LINE_QUANTITY).toBe(10);
-  });
-});
-
 describe('lineLimit', () => {
   it('is the per-order cap when there is no stock limit', () => {
-    expect(lineLimit(null)).toBe(MAX_LINE_QUANTITY);
-    expect(lineLimit(undefined)).toBe(MAX_LINE_QUANTITY);
+    expect(lineLimit(null, LIMITS)).toBe(CAP);
+    expect(lineLimit(undefined, LIMITS)).toBe(CAP);
+  });
+
+  it('is limited by the store’s own cap, whatever the stock', () => {
+    const store = { ...LIMITS, maxQuantityPerItem: 3 };
+    expect(lineLimit(null, store)).toBe(3);
+    expect(lineLimit(8, store)).toBe(3);
+    expect(lineLimit(2, store)).toBe(2);
+    expect(lineProblem(cartLine({ quantity: 4 }), store)).toEqual({
+      kind: 'over-limit',
+      available: 3,
+    });
   });
 
   it('is the smaller of stock and the per-order cap', () => {
-    expect(lineLimit(3)).toBe(3);
-    expect(lineLimit(999)).toBe(MAX_LINE_QUANTITY);
+    expect(lineLimit(3, LIMITS)).toBe(3);
+    expect(lineLimit(999, LIMITS)).toBe(CAP);
   });
 });
 
@@ -78,15 +92,17 @@ function cartLine(overrides: Partial<CartLine> = {}): Pick<CartLine, 'quantity' 
 
 describe('lineProblem', () => {
   it('is null when the quantity is within the limit', () => {
-    expect(lineProblem(cartLine({ quantity: 2, maxQuantity: 5 }))).toBeNull();
+    expect(lineProblem(cartLine({ quantity: 2, maxQuantity: 5 }), LIMITS)).toBeNull();
   });
 
   it('is "sold-out" when the limit is 0', () => {
-    expect(lineProblem(cartLine({ quantity: 1, maxQuantity: 0 }))).toEqual({ kind: 'sold-out' });
+    expect(lineProblem(cartLine({ quantity: 1, maxQuantity: 0 }), LIMITS)).toEqual({
+      kind: 'sold-out',
+    });
   });
 
   it('is "over-limit" with the available count when the quantity exceeds the limit', () => {
-    expect(lineProblem(cartLine({ quantity: 3, maxQuantity: 2 }))).toEqual({
+    expect(lineProblem(cartLine({ quantity: 3, maxQuantity: 2 }), LIMITS)).toEqual({
       kind: 'over-limit',
       available: 2,
     });
@@ -135,7 +151,7 @@ describe('describeProblems', () => {
         maxQuantity: 0,
       },
     ];
-    expect(describeProblems(lines)).toBe('Only 1 Cheese Toast left. Brownie is sold out.');
+    expect(describeProblems(lines, LIMITS)).toBe('Only 1 Cheese Toast left. Brownie is sold out.');
   });
 
   it('is empty when nothing is flagged', () => {
@@ -149,23 +165,23 @@ describe('describeProblems', () => {
         maxQuantity: null,
       },
     ];
-    expect(describeProblems(lines)).toBe('');
+    expect(describeProblems(lines, LIMITS)).toBe('');
   });
 });
 
 describe('limitCaption', () => {
   it('names the stock left when it is below the per-order cap', () => {
-    expect(limitCaption(3)).toBe('Only 3 available');
+    expect(limitCaption(3, LIMITS)).toBe('Only 3 available');
   });
 
   it('names the per-order cap otherwise', () => {
-    expect(limitCaption(null)).toBe(`Max ${MAX_LINE_QUANTITY} per order`);
-    expect(limitCaption(undefined)).toBe(`Max ${MAX_LINE_QUANTITY} per order`);
-    expect(limitCaption(MAX_LINE_QUANTITY)).toBe(`Max ${MAX_LINE_QUANTITY} per order`);
+    expect(limitCaption(null, LIMITS)).toBe(`Max ${CAP} per order`);
+    expect(limitCaption(undefined, LIMITS)).toBe(`Max ${CAP} per order`);
+    expect(limitCaption(CAP, LIMITS)).toBe(`Max ${CAP} per order`);
   });
 
-  it('reads "Max 10 per order" (the fixed cap, spelled out)', () => {
-    expect(limitCaption(null)).toBe('Max 10 per order');
+  it('reads the store’s own cap, not a fixed one', () => {
+    expect(limitCaption(null, { ...LIMITS, maxQuantityPerItem: 3 })).toBe('Max 3 per order');
   });
 });
 

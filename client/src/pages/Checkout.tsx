@@ -25,7 +25,13 @@ import {
   orderItems,
   problemLabel,
 } from '../features/cart/cartRules';
-import { selectLines, selectTotal, useCartStore, type CartLine } from '../features/cart/cartStore';
+import {
+  selectLimits,
+  selectLines,
+  selectTotal,
+  useCartStore,
+  type CartLine,
+} from '../features/cart/cartStore';
 import { useCheckoutDraftStore } from '../features/checkout/checkoutDraftStore';
 import { useMenu } from '../features/menu/useMenu';
 import { ApiError } from '../services/api';
@@ -48,6 +54,7 @@ interface Receipt {
 
 export function CheckoutPage() {
   const lines = useCartStore(selectLines);
+  const limits = useCartStore(selectLimits);
   const total = useCartStore(selectTotal);
   const clear = useCartStore((s) => s.clear);
   const fix = useCartStore((s) => s.fix);
@@ -100,7 +107,7 @@ export function CheckoutPage() {
   const shownTotal = receipt?.total ?? total;
 
   // Lines the shop can't fulfil as they stand: flagged by the menu refresh or by the server's refusal.
-  const flagged = paid ? [] : lines.filter((line) => lineProblem(line) !== null);
+  const flagged = paid ? [] : lines.filter((line) => lineProblem(line, limits) !== null);
   const blocked = flagged.length > 0;
   const payDisabled = paid || blocked || repricing;
   // An error about one specific line; anything else gets the plain retry block.
@@ -205,7 +212,9 @@ export function CheckoutPage() {
           <ErrorState
             compact
             className="mb-4"
-            title={itemError ? itemErrorMessage(itemError, lines) : describeProblems(flagged)}
+            title={
+              itemError ? itemErrorMessage(itemError, lines) : describeProblems(flagged, limits)
+            }
             message={blocked ? "We've highlighted it below." : 'Go back to your cart to change it.'}
             actions={
               <>
@@ -227,7 +236,7 @@ export function CheckoutPage() {
         <h2 className="eyebrow text-muted">Your order</h2>
         <ul className="mt-3 space-y-2.5 text-body font-medium">
           {shownLines.map((line) => {
-            const problem = paid ? null : lineProblem(line);
+            const problem = paid ? null : lineProblem(line, limits);
             return (
               <li
                 key={line.menuItemId}
@@ -381,7 +390,8 @@ export function CheckoutPage() {
           >
             <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={2.5} aria-hidden />
             <span>
-              {describeProblems(flagged)} Fix {flagged.length === 1 ? 'it' : 'them'} above to pay.
+              {describeProblems(flagged, limits)} Fix {flagged.length === 1 ? 'it' : 'them'} above
+              to pay.
             </span>
           </p>
         ) : (

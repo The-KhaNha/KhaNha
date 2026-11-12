@@ -5,6 +5,10 @@
   "limits": {
     "maxLinesPerOrder": 30
   },
+  "storeDefaults": {
+    "maxQuantityPerItem": 10,
+    "lowStockThreshold": 5
+  },
   "polling": {
     "orderMs": 4000,
     "ordersMs": 8000,

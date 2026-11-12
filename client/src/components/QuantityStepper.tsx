@@ -1,6 +1,7 @@
 import { useState, type AnimationEvent, type CSSProperties } from 'react';
 import { Minus, Plus, Trash2 } from 'lucide-react';
-import { MAX_LINE_QUANTITY, limitCaption } from '../features/cart/cartRules';
+import { limitCaption } from '../features/cart/cartRules';
+import { selectLimits, useCartStore } from '../features/cart/cartStore';
 import { cn } from '../lib/cn';
 import { useChangeKey } from '../lib/useChangeKey';
 
@@ -145,8 +146,9 @@ interface StepperNoteProps {
 
 /** Why the plus stopped: gold for a stock limit ("Only 2 available"), muted for the per-order cap. */
 export function StepperNote({ maxQuantity, inCart = 0, className }: StepperNoteProps) {
+  const limits = useCartStore(selectLimits);
   const stockLimited =
-    maxQuantity !== null && maxQuantity !== undefined && maxQuantity < MAX_LINE_QUANTITY;
+    maxQuantity !== null && maxQuantity !== undefined && maxQuantity < limits.maxQuantityPerItem;
   return (
     <p
       className={cn(
@@ -155,7 +157,7 @@ export function StepperNote({ maxQuantity, inCart = 0, className }: StepperNoteP
         className,
       )}
     >
-      {limitCaption(maxQuantity)}
+      {limitCaption(maxQuantity, limits)}
       {inCart > 0 && ` · ${inCart} in your cart`}
     </p>
   );

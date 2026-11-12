@@ -1,11 +1,8 @@
-import type { CreateOrderInput, MenuItem } from '../../types/api';
+import type { CreateOrderInput, MenuItem, MenuResponse } from '../../types/api';
 import type { CartLine } from './cartStore';
 
-/** Mirrors the server's per-line cap (server/src/schemas/order.schema.ts). */
-export const MAX_LINE_QUANTITY = 10;
-
-/** Menu cards flag in-stock items with this many units left or fewer. */
-export const LOW_STOCK_MAX = 5;
+/** The store's limits as the menu serves them (`MenuResponse.rules`): the per-line cap and the "Only N left" point. */
+export type CartLimits = NonNullable<MenuResponse['rules']>;
 
 type Stockable = Pick<MenuItem, 'isAvailable' | 'stockQuantity'>;
 
@@ -18,8 +15,15 @@ export function availableQuantity(item: Stockable): number | null {
 }
 
 /** True for an in-stock item that is about to run out ("Only N left"). */
-export function isLowStock<T extends Stockable>(item: T): item is T & { stockQuantity: number } {
-  return item.isAvailable && item.stockQuantity !== null && item.stockQuantity <= LOW_STOCK_MAX;
+export function isLowStock<T extends Stockable>(
+  item: T,
+  limits: CartLimits,
+): item is T & { stockQuantity: number } {
+  return (
+    item.isAvailable &&
+    item.stockQuantity !== null &&
+    item.stockQuantity <= limits.lowStockThreshold
+  );
 }
 
 /** "Sold out" when tracked stock ran out, "Unavailable" when the shop switched the item off. */
@@ -28,15 +32,18 @@ export function unavailableLabel(item: Pick<MenuItem, 'stockQuantity'>): string 
 }
 
 /** The most of one item a cart may hold: its stock limit when there is one, otherwise the per-order cap. */
-export function lineLimit(maxQuantity: number | null | undefined): number {
-  return Math.min(MAX_LINE_QUANTITY, maxQuantity ?? MAX_LINE_QUANTITY);
+export function lineLimit(maxQuantity: number | null | undefined, limits: CartLimits): number {
+  return Math.min(limits.maxQuantityPerItem, maxQuantity ?? limits.maxQuantityPerItem);
 }
 
 export type LineProblem = { kind: 'sold-out' } | { kind: 'over-limit'; available: number };
 
 /** Why a cart line cannot be ordered as it stands, or null when it is fine. */
-export function lineProblem(line: Pick<CartLine, 'quantity' | 'maxQuantity'>): LineProblem | null {
-  const limit = lineLimit(line.maxQuantity);
+export function lineProblem(
+  line: Pick<CartLine, 'quantity' | 'maxQuantity'>,
+  limits: CartLimits,
+): LineProblem | null {
+  const limit = lineLimit(line.maxQuantity, limits);
   if (limit <= 0) return { kind: 'sold-out' };
   if (line.quantity > limit) return { kind: 'over-limit', available: limit };
   return null;
@@ -55,20 +62,22 @@ export function describeProblem(name: string, problem: LineProblem): string {
 }
 
 /** One sentence per flagged line, so a message never says "some item" without naming it. */
-export function describeProblems(lines: CartLine[]): string {
+export function describeProblems(lines: CartLine[], limits: CartLimits): string {
   return lines
     .flatMap((line) => {
-      const problem = lineProblem(line);
+      const problem = lineProblem(line, limits);
       return problem ? [describeProblem(line.name, problem)] : [];
     })
     .join(' ');
 }
 
 /** Caption under a stepper whose plus has stopped: the stock left, or the per-order cap. */
-export function limitCaption(maxQuantity: number | null | undefined): string {
-  return maxQuantity !== null && maxQuantity !== undefined && maxQuantity < MAX_LINE_QUANTITY
+export function limitCaption(maxQuantity: number | null | undefined, limits: CartLimits): string {
+  return maxQuantity !== null &&
+    maxQuantity !== undefined &&
+    maxQuantity < limits.maxQuantityPerItem
     ? `Only ${maxQuantity} available`
-    : `Max ${MAX_LINE_QUANTITY} per order`;
+    : `Max ${limits.maxQuantityPerItem} per order`;
 }
 
 /** Server error codes that are about one specific cart line; `error.details` says which. */

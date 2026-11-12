@@ -211,7 +211,7 @@ Code: `menu.controller.getMenu` → `menu.service.getMenu`. Returns every menu i
 ones (the client greys them out), ordered by `sort_order`:
 
 - `rules`: `{ maxQuantityPerItem, lowStockThreshold }`, the cart rules, read from the store's settings (defaults 10 and 5;
-  [PATCH /stores/:storeId/settings](#patch-storesstoreidsettings) changes them and drops the cached menu). Until P2 PR 05c the client still applies its own copies in `cartRules.ts`.
+  [PATCH /stores/:storeId/settings](#patch-storesstoreidsettings) changes them and drops the cached menu).
 - `store`: `StoreDto`.
 - `popular`: the items with `isPopular` true, in `sortOrder` order.
 - `categories`: `{ name, items }[]`. A category is placed by its first (lowest `sortOrder`) item.

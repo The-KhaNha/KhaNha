@@ -441,6 +441,10 @@ Split from PR 05 for size. `cartRules.ts` takes the limits as arguments instead 
 ROADMAP A1's two client rows; the `docs/API.md` note that the client still applies its own copies goes. Intent:
 `--client patch`.
 
+As built: the limits live on the cart store (`limits`, persisted with the lines, set by `useMenu` and `useReorder`
+through `setLimits`); the fallback is `storeDefaults` in `fallbacks.json`, parity-tested against the `stores` column
+defaults in `limits-parity.safe.test.ts`.
+
 ### PR 06 — Opening hours: the rule and the reads (P2.4)
 
 - [ ] Merged
