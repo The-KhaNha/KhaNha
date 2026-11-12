@@ -47,6 +47,19 @@ export function ManagePage() {
 
   return (
     <ul className="space-y-3 pt-4">
+      {/* Saved list shown, refresh failed: keep it, but say so and offer the retry (a new store may be missing). */}
+      {error && (
+        <li>
+          <ErrorState
+            compact
+            title="Showing saved stores"
+            message="We couldn't refresh them just now."
+            retryLabel="Retry"
+            onRetry={retry}
+            unreachable={error.isUnreachable}
+          />
+        </li>
+      )}
       {mine.map((store) => (
         <li key={store.id}>
           <StoreCard variant="compact" store={store} to={`/manage/${store.slug}`} />

@@ -33,6 +33,8 @@ const state = vi.hoisted(() => ({
   stores: [] as StoreSummary[],
   store: null as Store | null,
   storeError: null as null | { status: number; message: string; isUnreachable: boolean },
+  storesError: null as null | { message: string; isUnreachable: boolean },
+  updatedAt: 1 as number | null,
 }));
 vi.mock('../features/auth/authStore', () => ({
   useAuthStore: (select: (s: typeof state) => unknown) => select(state),
@@ -41,9 +43,9 @@ vi.mock('../features/stores/useStores', () => ({
   useStores: () => ({
     stores: state.stores,
     isLoading: false,
-    error: null,
+    error: state.storesError,
     retry: () => {},
-    updatedAt: 1,
+    updatedAt: state.updatedAt,
   }),
   useStoreByRef: () => ({
     store: state.store,
@@ -87,6 +89,8 @@ beforeEach(() => {
   state.stores = [];
   state.store = null;
   state.storeError = null;
+  state.storesError = null;
+  state.updatedAt = 1;
 });
 
 describe('/manage picker', () => {
@@ -94,6 +98,16 @@ describe('/manage picker', () => {
     state.token = null;
     renderAt('/manage');
     expect(screen.getByText('Sign in page')).toBeInTheDocument();
+  });
+
+  it('keeps a saved list on a failed refresh, says so and offers a retry', () => {
+    state.user = user({ ownedBrands: [{ id: 'b1', name: 'B', slug: 'b1' }] });
+    state.stores = [summary('a')];
+    state.storesError = { message: 'offline', isUnreachable: true };
+    state.updatedAt = null;
+    renderAt('/manage');
+    expect(screen.getByText('Showing saved stores')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Store a/ })).toBeInTheDocument();
   });
 
   it('lists every store of an owned brand and no one else', () => {
@@ -147,6 +161,15 @@ describe('/manage/:storeSlug shell', () => {
       expect(nav.querySelector(`a[href="/manage/a/${tab}"]`)).not.toBeNull();
     expect(screen.getByText('Coming next')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Hours' })).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('keeps the saved store on a failed refresh and says so', () => {
+    state.user = user({ ownedBrands: [{ id: 'b1', name: 'B', slug: 'b1' }] });
+    state.store = summary('a') as unknown as Store;
+    state.storeError = { status: 0, message: 'offline', isUnreachable: true };
+    renderAt('/manage/a');
+    expect(screen.getByText('Showing the saved store')).toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: 'Manage' })).toBeInTheDocument();
   });
 
   it('is not found for a store the account does not manage', () => {

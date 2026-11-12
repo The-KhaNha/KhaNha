@@ -44,6 +44,17 @@ export function ManageStorePage() {
 
   return (
     <div className="pt-4">
+      {error && (
+        <ErrorState
+          compact
+          className="mb-3"
+          title="Showing the saved store"
+          message="We couldn't refresh it just now."
+          retryLabel="Retry"
+          onRetry={retry}
+          unreachable={error.isUnreachable}
+        />
+      )}
       <h1 className="text-xl font-extrabold">{store.name}</h1>
       <nav aria-label="Manage" className="mt-3 flex gap-1 border-b border-line/70">
         {MANAGE_TABS.map(({ path, label }) => (
