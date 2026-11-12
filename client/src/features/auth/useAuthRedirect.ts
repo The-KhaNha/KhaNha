@@ -8,8 +8,9 @@ export function useAuthRedirect() {
   const [params] = useSearchParams();
 
   return function redirectAfterAuth(user: User) {
-    if (user.role !== 'CUSTOMER') {
-      navigate(homeFor(user.role), { replace: true });
+    const home = homeFor(user);
+    if (home !== '/') {
+      navigate(home, { replace: true });
       return;
     }
     const next = params.get('next');

@@ -1,8 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
+import { Store as StoreIcon } from 'lucide-react';
+import { Card } from '../components/Card';
+import { EmptyState } from '../components/EmptyState';
 import type { Order, OrderStatus } from '../types/api';
 import { useAuthStore } from '../features/auth/authStore';
-import { useStore } from '../features/menu/useStore';
+import { PauseControl } from '../features/orders/PauseControl';
+import { useStoreByRef } from '../features/stores/useStores';
 import {
   STAFF_FILTERS,
   matchesFilter,
@@ -27,10 +31,21 @@ const LEAVE_MS = 220;
 
 /** The kitchen board: owns polling, filtering and status changes; the header, filters and grid are presentational. */
 export function StaffDashboardPage() {
+  const { storeSlug = '' } = useParams();
+  const membership = useAuthStore((s) =>
+    s.user?.memberships.find((m) => m.storeSlug === storeSlug),
+  );
+  const storeId = membership?.storeId;
   const { orders, isLoading, error, retry, mutate, updatedAt } = useOrders({
     audience: 'staff',
+    storeId,
   });
-  const { store } = useStore();
+  const {
+    store,
+    mutate: mutateStore,
+    error: storeError,
+    retry: retryStore,
+  } = useStoreByRef(storeSlug);
   const logout = useAuthStore((s) => s.logout);
   const navigate = useNavigate();
 
@@ -89,13 +104,14 @@ export function StaffDashboardPage() {
   }
 
   async function changeStatus(order: Order, status: OrderStatus) {
+    if (!storeId) return;
     setPendingIds((prev) => new Set(prev).add(order.id));
     setActionErrors((prev) => {
       const { [order.id]: _removed, ...rest } = prev;
       return rest;
     });
     try {
-      const updated = await updateOrderStatus(order.id, status);
+      const updated = await updateOrderStatus(storeId, order.id, status);
       if (!matchesFilter(updated.status, filter)) scheduleLeave(updated.id);
       mutate((list) => list.map((o) => (o.id === updated.id ? updated : o)));
     } catch (err) {
@@ -123,10 +139,21 @@ export function StaffDashboardPage() {
   return (
     <div className="min-h-dvh">
       <StaffHeader
-        storeName={store?.name}
+        storeName={membership?.storeName}
         updatedAt={updatedAt}
         offline={error !== null}
         onLogout={handleLogout}
+        pause={
+          storeId && (
+            <PauseControl
+              storeId={storeId}
+              store={store ?? undefined}
+              mutate={mutateStore}
+              loadFailed={Boolean(storeError)}
+              onRetry={retryStore}
+            />
+          )
+        }
       >
         <StaffFilters value={filterKey} counts={counts} onChange={selectFilter} />
       </StaffHeader>
@@ -148,5 +175,42 @@ export function StaffDashboardPage() {
         />
       </main>
     </div>
+  );
+}
+
+/** `/staff`: the stores this account works at. With one there is nothing to choose, so it goes straight to its board. */
+export function StaffStoresPage() {
+  const memberships = useAuthStore((s) => s.user?.memberships ?? []);
+  if (memberships.length === 1)
+    return <Navigate to={`/staff/${memberships[0]!.storeSlug}`} replace />;
+  return (
+    <main className="mx-auto max-w-md px-4 py-8">
+      <h1 className="mb-4 text-xl font-bold">Choose a store</h1>
+      {memberships.length === 0 ? (
+        <EmptyState
+          icon={StoreIcon}
+          title="You are not on a store's team."
+          description="Ask a manager to invite you."
+        />
+      ) : (
+        <ul className="space-y-3">
+          {memberships.map((m) => (
+            <li key={m.storeId}>
+              <Card padding="none">
+                <Link
+                  to={`/staff/${m.storeSlug}`}
+                  className="flex min-h-14 items-center justify-between gap-3 px-4 py-3 font-semibold"
+                >
+                  {m.storeName}
+                  <span className="text-xs font-normal text-muted">
+                    {m.role === 'MANAGER' ? 'Manager' : 'Staff'}
+                  </span>
+                </Link>
+              </Card>
+            </li>
+          ))}
+        </ul>
+      )}
+    </main>
   );
 }
