@@ -8,6 +8,8 @@ import * as scheduleService from '../services/schedule.service';
 import type { CreateExceptionInput, SetStoreHoursInput } from '../schemas/storeHours.schema';
 import * as hoursService from '../services/storeHours.service';
 import * as settingsService from '../services/storeSettings.service';
+import * as pauseService from '../services/storePause.service';
+import type { PauseStoreInput } from '../schemas/storePause.schema';
 import type { BodyHandler } from '../types/http';
 import { toStoreDto, toStoreSettingsDto, type StoreWithBrand } from '../utils/serializers';
 
@@ -84,4 +86,21 @@ export const deleteScheduleException: RequestHandler = async (req, res) => {
     requestContext(req),
   );
   res.status(204).end();
+};
+
+// A pause or a resume answers with the store as customers now see it, read uncached.
+const freshStore = async (id: string) => storeDto(await storeService.getStore(id));
+
+/** POST /api/stores/:storeId/pause, after requireStore('store.pause'). */
+export const pauseStore: BodyHandler<PauseStoreInput> = async (req, res) => {
+  const { id } = currentStore(req);
+  await pauseService.pauseStore(id, req.body, requestContext(req));
+  res.json({ store: await freshStore(id) });
+};
+
+/** POST /api/stores/:storeId/resume, after requireStore('store.pause'). */
+export const resumeStore: RequestHandler = async (req, res) => {
+  const { id } = currentStore(req);
+  await pauseService.resumeStore(id, requestContext(req));
+  res.json({ store: await freshStore(id) });
 };

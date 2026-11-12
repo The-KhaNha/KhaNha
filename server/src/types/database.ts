@@ -728,6 +728,7 @@ export type Database = {
       };
       stores: {
         Row: {
+          accepting_orders: boolean;
           address_line: string | null;
           area: string | null;
           brand_id: string;
@@ -741,6 +742,9 @@ export type Database = {
           low_stock_threshold: number;
           max_quantity_per_item: number;
           name: string;
+          pause_reason: string | null;
+          paused_by: string | null;
+          paused_until: string | null;
           prep_time_max_minutes: number;
           prep_time_min_minutes: number;
           slug: string;
@@ -751,6 +755,7 @@ export type Database = {
           updated_at: string;
         };
         Insert: {
+          accepting_orders?: boolean;
           address_line?: string | null;
           area?: string | null;
           brand_id: string;
@@ -764,6 +769,9 @@ export type Database = {
           low_stock_threshold?: number;
           max_quantity_per_item?: number;
           name: string;
+          pause_reason?: string | null;
+          paused_by?: string | null;
+          paused_until?: string | null;
           prep_time_max_minutes?: number;
           prep_time_min_minutes?: number;
           slug: string;
@@ -774,6 +782,7 @@ export type Database = {
           updated_at?: string;
         };
         Update: {
+          accepting_orders?: boolean;
           address_line?: string | null;
           area?: string | null;
           brand_id?: string;
@@ -787,6 +796,9 @@ export type Database = {
           low_stock_threshold?: number;
           max_quantity_per_item?: number;
           name?: string;
+          pause_reason?: string | null;
+          paused_by?: string | null;
+          paused_until?: string | null;
           prep_time_max_minutes?: number;
           prep_time_min_minutes?: number;
           slug?: string;
@@ -802,6 +814,13 @@ export type Database = {
             columns: ['brand_id'];
             isOneToOne: false;
             referencedRelation: 'brands';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'stores_paused_by_fkey';
+            columns: ['paused_by'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
             referencedColumns: ['id'];
           },
         ];
@@ -846,6 +865,17 @@ export type Database = {
           p_type: string;
         };
         Returns: string;
+      };
+      pause_store: {
+        Args: {
+          p_actor?: Json;
+          p_now?: string;
+          p_reason?: string;
+          p_request_id?: string;
+          p_store_id: string;
+          p_until?: string;
+        };
+        Returns: boolean;
       };
       place_order: {
         Args: {
@@ -912,6 +942,15 @@ export type Database = {
         Returns: undefined;
       };
       reset_demo_orders: { Args: never; Returns: undefined };
+      resume_store: {
+        Args: {
+          p_actor?: Json;
+          p_now?: string;
+          p_request_id?: string;
+          p_store_id: string;
+        };
+        Returns: boolean;
+      };
       set_store_hours: {
         Args: {
           p_actor?: Json;

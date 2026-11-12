@@ -4737,34 +4737,34 @@ Everything new or changed, with the step that adds it. Legacy endpoints stay unt
 
 Emitted with `emit_event` in the same transaction as the change (P1.2). The consumers are queue subscriptions.
 
-| Event                                                     | Emitted by                                  | Consumers                                                     |
-| --------------------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------- |
-| `order.created`                                           | `create_checkout`                           | analytics (checkout started)                                  |
-| `order.abandoned`                                         | `expire_holds`, `abandon_checkout`          | analytics                                                     |
-| `order.paid`                                              | `confirm_payment`                           | payments (vendor transfer or hold), analytics                 |
-| `order.awaiting_acceptance`                               | `confirm_payment`                           | notifications (staff)                                         |
-| `order.accepted` / `order.placed`                         | `accept_order` / `confirm_payment`          | notifications, ETA refresh                                    |
-| `order.rejected`                                          | `reject_order`, `expire_acceptance`         | refunds, notifications, analytics                             |
-| `order.preparing` / `order.ready`                         | the transition functions                    | notifications (ready), ETA refresh                            |
-| `order.sla_breached`                                      | `detect_sla_breaches`                       | notifications (customer and staff), analytics                 |
-| `order.collected`                                         | `collect_order`                             | payout release, analytics, recommendations, the rating prompt |
-| `order.expired`                                           | `expire_pickup_windows`                     | payout release, surplus lots, notifications, analytics        |
-| `order.cancelled`                                         | `cancel_order`                              | refunds, notifications, analytics                             |
-| `payment.webhook_received`                                | the webhook route                           | payments (per-type handler)                                   |
-| `payment.captured` / `payment.failed`                     | payment handlers                            | analytics                                                     |
-| `refund.requested` / `refund.processed` / `refund.failed` | `request_refund`, refund handlers           | payments (execute, retry), notifications, analytics, ledger   |
-| `payout.released` / `payout.reversed`                     | payout handlers                             | analytics, the ledger                                         |
-| `menu.changed`                                            | catalog, listing and stock functions        | cache invalidation fan-out, recommendations                   |
-| `stock.low`                                               | stock functions (at or below the threshold) | notifications (staff)                                         |
-| `store.paused` / `store.resumed`                          | pause functions, sweep                      | notifications (staff), analytics                              |
-| `media.uploaded` / `media.processed`                      | media endpoints, handler                    | media handler, cache invalidation                             |
-| `review.submitted`                                        | `submit_review`                             | rating aggregates, moderation                                 |
-| `recon.exception`                                         | the reconciler                              | notifications (admin), alarms                                 |
-| `tab.opened` / `tab.member_joined`                        | `open_tab` / `join_tab`                     | analytics                                                     |
-| `tab.bill_requested`                                      | the bill-request endpoint                   | notifications (staff)                                         |
-| `order.served`                                            | `serve_order`                               | analytics, the rating prompt                                  |
-| `bill.paid` / `tab.settled`                               | the bill payment functions                  | payouts (bills paid in the app), notifications, analytics     |
-| `tab.voided`                                              | `void_tab`                                  | notifications (host), analytics                               |
+| Event                                                     | Emitted by                                    | Consumers                                                     |
+| --------------------------------------------------------- | --------------------------------------------- | ------------------------------------------------------------- |
+| `order.created`                                           | `create_checkout`                             | analytics (checkout started)                                  |
+| `order.abandoned`                                         | `expire_holds`, `abandon_checkout`            | analytics                                                     |
+| `order.paid`                                              | `confirm_payment`                             | payments (vendor transfer or hold), analytics                 |
+| `order.awaiting_acceptance`                               | `confirm_payment`                             | notifications (staff)                                         |
+| `order.accepted` / `order.placed`                         | `accept_order` / `confirm_payment`            | notifications, ETA refresh                                    |
+| `order.rejected`                                          | `reject_order`, `expire_acceptance`           | refunds, notifications, analytics                             |
+| `order.preparing` / `order.ready`                         | the transition functions                      | notifications (ready), ETA refresh                            |
+| `order.sla_breached`                                      | `detect_sla_breaches`                         | notifications (customer and staff), analytics                 |
+| `order.collected`                                         | `collect_order`                               | payout release, analytics, recommendations, the rating prompt |
+| `order.expired`                                           | `expire_pickup_windows`                       | payout release, surplus lots, notifications, analytics        |
+| `order.cancelled`                                         | `cancel_order`                                | refunds, notifications, analytics                             |
+| `payment.webhook_received`                                | the webhook route                             | payments (per-type handler)                                   |
+| `payment.captured` / `payment.failed`                     | payment handlers                              | analytics                                                     |
+| `refund.requested` / `refund.processed` / `refund.failed` | `request_refund`, refund handlers             | payments (execute, retry), notifications, analytics, ledger   |
+| `payout.released` / `payout.reversed`                     | payout handlers                               | analytics, the ledger                                         |
+| `menu.changed`                                            | catalog, listing and stock functions          | cache invalidation fan-out, recommendations                   |
+| `stock.low`                                               | stock functions (at or below the threshold)   | notifications (staff)                                         |
+| `store.paused` / `store.resumed`                          | `pause_store`, `resume_store` (a sweep later) | notifications (staff), analytics                              |
+| `media.uploaded` / `media.processed`                      | media endpoints, handler                      | media handler, cache invalidation                             |
+| `review.submitted`                                        | `submit_review`                               | rating aggregates, moderation                                 |
+| `recon.exception`                                         | the reconciler                                | notifications (admin), alarms                                 |
+| `tab.opened` / `tab.member_joined`                        | `open_tab` / `join_tab`                       | analytics                                                     |
+| `tab.bill_requested`                                      | the bill-request endpoint                     | notifications (staff)                                         |
+| `order.served`                                            | `serve_order`                                 | analytics, the rating prompt                                  |
+| `bill.paid` / `tab.settled`                               | the bill payment functions                    | payouts (bills paid in the app), notifications, analytics     |
+| `tab.voided`                                              | `void_tab`                                    | notifications (host), analytics                               |
 
 ### A6 Glossary
 

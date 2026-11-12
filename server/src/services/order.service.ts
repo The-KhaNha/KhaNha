@@ -12,6 +12,7 @@ import {
   notFound,
   priceChanged,
   storeClosed,
+  storePaused,
   validationError,
 } from '../utils/errors';
 import { isUuid } from '../utils/ids';
@@ -134,6 +135,8 @@ export async function createOrder(
     earlySchedule ?? (await loadSchedule(store.id)),
     now,
   );
+  if (state === 'PAUSED')
+    throw storePaused(store.name, pausedBack(nextChangeAt, now, store.timezone));
   if (state !== 'OPEN' && state !== 'CLOSING_SOON')
     throw storeClosed(
       store.name,
@@ -191,6 +194,13 @@ export async function createOrder(
     if (unavailable)
       throw itemUnavailable(String(unavailable.menuItemId), String(unavailable.name));
     if (raisedByDatabase(err, 'STORE_CLOSED')) throw storeClosed(store.name);
+    // Paused or stopped trading while this request ran: the same answers as the checks above.
+    const paused = raisedByDatabase(err, 'STORE_PAUSED');
+    if (paused) {
+      const until = paused.pausedUntil ? new Date(String(paused.pausedUntil)) : null;
+      throw storePaused(store.name, pausedBack(until, new Date(), store.timezone));
+    }
+    if (raisedByDatabase(err, 'NOT_FOUND')) throw notFound('Store not found.');
     throw err;
   } finally {
     // Placed or refused for stock, the cached menu's stock counts are out of date either way.
@@ -204,6 +214,11 @@ export async function createOrder(
     throw idempotencyKeyReused(order.id, order.order_number);
   }
   return { order, replayed: false };
+}
+
+/** When a pause ends, for STORE_PAUSED's message; null for a pause until resumed. */
+function pausedBack(until: Date | null, now: Date, timeZone: string) {
+  return until ? { pausedUntil: until, when: describeWhen(until, now, timeZone) } : null;
 }
 
 /**

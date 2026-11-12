@@ -6,6 +6,7 @@ export type ErrorCode =
   | 'ITEM_UNAVAILABLE'
   | 'INSUFFICIENT_STOCK'
   | 'STORE_CLOSED'
+  | 'STORE_PAUSED'
   | 'UNAUTHORIZED'
   | 'FORBIDDEN'
   | 'NOT_FOUND'
@@ -56,12 +57,19 @@ export interface StoreClosedDetails {
  * Every shape `error.details` can take. The first three predate `kind` and stay untagged, because the deployed client
  * reads them by `code`; every new shape carries a `kind` (docs/API.md "Error details").
  */
+/** When a paused store takes orders again (ISO 8601), or null when it is paused until someone resumes it. */
+export interface StorePausedDetails {
+  kind: 'storePaused';
+  pausedUntil: string | null;
+}
+
 export type ErrorDetails =
   | ItemErrorDetails
   | ReplayedOrderDetails
   | FieldErrorDetails
   | RateLimitDetails
-  | StoreClosedDetails;
+  | StoreClosedDetails
+  | StorePausedDetails;
 
 /**
  * A dependency (Supabase's database or Auth, later the payment provider) failed or could not be reached. The error
@@ -231,6 +239,20 @@ export const storeClosed = (
         'STORE_CLOSED',
         `${storeName} is closed right now. Please come back when it opens.`,
       );
+
+/** The store paused new orders (P2.5): "Campus Cafe has paused new orders. Back at 3:40 PM." */
+export const storePaused = (
+  storeName: string,
+  back: { pausedUntil: Date; when: string } | null,
+): AppError =>
+  new AppError(
+    409,
+    'STORE_PAUSED',
+    back
+      ? `${storeName} has paused new orders. Back ${back.when}.`
+      : `${storeName} has paused new orders.`,
+    { kind: 'storePaused', pausedUntil: back?.pausedUntil.toISOString() ?? null },
+  );
 
 /**
  * An item's price is not the one the customer saw (a cart line's `expectedUnitPrice`), or it changed between the API's

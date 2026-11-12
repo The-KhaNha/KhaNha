@@ -152,9 +152,11 @@ export interface ApiErrorDetails {
   orderId?: string;
   orderNumber?: number;
   /** Shapes added since P1 carry a `kind`; the ones above predate it and are told apart by `code`. */
-  kind?: 'rateLimit' | 'storeClosed';
+  kind?: 'rateLimit' | 'storeClosed' | 'storePaused';
   /** STORE_CLOSED: when the store next opens, when known. */
   nextChangeAt?: string;
+  /** STORE_PAUSED: when the pause ends, or null when it lasts until someone resumes. */
+  pausedUntil?: string | null;
   /** RATE_LIMITED: seconds until the window resets, the same number as the Retry-After header. */
   retryAfterSeconds?: number;
 }

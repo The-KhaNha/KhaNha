@@ -46,6 +46,7 @@ a new file (see [DEPLOYMENT.md](DEPLOYMENT.md#schema-changes)).
 | `20261112083000_store_invites.sql`                 | adds `store_invites` (RLS on, revoked; two CHECKs, `store_invites_open_email_key` and three more indexes) with `store_invites_audit`                                                                                                                                                                                                                                                                                                                                                                                              |
 | `20261112093000_accept_store_invite.sql`           | adds `accept_store_invite()` (`service_role` only): accepts an invite in one transaction                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `20261112120000_set_store_hours.sql`               | adds `set_store_hours()` (`service_role` only) and drops `store_hours_audit`: one audit row and one event per saved week                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `20261112130000_store_pause.sql`                   | adds the `stores` pause columns (`accepting_orders`, `paused_until`, `pause_reason`, `paused_by`, `stores_paused_by_idx`), `pause_store()` and `resume_store()` (`service_role` only), and re-creates `stores_audit` and `place_order` (same signature, grants kept)                                                                                                                                                                                                                                                              |
 
 ## Enums
 
@@ -150,34 +151,47 @@ are revoked from `anon` and `authenticated`. Audited by `store_invites_audit` (`
 Three rows in the demo seed (Campus Cafe, and two branches of Brew Lane). Until the store-scoped routes land, the
 single-store routes use the oldest store (`order by created_at, id`).
 
-| Column                            | Type           | Null | Default             | Notes                                                     |
-| --------------------------------- | -------------- | ---- | ------------------- | --------------------------------------------------------- |
-| `id`                              | uuid           | no   | `gen_random_uuid()` | primary key                                               |
-| `name`                            | text           | no   |                     |                                                           |
-| `brand_id`                        | uuid           | no   |                     | references `brands (id)`; indexed (`stores_brand_id_idx`) |
-| `slug`                            | text           | no   |                     | unique; same pattern as `brands.slug`                     |
-| `status`                          | `store_status` | no   | `ACTIVE`            |                                                           |
-| `timezone`                        | text           | no   | `Asia/Kolkata`      |                                                           |
-| `area`                            | text           | yes  |                     | the neighbourhood a customer filters by                   |
-| `address_line`                    | text           | yes  |                     | `StoreDto.address`                                        |
-| `contact_phone`                   | text           | yes  |                     |                                                           |
-| `tagline`                         | text           | no   |                     |                                                           |
-| `description`                     | text           | no   |                     |                                                           |
-| `image_url`                       | text           | yes  |                     |                                                           |
-| `is_open`                         | boolean        | no   | `true`              | false makes `POST /orders` return `STORE_CLOSED`          |
-| `prep_time_min_minutes`           | integer        | no   | `10`                |                                                           |
-| `prep_time_max_minutes`           | integer        | no   | `15`                | drives `orders.estimated_ready_at`                        |
-| `max_quantity_per_item`           | integer        | no   | `10`                | store setting; check 1–50; most of one item per order     |
-| `low_stock_threshold`             | integer        | no   | `5`                 | store setting; check 0–50; "only N left" at or below it   |
-| `staff_order_list_limit`          | integer        | no   | `100`               | store setting; check 1–500; finished orders on the board  |
-| `last_order_minutes_before_close` | integer        | no   | `0`                 | store setting; check 0–240; stored only until P2 PR 06    |
-| `created_at`                      | timestamptz    | no   | `now()`             |                                                           |
-| `updated_at`                      | timestamptz    | no   | `now()`             | `stores_set_updated_at`                                   |
+| Column                            | Type           | Null | Default             | Notes                                                         |
+| --------------------------------- | -------------- | ---- | ------------------- | ------------------------------------------------------------- |
+| `id`                              | uuid           | no   | `gen_random_uuid()` | primary key                                                   |
+| `name`                            | text           | no   |                     |                                                               |
+| `brand_id`                        | uuid           | no   |                     | references `brands (id)`; indexed (`stores_brand_id_idx`)     |
+| `slug`                            | text           | no   |                     | unique; same pattern as `brands.slug`                         |
+| `status`                          | `store_status` | no   | `ACTIVE`            |                                                               |
+| `timezone`                        | text           | no   | `Asia/Kolkata`      |                                                               |
+| `area`                            | text           | yes  |                     | the neighbourhood a customer filters by                       |
+| `address_line`                    | text           | yes  |                     | `StoreDto.address`                                            |
+| `contact_phone`                   | text           | yes  |                     |                                                               |
+| `tagline`                         | text           | no   |                     |                                                               |
+| `description`                     | text           | no   |                     |                                                               |
+| `image_url`                       | text           | yes  |                     |                                                               |
+| `is_open`                         | boolean        | no   | `true`              | false makes `POST /orders` return `STORE_CLOSED`              |
+| `prep_time_min_minutes`           | integer        | no   | `10`                |                                                               |
+| `prep_time_max_minutes`           | integer        | no   | `15`                | drives `orders.estimated_ready_at`                            |
+| `max_quantity_per_item`           | integer        | no   | `10`                | store setting; check 1–50; most of one item per order         |
+| `low_stock_threshold`             | integer        | no   | `5`                 | store setting; check 0–50; "only N left" at or below it       |
+| `staff_order_list_limit`          | integer        | no   | `100`               | store setting; check 1–500; finished orders on the board      |
+| `last_order_minutes_before_close` | integer        | no   | `0`                 | store setting; check 0–240; stored only until P2 PR 06        |
+| `created_at`                      | timestamptz    | no   | `now()`             |                                                               |
+| `updated_at`                      | timestamptz    | no   | `now()`             | `stores_set_updated_at`                                       |
+| `accepting_orders`                | boolean        | no   | `true`              | false = paused; see `pause_store`                             |
+| `paused_until`                    | timestamptz    | yes  |                     | when the pause ends; null while paused = until resumed        |
+| `pause_reason`                    | text           | yes  |                     | check: at most 120 characters                                 |
+| `paused_by`                       | uuid           | yes  |                     | FK `profiles(id)`, on delete set null; `stores_paused_by_idx` |
 
 The four store settings are edited through `PATCH /api/stores/:storeId/settings` ([API.md](API.md#patch-storesstoreidsettings)); their bounds are
 the check constraints (`stores_<column>_check`), mirrored by `STORE_SETTING_BOUNDS`. A new store takes the constant defaults
 (no insert trigger); the migration copied each existing store's `staff_order_list_limit` from `site_settings` once, writing no audit rows.
 Audited by `stores_settings_audit` (`store_settings.changed`), apart from `stores_audit`.
+
+A pause is `accepting_orders = false` and `paused_until` in the future or null; it is derived, so a pause whose
+`paused_until` has passed no longer refuses orders and nothing has to clear it. `pause_store(p_store_id, p_until default
+null, p_reason default null, p_actor, p_request_id, p_now default now())` (plpgsql, invoker, `service_role` only) sets
+the columns and `paused_by` (the actor's id) and emits `store.paused` (`{ pausedUntil }`; the reason stays out of the
+event); a `p_until` not after `p_now` raises `VALIDATION_ERROR`, an unknown store `NOT_FOUND`; the same pause again
+(same end and reason) returns false and emits nothing. `resume_store(p_store_id, p_actor, p_request_id, p_now default
+now())` (same kind) clears the four columns and emits `store.resumed` (`{}`); a store not paused returns false, and a
+pause that already ran out is cleared without an event. Both return a boolean (changed).
 
 ### store_hours
 
@@ -404,28 +418,28 @@ write for one small nightly scan.
 
 ## Triggers
 
-| Trigger                           | On                                                                                                                                                                        | Function                                                                           |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `orders_set_updated_at`           | before update on `orders`, each row                                                                                                                                       | `set_updated_at()`                                                                 |
-| `site_settings_set_updated_at`    | before update on `site_settings`, each row                                                                                                                                | `set_updated_at()`                                                                 |
-| `feature_flags_set_updated_at`    | before update on `feature_flags`, each row                                                                                                                                | `set_updated_at()`                                                                 |
-| `on_auth_user_created`            | after insert on `auth.users`                                                                                                                                              | `handle_new_user()`                                                                |
-| `on_auth_user_email_changed`      | after update of `email` on `auth.users`, when the email changed                                                                                                           | `handle_user_email_change()`                                                       |
-| `site_settings_audit`             | after update on `site_settings`, each row                                                                                                                                 | `audit_row_change('site_settings.changed', '*')`                                   |
-| `orders_audit`                    | after update of `status` on `orders`, each row                                                                                                                            | `audit_row_change('order.status_changed', 'status')`                               |
-| `profiles_audit`                  | after update of `role` on `profiles`, each row                                                                                                                            | `audit_row_change('profile.role_changed', 'role')`                                 |
-| `menu_items_audit`                | after update of `name`, `price_paise`, `is_available`, `image_url`, `category` on `menu_items`, each row (never `stock_quantity`)                                         | `audit_row_change('menu_item.changed', <those columns>)`                           |
-| `brands_set_updated_at`           | before update on `brands`, each row                                                                                                                                       | `set_updated_at()`                                                                 |
-| `stores_set_updated_at`           | before update on `stores`, each row                                                                                                                                       | `set_updated_at()`                                                                 |
-| `brands_audit`                    | after update on `brands`, each row                                                                                                                                        | `audit_row_change('brand.changed', '*')`                                           |
-| `stores_settings_audit`           | after update of `max_quantity_per_item`, `low_stock_threshold`, `staff_order_list_limit`, `last_order_minutes_before_close` on `stores`, each row                         | `audit_row_change('store_settings.changed', …)`                                    |
-| `store_schedule_exceptions_audit` | after insert, update or delete on `store_schedule_exceptions`, each row                                                                                                   | `audit_row_change('schedule_exception.changed', …)`                                |
-| `stores_audit`                    | after update of `name`, `slug`, `status`, `is_open`, `area`, `address_line`, `contact_phone`, `timezone` on `stores`, each row (its audit row has `store_id = stores.id`) | `audit_row_change('store.changed', …)`                                             |
-| `store_invites_audit`             | after insert or update or delete on `store_invites`, each row (`invite.changed`: `role`, `email`, `accepted_at`, `revoked_at`; never `token_hash`)                        | `audit_row_change('invite.changed', 'role', 'email', 'accepted_at', 'revoked_at')` |
-| `store_memberships_audit`         | after insert or update or delete on `store_memberships`, each row (`membership.changed`: `user_id`, `store_id`, `role`)                                                   | `audit_row_change('membership.changed', 'user_id', 'store_id', 'role')`            |
-| `feature_flags_audit`             | after update on `feature_flags`, each row                                                                                                                                 | `audit_row_change('feature_flag.changed', '*')`                                    |
-| `audit_log_no_change`             | before update or delete on `audit_log`, each row                                                                                                                          | `audit_log_append_only()`                                                          |
-| `audit_log_no_truncate`           | before truncate on `audit_log`, each statement                                                                                                                            | `audit_log_append_only()`                                                          |
+| Trigger                           | On                                                                                                                                                                                                                            | Function                                                                           |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `orders_set_updated_at`           | before update on `orders`, each row                                                                                                                                                                                           | `set_updated_at()`                                                                 |
+| `site_settings_set_updated_at`    | before update on `site_settings`, each row                                                                                                                                                                                    | `set_updated_at()`                                                                 |
+| `feature_flags_set_updated_at`    | before update on `feature_flags`, each row                                                                                                                                                                                    | `set_updated_at()`                                                                 |
+| `on_auth_user_created`            | after insert on `auth.users`                                                                                                                                                                                                  | `handle_new_user()`                                                                |
+| `on_auth_user_email_changed`      | after update of `email` on `auth.users`, when the email changed                                                                                                                                                               | `handle_user_email_change()`                                                       |
+| `site_settings_audit`             | after update on `site_settings`, each row                                                                                                                                                                                     | `audit_row_change('site_settings.changed', '*')`                                   |
+| `orders_audit`                    | after update of `status` on `orders`, each row                                                                                                                                                                                | `audit_row_change('order.status_changed', 'status')`                               |
+| `profiles_audit`                  | after update of `role` on `profiles`, each row                                                                                                                                                                                | `audit_row_change('profile.role_changed', 'role')`                                 |
+| `menu_items_audit`                | after update of `name`, `price_paise`, `is_available`, `image_url`, `category` on `menu_items`, each row (never `stock_quantity`)                                                                                             | `audit_row_change('menu_item.changed', <those columns>)`                           |
+| `brands_set_updated_at`           | before update on `brands`, each row                                                                                                                                                                                           | `set_updated_at()`                                                                 |
+| `stores_set_updated_at`           | before update on `stores`, each row                                                                                                                                                                                           | `set_updated_at()`                                                                 |
+| `brands_audit`                    | after update on `brands`, each row                                                                                                                                                                                            | `audit_row_change('brand.changed', '*')`                                           |
+| `stores_settings_audit`           | after update of `max_quantity_per_item`, `low_stock_threshold`, `staff_order_list_limit`, `last_order_minutes_before_close` on `stores`, each row                                                                             | `audit_row_change('store_settings.changed', …)`                                    |
+| `store_schedule_exceptions_audit` | after insert, update or delete on `store_schedule_exceptions`, each row                                                                                                                                                       | `audit_row_change('schedule_exception.changed', …)`                                |
+| `stores_audit`                    | after update of `name`, `slug`, `status`, `is_open`, `area`, `address_line`, `contact_phone`, `timezone`, `accepting_orders`, `paused_until`, `pause_reason` on `stores`, each row (its audit row has `store_id = stores.id`) | `audit_row_change('store.changed', …)`                                             |
+| `store_invites_audit`             | after insert or update or delete on `store_invites`, each row (`invite.changed`: `role`, `email`, `accepted_at`, `revoked_at`; never `token_hash`)                                                                            | `audit_row_change('invite.changed', 'role', 'email', 'accepted_at', 'revoked_at')` |
+| `store_memberships_audit`         | after insert or update or delete on `store_memberships`, each row (`membership.changed`: `user_id`, `store_id`, `role`)                                                                                                       | `audit_row_change('membership.changed', 'user_id', 'store_id', 'role')`            |
+| `feature_flags_audit`             | after update on `feature_flags`, each row                                                                                                                                                                                     | `audit_row_change('feature_flag.changed', '*')`                                    |
+| `audit_log_no_change`             | before update or delete on `audit_log`, each row                                                                                                                                                                              | `audit_log_append_only()`                                                          |
+| `audit_log_no_truncate`           | before truncate on `audit_log`, each statement                                                                                                                                                                                | `audit_log_append_only()`                                                          |
 
 ## Functions
 
@@ -446,6 +460,8 @@ object (SQLSTATE `P0001`). How the API maps them is in [API.md](API.md#database-
 | `emit_event(...)`            | plpgsql  | definer  | uuid                | `place_order`, `update_order_status`, `accept_store_invite`                             | `service_role`       |
 | `accept_store_invite(...)`   | plpgsql  | invoker  | `store_memberships` | `team.service.acceptInvite`                                                             | `service_role`       |
 | `set_store_hours(...)`       | plpgsql  | definer  | boolean             | `storeHours.service.setStoreHours`                                                      | `service_role`       |
+| `pause_store(...)`           | plpgsql  | invoker  | boolean             | `storePause.service.pauseStore`                                                         | `service_role`       |
+| `resume_store(...)`          | plpgsql  | invoker  | boolean             | `storePause.service.resumeStore`                                                        | `service_role`       |
 | `queue_read(...)`            | plpgsql  | definer  | table               | the worker (P1 PR 03)                                                                   | `service_role`       |
 | `queue_delete(...)`          | sql      | definer  | boolean             | the worker                                                                              | `service_role`       |
 | `queue_retry(...)`           | sql      | definer  | void                | the worker                                                                              | `service_role`       |
@@ -520,16 +536,20 @@ It first sets `app.actor` and
 0. With a `p_idempotency_key`: takes `pg_advisory_xact_lock` on a hash of `(user_id, key)` (held until the
    transaction ends, so two simultaneous repeats run one after the other), then returns the id of the order this
    user already placed under that key, if any, without touching stock. The partial unique index is the backstop.
-1. Reads `stores.is_open` for `p_store_id` with `for share` (closing the store waits for this order, or this order
-   sees it closed); a closed or missing store raises `STORE_CLOSED` with detail `{ storeId }`. The API checked this
-   before charging; this settles a store closed in between.
+1. Reads `stores.status`, `is_open`, `accepting_orders` and `paused_until` for `p_store_id` with `for share` (a pause,
+   a close or a suspension waits for this order, or this order sees it). A missing store or one not `ACTIVE` raises
+   `NOT_FOUND` (no detail); a store paused at `now()` (`accepting_orders` false and `paused_until` null or in the
+   future) raises `STORE_PAUSED` with detail `{ storeId, pausedUntil }`; a closed one (`is_open` false) raises
+   `STORE_CLOSED` with detail `{ storeId }`, in that order. The API checked all of this before charging; this settles
+   a store that changed in between.
    Then loops over `p_lines` ordered by `menu_item_id`, so concurrent orders lock rows in the same order. For each
-   line it runs `update menu_items set stock_quantity = stock_quantity - quantity where id = … and stock_quantity >= quantity`.
+   line it runs `update menu_items set stock_quantity = stock_quantity - quantity where id = … and store_id = p_store_id and stock_quantity >= quantity`.
 2. When no row was updated, it reads the item's `stock_quantity` and `is_available`:
    - row found with `is_available = false`: raises `ITEM_UNAVAILABLE` with detail `{ menuItemId, name, available: 0 }`
      (switched off is reported before too little stock, as the API's checks do);
    - row found with `null` stock: the item is not tracked, nothing to reserve;
-   - otherwise (too few left, or the item does not exist): raises `INSUFFICIENT_STOCK` with detail
+   - otherwise (too few left, or the item does not exist or belongs to another store: the stock re-read and the pricing
+     join in step 3 are limited to `store_id = p_store_id` too): raises `INSUFFICIENT_STOCK` with detail
      `{ menuItemId, name, available }`, where `available` is the stock left (0 when the item is missing).
 3. Reads every line's `menu_items` row once (price, name, photo, category), so the total and the lines come from the
    same versions even if a price changes meanwhile. If any line's item has `is_available = false` (switched off after
@@ -556,8 +576,10 @@ winner's row lock, then re-checks and finds too little stock.
 | `PRICE_CHANGED`      | `{ menuItemId, name, price }`     |
 | `ITEM_UNAVAILABLE`   | `{ menuItemId, name, available }` |
 | `STORE_CLOSED`       | `{ storeId }`                     |
+| `STORE_PAUSED`       | `{ storeId, pausedUntil }`        |
+| `NOT_FOUND`          | none                              |
 
-When several apply, the first in this order wins: `STORE_CLOSED`, `ITEM_UNAVAILABLE`, `INSUFFICIENT_STOCK`,
+When several apply, the first in this order wins: `NOT_FOUND`, `STORE_PAUSED`, `STORE_CLOSED`, `ITEM_UNAVAILABLE`, `INSUFFICIENT_STOCK`,
 `PRICE_CHANGED` (the order of the steps above; within the step 2 loop, lines are checked in `menu_item_id` order, so
 an earlier line short of stock is reported before a later line switched off).
 

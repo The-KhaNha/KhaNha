@@ -39,6 +39,19 @@ the change: a transition that raises (a stock refusal, an invalid move) leaves n
 - An idempotent replay of `POST /orders` and a repeated status change ([API.md](API.md#patch-ordersidstatus)) emit
   nothing.
 
+## Store events
+
+Emitted by `pause_store` and `resume_store` ([SCHEMA.md](SCHEMA.md#stores)) in the same transaction as the change.
+`aggregateId` and `storeId` are the store id. Nothing subscribes to them yet.
+
+| Type            | Emitted when                            | Payload           |
+| --------------- | --------------------------------------- | ----------------- |
+| `store.paused`  | a store is paused, or its pause changes | `{ pausedUntil }` |
+| `store.resumed` | a paused store is resumed               | `{}`              |
+
+A repeated pause or resume emits nothing, and neither does a resume of a pause that already ran out. A pause that ends
+by itself emits nothing either: it is derived, and a sweep comes with the first consumer.
+
 ## Queues and subscriptions
 
 | Queue             | Subscribed to | Consumer                           | Added by                    |

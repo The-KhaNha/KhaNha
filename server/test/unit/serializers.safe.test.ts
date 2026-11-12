@@ -49,6 +49,10 @@ function store(overrides: Partial<StoreWithBrand> = {}): StoreWithBrand {
     low_stock_threshold: 5,
     staff_order_list_limit: 100,
     last_order_minutes_before_close: 0,
+    accepting_orders: true,
+    paused_until: null,
+    pause_reason: null,
+    paused_by: null,
     ...overrides,
   };
 }

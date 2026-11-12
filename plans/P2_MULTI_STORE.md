@@ -539,6 +539,12 @@ suspended between that read and `place_order` can still take one order. The re-c
 `status = 'ACTIVE'` under its store lock as well, raising a code `createOrder` maps to 404 "Store not found.", with a
 test that suspends the store mid-flight.
 
+As built: the columns are `accepting_orders`, `paused_until`, `pause_reason`, `paused_by` (ROADMAP P2.5). `pause_store`
+and `resume_store` are invoker functions, `service_role` only. `place_order` also checks `status = 'ACTIVE'` (a
+store that stopped trading raises `NOT_FOUND`, mapped to 404 "Store not found.") and `STORE_PAUSED` under its share lock,
+before `STORE_CLOSED`. A foreign item reads as not found inside `place_order` (`INSUFFICIENT_STOCK`, available 0). A
+resume of a pause that already ran out clears the columns without an event.
+
 ### PR 09 — Team: members and invites (P2.2)
 
 - [ ] Merged
