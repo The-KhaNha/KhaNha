@@ -6,10 +6,11 @@ const time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use a time as HH:MM 
 const date = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a date as YYYY-MM-DD.')
-  .refine(
-    (d) => new Date(`${d}T00:00:00Z`).toISOString().startsWith(d),
-    'That date does not exist.',
-  );
+  .refine((d) => {
+    // A month past 12 is an Invalid Date, whose toISOString() throws: a 500 instead of this 400.
+    const at = new Date(`${d}T00:00:00Z`);
+    return !Number.isNaN(at.getTime()) && at.toISOString().startsWith(d);
+  }, 'That date does not exist.');
 
 export const setStoreHoursSchema = z.object({
   hours: z

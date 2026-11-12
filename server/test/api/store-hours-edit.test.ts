@@ -249,6 +249,7 @@ describe('opening hours editing', () => {
       ['SPECIAL_HOURS without times', { ...closed, kind: 'SPECIAL_HOURS' }],
       ['ends before it starts', { ...closed, endsOn: '2099-04-01' }],
       ['an impossible date', { ...closed, startsOn: '2099-02-31' }],
+      ['a month past 12', { ...closed, startsOn: '2099-13-01' }],
       ['a short label', { ...closed, label: 'x' }],
     ])('%s → 400', async (_label, body: object) => {
       expect((await post(body)).status).toBe(400);
