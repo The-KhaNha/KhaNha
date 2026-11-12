@@ -128,16 +128,18 @@ export async function updateStoreProfile(
     const value = input[field as keyof UpdateStoreProfileInput];
     if (value !== undefined) Object.assign(update, { [column]: value });
   }
-  const { data } = await supabaseAdmin
-    .from('stores')
-    .update(update)
-    .eq('id', storeId)
+  let query = supabaseAdmin.from('stores').update(update).eq('id', storeId);
+  // Clearing the address only matches a store that is not ACTIVE at write time, so a publish that lands after the
+  // check above cannot leave a public store without one.
+  if (input.addressLine === null) query = query.neq('status', 'ACTIVE');
+  const { data } = await query
     .select('*')
-    .single()
+    .maybeSingle()
     // The audit and event triggers read who and which request from these.
     .setHeader('x-actor', JSON.stringify(ctx.actor))
     .setHeader('x-request-id', ctx.requestId)
     .throwOnError();
+  if (!data) throw validationError('A published store needs an address.', 'addressLine');
   invalidateStore(storeId);
   return toManagedStoreDto(data);
 }

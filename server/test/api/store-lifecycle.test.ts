@@ -414,3 +414,27 @@ testStoreIsolation(
   undefined,
   'MANAGER',
 );
+
+// testStoreIsolation's permitted caller is a store member; publish and unpublish are owner-only.
+describe.each([
+  ['publish', publish],
+  ['unpublish', unpublish],
+])('%s — store isolation', (route, call) => {
+  it('anonymous → 401', async () => {
+    const path = `/api/stores/${branchId}/${route}`;
+    expect((await api().post(path).send({})).status).toBe(401);
+  });
+  it.each([
+    ['a customer', () => customer],
+    ["the other brand's owner", () => otherOwner],
+  ])('%s → 404 (a draft store is not theirs to see)', async (_who, who) => {
+    const res = await call(who());
+    expect(res.status).toBe(404);
+    expect(res.body.error.code).toBe('NOT_FOUND');
+  });
+  it("the store's own staff → 403", async () => {
+    const res = await call(branchStaff);
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe('FORBIDDEN');
+  });
+});
