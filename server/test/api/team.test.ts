@@ -26,6 +26,8 @@ const users: TestUser[] = [];
 const auth = (user: TestUser) => ({ Authorization: `Bearer ${user.token}` });
 const invite = (body: object, user: TestUser = owner) =>
   api().post(`/api/stores/${storeId}/invites`).set(auth(user)).send(body);
+const accept = (token: string, user: TestUser) =>
+  api().post('/api/me/invites/accept').set(auth(user)).send({ token });
 const members = (user: TestUser = owner) =>
   api().get(`/api/stores/${storeId}/members`).set(auth(user));
 const membershipOf = async (user: TestUser) =>
@@ -36,6 +38,11 @@ const membershipOf = async (user: TestUser) =>
       .eq('store_id', storeId)
       .eq('user_id', user.id)
   ).data ?? [];
+const fresh = async () => {
+  const user = await createTestUser();
+  users.push(user);
+  return user;
+};
 
 beforeAll(async () => {
   const { data: brand } = await supabaseAdmin
@@ -80,6 +87,9 @@ testAuthMatrix('DELETE /api/stores/:storeId/invites/:inviteId', (http) =>
 );
 testAuthMatrix('DELETE /api/stores/:storeId/members/:membershipId', (http) =>
   http.delete(`/api/stores/${sampleId}/members/${sampleId}`),
+);
+testAuthMatrix('POST /api/me/invites/accept', (http) =>
+  http.post('/api/me/invites/accept').send({ token: 'x' }),
 );
 
 const isolationEmail = () => `iso-${randomUUID()}@example.test`;
@@ -246,6 +256,7 @@ describe('revoking and removing', () => {
       .eq('id', used.body.invite.id)
       .throwOnError();
     expect((await revoke(used.body.invite.id, manager)).status).toBe(404);
+    expect((await accept(staffInvite.body.token, await fresh())).status).toBe(404);
   });
 
   it('removal takes effect on the next request, and is audited with the actor', async () => {
@@ -281,5 +292,123 @@ describe('revoking and removing', () => {
     expect((await remove(leaver, leaver)).status).toBe(204);
     expect((await remove(other, owner)).status).toBe(204);
     expect(await membershipOf(other)).toEqual([]);
+  });
+});
+
+describe('POST /api/me/invites/accept', () => {
+  it('joins the invited account once; a repeat returns the same membership and leaves no second event', async () => {
+    const joiner = await fresh();
+    const { body } = await invite({ email: joiner.email, role: 'STAFF' });
+    const first = await accept(body.token, joiner);
+    expect(first.status).toBe(200);
+    expect(first.body.membership).toMatchObject({ role: 'STAFF', store: { id: storeId } });
+    const again = await accept(body.token, joiner);
+    expect(again.status).toBe(200);
+    expect(again.body.membership.id).toBe(first.body.membership.id);
+    expect(await membershipOf(joiner)).toHaveLength(1);
+    const { data: events } = await supabaseAdmin
+      .from('domain_events')
+      .select('type, actor')
+      .eq('aggregate_id', body.invite.id);
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: 'store.member_joined',
+        actor: expect.objectContaining({ id: joiner.id }),
+      }),
+    ]);
+    // The new membership works on the next request.
+    expect((await api().get(`/api/stores/${storeId}/orders`).set(auth(joiner))).status).toBe(200);
+  });
+
+  it('another account, even with the token, gets 404 and the invite stays open', async () => {
+    const invited = await fresh();
+    const intruder = await fresh();
+    const { body } = await invite({ email: invited.email, role: 'STAFF' });
+    const res = await accept(body.token, intruder);
+    expect(res.status).toBe(404);
+    expect(res.body.error.code).toBe('NOT_FOUND');
+    expect(await membershipOf(intruder)).toEqual([]);
+    expect((await accept(body.token, invited)).status).toBe(200);
+    // Used: not even the intruder's second try, nor anyone else, gets it.
+    expect((await accept(body.token, intruder)).status).toBe(404);
+  });
+
+  it('an expired, unknown or malformed token → 404 / 400', async () => {
+    const joiner = await fresh();
+    const { body } = await invite({ email: joiner.email, role: 'STAFF' });
+    await supabaseAdmin
+      .from('store_invites')
+      .update({
+        created_at: new Date(Date.now() - 9 * 86_400_000).toISOString(),
+        expires_at: new Date(Date.now() - 1000).toISOString(),
+      })
+      .eq('id', body.invite.id)
+      .throwOnError();
+    expect((await accept(body.token, joiner)).status).toBe(404);
+    expect((await accept('x'.repeat(43), joiner)).status).toBe(404);
+    expect((await accept('x'.repeat(101), joiner)).status).toBe(400);
+    expect((await accept('', joiner)).status).toBe(400);
+  });
+
+  it('a member of another role gets 404, and the invite stays open', async () => {
+    const joiner = await fresh();
+    const { body } = await invite({ email: joiner.email, role: 'MANAGER' });
+    await supabaseAdmin
+      .from('store_memberships')
+      .insert({ store_id: storeId, user_id: joiner.id, role: 'STAFF' })
+      .throwOnError();
+    expect((await accept(body.token, joiner)).status).toBe(404);
+    expect(await membershipOf(joiner)).toEqual([expect.objectContaining({ role: 'STAFF' })]);
+    const { body: team } = await members();
+    expect(team.invites).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: body.invite.id })]),
+    );
+  });
+});
+
+describe('accept_store_invite, called directly', () => {
+  const hash = (token: string) => createHash('sha256').update(token).digest('hex');
+  const rpc = (token: string, user: TestUser, email: string | null) =>
+    supabaseAdmin.rpc('accept_store_invite', {
+      p_token_hash: hash(token),
+      p_user_id: user.id,
+      // A caller that lost the account's email must be refused, not let through the comparison.
+      p_email: email as string,
+    });
+
+  it('refuses a null email', async () => {
+    const joiner = await fresh();
+    const { body } = await invite({ email: joiner.email, role: 'STAFF' });
+    const { error } = await rpc(body.token, joiner, null);
+    expect(error?.message).toBe('NOT_FOUND');
+    expect(await membershipOf(joiner)).toEqual([]);
+  });
+
+  it('a member of the same role consumes the invite and keeps one membership', async () => {
+    const joiner = await fresh();
+    const { body } = await invite({ email: joiner.email, role: 'STAFF' });
+    await supabaseAdmin
+      .from('store_memberships')
+      .insert({ store_id: storeId, user_id: joiner.id, role: 'STAFF' })
+      .throwOnError();
+    const { error } = await rpc(body.token, joiner, joiner.email);
+    expect(error).toBeNull();
+    expect(await membershipOf(joiner)).toHaveLength(1);
+    expect((await members()).body.invites.map((i: { id: string }) => i.id)).not.toContain(
+      body.invite.id,
+    );
+  });
+
+  it('two accepts at once leave one membership and one event', async () => {
+    const joiner = await fresh();
+    const { body } = await invite({ email: joiner.email, role: 'STAFF' });
+    const results = await Promise.all([accept(body.token, joiner), accept(body.token, joiner)]);
+    expect(results.map((r) => r.status)).toEqual([200, 200]);
+    expect(await membershipOf(joiner)).toHaveLength(1);
+    const { data: events } = await supabaseAdmin
+      .from('domain_events')
+      .select('id')
+      .eq('aggregate_id', body.invite.id);
+    expect(events).toHaveLength(1);
   });
 });

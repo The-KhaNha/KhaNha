@@ -47,6 +47,7 @@ const envSchema = z
     RATE_LIMIT_WRITE_MAX: z.coerce.number().int().min(0).default(30),
     RATE_LIMIT_REGISTER_MAX: z.coerce.number().int().min(0).default(10),
     RATE_LIMIT_CLIENT_ERRORS_MAX: z.coerce.number().int().min(0).default(30),
+    RATE_LIMIT_INVITE_ACCEPT_MAX: z.coerce.number().int().min(0).default(10),
     CLIENT_ORIGIN: z
       .string()
       .url('CLIENT_ORIGIN must be a URL such as http://localhost:5173.')

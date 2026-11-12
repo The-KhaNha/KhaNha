@@ -101,3 +101,14 @@ export const clientErrorLimiter = createRateLimiter({
   limit: env.RATE_LIMIT_CLIENT_ERRORS_MAX,
   keyBy: 'ip',
 });
+
+/**
+ * Invite acceptance, per signed-in user (RATE_LIMIT_INVITE_ACCEPT_MAX): every wrong token is the same 404, and this
+ * keeps guessing at one slow enough to be pointless on top of the token's 256 bits.
+ */
+export const inviteAcceptLimiter = createRateLimiter({
+  name: 'inviteAccept',
+  windowMs: env.RATE_LIMIT_WINDOW_MS,
+  limit: env.RATE_LIMIT_INVITE_ACCEPT_MAX,
+  keyBy: 'user',
+});

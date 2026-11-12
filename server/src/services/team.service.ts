@@ -6,7 +6,7 @@ import type { InviteDto, MemberDto } from '../types/api';
 import { forbidden, membershipExists, notFound } from '../utils/errors';
 import { isUuid } from '../utils/ids';
 import { toInviteDto, toMemberDto } from '../utils/serializers';
-import { supabaseAdmin } from '../utils/supabase';
+import { raisedByDatabase, supabaseAdmin } from '../utils/supabase';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const INVITE_SELECT = 'id, role, email, expires_at, created_at';
@@ -174,4 +174,48 @@ export async function removeMember(
     supabaseAdmin.from('store_memberships').delete().eq('id', membershipId),
     ctx,
   ).throwOnError();
+}
+
+const acceptRpc = (token: string, userId: string, email: string, ctx: RequestContext) =>
+  supabaseAdmin.rpc('accept_store_invite', {
+    p_token_hash: hashToken(token),
+    p_user_id: userId,
+    p_email: email,
+    p_actor: ctx.actor,
+    p_request_id: ctx.requestId,
+  });
+
+/**
+ * Accepts an invite for the signed-in account: its token, and the account's email must be the one invited. Every
+ * refusal is the same 404 (accept_store_invite). Returns the membership and its store, so the client can go there.
+ */
+export async function acceptInvite(
+  token: string,
+  userId: string,
+  ctx: RequestContext,
+): Promise<{
+  id: string;
+  role: MemberDto['role'];
+  store: { id: string; slug: string; name: string };
+}> {
+  const { data: profile } = await supabaseAdmin
+    .from('profiles')
+    .select('email')
+    .eq('id', userId)
+    .single()
+    .throwOnError();
+  let membership: Awaited<ReturnType<typeof acceptRpc>>['data'];
+  try {
+    ({ data: membership } = await acceptRpc(token, userId, profile.email, ctx).throwOnError());
+  } catch (err) {
+    if (raisedByDatabase(err, 'NOT_FOUND')) throw notFound('That invite is not valid any more.');
+    throw err;
+  }
+  const { data: store } = await supabaseAdmin
+    .from('stores')
+    .select('id, slug, name')
+    .eq('id', membership.store_id)
+    .single()
+    .throwOnError();
+  return { id: membership.id, role: membership.role, store };
 }

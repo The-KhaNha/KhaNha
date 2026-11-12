@@ -77,6 +77,7 @@ A blank value (`RATE_LIMIT_IP_MAX=`) counts as unset and takes the default; writ
 | `RATE_LIMIT_WRITE_MAX` | 30 | ≥ 0 (0 = off) | writes per signed-in user per window (`POST /orders`, `PATCH /orders/:id/status`, `PATCH /admin/settings`, `PATCH /admin/flags/:key`): the real abuse limit |
 | `RATE_LIMIT_REGISTER_MAX` | 10 | ≥ 0 (0 = off) | `POST /auth/register` per address per window |
 | `RATE_LIMIT_CLIENT_ERRORS_MAX` | 30 | ≥ 0 (0 = off) | `POST /client-errors` requests (each up to 5 reports) per address per window |
+| `RATE_LIMIT_INVITE_ACCEPT_MAX` | 10 | ≥ 0 (0 = off) | `POST /me/invites/accept` per signed-in user per window (`inviteAcceptLimiter`) |
 
 Every other environment variable is in [DEPLOYMENT.md](DEPLOYMENT.md).
 
