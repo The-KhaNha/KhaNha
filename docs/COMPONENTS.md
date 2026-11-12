@@ -184,12 +184,13 @@ otherwise. Props: `item: Pick<MenuItem, 'isAvailable' | 'stockQuantity'>`, `clas
 **`Price`** (`Price.tsx`). `formatPrice(value)` ("₹1,240") with tabular numerals. Props: `value: number`,
 `className?`.
 
-**`StoreCard`** / **`StoreCardSkeleton`** (`StoreCard.tsx`). The Home store card: storefront photo (a plain `<img>`,
-not `FoodPhoto`, with `photoSrcSet` + `sizes`), `OpenPill`, name, tagline, prep-time chip and a "View Menu" `ButtonLink`. Props: `store: Store`,
-`className?`. The skeleton takes `className?`.
+**`StoreCard`** / **`StoreCardSkeleton`** (`StoreCard.tsx`). `variant="full"` (default): the store page's card: storefront photo (a plain `<img>`,
+not `FoodPhoto`, with `photoSrcSet` + `sizes`), `OpenPill`, name, tagline, prep-time chip and a "View Menu" `ButtonLink` to `/s/<slug>/menu`. Props: `store: Store`,
+`className?`. `variant="compact"`: one row of the store list, the whole card a link to `/s/<slug>` (80px photo, name, area, `OpenPill`); props `store: StoreSummary`, `priority?`
+(the list's first card: eager, `fetchpriority="high"`; the rest are lazy). The skeleton takes `className?` and the same `variant`.
 
-**`OpenPill`** (`OpenPill.tsx`). "Open" with a slow green pulse, or "Closed" in slate. Props: `isOpen: boolean`,
-`className?`.
+**`OpenPill`** (`OpenPill.tsx`). The store's open state: `OPEN` with a slow green pulse, `CLOSING_SOON` and `PAUSED` in gold, `CLOSED` and `UNAVAILABLE` in slate.
+Props: `state: OpenStateName`, `label?: string | null` (the server's `openLabel`, "Closes at 9:00 PM", "Closed for Diwali", "Paused · back at 3:40 PM"; the state's name when absent), `className?`.
 
 ### Cart and orders
 
@@ -382,6 +383,17 @@ UI (presentational; the pages own the data):
 | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `staffBoardRules.ts`: `visibleActionErrors(errors, boardUpdatedAt)`, `StaffActionError` | the order-card messages to show on `/staff`: an "unreachable" failure goes stale once the board has loaded again after it (the network is back); other failures stay until that card's next action |
 | `staffBoardRules.ts`: `queueOrder(a, b)`, `countByFilter(orders)`                       | the board's sort (active orders oldest first, then finished ones newest first) and the count shown on each filter chip (`StaffFilterKey` → number)                                                 |
+
+### features/stores
+
+| Export                                                      | What                                                                                                                           |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `useStores()` → `{ stores, isLoading, error, retry }`       | loads `GET /api/stores` (persisted, key `stores`)                                                                              |
+| `useStoreByRef(ref)` → `{ store, isLoading, error, retry }` | loads `GET /api/stores/:ref` (persisted, key `store:<ref>`)                                                                    |
+| `useStoreMenu(ref)` → `{ menu, isLoading, error, retry }`   | loads `GET /api/stores/:ref/menu` (persisted, key `menu:<ref>`); like `useMenu`, hands the menu's limits and stock to the cart |
+| `groupByArea(stores)`                                       | the list's groups by `area`, server order, stores without an area last                                                         |
+| `HomeHero()`                                                | the paprika pitch above `/` and every store page                                                                               |
+| `MenuRedirect()`                                            | `/menu`: the one active store's menu, else `/`                                                                                 |
 
 ### features/menu
 

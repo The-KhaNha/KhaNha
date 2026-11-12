@@ -33,8 +33,8 @@ const state = vi.hoisted(() => ({
   error: null as null | { message: string; isUnreachable: boolean },
   retry: () => {},
 }));
-vi.mock('../features/menu/useStore', () => ({
-  useStore: () => ({ store, isLoading: false, error: state.error, retry: state.retry }),
+vi.mock('../features/stores/useStores', () => ({
+  useStoreByRef: () => ({ store, isLoading: false, error: state.error, retry: state.retry }),
 }));
 const { HomePage } = await import('./Home');
 

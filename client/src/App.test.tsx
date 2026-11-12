@@ -130,7 +130,15 @@ afterEach(() => vi.restoreAllMocks());
 
 describe('shell by route', () => {
   it('the customer tabs show on customer screens and never on the operator ones', () => {
-    for (const path of ['/', '/menu', '/orders', '/orders/o1', '/profile'])
+    for (const path of [
+      '/',
+      '/s/cafe',
+      '/s/cafe/menu',
+      '/menu',
+      '/orders',
+      '/orders/o1',
+      '/profile',
+    ])
       expect(getShellConfig(path).bottomNav, path).toBe(true);
     for (const path of ['/admin', '/staff'])
       expect(getShellConfig(path).bottomNav, path).toBe(false);

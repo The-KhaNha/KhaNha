@@ -46,7 +46,7 @@ The principle is in `CLAUDE.md` §2c; the server side is in `.claude/rules/backe
 - What a person typed, or their own data, in browser storage is cleared when a session starts or ends, from
   `features/auth/authStore.ts` (always loaded), never from a lazy chunk: a sign-out before that chunk loads leaks it
   to the next account on a shared phone. `lib/storageKeys.test.ts` fails for any `fp_` key nobody classified.
-- Public data uses `useResource({ persist: true })` (menu, store): the last good copy in `localStorage`
+- Public data uses `useResource({ persist: true })` (menu, store, the store list: keys `menu`, `store`, `stores`, `store:<ref>`, `menu:<ref>`): the last good copy in `localStorage`
   (`fp_cache:v2:<key>`) renders instantly on the next visit and is refreshed at once (stale-while-revalidate). Bump
   the version in `CACHE_PREFIX` (`lib/useResource.ts`) when a persisted response shape changes. Never `persist`
   orders, the profile, or anything else user-specific.

@@ -70,6 +70,21 @@ export const menu: MenuResponse = {
 
 export const config: Config = { serverVersion: '0.0.0', ...fallbacks };
 
+/** What GET /api/stores sends for a store. */
+export const summary = ({ id, slug, name, tagline, imageUrl, area, brand, ...open }: Store) => ({
+  id,
+  slug,
+  name,
+  tagline,
+  imageUrl,
+  area,
+  brand,
+  isOpen: open.isOpen,
+  openState: open.openState,
+  nextChangeAt: open.nextChangeAt,
+  openLabel: open.openLabel,
+});
+
 export async function mockApi(page: Page): Promise<void> {
   await page.route('**/api/**', (route) => {
     const path = new URL(route.request().url()).pathname;
@@ -78,6 +93,9 @@ export async function mockApi(page: Page): Promise<void> {
     if (path === '/api/config') return json(config);
     if (path === '/api/store') return json({ store });
     if (path === '/api/menu') return json(menu);
+    if (path === '/api/stores') return json({ stores: [summary(store)] });
+    if (path === '/api/stores/cafe') return json({ store });
+    if (path === '/api/stores/cafe/menu') return json(menu);
     return json({ error: { code: 'NOT_FOUND', message: `No route matches ${path}.` } }, 404);
   });
 }

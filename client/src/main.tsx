@@ -1,8 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
-import { prefetchMenu } from './services/menu';
-import { prefetchStore } from './services/store';
+import { prefetchForPath } from './services/stores';
 import { getSupabase, mayHaveSession } from './lib/supabase';
 import { installErrorReporter } from './lib/errorReporter';
 import './index.css';
@@ -17,8 +16,7 @@ document
 
 // The landing page's data starts now, while the app renders its skeleton, not after the first render has run its
 // effects (render-as-you-fetch). Only the page the visitor landed on, and only public data.
-if (window.location.pathname === '/menu') prefetchMenu();
-else if (window.location.pathname === '/') prefetchStore();
+prefetchForPath(window.location.pathname);
 
 // A signed-in visit needs supabase-js for its first request (the access token). Start the chunk now, alongside the
 // page's own lazy chunk, rather than from the first render's effects; an anonymous visitor never loads it. A load

@@ -134,8 +134,9 @@ async function textCutOff(page: Page): Promise<string[]> {
 }
 
 const LAYOUT_ROUTES: { path: string; role?: Role; status?: OrderStatus }[] = [
-  { path: '/' },
-  { path: '/menu' },
+  // The store's page: with the fixtures' one store, `/` itself redirects here.
+  { path: '/s/cafe' },
+  { path: '/s/cafe/menu' },
   { path: '/cart' },
   { path: '/login' },
   { path: '/register' },
@@ -226,10 +227,10 @@ for (const { name, width, height } of [
   { name: 'a phone on its side', width: 640, height: 360 },
   { name: 'a narrow landscape window', width: 500, height: 300 },
 ]) {
-  test(`/menu on ${name} at 200% text: an item can still be added`, async ({ page }) => {
+  test(`/s/cafe/menu on ${name} at 200% text: an item can still be added`, async ({ page }) => {
     await seedCart(page);
     await page.setViewportSize({ width, height });
-    await page.goto('/menu');
+    await page.goto('/s/cafe/menu');
     await expect(page.getByRole('heading', { name: store.name })).toBeVisible();
     await page.evaluate(() => {
       document.documentElement.style.fontSize = '200%';
@@ -292,8 +293,8 @@ test('a phone on its side with small text keeps 44px bottom nav tabs', async ({ 
 // are metric-matched, so the swap must not move anything (the CLS budget in perf-budget.json, CLAUDE.md §2b). Chromium only: WebKit has no
 // layout-shift entries.
 for (const { path, role } of [
-  { path: '/' },
-  { path: '/menu' },
+  { path: '/s/cafe' },
+  { path: '/s/cafe/menu' },
   { path: '/orders/o1', role: 'CUSTOMER' as const },
   { path: '/staff', role: 'STAFF' as const },
 ]) {

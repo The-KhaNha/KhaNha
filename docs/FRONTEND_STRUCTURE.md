@@ -21,7 +21,7 @@ client/
 ├── tsconfig.e2e.json       typechecks e2e/ and the Playwright config with Node types (part of pnpm run typecheck)
 ├── e2e/                    no backend; every /api call mocked (fixtures.ts)
 │   ├── fixtures.ts         shared mocks and helpers (mockApi, signIn, seedCart, watchConsole, …)
-│   ├── smoke.spec.ts       home, menu, add to cart, cart; the core path
+│   ├── smoke.spec.ts       home, store list, menu, add to cart, cart; the core path
 │   ├── layout.spec.ts      every route at 320px and 200% text, 44px targets, layout shift
 │   ├── forms.spec.ts       blur-then-submit on each form, checkout
 │   ├── resilience.spec.ts  storage, cache, failed chunk and device-clock failures
@@ -54,6 +54,7 @@ client/
     │   ├── checkout/       checkoutDraftStore (the form as typed + the idempotency key, sessionStorage)
     │   ├── config/         useConfig (GET /api/config, persisted), fallbacks (config/fallbacks.json)
     │   ├── menu/           useMenu, useStore, CategoryChips, ItemDetailSheet
+    │   ├── stores/         useStores, useStoreByRef, useStoreMenu, storeRules, HomeHero, MenuRedirect
     │   ├── version/        versionStore (the 426 "outdated" flag), OutdatedBanner
     │   └── orders/         orderStatus, useOrder, useOrders, OrderHero, StaffHeader, StaffFilters, StaffBoard, StaffOrderCard
     ├── lib/                framework-free helpers and generic hooks (supabase, logger, useResource, format, uuid, sessionDraft, safeStorage, ...)
@@ -70,21 +71,23 @@ client/
 
 From `client/src/App.tsx`. Guards are described in [PERMISSIONS.md](PERMISSIONS.md#client).
 
-| Path                  | Page                 | Guard                      | Top bar                            | Bottom nav | Cart button | Cart bar | Layout       | Loaded |
-| --------------------- | -------------------- | -------------------------- | ---------------------------------- | ---------- | ----------- | -------- | ------------ | ------ |
-| `/`                   | `HomePage`           | none                       | wordmark, `tone: 'brand'`          | yes        | yes         | yes      | column       | eager  |
-| `/menu`               | `MenuPage`           | none                       | "Menu", back to `/`                | yes        | yes         | yes      | column, wide | eager  |
-| `/cart`               | `CartPage`           | none                       | "Your cart", back to `/menu`       | yes        | no          | no       | column       | eager  |
-| `/checkout`           | `CheckoutPage`       | `RequireAuth`              | "Checkout", back to `/cart`        | yes        | no          | no       | column       | lazy   |
-| `/orders`             | `OrdersPage`         | `RequireAuth`              | "Your orders", back to `/`         | yes        | yes         | no       | column       | eager  |
-| `/orders/:id`         | `OrderPage`          | `RequireAuth`              | "Order details", back to `/orders` | yes        | yes         | no       | column       | eager  |
-| `/orders/:id/success` | `OrderSuccessPage`   | `RequireAuth`              | none                               | no         | no          | no       | full         | lazy   |
-| `/profile`            | `ProfilePage`        | none                       | "Profile", back to `/`             | yes        | yes         | no       | column       | eager  |
-| `/login`              | `LoginPage`          | none                       | none                               | no         | no          | no       | full         | lazy   |
-| `/register`           | `RegisterPage`       | none                       | none                               | no         | no          | no       | full         | lazy   |
-| `/staff`              | `StaffDashboardPage` | `RequireRole role="STAFF"` | none                               | no         | no          | no       | full         | lazy   |
-| `/admin`              | `AdminPage`          | `RequireRole role="ADMIN"` | "Admin", back to `/profile`        | yes        | no          | no       | column       | lazy   |
-| `*`                   | `NotFoundPage`       | none                       | "Not found", back to `/`           | yes        | no          | no       | column       | eager  |
+| Path                  | Page                   | Guard                      | Top bar                            | Bottom nav | Cart button | Cart bar | Layout       | Loaded |
+| --------------------- | ---------------------- | -------------------------- | ---------------------------------- | ---------- | ----------- | -------- | ------------ | ------ |
+| `/`                   | `StoreListPage`        | none                       | wordmark, `tone: 'brand'`          | yes        | yes         | yes      | column       | eager  |
+| `/s/:storeSlug`       | `HomePage` (one store) | none                       | wordmark, `tone: 'brand'`          | yes        | yes         | yes      | column       | eager  |
+| `/s/:storeSlug/menu`  | `MenuPage`             | none                       | "Menu", back to `/`                | yes        | yes         | yes      | column, wide | eager  |
+| `/menu`               | `MenuRedirect`         | none                       | "Menu", back to `/`                | yes        | yes         | no       | column, wide | eager  |
+| `/cart`               | `CartPage`             | none                       | "Your cart", back to `/menu`       | yes        | no          | no       | column       | eager  |
+| `/checkout`           | `CheckoutPage`         | `RequireAuth`              | "Checkout", back to `/cart`        | yes        | no          | no       | column       | lazy   |
+| `/orders`             | `OrdersPage`           | `RequireAuth`              | "Your orders", back to `/`         | yes        | yes         | no       | column       | eager  |
+| `/orders/:id`         | `OrderPage`            | `RequireAuth`              | "Order details", back to `/orders` | yes        | yes         | no       | column       | eager  |
+| `/orders/:id/success` | `OrderSuccessPage`     | `RequireAuth`              | none                               | no         | no          | no       | full         | lazy   |
+| `/profile`            | `ProfilePage`          | none                       | "Profile", back to `/`             | yes        | yes         | no       | column       | eager  |
+| `/login`              | `LoginPage`            | none                       | none                               | no         | no          | no       | full         | lazy   |
+| `/register`           | `RegisterPage`         | none                       | none                               | no         | no          | no       | full         | lazy   |
+| `/staff`              | `StaffDashboardPage`   | `RequireRole role="STAFF"` | none                               | no         | no          | no       | full         | lazy   |
+| `/admin`              | `AdminPage`            | `RequireRole role="ADMIN"` | "Admin", back to `/profile`        | yes        | no          | no       | column       | lazy   |
+| `*`                   | `NotFoundPage`         | none                       | "Not found", back to `/`           | yes        | no          | no       | column       | eager  |
 
 Lazy pages are `lazy()` imports in `App.tsx`, wrapped in `PageBoundary`: the screens a customer does not need to
 browse the menu and fill a cart. See [Caching](#caching).
@@ -117,8 +120,9 @@ Not found shell.
 
 | Page                 | Data                                                                    | Notes                                                                                                                                                                                                                                                                                            |
 | -------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `Home.tsx`           | `useStore()`                                                            | paprika hero with `StoreCard`                                                                                                                                                                                                                                                                    |
-| `Menu.tsx`           | `useMenu()`                                                             | `CategoryChips`, `PopularRail`, `FoodCard` list, `ItemDetailSheet`                                                                                                                                                                                                                               |
+| `StoreList.tsx`      | `useStores()`                                                           | the store list under the paprika hero, grouped by `area` (`groupByArea`), `StoreCard variant="compact"`; the first photo is eager, the rest lazy; one active store redirects to `/s/<slug>`; loading, empty and error-with-retry states                                                          |
+| `Home.tsx`           | `useStoreByRef(storeSlug)`                                              | a store's page: paprika hero with `StoreCard`; an unknown slug shows Not found                                                                                                                                                                                                                   |
+| `Menu.tsx`           | `useStoreMenu(storeSlug)`                                               | `CategoryChips`, `PopularRail`, `FoodCard` list, `ItemDetailSheet`                                                                                                                                                                                                                               |
 | `Cart.tsx`           | `useMenu()` (refreshes stock limits), `cartStore`                       | shows the Order Again notice from router state (`readReorderNotice`)                                                                                                                                                                                                                             |
 | `Checkout.tsx`       | `useMenu()`, `createOrder()`                                            | holds a green "Paid" state for 500 ms, then navigates to success with the order in router state                                                                                                                                                                                                  |
 | `OrderSuccess.tsx`   | `useOrder(id, passedOrder)`                                             | renders the passed order at once, then polls; with nothing passed in, a neutral skeleton (no celebration) until the order loads; a 404 is an `<h1>` not-found state titled "Order not found"; a failed fetch with no checkout handoff is a neutral retryable `<h1>` error, never "Order placed!" |
@@ -208,6 +212,7 @@ persisted, so the reload loses nothing.
 | `features/cart`     | `cartStore.ts`, `cartRules.ts`, `useReorder.ts`                                         | `CartBar`                                                                  |
 | `features/checkout` | `checkoutDraftStore.ts`                                                                 | (`pages/Checkout.tsx` owns the form)                                       |
 | `features/menu`     | `useMenu.ts`, `useStore.ts`                                                             | `CategoryChips`, `ItemDetailSheet`                                         |
+| `features/stores`   | `useStores.ts`, `useStoreMenu.ts`, `storeRules.ts`                                      | `HomeHero`, `MenuRedirect`                                                 |
 | `features/orders`   | `orderStatus.ts`, `useOrder.ts`, `useOrders.ts`                                         | `OrderHero`, `StaffHeader`, `StaffFilters`, `StaffBoard`, `StaffOrderCard` |
 
 Details of each export: [COMPONENTS.md](COMPONENTS.md#feature-rules-and-hooks).
@@ -239,10 +244,10 @@ Public, non-user data survives across visits and paints instantly; user data nev
 `fp_cache:v2:<key>` (`CACHE_PREFIX = 'fp_cache:v2:'` + the resource's `key`) after every successful fetch. On the
 next mount or visit with the same `key`, that cached value renders at once — `isLoading` is only true while there is
 nothing at all to show — while a real fetch runs and replaces it in the background
-(stale-while-revalidate). `useMenu()`, `useStore()` and `useConfig()` pass `persist: true`; `useOrder`/`useOrders` never do —
+(stale-while-revalidate). `useMenu()`, `useStore()`, `useStores()` (key `stores`), `useStoreByRef()` (`store:<ref>`), `useStoreMenu()` (`menu:<ref>`, the slug in the URL) and `useConfig()` pass `persist: true`; `useOrder`/`useOrders` never do —
 orders are user-specific and must never survive a sign-out on a shared device.
 
-If a refresh fails while a saved copy is showing, `MenuPage` and `HomePage` keep the saved copy and add a compact
+If a refresh fails while a saved copy is showing, `MenuPage`, `HomePage` and `StoreListPage` keep the saved copy and add a compact
 `ErrorState` ("Showing your saved menu" + Retry) instead of hiding it; checkout re-checks stock and prices anyway.
 
 A render crash clears every persisted copy (`PageBoundary` calls `clearPersistedCache()`), so one malformed 200 that
