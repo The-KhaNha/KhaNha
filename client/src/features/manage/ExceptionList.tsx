@@ -90,6 +90,7 @@ export function ExceptionList({ exceptions, onAdd, onRemove, busy }: ExceptionLi
           <Input
             label="Label"
             value={draft.label}
+            disabled={busy}
             minLength={2}
             maxLength={60}
             required
@@ -100,6 +101,7 @@ export function ExceptionList({ exceptions, onAdd, onRemove, busy }: ExceptionLi
               label="From"
               type="date"
               value={draft.startsOn}
+              disabled={busy}
               required
               onChange={(e) =>
                 patch({
@@ -112,6 +114,7 @@ export function ExceptionList({ exceptions, onAdd, onRemove, busy }: ExceptionLi
               label="To"
               type="date"
               value={draft.endsOn}
+              disabled={busy}
               min={draft.startsOn}
               required
               onChange={(e) => patch({ endsOn: e.target.value })}
@@ -124,6 +127,7 @@ export function ExceptionList({ exceptions, onAdd, onRemove, busy }: ExceptionLi
                 aria-label="Special hours open"
                 className={timeInputClass}
                 value={draft.opensAt ?? ''}
+                disabled={busy}
                 required
                 onChange={(e) => patch({ opensAt: e.target.value })}
               />
@@ -135,6 +139,7 @@ export function ExceptionList({ exceptions, onAdd, onRemove, busy }: ExceptionLi
                 aria-label="Special hours close"
                 className={timeInputClass}
                 value={draft.closesAt ?? ''}
+                disabled={busy}
                 required
                 onChange={(e) => patch({ closesAt: e.target.value })}
               />

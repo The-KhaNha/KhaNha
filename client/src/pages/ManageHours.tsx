@@ -147,6 +147,11 @@ export function ManageHoursPage({ store, onChanged }: ManageHoursPageProps) {
       >
         Save hours
       </Button>
+      {dirty && weekToHours(week).length === 0 && (
+        <p className="mt-2 text-caption text-muted">
+          With no weekly hours the store is open whenever it is switched on.
+        </p>
+      )}
 
       <ExceptionList
         exceptions={data.exceptions}

@@ -9,18 +9,6 @@ const api = vi.hoisted(() => ({
   deleteScheduleException: vi.fn(),
 }));
 vi.mock('../services/stores', () => api);
-vi.mock('../services/api', () => ({
-  ApiError: class ApiError extends Error {
-    status: number;
-    code: string;
-    isUnreachable = false;
-    constructor(status: number, code: string, message: string) {
-      super(message);
-      this.status = status;
-      this.code = code;
-    }
-  },
-}));
 const state = vi.hoisted(() => ({ user: null as User | null }));
 const reloadStores = vi.hoisted(() => vi.fn());
 vi.mock('../features/auth/authStore', () => ({
@@ -30,26 +18,13 @@ vi.mock('../features/stores/useStores', () => ({ useStores: () => ({ retry: relo
 
 const { ManageHoursPage } = await import('./ManageHours');
 const { ApiError } = await import('../services/api');
+const { canAddInterval } = await import('../features/manage/hoursRules');
 
 const store = { id: 's1', brand: { id: 'b1', name: 'B', slug: 'b' } };
-const manager: User = {
-  id: 'u',
-  name: 'U',
-  email: 'u@x.test',
-  phone: null,
-  role: 'CUSTOMER',
-  createdAt: '',
-  memberships: [{ storeId: 's1', storeSlug: 's1', storeName: 'S', role: 'MANAGER' }],
-  ownedBrands: [],
-};
-const week = (
-  hours: StoreScheduleResponse['hours'] = [],
-  exceptions = [],
-): StoreScheduleResponse => ({
-  timezone: 'Asia/Kolkata',
-  hours,
-  exceptions,
-});
+const membership = { storeId: 's1', storeSlug: 's1', storeName: 'S', role: 'MANAGER' } as const;
+const manager = { role: 'CUSTOMER', memberships: [membership], ownedBrands: [] } as unknown as User;
+const week = (hours: StoreScheduleResponse['hours'] = [], exceptions = []) =>
+  ({ timezone: 'Asia/Kolkata', hours, exceptions }) as StoreScheduleResponse;
 const monday = { dayOfWeek: 1, opensAt: '09:00', closesAt: '17:00' };
 const onChanged = vi.fn();
 const show = () => render(<ManageHoursPage store={store} onChanged={onChanged} />);
@@ -61,6 +36,12 @@ beforeEach(() => {
 });
 
 describe('ManageHoursPage', () => {
+  it('offers no interval past the end of the day', () => {
+    expect(canAddInterval([{ opensAt: '18:00', closesAt: '23:59' }])).toBe(false);
+    expect(canAddInterval([{ opensAt: '22:00', closesAt: '02:00' }])).toBe(false);
+    expect(canAddInterval([{ opensAt: '09:00', closesAt: '17:00' }])).toBe(true);
+  });
+
   it('shows a skeleton while loading', () => {
     api.fetchStoreHours.mockReturnValue(new Promise(() => {}));
     show();

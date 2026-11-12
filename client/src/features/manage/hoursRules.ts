@@ -33,6 +33,12 @@ export const weekFromHours = (hours: StoreHours[]): Week => {
 export const weekToHours = (week: Week): StoreHours[] =>
   DAYS.flatMap(({ day }) => (week[day] ?? []).map((i) => ({ dayOfWeek: day, ...i })));
 
+/** Room for one more interval after the day's last: none once it runs to 23:59 or past midnight. */
+export const canAddInterval = (intervals: Interval[]): boolean => {
+  const last = intervals.at(-1);
+  return !last || (last.closesAt > last.opensAt && last.closesAt < '23:59');
+};
+
 export const addInterval = (week: Week, day: number): Week => {
   const last = week[day]?.at(-1);
   // After the last interval a day already has: from its close to the end of the day.

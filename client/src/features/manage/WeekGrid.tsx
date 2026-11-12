@@ -5,6 +5,7 @@ import {
   DAYS,
   MAX_INTERVALS_PER_DAY,
   addInterval,
+  canAddInterval,
   timeInputClass,
   copyDayToAll,
   editInterval,
@@ -76,7 +77,11 @@ export function WeekGrid({ week, onChange, disabled = false }: WeekGridProps) {
               <Button
                 variant="tint"
                 iconLeft={<Plus className="h-4 w-4" aria-hidden />}
-                disabled={disabled || intervals.length >= MAX_INTERVALS_PER_DAY}
+                disabled={
+                  disabled ||
+                  intervals.length >= MAX_INTERVALS_PER_DAY ||
+                  !canAddInterval(intervals)
+                }
                 aria-label={`Add ${name} hours`}
                 onClick={() => onChange(addInterval(week, day))}
               >
