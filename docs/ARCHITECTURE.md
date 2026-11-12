@@ -59,7 +59,7 @@ flowchart LR
   Vite["Vite dev server :5173<br/>proxies /api"]
 
   subgraph API["Express API :8000 (server/)"]
-    Routes["routes → middleware<br/>(requireAuth, requireStaff, validate)"]
+    Routes["routes → middleware<br/>(requireAuth, requireStore, validate)"]
     Services["controllers → services<br/>(auth, store, menu, order, payment)"]
     Admin["supabaseAdmin<br/>(secret key = service_role)"]
     Verify["@supabase/server<br/>verifyCredentials"]
@@ -401,7 +401,7 @@ flowchart TD
   ToLogin --> LoginDone["After sign-in: roles.homeFor(role)<br/>(STAFF → /staff, ADMIN → /admin),<br/>else the ?next path if it is same-site, else /"]
 ```
 
-The guards only improve the UX. The API enforces the same rules with `requireAuth`, `requireStaff` and
+The guards only improve the UX. The API enforces the same rules with `requireAuth`, `requireStore(capability)` and
 `requireAdmin`.
 
 ---
@@ -723,7 +723,7 @@ flowchart TD
 | --------------------------------- | ---------------------------------------------- | -------------------------------- |
 | `useOrder`                        | `GET /api/orders/:id`                          | 4 s until COLLECTED or CANCELLED |
 | `useOrders` (customer Orders tab) | `GET /api/orders`                              | 8 s                              |
-| `useOrders` (staff board)         | `GET /api/orders`                              | 4 s                              |
+| `useOrders` (staff board)         | `GET /api/stores/:storeId/orders`              | 4 s                              |
 | `useStoreMenu`, `useStores`       | `GET /api/stores/:ref/menu`, `GET /api/stores` | once per mount                   |
 
 ### 7.3 Order history
@@ -947,7 +947,7 @@ flowchart TD
   AuthO -->|"POST /"| ValC["validate(createOrderSchema)"] --> CCtl["createOrder"]
   AuthO -->|"GET /"| ValQ["validate(listOrdersQuerySchema, query)"] --> LCtl["listOrders"]
   AuthO -->|"GET /:id"| GCtl["getOrder"]
-  AuthO -->|"PATCH /:id/status"| Staff["requireStaff"] --> ValS["validate(updateOrderStatusSchema)"] --> UCtl["updateOrderStatus"]
+  Router -->|"PATCH /stores/:storeId/orders/:orderId/status"| Staff["requireAuth → requireStore('orders.transition')"] --> ValS["validate(updateOrderStatusSchema)"] --> UCtl["updateStoreOrderStatus"]
   Public --> Svc["services → supabaseAdmin (PostgREST / rpc) → Postgres"]
   RegCtl --> Svc
   MeCtl --> Svc
