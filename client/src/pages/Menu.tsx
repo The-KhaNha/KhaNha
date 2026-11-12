@@ -10,6 +10,7 @@ import { OpenPill } from '../components/OpenPill';
 import { PopularRail, PopularRailSkeleton } from '../components/PopularRail';
 import { Skeleton } from '../components/Skeleton';
 import { CategoryChips, type MenuSection } from '../features/menu/CategoryChips';
+import { AddToCartProvider } from '../features/cart/AddToCart';
 import { ItemDetailSheet } from '../features/menu/ItemDetailSheet';
 import { useStoreMenu } from '../features/stores/useStoreMenu';
 import { NotFoundPage } from './NotFound';
@@ -104,7 +105,7 @@ export function MenuPage() {
 
   return (
     // The storefront header paints at once (it holds the page's largest paint); only the lists below fade in.
-    <div>
+    <AddToCartProvider store={store} rules={menu.rules}>
       {/* The saved menu stays usable when a refresh fails; say so instead of hiding it (checkout re-checks stock). */}
       {error && (
         <ErrorState
@@ -207,7 +208,7 @@ export function MenuPage() {
       </FoodPhotoGate>
 
       <ItemDetailSheet item={selected} onClose={closeSheet} />
-    </div>
+    </AddToCartProvider>
   );
 }
 

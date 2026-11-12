@@ -11,6 +11,7 @@ import {
   selectCount,
   selectLimits,
   selectLines,
+  selectStoreName,
   selectTotal,
   useCartStore,
 } from '../features/cart/cartStore';
@@ -23,6 +24,7 @@ export function CartPage() {
   const limits = useCartStore(selectLimits);
   const count = useCartStore(selectCount);
   const total = useCartStore(selectTotal);
+  const storeName = useCartStore(selectStoreName);
   const clear = useCartStore((s) => s.clear);
   const location = useLocation();
   const navigate = useNavigate();
@@ -57,6 +59,7 @@ export function CartPage() {
         <ReorderNotice lines={notice} onDismiss={dismissNotice} className="mb-4" />
       )}
 
+      {storeName && <p className="eyebrow mb-2 wrap-anywhere text-muted">From {storeName}</p>}
       <Card padding="none" className="px-4">
         <ul className="divide-y divide-line/70">
           {lines.map((line) => (

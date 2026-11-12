@@ -50,7 +50,7 @@ client/
     ├── features/
     │   ├── admin/          settingsRules, useSiteSettings (the /admin dashboard's rules and data hook)
     │   ├── auth/           authStore, RequireAuth, RequireRole, roles (homeFor), sessionActivity, useAuthRedirect, validation, AuthCard
-    │   ├── cart/           cartStore, cartRules, useReorder, CartBar
+    │   ├── cart/           cartStore, cartRules, useReorder, CartBar, AddToCart, ReplaceCartSheet
     │   ├── checkout/       checkoutDraftStore (the form as typed + the idempotency key, sessionStorage)
     │   ├── config/         useConfig (GET /api/config, persisted), fallbacks (config/fallbacks.json)
     │   ├── menu/           useMenu, useStore, CategoryChips, ItemDetailSheet

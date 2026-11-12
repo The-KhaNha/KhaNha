@@ -300,31 +300,33 @@ on the order success screen. Props: `className?`. Every other icon is a named im
 | `isItemErrorCode(code)`                             | true for `INSUFFICIENT_STOCK`, `ITEM_UNAVAILABLE`, `ITEM_NOT_FOUND`                                               |
 | `orderItems(lines)`                                 | `POST /orders` items; `expectedUnitPrice` only for a positive integer price (an old cart line sends none)         |
 
-**`cartStore.ts`**: `useCartStore` (persisted as `fp_cart`). `CartLine { menuItemId, name, unitPrice, imageUrl,
+**`cartStore.ts`**: `useCartStore` (persisted as `fp_cart`, version 2). One cart holds one store's items: `storeId`, `storeSlug` and `storeName` come from the first line. A version-1 cart is migrated to the store whose saved menu (`fp_cache:v2:menu*`) lists its first line, and emptied when none does. `CartLine { menuItemId, name, unitPrice, imageUrl,
 quantity, maxQuantity }`, where `maxQuantity` is `null` (no limit) or the units the shop can sell (0 = sold out or
 off the menu).
 
-| Action                           | Behaviour                                                                                                                               |
-| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `add(item, quantity = 1)`        | adds up to `lineLimit`; ignores sold-out items; tops up an existing line; leaves a line already over its limit alone                    |
-| `increment(id)`                  | no-op at the line's limit                                                                                                               |
-| `decrement(id)`                  | removes the line at quantity 1                                                                                                          |
-| `remove(id)`, `clear()`          |                                                                                                                                         |
-| `fix(id)`                        | trims to the limit, or removes when the limit is 0                                                                                      |
-| `setAvailability(id, available)` | records a checkout error's `details.available`                                                                                          |
-| `syncAvailability(items)`        | refreshes every line's `maxQuantity` from a menu load; items missing from the menu become 0. Prices, names and photos are never changed |
-| `syncPrices(items)`              | sets every line's `unitPrice` from a menu load; Checkout calls it only on the reload after a `PRICE_CHANGED` refusal; Pay waits for it  |
+| Action                            | Behaviour                                                                                                                                                                                       |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `add(item, quantity = 1, store?)` | adds up to `lineLimit`; ignores sold-out items; tops up an existing line; leaves a line already over its limit alone. An empty cart takes `store`; a cart holding another store's items refuses |
+| `increment(id)`                   | no-op at the line's limit                                                                                                                                                                       |
+| `decrement(id)`                   | removes the line at quantity 1                                                                                                                                                                  |
+| `remove(id)`, `clear()`           | `clear` also forgets the store                                                                                                                                                                  |
+| `fix(id)`                         | trims to the limit, or removes when the limit is 0                                                                                                                                              |
+| `setAvailability(id, available)`  | records a checkout error's `details.available`                                                                                                                                                  |
+| `syncAvailability(items)`         | refreshes every line's `maxQuantity` from a menu load; items missing from the menu become 0. Prices, names and photos are never changed                                                         |
+| `syncPrices(items)`               | sets every line's `unitPrice` from a menu load; Checkout calls it only on the reload after a `PRICE_CHANGED` refusal; Pay waits for it                                                          |
 
 `limits` (the store's `CartLimits`, persisted; starts at `fallbacks.json` `storeDefaults`) is set by `setLimits(rules)`,
-called by `useMenu` and `useReorder` with each loaded menu's `rules` (none keeps the defaults). Components read it
+called by `useStoreMenu` and `useReorder` with each loaded menu's `rules` (none keeps the defaults). Components read it
 with `selectLimits`.
 
-Selectors: `selectLines`, `selectCount`, `selectTotal`, `selectQuantityOf(id)`, `selectLimits`.
+Selectors: `selectLines`, `selectCount`, `selectTotal`, `selectQuantityOf(id)`, `selectLimits`, `selectStoreName`.
 
-**`useReorder.ts`**: `useReorder()` → `{ reorder(order), reorderingId }`. Fetches the current menu, adds the order's
+**`AddToCartProvider({ store, rules, children })`** (`features/cart/AddToCart.tsx`): the column of one store's menu; everything under it adds through `useAddToCart()` → `(item, quantity?) => boolean`, which is false while it asks. When the cart holds another store's items it renders **`ReplaceCartSheet({ fromName, toName, onReplace, onKeep })`** ("Start a new cart?": the `ItemDetailSheet` sheet pattern, `useFocusTrap`, Escape and the backdrop keep, Keep takes focus, 44px+ buttons). Replace clears the cart, applies the new store's limits and adds. `cartHoldsOtherStore(cart, storeId)` (`features/stores/storeRules.ts`) is the rule, also used so another store's menu never touches the cart's limits or stock.
+
+**`useReorder.ts`**: `useReorder()` → `{ reorder(order), reorderingId, replace }`. Fetches the current menu of `order.store`, adds the order's
 items on top of the cart at current prices, capped by stock and the store's per-item cap, then navigates to `/cart` with one
 notice per shortfall ("Cheese Toast: only 1 left, added 1", "Berry Smoothie is sold out, skipped"). On a failed menu
-load it adds nothing and says so. `readReorderNotice(state)` reads those notices from router state.
+load it adds nothing and says so. When the cart holds another store's items, `replace` carries the `ReplaceCartSheet` props (the page renders it); Replace empties the cart, then adds. `readReorderNotice(state)` reads those notices from router state.
 
 **`CartBar.tsx`**: `CartBar({ widthClass? = 'max-w-md md:max-w-lg' })`. The floating ink "View cart" bar above the
 bottom nav; the total rolls on change. Rendered by `App.tsx` when the route's shell has `cartBar` and the cart is not
@@ -386,20 +388,20 @@ UI (presentational; the pages own the data):
 
 ### features/stores
 
-| Export                                                      | What                                                                                                                           |
-| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `useStores()` → `{ stores, isLoading, error, retry }`       | loads `GET /api/stores` (persisted, key `stores`)                                                                              |
-| `useStoreByRef(ref)` → `{ store, isLoading, error, retry }` | loads `GET /api/stores/:ref` (persisted, key `store:<ref>`)                                                                    |
-| `useStoreMenu(ref)` → `{ menu, isLoading, error, retry }`   | loads `GET /api/stores/:ref/menu` (persisted, key `menu:<ref>`); like `useMenu`, hands the menu's limits and stock to the cart |
-| `groupByArea(stores)`                                       | the list's groups by `area`, server order, stores without an area last                                                         |
-| `HomeHero()`                                                | the paprika pitch above `/` and every store page                                                                               |
-| `MenuRedirect()`                                            | `/menu`: the one active store's menu, else `/`                                                                                 |
+| Export                                                      | What                                                                                                                                                |
+| ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `useStores()` → `{ stores, isLoading, error, retry }`       | loads `GET /api/stores` (persisted, key `stores`)                                                                                                   |
+| `useStoreByRef(ref)` → `{ store, isLoading, error, retry }` | loads `GET /api/stores/:ref` (persisted, key `store:<ref>`)                                                                                         |
+| `useStoreMenu(ref)` → `{ menu, isLoading, error, retry }`   | loads `GET /api/stores/:ref/menu` (persisted, key `menu:<ref>`); hands its limits and stock to the cart only when the cart is empty or this store's |
+| `groupByArea(stores)`                                       | the list's groups by `area`, server order, stores without an area last                                                                              |
+| `HomeHero()`                                                | the paprika pitch above `/` and every store page                                                                                                    |
+| `MenuRedirect()`                                            | `/menu`: the cart's store menu when the cart has items, else the one active store's menu, else `/`                                                  |
 
 ### features/menu
 
 | Export                                                                                               | What                                                                                                                                                                                                                                       |
 | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `useMenu()` → `{ menu, isLoading, error, retry }`                                                    | loads `GET /api/menu` (persisted, see [FRONTEND_STRUCTURE.md#caching](FRONTEND_STRUCTURE.md#caching)); every load calls `cartStore.syncAvailability`                                                                                       |
+| `useMenu()` → `{ menu, isLoading, error, retry }`                                                    | loads the menu of the cart's store (`useStoreMenu`; nothing for an empty cart; persisted, see [FRONTEND_STRUCTURE.md#caching](FRONTEND_STRUCTURE.md#caching)); every load calls `cartStore.syncAvailability`                               |
 | `useStore()` → `{ store, isLoading, error, retry }`                                                  | loads `GET /api/store` (persisted)                                                                                                                                                                                                         |
 | `CategoryChips({ sections, activeId, onSelect, scrolled? })`, `MenuSection { id, name, isPopular? }` | sticky category bar under the TopBar (static on a short screen, `short:`); chips scroll the page to a section. Its parent must be taller than the bar or `position: sticky` has nowhere to travel                                          |
 | `ItemDetailSheet({ item: MenuItem \| null, onClose })`                                               | bottom sheet on phones, centred dialog on desktop. Escape and the backdrop close it; uses `useFocusTrap`; the count is capped at what is left after the cart's quantity; "Add to Cart" turns green for 600 ms, then the sheet animates out |

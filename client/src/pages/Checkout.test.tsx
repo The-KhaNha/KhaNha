@@ -9,7 +9,7 @@ vi.mock('../lib/supabase', () => ({
 }));
 // The real useMenu/useResource run; only the request is faked (pending unless a test answers it).
 const fetchMenu = vi.hoisted(() => vi.fn<() => Promise<MenuResponse>>(() => new Promise(() => {})));
-vi.mock('../services/menu', () => ({ fetchMenu }));
+vi.mock('../services/stores', () => ({ fetchStoreMenu: fetchMenu }));
 const createOrder = vi.hoisted(() => vi.fn<(input: CreateOrderInput) => Promise<unknown>>());
 vi.mock('../services/orders', () => ({ createOrder }));
 
@@ -24,6 +24,8 @@ const renderCheckout = () =>
       <CheckoutPage />
     </MemoryRouter>,
   );
+
+beforeEach(() => useCartStore.setState({ storeId: 's1', storeSlug: 'cafe', storeName: 'Cafe' }));
 
 describe('CheckoutPage when the key already placed a different order', () => {
   beforeEach(() => {
@@ -354,5 +356,37 @@ describe('CheckoutPage when a price changed before the order was placed', () => 
     createOrder.mockReturnValueOnce(new Promise(() => {}));
     fireEvent.click(screen.getByRole('button', { name: /Pay ₹180/ }));
     await waitFor(() => expect(createOrder).toHaveBeenCalledTimes(2));
+  });
+
+  it("sends the cart's store with the order", async () => {
+    fetchMenu.mockResolvedValue(menuAt(90));
+    createOrder.mockReturnValueOnce(new Promise(() => {}));
+    renderCheckout();
+    fireEvent.click(screen.getByRole('button', { name: /Pay ₹180/ }));
+    await waitFor(() => expect(createOrder).toHaveBeenCalledTimes(1));
+    expect(createOrder.mock.calls[0]![0]).toMatchObject({ storeId: 's1' });
+  });
+
+  it('keeps Pay off for a paused store and says why', async () => {
+    const open = menuAt(90);
+    fetchMenu.mockResolvedValue({
+      ...open,
+      store: { ...open.store, openState: 'PAUSED', isOpen: false, openLabel: 'Back in 15 minutes' },
+    });
+    renderCheckout();
+    expect(await screen.findByText('Back in 15 minutes')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Pay ₹180/ })).toBeDisabled();
+  });
+
+  it('keeps the cart and shows the reason when the store closed meanwhile', async () => {
+    fetchMenu.mockResolvedValue(menuAt(90));
+    const message = 'Cafe opens tomorrow at 9:00 AM.';
+    createOrder.mockRejectedValueOnce(new ApiError(400, 'STORE_CLOSED', message));
+    renderCheckout();
+    await waitFor(() => expect(fetchMenu).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('button', { name: /Pay ₹180/ }));
+    expect(await screen.findByText(message)).toBeInTheDocument();
+    expect(useCartStore.getState().lines).toHaveLength(1);
+    await waitFor(() => expect(fetchMenu).toHaveBeenCalledTimes(2));
   });
 });

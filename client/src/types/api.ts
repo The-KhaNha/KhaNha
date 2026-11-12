@@ -209,6 +209,8 @@ export interface SiteSettings {
 }
 
 export interface CreateOrderInput {
+  /** The store the cart belongs to; without it the API picks the one active store. */
+  storeId?: string;
   /** `expectedUnitPrice`: the rupee price the cart shows; a different current price is 409 PRICE_CHANGED. */
   items: { menuItemId: string; quantity: number; expectedUnitPrice?: number }[];
   customerName: string;

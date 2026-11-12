@@ -18,11 +18,12 @@ export function groupByArea(stores: StoreSummary[]): AreaGroup[] {
 }
 
 /**
- * Whether a menu's limits and stock may be applied to the cart: it is empty, or holds this menu's items. Browsing
- * another store must not flag the cart's lines as gone (a cart names no store until P2 PR 12).
+ * Whether the cart holds items of another store than `storeId`. An empty cart belongs to no one. A menu's limits and
+ * stock are applied to the cart only when this is false, and adding asks for confirmation when it is true.
  */
-export function menuMatchesCart(lines: { menuItemId: string }[], items: { id: string }[]): boolean {
-  if (lines.length === 0) return true;
-  const ids = new Set(items.map((item) => item.id));
-  return lines.some((line) => ids.has(line.menuItemId));
+export function cartHoldsOtherStore(
+  cart: { lines: unknown[]; storeId: string | null },
+  storeId: string,
+): boolean {
+  return cart.lines.length > 0 && cart.storeId !== storeId;
 }

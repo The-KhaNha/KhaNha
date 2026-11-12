@@ -6,6 +6,7 @@ import { EmptyState } from '../components/EmptyState';
 import { ErrorState } from '../components/ErrorState';
 import { OrderCard, OrderCardSkeleton } from '../components/OrderCard';
 import { Skeleton } from '../components/Skeleton';
+import { ReplaceCartSheet } from '../features/cart/ReplaceCartSheet';
 import { useReorder } from '../features/cart/useReorder';
 import { isActive } from '../features/orders/orderStatus';
 import { useOrders } from '../features/orders/useOrders';
@@ -16,7 +17,7 @@ function newestFirst(a: Order, b: Order): number {
 
 export function OrdersPage() {
   const { orders, isLoading, error, retry } = useOrders();
-  const { reorder, reorderingId } = useReorder();
+  const { reorder, reorderingId, replace } = useReorder();
 
   const { active, past } = useMemo(() => {
     const sorted = [...(orders ?? [])].sort(newestFirst);
@@ -83,6 +84,7 @@ export function OrdersPage() {
           className={active.length > 0 ? 'mt-7' : undefined}
         />
       )}
+      {replace && <ReplaceCartSheet {...replace} />}
     </div>
   );
 }
@@ -90,7 +92,7 @@ export function OrdersPage() {
 interface OrderGroupProps {
   title: string;
   orders: Order[];
-  onReorder: (order: Order) => Promise<void>;
+  onReorder: (order: Order) => void;
   reorderingId: string | null;
   className?: string;
 }

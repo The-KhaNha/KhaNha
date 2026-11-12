@@ -723,12 +723,12 @@ flowchart TD
   Idle -.-> Vis
 ```
 
-| Hook                              | Endpoint                          | Interval                         |
-| --------------------------------- | --------------------------------- | -------------------------------- |
-| `useOrder`                        | `GET /api/orders/:id`             | 4 s until COLLECTED or CANCELLED |
-| `useOrders` (customer Orders tab) | `GET /api/orders`                 | 8 s                              |
-| `useOrders` (staff board)         | `GET /api/orders`                 | 4 s                              |
-| `useMenu`, `useStore`             | `GET /api/menu`, `GET /api/store` | once per mount                   |
+| Hook                              | Endpoint                                      | Interval                         |
+| --------------------------------- | --------------------------------------------- | -------------------------------- |
+| `useOrder`                        | `GET /api/orders/:id`                         | 4 s until COLLECTED or CANCELLED |
+| `useOrders` (customer Orders tab) | `GET /api/orders`                             | 8 s                              |
+| `useOrders` (staff board)         | `GET /api/orders`                             | 4 s                              |
+| `useStoreMenu`, `useStore`        | `GET /api/stores/:ref/menu`, `GET /api/store` | once per mount                   |
 
 ### 7.3 Order history
 

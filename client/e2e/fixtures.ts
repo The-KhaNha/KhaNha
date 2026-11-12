@@ -128,9 +128,10 @@ export const CART_LINE = {
 
 /** Persists a cart holding `line`, as an earlier visit would have left it. */
 export async function seedCart(page: Page, line: typeof CART_LINE = CART_LINE): Promise<void> {
-  await page.addInitScript((line) => {
-    localStorage.setItem('fp_cart', JSON.stringify({ state: { lines: [line] }, version: 1 }));
-  }, line);
+  const state = { lines: [line], storeId: store.id, storeSlug: store.slug, storeName: store.name };
+  await page.addInitScript((state) => {
+    localStorage.setItem('fp_cart', JSON.stringify({ state, version: 2 }));
+  }, state);
 }
 
 /**
