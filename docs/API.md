@@ -70,6 +70,7 @@ The API has no sign-in or sign-out route. The browser signs in and out with supa
 | PATCH  | `/stores/:storeId/orders/:orderId/status` | user + `orders.transition` | body: [`updateOrderStatusSchema`](#patch-storesstoreidordersorderidstatus) | 200 `{ order: OrderDto }`                       |
 | GET    | `/admin/settings`                         | user + ADMIN               | none                                                                       | 200 `{ settings: SiteSettingsDto }`             |
 | PATCH  | `/admin/settings`                         | user + ADMIN               | body: [`updateSettingsSchema`](#patch-adminsettings)                       | 200 `{ settings: SiteSettingsDto }`             |
+| GET    | `/stores/:storeId/audit`                  | user + `audit.store`       | query: [`auditQuerySchema`](#get-storesstoreidaudit)                       | 200 `AuditPageDto`                              |
 | GET    | `/admin/audit`                            | user + ADMIN               | query: [`auditQuerySchema`](#get-adminaudit)                               | 200 `AuditPageDto`                              |
 | PATCH  | `/admin/flags/:key`                       | user + ADMIN               | path: `key`; body: [`updateFlagSchema`](#patch-adminflagskey)              | 200 `{ flag: FeatureFlagDto }`                  |
 
@@ -457,6 +458,17 @@ Body (`server/src/schemas/admin.schema.ts`), every field optional but at least o
 | 400    | `VALIDATION_ERROR` | a field out of bounds, wrong type, or neither field sent |
 | 401    | `UNAUTHORIZED`     | see [Authentication](#authentication)                    |
 | 403    | `FORBIDDEN`        | caller is not `ADMIN`                                    |
+
+### GET /stores/:storeId/audit
+
+Code: `requireAuth` → `requireStore('audit.store')` → `validate(auditQuerySchema, 'query')` →
+`admin.controller.listStoreAudit` → `audit.service.listAudit(query, storeId)`. The same cursor query as
+[`GET /admin/audit`](#get-adminaudit) (same parameters, same `AuditPageDto`, same `Cache-Control: no-store`), narrowed
+to `audit_log.store_id = req.store.id`. The store comes from the path through `requireStore`, never from the query:
+a `storeId` in the query string is dropped by the schema and has no effect. The rows hold statuses, settings, hours
+and team changes, no customer data; an invite's row carries the invited email, which the same roles see in the team
+list. MANAGER, OWNER and ADMIN may read it; STAFF get 403, a store the caller cannot see is 404 as for the other store
+routes.
 
 ### GET /admin/audit
 

@@ -571,6 +571,8 @@ in the query string is ignored).
 
 Docs: `docs/API.md`, `docs/PERMISSIONS.md`. Intent: `--server minor`.
 
+As built: `audit.service.listAudit(query, storeId?)` gains the optional store filter; the route uses `listStoreAudit` with `currentStore(req).id`; `testStoreIsolation` gained an optional `memberRole` (MANAGER here, since `audit.store` excludes STAFF).
+
 ### PR 11 — Client: the store list and store pages (P2.6)
 
 - [ ] Merged
