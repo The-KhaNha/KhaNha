@@ -328,3 +328,8 @@ export function testStoreIsolation(
     });
   });
 }
+
+/** `GET` path of the oldest store's menu (the stores routes take an id or a slug). */
+export async function menuPath(): Promise<string> {
+  return `/api/stores/${await oldestStoreId()}/menu`;
+}

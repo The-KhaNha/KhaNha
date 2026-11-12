@@ -61,7 +61,11 @@ it('placing an order reads the key, store, name and prices together, not one aft
   const res = await request(app)
     .post('/api/orders')
     .set('Authorization', `Bearer ${customer.token}`)
-    .send({ items: [{ menuItemId, quantity: 1 }], idempotencyKey: randomUUID() });
+    .send({
+      storeId: await oldestStoreId(),
+      items: [{ menuItemId, quantity: 1 }],
+      idempotencyKey: randomUUID(),
+    });
   counting = false;
 
   expect(res.status).toBe(201);

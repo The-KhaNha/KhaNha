@@ -150,12 +150,12 @@ describe('GET /api/stores/:storeRef', () => {
 });
 
 describe('GET /api/stores/:storeRef/menu', () => {
-  it('returns the menu of the oldest store by slug, equal to GET /api/menu', async () => {
+  it('returns the menu of the oldest store by slug and by id', async () => {
     const id = await oldestStoreId();
     const { data } = await supabaseAdmin.from('stores').select('slug').eq('id', id).single();
     const res = await api().get(`/api/stores/${data!.slug}/menu`);
     expect(res.status).toBe(200);
-    expect(res.body).toEqual((await api().get('/api/menu')).body);
+    expect(res.body).toEqual((await api().get(`/api/stores/${id}/menu`)).body);
     expect((res.body as MenuResponse).store.id).toBe(id);
   });
 

@@ -3,7 +3,7 @@ import { api } from '../setup/api';
 
 describe('HTTP caching', () => {
   it('marks API responses for revalidation and varies on the account', async () => {
-    const res = await api().get('/api/menu');
+    const res = await api().get('/api/stores');
     expect(res.status).toBe(200);
     expect(res.headers['cache-control']).toBe('no-cache');
     expect(res.headers.vary).toMatch(/Authorization/);
@@ -11,21 +11,21 @@ describe('HTTP caching', () => {
   });
 
   it('answers an unchanged resource with a bodiless 304', async () => {
-    const first = await api().get('/api/store');
-    const again = await api().get('/api/store').set('If-None-Match', first.headers.etag!);
+    const first = await api().get('/api/stores');
+    const again = await api().get('/api/stores').set('If-None-Match', first.headers.etag!);
     expect(again.status).toBe(304);
     expect(again.text).toBeFalsy();
   });
 
   it('sends the full body when the ETag does not match', async () => {
-    const res = await api().get('/api/store').set('If-None-Match', 'W/"stale"');
+    const res = await api().get('/api/stores').set('If-None-Match', 'W/"stale"');
     expect(res.status).toBe(200);
-    expect(res.body.store).toBeTruthy();
+    expect(res.body.stores).toBeTruthy();
   });
 
   it('carries the revalidation headers on a CORS preflight, which never reaches the routes', async () => {
     const res = await api()
-      .options('/api/menu')
+      .options('/api/stores')
       .set('Origin', 'http://localhost:5173')
       .set('Access-Control-Request-Method', 'GET');
     expect(res.headers['cache-control']).toBe('no-cache');

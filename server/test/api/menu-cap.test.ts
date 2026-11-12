@@ -5,7 +5,7 @@ import { logger } from '../../src/utils/logger';
 import { supabaseAdmin } from '../../src/utils/supabase';
 import { api } from '../setup/api';
 import { MENU } from '../../scripts/seed-data';
-import { resetDemoData } from '../setup/helpers';
+import { menuPath, resetDemoData } from '../setup/helpers';
 
 // Destructive: inserts a category of throwaway items past the menu cap, PostgREST's 1000-row response cap and the
 // length a list of their ids can take in a URL, then checks the demo reset removes every one of them.
@@ -34,19 +34,19 @@ beforeAll(async () => {
     sort_order: 10_000 + i,
   }));
   await supabaseAdmin.from('menu_items').insert(rows).throwOnError();
-  invalidate('menu');
+  invalidate();
 }, 30_000);
 
 afterAll(async () => {
   await supabaseAdmin.from('menu_items').delete().eq('category', CATEGORY).throwOnError();
-  invalidate('menu');
+  invalidate();
   resetDemoData();
 });
 
-describe('GET /api/menu with a menu larger than the cap', () => {
+describe('GET /api/stores/:ref/menu with a menu larger than the cap', () => {
   it(`returns at most ${MENU_ITEMS_MAX} items, the lowest sort orders first, and still answers fast`, async () => {
     const started = Date.now();
-    const res = await api().get('/api/menu');
+    const res = await api().get(await menuPath());
     expect(res.status).toBe(200);
     const items = (res.body.categories as { items: unknown[] }[]).flatMap((c) => c.items);
     expect(items.length).toBe(MENU_ITEMS_MAX);
@@ -56,11 +56,11 @@ describe('GET /api/menu with a menu larger than the cap', () => {
   });
 });
 
-describe('GET /api/menu when the cap bites', () => {
+describe('GET /api/stores/:ref/menu when the cap bites', () => {
   it('logs a warning naming how many items were cut', async () => {
     const warn = vi.spyOn(logger, 'warn');
-    invalidate('menu');
-    await api().get('/api/menu');
+    invalidate();
+    await api().get(await menuPath());
     expect(warn).toHaveBeenCalledWith(
       expect.objectContaining({ total: MENU.length + EXTRA_ITEMS, shown: MENU_ITEMS_MAX }),
       'Menu truncated',
@@ -75,8 +75,8 @@ describe('GET /api/menu when the cap bites', () => {
       .eq('category', CATEGORY)
       .throwOnError();
     const ids = async () => {
-      invalidate('menu');
-      const res = await api().get('/api/menu');
+      invalidate();
+      const res = await api().get(await menuPath());
       return (res.body.categories as { items: { id: string }[] }[]).flatMap((c) =>
         c.items.map((i) => i.id),
       );
