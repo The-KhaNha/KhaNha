@@ -1650,15 +1650,23 @@ create table public.store_invites (         -- by email; the inviter shares the 
   id uuid primary key default gen_random_uuid(),
   store_id uuid not null references public.stores (id) on delete cascade,
   role public.store_role not null,
-  email text not null,                      -- the account that may accept it
+  email text not null check (email = lower(email) and char_length(email) between 3 and 320),
+                                            -- the account that may accept it
   token_hash text not null unique,          -- sha-256 of the token, which is shown once
   expires_at timestamptz not null,
   accepted_at timestamptz,
+  accepted_by uuid references public.profiles (id) on delete set null,
   revoked_at timestamptz,
   created_by uuid references public.profiles (id) on delete set null,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  check (expires_at > created_at),
+  check (accepted_at is null or revoked_at is null)
 );
+create unique index store_invites_open_email_key
+  on public.store_invites (store_id, email) where accepted_at is null and revoked_at is null;
 create index store_invites_store_id_idx on public.store_invites (store_id);
+create index store_invites_created_by_idx on public.store_invites (created_by);
+create index store_invites_accepted_by_idx on public.store_invites (accepted_by);
 ```
 
 **Permissions** (`server/src/domain/permissions.ts`) are one capability map, the single source of truth, unit-tested
@@ -1696,7 +1704,7 @@ phase adds its own:
   (an email and a role). `DELETE .../members/:membershipId`. A manager manages staff; only the owner or an admin
   manages managers. An invite yields a link the inviter shares, and accepting needs a signed-in account with that
   email. Invites are accepted through `POST /api/me/invites/accept`, with the token in the body, never in a path that
-  is logged. Every change is audited. Removing a membership never removes the brand's owner, because the owner is not a membership. A brand can still
+  is logged. Follow-up: verify email ownership at sign-up (invites are bound to an email that sign-up does not verify, so whoever holds the token and registers with that email can accept it). Every change is audited. Removing a membership never removes the brand's owner, because the owner is not a membership. A brand can still
   have no owner: the one the P2 migration creates starts without one, and deleting the owner's profile clears
   `owner_id` (`on delete set null`). Setting `brands.owner_id` is an admin action.
 

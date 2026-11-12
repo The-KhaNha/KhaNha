@@ -159,15 +159,23 @@ create table public.store_invites (
   id uuid primary key default gen_random_uuid(),
   store_id uuid not null references public.stores (id) on delete cascade,
   role public.store_role not null,
-  email text not null,                       -- the account that may accept it
+  email text not null check (email = lower(email) and char_length(email) between 3 and 320),
+                                             -- the account that may accept it
   token_hash text not null unique,           -- sha-256 of the token; the token itself is shown once
   expires_at timestamptz not null,
   accepted_at timestamptz,
+  accepted_by uuid references public.profiles (id) on delete set null,
   revoked_at timestamptz,
   created_by uuid references public.profiles (id) on delete set null,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  check (expires_at > created_at),
+  check (accepted_at is null or revoked_at is null)
 );
+create unique index store_invites_open_email_key
+  on public.store_invites (store_id, email) where accepted_at is null and revoked_at is null;
 create index store_invites_store_id_idx on public.store_invites (store_id);
+create index store_invites_created_by_idx on public.store_invites (created_by);
+create index store_invites_accepted_by_idx on public.store_invites (accepted_by);
 ```
 
 **Capabilities in P2** (`domain/permissions.ts`, tested cell by cell):
@@ -560,6 +568,8 @@ membership; the access-log line of a successful accept and of a rejected one con
 
 Docs: `docs/API.md`, `docs/PERMISSIONS.md` (who may invite whom), `docs/SCHEMA.md`, `docs/LOGGING.md` (never logged:
 invite tokens), `plans/ROADMAP.md` A3. Intent: `--server minor`.
+
+Shipped in two PRs for size: 09a (the table, the function, the team list and its writes) and 09b (`POST /api/me/invites/accept`, its limiter and the log guard). As built: `team.service.ts` owns `store_memberships` and `store_invites` (`TABLE_OWNERS`). `team.controller.managesManagers` re-checks `accessFor(..., 'team.manageManagers')`, so an admin who is also a member is judged by the standing that holds it; revoking a MANAGER invite also needs `team.manageManagers`. Expired open invites for the email are revoked before a new insert (the open-email index counts them). A member of another role is `NOT_FOUND` and the invite stays open. `REDACT_PATHS` already covered `token` and `*.token`, so the logging guard is `test/api/team-logs.test.ts` instead of a new path. Known limitation: sign-up does not verify email ownership, so the token is the real secret (follow-up in `plans/ROADMAP.md`).
 
 ### PR 10 — The store's audit trail (P1.3, deferred)
 

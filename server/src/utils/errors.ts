@@ -12,6 +12,7 @@ export type ErrorCode =
   | 'EMAIL_TAKEN'
   | 'INVALID_STATUS_TRANSITION'
   | 'IDEMPOTENCY_KEY_REUSED'
+  | 'MEMBERSHIP_EXISTS'
   | 'PRICE_CHANGED'
   | 'CLIENT_OUTDATED'
   | 'RATE_LIMITED'
@@ -202,6 +203,14 @@ export const itemUnavailable = (menuItemId: string, name: string): AppError =>
       name,
       available: 0,
     },
+  );
+
+/** The email already works at the store, or already has an open invite there (P2.2). */
+export const membershipExists = (): AppError =>
+  new AppError(
+    409,
+    'MEMBERSHIP_EXISTS',
+    'That person is already on the team or has an open invite.',
   );
 
 /**

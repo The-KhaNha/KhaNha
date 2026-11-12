@@ -2,6 +2,7 @@ import { Router } from 'express';
 import * as admin from '../controllers/admin.controller';
 import * as orders from '../controllers/order.controller';
 import * as store from '../controllers/store.controller';
+import * as team from '../controllers/team.controller';
 import { requireAuth, requireStore } from '../middleware/auth';
 import { writeLimiter } from '../middleware/rateLimit';
 import { validate } from '../middleware/validate';
@@ -9,6 +10,7 @@ import { auditQuerySchema } from '../schemas/admin.schema';
 import { listOrdersQuerySchema, updateOrderStatusSchema } from '../schemas/order.schema';
 import { updateStoreSettingsSchema } from '../schemas/storeSettings.schema';
 import { storeListQuerySchema, storeRefParamsSchema } from '../schemas/store.schema';
+import { createInviteSchema } from '../schemas/team.schema';
 
 export const storeRouter = Router();
 
@@ -57,4 +59,28 @@ storesRouter.get(
   requireStore('audit.store'),
   validate(auditQuerySchema, 'query'),
   admin.listStoreAudit,
+);
+// The team (P2.2): a manager manages staff; acting on a manager also needs team.manageManagers (team.controller.ts).
+storesRouter.get('/:storeId/members', requireAuth, requireStore('team.manageStaff'), team.listTeam);
+storesRouter.post(
+  '/:storeId/invites',
+  requireAuth,
+  requireStore('team.manageStaff'),
+  writeLimiter,
+  validate(createInviteSchema),
+  team.createInvite,
+);
+storesRouter.delete(
+  '/:storeId/invites/:inviteId',
+  requireAuth,
+  requireStore('team.manageStaff'),
+  writeLimiter,
+  team.revokeInvite,
+);
+storesRouter.delete(
+  '/:storeId/members/:membershipId',
+  requireAuth,
+  requireStore('team.manageStaff'),
+  writeLimiter,
+  team.removeMember,
 );

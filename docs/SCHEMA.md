@@ -43,6 +43,7 @@ a new file (see [DEPLOYMENT.md](DEPLOYMENT.md#schema-changes)).
 | `20261112053921_store_settings_on_stores.sql`      | adds the four store settings columns (with checks) to `stores`, copies `staff_order_list_limit` from `site_settings` once without audit rows, and `stores_settings_audit`                                                                                                                                                                                                                                                                                                                                                         |
 | `20261112063852_store_hours.sql`                   | adds `schedule_exception_kind`, `store_hours` and `store_schedule_exceptions` (RLS on, revoked, cascade from `stores`) with `store_hours_audit` and `store_schedule_exceptions_audit`                                                                                                                                                                                                                                                                                                                                             |
 | `20261111123222_store_memberships.sql`             | adds `store_role`, `store_memberships` (RLS, revoked) with its backfill of `STAFF` profiles into the oldest store and `store_memberships_audit`; redefines `audit_row_change()` to record inserts and deletes and the actor's `storeRole`                                                                                                                                                                                                                                                                                         |
+| `20261112083000_store_invites.sql`                 | adds `store_invites` (RLS on, revoked; two CHECKs, `store_invites_open_email_key` and three more indexes) with `store_invites_audit`                                                                                                                                                                                                                                                                                                                                                                                              |
 
 ## Enums
 
@@ -114,6 +115,33 @@ migration backfills every `profiles.role = 'STAFF'` account as a `STAFF` member 
 
 `unique (user_id, store_id)`: one role per person per store. Audited by `store_memberships_audit`
 (`membership.changed`: `user_id`, `store_id`, `role`).
+
+### store_invites
+
+An open invitation to join a store's team (`20261112083000_store_invites.sql`). The API creates one with a random token
+and keeps only the token's sha-256 (`token_hash`). Accepting one (the next PR) turns it into a `store_memberships` row.
+Nothing but the API (secret key) reads or writes it. Who may invite and remove: [PERMISSIONS.md](PERMISSIONS.md#team-invites-and-removals).
+
+| Column        | Type         | Null | Default             | Notes                                                                             |
+| ------------- | ------------ | ---- | ------------------- | --------------------------------------------------------------------------------- |
+| `id`          | uuid         | no   | `gen_random_uuid()` | primary key                                                                       |
+| `store_id`    | uuid         | no   |                     | references `stores (id)` on delete cascade; indexed                               |
+| `role`        | `store_role` | no   |                     |                                                                                   |
+| `email`       | text         | no   |                     | the account that may accept it; CHECK `email = lower(email)` and 3–320 characters |
+| `token_hash`  | text         | no   |                     | unique; never audited                                                             |
+| `expires_at`  | timestamptz  | no   |                     | the API sets now + `INVITE_EXPIRY_DAYS` (7)                                       |
+| `accepted_at` | timestamptz  | yes  |                     |                                                                                   |
+| `accepted_by` | uuid         | yes  |                     | references `profiles (id)` on delete set null; indexed                            |
+| `revoked_at`  | timestamptz  | yes  |                     |                                                                                   |
+| `created_by`  | uuid         | yes  |                     | references `profiles (id)` on delete set null; indexed                            |
+| `created_at`  | timestamptz  | no   | `now()`             |                                                                                   |
+
+Table CHECKs: `expires_at > created_at`, and `accepted_at is null or revoked_at is null` (never both). The partial
+unique index `store_invites_open_email_key` on `(store_id, email) where accepted_at is null and revoked_at is null`
+allows one open invite per email per store, so a second is 409 `MEMBERSHIP_EXISTS`. An expired invite still counts as
+open there, so the API revokes a store's expired invites for that email before it inserts. RLS is on and all privileges
+are revoked from `anon` and `authenticated`. Audited by `store_invites_audit` (`invite.changed`: `role`, `email`,
+`accepted_at`, `revoked_at`; never `token_hash`).
 
 ### stores
 
@@ -301,7 +329,7 @@ audited with `*`, so it never holds a secret: every column it gains is copied he
 | `actor_role`  | text         | yes  |          | the actor's role at the time                                                                                         |
 | `store_id`    | uuid         | yes  |          | the row's `store_id`, or a `stores` row's own `id`                                                                   |
 | `action`      | text         | no   |          | `site_settings.changed`, `order.status_changed`, `profile.role_changed`, `menu_item.changed`, `feature_flag.changed` |
-| `entity_type` | text         | no   |          | the action's first part: `site_settings`, `order`, `profile`, `menu_item`, `feature_flag`                            |
+| `entity_type` | text         | no   |          | the action's first part: `site_settings`, `order`, `profile`, `menu_item`, `feature_flag`, `invite`                  |
 | `entity_id`   | text         | no   |          | the row's `id` as text (`true` for `site_settings`), or its `key` for `feature_flags`                                |
 | `changes`     | jsonb        | yes  |          | `{ column: [old, new] }`, the watched columns that changed                                                           |
 | `reason`      | text         | yes  |          | unused until a transition takes a reason                                                                             |
@@ -340,26 +368,30 @@ One row per Supabase Auth session, written only by `touch_session`; a row is pur
 
 ## Indexes
 
-| Index                                   | Columns                                                                              |
-| --------------------------------------- | ------------------------------------------------------------------------------------ |
-| `brands_owner_id_idx`                   | `brands (owner_id)`                                                                  |
-| `store_memberships_store_id_idx`        | `store_memberships (store_id)`, the team list                                        |
-| `store_memberships_created_by_idx`      | `store_memberships (created_by)`                                                     |
-| `stores_brand_id_idx`                   | `stores (brand_id)`                                                                  |
-| `menu_items_store_id_category_idx`      | `menu_items (store_id, category)`                                                    |
-| `orders_user_id_created_at_idx`         | `orders (user_id, created_at)`                                                       |
-| `orders_status_created_at_idx`          | `orders (status, created_at)`                                                        |
-| `orders_store_id_status_created_at_idx` | `orders (store_id, status, created_at desc)`: one store's board (P2.3)               |
-| `order_items_menu_item_id_idx`          | `order_items (menu_item_id)`                                                         |
-| `orders_user_id_idempotency_key_idx`    | `orders (user_id, idempotency_key)`, unique, `where idempotency_key is not null`     |
-| `domain_events_aggregate_idx`           | `domain_events (aggregate_type, aggregate_id, occurred_at)`                          |
-| `audit_log_entity_idx`                  | `audit_log (entity_type, entity_id, id desc)`                                        |
-| `audit_log_entity_type_idx`             | `audit_log (entity_type, id desc)`                                                   |
-| `audit_log_store_idx`                   | `audit_log (store_id, id desc)`                                                      |
-| `audit_log_actor_idx`                   | `audit_log (actor_id, id desc)`                                                      |
-| `session_activity_user_id_idx`          | `session_activity (user_id)`, for the cascade from `profiles`                        |
-| unique constraint                       | `order_items (order_id, line_number)`                                                |
-| unique constraint                       | `profiles (email)`, `orders (order_number)`, `store_memberships (user_id, store_id)` |
+| Index                                   | Columns                                                                                     |
+| --------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `brands_owner_id_idx`                   | `brands (owner_id)`                                                                         |
+| `store_memberships_store_id_idx`        | `store_memberships (store_id)`, the team list                                               |
+| `store_memberships_created_by_idx`      | `store_memberships (created_by)`                                                            |
+| `store_invites_open_email_key`          | unique `store_invites (store_id, email)` where `accepted_at is null and revoked_at is null` |
+| `store_invites_store_id_idx`            | `store_invites (store_id)`                                                                  |
+| `store_invites_created_by_idx`          | `store_invites (created_by)`                                                                |
+| `store_invites_accepted_by_idx`         | `store_invites (accepted_by)`                                                               |
+| `stores_brand_id_idx`                   | `stores (brand_id)`                                                                         |
+| `menu_items_store_id_category_idx`      | `menu_items (store_id, category)`                                                           |
+| `orders_user_id_created_at_idx`         | `orders (user_id, created_at)`                                                              |
+| `orders_status_created_at_idx`          | `orders (status, created_at)`                                                               |
+| `orders_store_id_status_created_at_idx` | `orders (store_id, status, created_at desc)`: one store's board (P2.3)                      |
+| `order_items_menu_item_id_idx`          | `order_items (menu_item_id)`                                                                |
+| `orders_user_id_idempotency_key_idx`    | `orders (user_id, idempotency_key)`, unique, `where idempotency_key is not null`            |
+| `domain_events_aggregate_idx`           | `domain_events (aggregate_type, aggregate_id, occurred_at)`                                 |
+| `audit_log_entity_idx`                  | `audit_log (entity_type, entity_id, id desc)`                                               |
+| `audit_log_entity_type_idx`             | `audit_log (entity_type, id desc)`                                                          |
+| `audit_log_store_idx`                   | `audit_log (store_id, id desc)`                                                             |
+| `audit_log_actor_idx`                   | `audit_log (actor_id, id desc)`                                                             |
+| `session_activity_user_id_idx`          | `session_activity (user_id)`, for the cascade from `profiles`                               |
+| unique constraint                       | `order_items (order_id, line_number)`                                                       |
+| unique constraint                       | `profiles (email)`, `orders (order_number)`, `store_memberships (user_id, store_id)`        |
 
 `site_settings` has no indexes on purpose (one row), including on `updated_by`. `session_activity.last_seen_at` has
 none either: the API moves it every few minutes per session, and an index would cost each of those updates an index
@@ -367,28 +399,29 @@ write for one small nightly scan.
 
 ## Triggers
 
-| Trigger                           | On                                                                                                                                                                        | Function                                                                |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| `orders_set_updated_at`           | before update on `orders`, each row                                                                                                                                       | `set_updated_at()`                                                      |
-| `site_settings_set_updated_at`    | before update on `site_settings`, each row                                                                                                                                | `set_updated_at()`                                                      |
-| `feature_flags_set_updated_at`    | before update on `feature_flags`, each row                                                                                                                                | `set_updated_at()`                                                      |
-| `on_auth_user_created`            | after insert on `auth.users`                                                                                                                                              | `handle_new_user()`                                                     |
-| `on_auth_user_email_changed`      | after update of `email` on `auth.users`, when the email changed                                                                                                           | `handle_user_email_change()`                                            |
-| `site_settings_audit`             | after update on `site_settings`, each row                                                                                                                                 | `audit_row_change('site_settings.changed', '*')`                        |
-| `orders_audit`                    | after update of `status` on `orders`, each row                                                                                                                            | `audit_row_change('order.status_changed', 'status')`                    |
-| `profiles_audit`                  | after update of `role` on `profiles`, each row                                                                                                                            | `audit_row_change('profile.role_changed', 'role')`                      |
-| `menu_items_audit`                | after update of `name`, `price_paise`, `is_available`, `image_url`, `category` on `menu_items`, each row (never `stock_quantity`)                                         | `audit_row_change('menu_item.changed', <those columns>)`                |
-| `brands_set_updated_at`           | before update on `brands`, each row                                                                                                                                       | `set_updated_at()`                                                      |
-| `stores_set_updated_at`           | before update on `stores`, each row                                                                                                                                       | `set_updated_at()`                                                      |
-| `brands_audit`                    | after update on `brands`, each row                                                                                                                                        | `audit_row_change('brand.changed', '*')`                                |
-| `stores_settings_audit`           | after update of `max_quantity_per_item`, `low_stock_threshold`, `staff_order_list_limit`, `last_order_minutes_before_close` on `stores`, each row                         | `audit_row_change('store_settings.changed', …)`                         |
-| `store_hours_audit`               | after insert, update or delete on `store_hours`, each row                                                                                                                 | `audit_row_change('store_hours.changed', …)`                            |
-| `store_schedule_exceptions_audit` | after insert, update or delete on `store_schedule_exceptions`, each row                                                                                                   | `audit_row_change('schedule_exception.changed', …)`                     |
-| `stores_audit`                    | after update of `name`, `slug`, `status`, `is_open`, `area`, `address_line`, `contact_phone`, `timezone` on `stores`, each row (its audit row has `store_id = stores.id`) | `audit_row_change('store.changed', …)`                                  |
-| `store_memberships_audit`         | after insert or update or delete on `store_memberships`, each row (`membership.changed`: `user_id`, `store_id`, `role`)                                                   | `audit_row_change('membership.changed', 'user_id', 'store_id', 'role')` |
-| `feature_flags_audit`             | after update on `feature_flags`, each row                                                                                                                                 | `audit_row_change('feature_flag.changed', '*')`                         |
-| `audit_log_no_change`             | before update or delete on `audit_log`, each row                                                                                                                          | `audit_log_append_only()`                                               |
-| `audit_log_no_truncate`           | before truncate on `audit_log`, each statement                                                                                                                            | `audit_log_append_only()`                                               |
+| Trigger                           | On                                                                                                                                                                        | Function                                                                           |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `orders_set_updated_at`           | before update on `orders`, each row                                                                                                                                       | `set_updated_at()`                                                                 |
+| `site_settings_set_updated_at`    | before update on `site_settings`, each row                                                                                                                                | `set_updated_at()`                                                                 |
+| `feature_flags_set_updated_at`    | before update on `feature_flags`, each row                                                                                                                                | `set_updated_at()`                                                                 |
+| `on_auth_user_created`            | after insert on `auth.users`                                                                                                                                              | `handle_new_user()`                                                                |
+| `on_auth_user_email_changed`      | after update of `email` on `auth.users`, when the email changed                                                                                                           | `handle_user_email_change()`                                                       |
+| `site_settings_audit`             | after update on `site_settings`, each row                                                                                                                                 | `audit_row_change('site_settings.changed', '*')`                                   |
+| `orders_audit`                    | after update of `status` on `orders`, each row                                                                                                                            | `audit_row_change('order.status_changed', 'status')`                               |
+| `profiles_audit`                  | after update of `role` on `profiles`, each row                                                                                                                            | `audit_row_change('profile.role_changed', 'role')`                                 |
+| `menu_items_audit`                | after update of `name`, `price_paise`, `is_available`, `image_url`, `category` on `menu_items`, each row (never `stock_quantity`)                                         | `audit_row_change('menu_item.changed', <those columns>)`                           |
+| `brands_set_updated_at`           | before update on `brands`, each row                                                                                                                                       | `set_updated_at()`                                                                 |
+| `stores_set_updated_at`           | before update on `stores`, each row                                                                                                                                       | `set_updated_at()`                                                                 |
+| `brands_audit`                    | after update on `brands`, each row                                                                                                                                        | `audit_row_change('brand.changed', '*')`                                           |
+| `stores_settings_audit`           | after update of `max_quantity_per_item`, `low_stock_threshold`, `staff_order_list_limit`, `last_order_minutes_before_close` on `stores`, each row                         | `audit_row_change('store_settings.changed', …)`                                    |
+| `store_hours_audit`               | after insert, update or delete on `store_hours`, each row                                                                                                                 | `audit_row_change('store_hours.changed', …)`                                       |
+| `store_schedule_exceptions_audit` | after insert, update or delete on `store_schedule_exceptions`, each row                                                                                                   | `audit_row_change('schedule_exception.changed', …)`                                |
+| `stores_audit`                    | after update of `name`, `slug`, `status`, `is_open`, `area`, `address_line`, `contact_phone`, `timezone` on `stores`, each row (its audit row has `store_id = stores.id`) | `audit_row_change('store.changed', …)`                                             |
+| `store_invites_audit`             | after insert or update or delete on `store_invites`, each row (`invite.changed`: `role`, `email`, `accepted_at`, `revoked_at`; never `token_hash`)                        | `audit_row_change('invite.changed', 'role', 'email', 'accepted_at', 'revoked_at')` |
+| `store_memberships_audit`         | after insert or update or delete on `store_memberships`, each row (`membership.changed`: `user_id`, `store_id`, `role`)                                                   | `audit_row_change('membership.changed', 'user_id', 'store_id', 'role')`            |
+| `feature_flags_audit`             | after update on `feature_flags`, each row                                                                                                                                 | `audit_row_change('feature_flag.changed', '*')`                                    |
+| `audit_log_no_change`             | before update or delete on `audit_log`, each row                                                                                                                          | `audit_log_append_only()`                                                          |
+| `audit_log_no_truncate`           | before truncate on `audit_log`, each statement                                                                                                                            | `audit_log_append_only()`                                                          |
 
 ## Functions
 

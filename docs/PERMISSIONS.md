@@ -27,7 +27,7 @@ work exactly like a customer's. Its only privilege is the admin dashboard (`/adm
   their next request without signing in again.
 - Making someone staff: `update public.profiles set role = 'STAFF' where email = '…';` in the SQL editor, and, since
   P2 PR 04, a membership of the store they work at, without which the board is empty and every order 404:
-  `insert into public.store_memberships (user_id, store_id, role) select id, '<store id>', 'STAFF' from public.profiles where email = '…';` (`'MANAGER'` for a manager; see
+  `insert into public.store_memberships (user_id, store_id, role) select id, '<store id>', 'STAFF' from public.profiles where email = '…';` (`'MANAGER'` for a manager). Since P2 PR 09 a manager or the owner can invite people through the API instead ([Team invites and removals](#team-invites-and-removals)); the SQL stays as the fallback, for example for the first manager of a store. See
   [DEPLOYMENT.md](DEPLOYMENT.md#production-first-time-setup) and [Store roles](#store-roles)). `pnpm run seed` sets
   the demo staff accounts up the same way.
 - Making someone an admin (production or otherwise): `update public.profiles set role = 'ADMIN' where email = '…';`
@@ -77,6 +77,26 @@ it has (so a visible store answers 403), else none. An ADMIN who is also a STAFF
 `req.user.ownedBrandIds`), so a change applies on the next request. `GET /api/auth/me` returns them
 ([API.md](API.md#get-authme)).
 
+## Team invites and removals
+
+Code: `server/src/controllers/team.controller.ts`, `server/src/services/team.service.ts`. Every team route is behind
+`requireStore('team.manageStaff')` (MANAGER, OWNER, ADMIN; STAFF get 403). The routes are in
+[API.md](API.md#get-storesstoreidmembers).
+
+- **Inviting or revoking an invite for a `STAFF`** needs only `team.manageStaff`. For a **`MANAGER`** it also needs
+  `team.manageManagers` (OWNER, ADMIN), else 403.
+- **Removing a `STAFF` member** needs `team.manageStaff`. Removing a **`MANAGER`** needs `team.manageManagers`, except
+  that a manager may remove themselves (leave the team).
+- `team.controller.managesManagers` re-checks `accessFor(user, store, 'team.manageManagers')` instead of reusing
+  `req.storeAccess`, so an ADMIN who is also a MANAGER member is judged by the standing that holds the capability.
+- The brand's owner has no membership, so no route can remove them. Removal takes effect on the person's next request.
+- The invite table is reachable only through the API ([SCHEMA.md](SCHEMA.md#store_invites)).
+
+Known limitation: an invite is bound to an email, but sign-up does not verify email ownership yet. Whoever holds the
+token **and** registers with that email can accept it, so the token is the real secret: the inviter shares it out of
+band, and it is shown once, stored only as a hash and never logged. Follow-up: verify the email at sign-up
+([ROADMAP](../plans/ROADMAP.md)).
+
 ## Route matrix
 
 | Route                                               | anonymous  | CUSTOMER                                             | STAFF                                                | ADMIN                                                | Enforced by                                                                             |
@@ -98,6 +118,10 @@ it has (so a visible store answers 403), else none. An ADMIN who is also a STAFF
 | `GET /api/admin/settings`                           | 401        | 403                                                  | 403                                                  | yes                                                  | `requireAuth` + `requireAdmin`                                                          |
 | `PATCH /api/admin/settings`                         | 401        | 403                                                  | 403                                                  | yes                                                  | `requireAuth` + `requireAdmin`                                                          |
 | `GET /api/stores/:storeId/audit`                    | 401        | 403                                                  | `audit.store` there (MANAGER, OWNER), else 403       | 403 unless a MANAGER/OWNER/ADMIN standing there      | `requireAuth` + `requireStore('audit.store')`                                           |
+| `GET /api/stores/:storeId/members`                  | 401        | 403                                                  | `team.manageStaff` there (MANAGER, OWNER), else 403  | `team.manageStaff` (ADMIN), else 403                 | `requireAuth` + `requireStore('team.manageStaff')`                                      |
+| `POST /api/stores/:storeId/invites`                 | 401        | 403                                                  | `team.manageStaff` there (MANAGER, OWNER), else 403  | `team.manageStaff` (ADMIN), else 403                 | same + `writeLimiter`; a `MANAGER` invite also needs `team.manageManagers`              |
+| `DELETE /api/stores/:storeId/invites/:inviteId`     | 401        | 403                                                  | `team.manageStaff` there (MANAGER, OWNER), else 403  | `team.manageStaff` (ADMIN), else 403                 | same; a `MANAGER` invite also needs `team.manageManagers`                               |
+| `DELETE /api/stores/:storeId/members/:membershipId` | 401        | 403                                                  | `team.manageStaff` there (MANAGER, OWNER), else 403  | `team.manageStaff` (ADMIN), else 403                 | same; a `MANAGER` member needs `team.manageManagers`, or is the caller                  |
 | `GET /api/admin/audit`                              | 401        | 403                                                  | 403                                                  | yes                                                  | `requireAuth` + `requireAdmin`                                                          |
 | `PATCH /api/admin/flags/:key`                       | 401        | 403                                                  | 403                                                  | yes (unknown key 404)                                | `requireAuth` + `requireAdmin`                                                          |
 | `/admin` (client route)                             | → `/login` | → `/`                                                | → `/`                                                | renders `AdminPage`                                  | `RequireRole role="ADMIN"` (client only)                                                |
@@ -216,7 +240,7 @@ flowchart LR
   end
 
   subgraph Postgres["Postgres, public schema"]
-    Tables["profiles, brands, stores, store_memberships, menu_items,<br/>orders, order_items, site_settings,<br/>domain_events, event_subscriptions, job_failures,<br/>feature_flags, session_activity, audit_log (service_role: select only)<br/>RLS ON, no policies,<br/>all privileges revoked from anon/authenticated"]
+    Tables["profiles, brands, stores, store_memberships, store_invites, menu_items,<br/>orders, order_items, site_settings,<br/>domain_events, event_subscriptions, job_failures,<br/>feature_flags, session_activity, audit_log (service_role: select only)<br/>RLS ON, no policies,<br/>all privileges revoked from anon/authenticated"]
     Fns["place_order, update_order_status,<br/>reset_demo_orders, emit_event,<br/>queue_*, purge_domain_events<br/>EXECUTE only for service_role"]
     Trg["handle_new_user, handle_user_email_change, audit_row_change,<br/>audit_log_append_only<br/>security definer, fired by their triggers only"]
   end
