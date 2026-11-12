@@ -24,7 +24,6 @@ const { ApiError } = await import('../services/api');
 
 const saved: SiteSettings = {
   customerOrderHistoryLimit: 20,
-  staffOrderListLimit: 100,
   maxLinesPerOrder: 30,
   orderPollMs: 4000,
   ordersPollMs: 8000,

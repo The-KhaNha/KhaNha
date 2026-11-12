@@ -408,7 +408,7 @@ The guards only improve the UX. The API enforces the same rules with `requireAut
 
 ## 4. Browsing the store and menu
 
-Code: [client/src/features/menu/useStore.ts](../client/src/features/menu/useStore.ts), [client/src/features/menu/useMenu.ts](../client/src/features/menu/useMenu.ts), [server/src/services/store.service.ts](../server/src/services/store.service.ts), [server/src/services/menu.service.ts](../server/src/services/menu.service.ts).
+Code: [client/src/features/stores/useStores.ts](../client/src/features/stores/useStores.ts), [client/src/features/menu/useMenu.ts](../client/src/features/menu/useMenu.ts), [server/src/services/store.service.ts](../server/src/services/store.service.ts), [server/src/services/menu.service.ts](../server/src/services/menu.service.ts).
 
 ```mermaid
 sequenceDiagram
@@ -421,17 +421,13 @@ sequenceDiagram
   participant DB as Postgres
 
   U->>Home: open /
-  Home->>API: GET /api/store (no token)
-  API->>DB: select * from stores limit 1
-  alt no store row
-    API-->>Home: 404 "The store has not been set up yet. Run pnpm run seed"
-  else
-    API-->>Home: { store } open state, prep time 10-15 min
-  end
+  Home->>API: GET /api/stores (no token)
+  API->>DB: ACTIVE stores with their brand (listStores)
+  API-->>Home: { stores } each with its open state (none yet: an empty list)
 
-  U->>Menu: View Menu
-  Menu->>API: GET /api/menu (no token), loaded once per visit
-  API->>DB: stores limit 1
+  U->>Menu: View Menu of one store
+  Menu->>API: GET /api/stores/:storeRef/menu (no token), loaded once per visit
+  API->>DB: resolve :storeRef (slug or id; unknown: 404)
   API->>DB: menu_items where store_id order by sort_order
   API->>API: toMenuItemDto: isAvailable = is_available AND (stock null OR stock > 0)<br/>popular = is_popular items<br/>categories grouped by first appearance
   API-->>Menu: { store, popular, categories }
@@ -533,7 +529,7 @@ sequenceDiagram
   participant DB as Postgres
 
   U->>CO: Proceed to Checkout (RequireAuth: signed in)
-  CO->>API: GET /api/menu (refresh stock limits)
+  CO->>API: GET /api/stores/:storeRef/menu (refresh stock limits)
   API-->>CO: menu
   CO->>Cart: syncAvailability
   alt some line is flagged
@@ -723,12 +719,12 @@ flowchart TD
   Idle -.-> Vis
 ```
 
-| Hook                              | Endpoint                                      | Interval                         |
-| --------------------------------- | --------------------------------------------- | -------------------------------- |
-| `useOrder`                        | `GET /api/orders/:id`                         | 4 s until COLLECTED or CANCELLED |
-| `useOrders` (customer Orders tab) | `GET /api/orders`                             | 8 s                              |
-| `useOrders` (staff board)         | `GET /api/orders`                             | 4 s                              |
-| `useStoreMenu`, `useStore`        | `GET /api/stores/:ref/menu`, `GET /api/store` | once per mount                   |
+| Hook                              | Endpoint                                       | Interval                         |
+| --------------------------------- | ---------------------------------------------- | -------------------------------- |
+| `useOrder`                        | `GET /api/orders/:id`                          | 4 s until COLLECTED or CANCELLED |
+| `useOrders` (customer Orders tab) | `GET /api/orders`                              | 8 s                              |
+| `useOrders` (staff board)         | `GET /api/orders`                              | 4 s                              |
+| `useStoreMenu`, `useStores`       | `GET /api/stores/:ref/menu`, `GET /api/stores` | once per mount                   |
 
 ### 7.3 Order history
 
@@ -752,7 +748,7 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-  Tap["Order Again on an order"] --> Fetch["GET /api/menu (current prices and stock)"]
+  Tap["Order Again on an order"] --> Fetch["GET /api/stores/:storeRef/menu (current prices and stock)"]
   Fetch -->|"fails"| FailNote["Notice: couldn't load the menu, nothing added"]
   Fetch -->|"ok"| Sync["cartStore.syncAvailability(menu items)"]
   Sync --> Each["For each line of the old order"]
@@ -791,11 +787,11 @@ sequenceDiagram
   participant API as Express API
   participant DB as Postgres
 
-  S->>B: /staff (RequireRole role="STAFF")
-  B->>API: GET /api/store (name for the header)
-  loop every 4 s (paused while hidden)
-    B->>API: GET /api/orders (requireAuth, role STAFF)
-    API->>DB: newest staffOrderListLimit orders across all customers (site setting, default 100), created_at desc
+  S->>B: /staff/:storeSlug (RequireMembership; /staff alone is the store switcher)
+  loop every polling.staffBoardMs, 4 s (paused while hidden)
+    B->>API: GET /api/stores/:storeRef (name, open state, pause for the header)
+    B->>API: GET /api/stores/:storeId/orders (requireAuth → requireStore('orders.view'))
+    API->>DB: that store's active orders (all, oldest first) + its newest staff_order_list_limit finished ones (store setting)
     API-->>B: { orders }
     B->>B: counts per filter: All, New (PLACED), Preparing, Ready, Done (COLLECTED + CANCELLED)
     B->>B: sort: active oldest-first (fair queue), finished newest-first
@@ -817,11 +813,11 @@ sequenceDiagram
 
   S->>B: Start Preparing / Mark Ready / Mark Collected / Cancel order
   B->>B: mark card pending, clear its old error
-  B->>API: PATCH /api/orders/:id/status { status }
-  API->>API: requireAuth → requireStaff (else 403 FORBIDDEN)
+  B->>API: PATCH /api/stores/:storeId/orders/:orderId/status { status }
+  API->>API: requireAuth → requireStore('orders.transition') (not a member: 404)
   API->>API: validate: status is one of the 5 enum values (else 400)
-  API->>Svc: updateOrderStatus(id, next)
-  Svc->>Svc: id must be a UUID (else 404)
+  API->>Svc: updateOrderStatus(id, next, storeId)
+  Svc->>Svc: id must be a UUID and the order of :storeId (else 404)
   Svc->>Svc: from = every status whose ALLOWED_TRANSITIONS include next
   Svc->>DB: rpc update_order_status(id, next, from, actor, request id), one transaction (8.3)
   alt order does not exist
@@ -944,7 +940,7 @@ flowchart TD
   Json --> Router{"/api router"}
   Router -->|"GET /health"| Health["{ ok: true }"]
   Router -->|"POST /client-errors"| ValCE["clientErrorLimiter → validate(clientErrorsSchema)"] --> CECtl["clientErrors.controller: one warn per report, 204"]
-  Router -->|"GET /store, GET /menu"| Public["controller → service"]
+  Router -->|"GET /stores, /stores/:storeRef, /stores/:storeRef/menu"| Public["controller → service"]
   Router -->|"POST /auth/register"| ValReg["validate(registerSchema)"] --> RegCtl["auth.controller.register"]
   Router -->|"GET /auth/me"| AuthMe["requireAuth"] --> MeCtl["auth.controller.me"]
   Router -->|"/orders/*"| AuthO["requireAuth (all order routes)"]

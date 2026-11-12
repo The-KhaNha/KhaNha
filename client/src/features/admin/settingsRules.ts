@@ -2,10 +2,8 @@ import type { SiteSettings } from '../../types/api';
 import { VALIDATION } from '../config/fallbacks';
 
 /**
- * Every setting the form edits: the keys of SiteSettings except the timestamp and `staffOrderListLimit`, which is a
- * per-store setting now (the API still accepts it here for older clients, so the type keeps it).
- */
-export type SettingKey = Exclude<keyof SiteSettings, 'updatedAt' | 'staffOrderListLimit'>;
+/** Every setting the form edits: the keys of SiteSettings except the timestamp. */
+export type SettingKey = Exclude<keyof SiteSettings, 'updatedAt'>;
 
 interface IntegerSetting {
   kind: 'integer';
