@@ -83,6 +83,7 @@ export type Database = {
           owner_id: string | null;
           slug: string;
           status: Database['public']['Enums']['store_status'];
+          template_store_id: string | null;
           updated_at: string;
         };
         Insert: {
@@ -94,6 +95,7 @@ export type Database = {
           owner_id?: string | null;
           slug: string;
           status?: Database['public']['Enums']['store_status'];
+          template_store_id?: string | null;
           updated_at?: string;
         };
         Update: {
@@ -105,6 +107,7 @@ export type Database = {
           owner_id?: string | null;
           slug?: string;
           status?: Database['public']['Enums']['store_status'];
+          template_store_id?: string | null;
           updated_at?: string;
         };
         Relationships: [
@@ -113,6 +116,13 @@ export type Database = {
             columns: ['owner_id'];
             isOneToOne: false;
             referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'brands_template_store_id_fkey';
+            columns: ['template_store_id'];
+            isOneToOne: true;
+            referencedRelation: 'stores';
             referencedColumns: ['id'];
           },
         ];
@@ -257,6 +267,7 @@ export type Database = {
       };
       menu_items: {
         Row: {
+          archived_at: string | null;
           category: string;
           description: string;
           id: string;
@@ -268,8 +279,10 @@ export type Database = {
           sort_order: number;
           stock_quantity: number | null;
           store_id: string;
+          template_item_id: string | null;
         };
         Insert: {
+          archived_at?: string | null;
           category: string;
           description: string;
           id?: string;
@@ -281,8 +294,10 @@ export type Database = {
           sort_order?: number;
           stock_quantity?: number | null;
           store_id: string;
+          template_item_id?: string | null;
         };
         Update: {
+          archived_at?: string | null;
           category?: string;
           description?: string;
           id?: string;
@@ -294,6 +309,7 @@ export type Database = {
           sort_order?: number;
           stock_quantity?: number | null;
           store_id?: string;
+          template_item_id?: string | null;
         };
         Relationships: [
           {
@@ -301,6 +317,13 @@ export type Database = {
             columns: ['store_id'];
             isOneToOne: false;
             referencedRelation: 'stores';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'menu_items_template_item_id_fkey';
+            columns: ['template_item_id'];
+            isOneToOne: false;
+            referencedRelation: 'menu_items';
             referencedColumns: ['id'];
           },
         ];
@@ -735,6 +758,7 @@ export type Database = {
           id: string;
           image_url: string | null;
           is_open: boolean;
+          is_template: boolean;
           last_order_minutes_before_close: number;
           low_stock_threshold: number;
           max_quantity_per_item: number;
@@ -762,6 +786,7 @@ export type Database = {
           id?: string;
           image_url?: string | null;
           is_open?: boolean;
+          is_template?: boolean;
           last_order_minutes_before_close?: number;
           low_stock_threshold?: number;
           max_quantity_per_item?: number;
@@ -789,6 +814,7 @@ export type Database = {
           id?: string;
           image_url?: string | null;
           is_open?: boolean;
+          is_template?: boolean;
           last_order_minutes_before_close?: number;
           low_stock_threshold?: number;
           max_quantity_per_item?: number;
@@ -851,6 +877,18 @@ export type Database = {
           isSetofReturn: false;
         };
       };
+      create_store_from_template: {
+        Args: {
+          p_actor?: Json;
+          p_address_line?: string;
+          p_area?: string;
+          p_brand_id: string;
+          p_name: string;
+          p_request_id?: string;
+          p_slug: string;
+        };
+        Returns: string;
+      };
       emit_event: {
         Args: {
           p_actor: Json;
@@ -861,6 +899,10 @@ export type Database = {
           p_store_id: string;
           p_type: string;
         };
+        Returns: string;
+      };
+      ensure_brand_template: {
+        Args: { p_actor?: Json; p_brand_id: string; p_request_id?: string };
         Returns: string;
       };
       pause_store: {

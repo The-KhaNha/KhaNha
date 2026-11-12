@@ -113,6 +113,8 @@ export async function oldestStoreId(): Promise<string> {
   const { data } = await supabaseAdmin
     .from('stores')
     .select('id')
+    // A brand template (P3.1) is never orderable, so it is never "the" store.
+    .eq('is_template', false)
     .order('created_at')
     .order('id')
     .limit(1)

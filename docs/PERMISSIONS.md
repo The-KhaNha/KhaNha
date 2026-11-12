@@ -71,6 +71,10 @@ it has (so a visible store answers 403), else none. An ADMIN who is also a STAFF
 - A malformed or unknown store id is 404 `NOT_FOUND`, and so is a store that is not `ACTIVE` when the caller has no
   access to it (a draft store does not exist to outsiders).
 - A store the caller can see but lacks the capability for is 403 `FORBIDDEN`.
+- A brand template (`stores.is_template`, [SCHEMA.md](SCHEMA.md#stores)) is 404 to everyone but the brand's owner,
+  and to the owner too for any capability a copy does not inherit: only `settings.edit` and `audit.store` reach it
+  (`canAtTemplate` in `domain/permissions.ts`). A template has no kitchen and no team, so its orders, pause and team
+  routes are 404, and no invite to it can be made.
 - It sets `req.store` and `req.storeAccess`; `requestContext` then records `storeRole` in the actor, which the audit row
   stores as `actor_role` ([SCHEMA.md](SCHEMA.md#audit_row_change)).
 

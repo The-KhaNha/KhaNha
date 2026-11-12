@@ -30,6 +30,7 @@ it('an order reads the same after its item and store are edited (P1.5 snapshots)
   const { data: item } = await supabaseAdmin
     .from('menu_items')
     .select('id, store_id, category')
+    .eq('store_id', await oldestStoreId())
     .eq('name', 'Cold Coffee')
     .single()
     .throwOnError();
@@ -136,6 +137,8 @@ it("stores the menu item's own name, never the name a caller sends in p_lines", 
   const { data: item } = await supabaseAdmin
     .from('menu_items')
     .select('id, store_id, name, price_paise')
+    // A template's items (P3.1) cannot be ordered: pick from a real store.
+    .eq('store_id', await oldestStoreId())
     .is('stock_quantity', null)
     .eq('is_available', true)
     .order('id')

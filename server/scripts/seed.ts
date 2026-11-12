@@ -15,11 +15,8 @@ const ACCOUNTS = DEMO_ACCOUNTS.map(({ localPassword, stagingPassword, ...account
   password: env.APP_ENV === 'staging' ? (env[stagingPassword] ?? '') : localPassword,
 }));
 
-/** A brand and its stores, found by slug so a re-seed keeps their ids. Returns each store with its menu. */
-async function seedBrand(
-  brand: SeedBrand,
-  ownerIds: Map<string, string>,
-): Promise<{ store: Tables<'stores'>; menu: SeedMenuItem[] }[]> {
+/** A brand, found by slug so a re-seed keeps its id. */
+async function upsertBrand(brand: SeedBrand, ownerIds: Map<string, string>): Promise<string> {
   const row = {
     name: brand.name,
     slug: brand.slug,
@@ -33,18 +30,21 @@ async function seedBrand(
     .select('id')
     .single()
     .throwOnError();
+  return saved.id;
+}
 
-  const stores: { store: Tables<'stores'>; menu: SeedMenuItem[] }[] = [];
-  for (const { menu, ...fields } of brand.stores) {
-    const { data: store } = await db
-      .from('stores')
-      .upsert({ ...fields, brand_id: saved.id, status: 'ACTIVE' }, { onConflict: 'slug' })
-      .select()
-      .single()
-      .throwOnError();
-    stores.push({ store, menu });
-  }
-  return stores;
+/** A later branch opens as a copy of the brand template, the way an owner opens one (P3.1); a re-seed keeps it. */
+async function openBranchIfMissing(brandId: string, name: string, slug: string): Promise<void> {
+  const { data: existing } = await db
+    .from('stores')
+    .select('id')
+    .eq('slug', slug)
+    .maybeSingle()
+    .throwOnError();
+  if (existing) return;
+  await db
+    .rpc('create_store_from_template', { p_brand_id: brandId, p_name: name, p_slug: slug })
+    .throwOnError();
 }
 
 async function seedMenu(storeId: string, menu: SeedMenuItem[]): Promise<Tables<'menu_items'>[]> {
@@ -174,12 +174,25 @@ function describeMenu(store: Tables<'stores'>, menuItems: Tables<'menu_items'>[]
   return `  Store     ${store.name} (${store.area}) — ${menuItems.length} menu items (${popular} popular, ${unavailable} unavailable)${stock ? `\n  Stock     ${stock}` : ''}`;
 }
 
-/** Seeds brands with their stores and menus; `ownerIds` is empty in production, which has no demo accounts. */
+/**
+ * Seeds brands with their stores and menus; `ownerIds` is empty in production, which has no demo accounts. A brand's
+ * first store is its template's source; the template is made once, from that store's menu.
+ */
 async function seedBrands(brands: SeedBrand[], ownerIds: Map<string, string>): Promise<string[]> {
   const lines: string[] = [];
   for (const brand of brands) {
-    for (const { store, menu } of await seedBrand(brand, ownerIds)) {
+    const brandId = await upsertBrand(brand, ownerIds);
+    for (const [index, { menu, ...fields }] of brand.stores.entries()) {
+      if (index > 0) await openBranchIfMissing(brandId, fields.name, fields.slug);
+      const { data: store } = await db
+        .from('stores')
+        .upsert({ ...fields, brand_id: brandId, status: 'ACTIVE' }, { onConflict: 'slug' })
+        .select()
+        .single()
+        .throwOnError();
       lines.push(describeMenu(store, await seedMenu(store.id, menu)));
+      if (index === 0)
+        await db.rpc('ensure_brand_template', { p_brand_id: brandId }).throwOnError();
     }
   }
   return lines;

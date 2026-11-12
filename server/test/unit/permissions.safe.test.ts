@@ -1,5 +1,11 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
-import { accessFor, can, type Capability, type StoreAccess } from '../../src/domain/permissions';
+import {
+  accessFor,
+  can,
+  canAtTemplate,
+  type Capability,
+  type StoreAccess,
+} from '../../src/domain/permissions';
 
 // The P2 matrix (plans/P2_MULTI_STORE.md "Capabilities in P2"), written out cell by cell so a changed map fails here.
 const EXPECTED: Record<Capability, Record<StoreAccess, boolean>> = {
@@ -73,4 +79,21 @@ describe('accessFor', () => {
   it('a STAFF profile with no membership has no access: the profile role grants nothing at a store', () => {
     expect(accessFor(user({ role: 'STAFF' }), store, 'orders.view')).toBeNull();
   });
+});
+
+// A brand template (P3 PR 01): the owner only, and only what a copy inherits. Written out so a widened list fails here.
+const AT_TEMPLATE: Capability[] = ['settings.edit', 'audit.store'];
+
+describe('canAtTemplate', () => {
+  for (const capability of Object.keys(EXPECTED) as Capability[]) {
+    const ownerMay = AT_TEMPLATE.includes(capability);
+    it(`the owner ${ownerMay ? 'may' : 'may not'} ${capability} at a template`, () => {
+      expect(canAtTemplate('OWNER', capability)).toBe(ownerMay);
+    });
+    for (const access of ['STAFF', 'MANAGER', 'ADMIN', null] as const) {
+      it(`${access ?? 'no access'} may not ${capability} at a template`, () => {
+        expect(canAtTemplate(access, capability)).toBe(false);
+      });
+    }
+  }
 });

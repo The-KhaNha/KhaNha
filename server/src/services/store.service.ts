@@ -9,7 +9,8 @@ import { computeOpenState, getSchedules, toOpenFields } from './schedule.service
 import { toStoreSummaryDto, type StoreWithBrand } from '../utils/serializers';
 import { supabaseAdmin } from '../utils/supabase';
 
-const STORE_SELECT = '*, brand:brands!inner(id, name, slug)';
+// Named: brands.template_store_id is a second foreign key between the two tables (P3 PR 01).
+const STORE_SELECT = '*, brand:brands!stores_brand_id_fkey!inner(id, name, slug)';
 
 /** The store `id` names, uncached, whatever its status (an unknown id is 404). */
 export async function getStore(id: string): Promise<StoreWithBrand> {
