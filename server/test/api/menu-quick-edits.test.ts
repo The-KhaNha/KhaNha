@@ -286,6 +286,18 @@ describe('switching many items at once', () => {
 });
 
 describe('reordering the menu', () => {
+  it("the editor's list puts live items first, so archived rows never push one past the cap", async () => {
+    await supabaseAdmin
+      .from('menu_items')
+      .update({ sort_order: -1 })
+      .eq('id', archived)
+      .throwOnError();
+    const res = await api().get(base()).set(auth(manager));
+    const ids = res.body.items.map((row: { id: string }) => row.id);
+    expect(ids.at(-1)).toBe(archived);
+    expect(ids.slice(0, -1).sort()).toEqual((await liveOrder()).sort());
+  });
+
   it('puts the menu in the new order, on the public menu at once, with one event', async () => {
     const order = [item.Mango, item.Orange, item.Lassi, item.Tea, item.Coffee] as string[];
     await publicItems();

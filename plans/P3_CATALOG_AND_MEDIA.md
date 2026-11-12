@@ -309,7 +309,8 @@ concurrent reorders leave one complete order, never a mix; bulk by category touc
 Docs: `docs/API.md`, `docs/SCHEMA.md`. Intent: `--server minor`.
 
 As built: both quick edits are SQL functions (`reorder_menu`, `set_menu_availability`) that take the store's menu
-lock (`lock_store_menu`, a transaction advisory lock: they queue, never deadlock, and never hold up `place_order`) and
+lock (`lock_store_menu`, a transaction advisory lock: they queue and never deadlock; `place_order` takes no such lock,
+but its stock update waits on an item row a quick edit holds until it commits) and
 leave the event to the PR 02 statement trigger (none when nothing changed). An id that is not the store's item is
 `NOT_FOUND` (404, as for any other store's resource); a stale reorder list is `VALIDATION_ERROR`. Bulk answers
 `{ updated }`; a list with another store's or an archived item, or a category with no live item, is 404 and changes

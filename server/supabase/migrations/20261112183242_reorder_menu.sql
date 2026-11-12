@@ -1,7 +1,8 @@
 -- P3.4 (PR 03): the menu editor's quick edits. Each is one statement, so menu_items_changed emits one menu.changed
 -- (none when nothing changed). Both take the store's menu lock, a transaction advisory lock, so two of them on one
 -- store run one after the other: a reorder is never mixed with another, and a reorder and a bulk switch never lock
--- the same items in opposite orders (a deadlock). Orders are not held up: place_order takes no such lock.
+-- the same items in opposite orders (a deadlock). place_order takes no such lock; its stock update only waits for an
+-- item row a quick edit is changing, until that edit commits.
 
 -- The store's menu lock; NOT_FOUND for a missing store.
 create function public.lock_store_menu(p_store_id uuid)

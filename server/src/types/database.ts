@@ -10,7 +10,12 @@ export type Database = {
     };
     Functions: {
       graphql: {
-        Args: { extensions?: Json; operationName?: string; query?: string; variables?: Json };
+        Args: {
+          extensions?: Json;
+          operationName?: string;
+          query?: string;
+          variables?: Json;
+        };
         Returns: Json;
       };
     };
@@ -38,7 +43,6 @@ export type Database = {
           request_id: string | null;
           store_id: string | null;
         };
-        ComputedFields: never;
         Insert: {
           action: string;
           actor_id?: string | null;
@@ -82,7 +86,6 @@ export type Database = {
           template_store_id: string | null;
           updated_at: string;
         };
-        ComputedFields: never;
         Insert: {
           created_at?: string;
           description?: string;
@@ -131,19 +134,18 @@ export type Database = {
           aggregate_type: string;
           id: string;
           occurred_at: string;
-          payload: NonNullable<Json>;
+          payload: Json;
           request_id: string | null;
           store_id: string | null;
           type: string;
         };
-        ComputedFields: never;
         Insert: {
           actor?: Json | null;
           aggregate_id: string;
           aggregate_type: string;
           id?: string;
           occurred_at?: string;
-          payload: NonNullable<Json>;
+          payload: Json;
           request_id?: string | null;
           store_id?: string | null;
           type: string;
@@ -154,7 +156,7 @@ export type Database = {
           aggregate_type?: string;
           id?: string;
           occurred_at?: string;
-          payload?: NonNullable<Json>;
+          payload?: Json;
           request_id?: string | null;
           store_id?: string | null;
           type?: string;
@@ -174,7 +176,6 @@ export type Database = {
           event_type: string;
           queue_name: string;
         };
-        ComputedFields: never;
         Insert: {
           event_type: string;
           queue_name: string;
@@ -191,17 +192,16 @@ export type Database = {
           description: string;
           enabled: boolean;
           key: string;
-          rules: NonNullable<Json>;
+          rules: Json;
           updated_at: string;
           updated_by: string | null;
         };
-        ComputedFields: never;
         Insert: {
           client_visible?: boolean;
           description: string;
           enabled?: boolean;
           key: string;
-          rules?: NonNullable<Json>;
+          rules?: Json;
           updated_at?: string;
           updated_by?: string | null;
         };
@@ -210,7 +210,7 @@ export type Database = {
           description?: string;
           enabled?: boolean;
           key?: string;
-          rules?: NonNullable<Json>;
+          rules?: Json;
           updated_at?: string;
           updated_by?: string | null;
         };
@@ -230,18 +230,17 @@ export type Database = {
           failed_at: string;
           id: number;
           last_error: string;
-          message: NonNullable<Json>;
+          message: Json;
           queue_name: string;
           resolved_at: string | null;
           resolved_by: string | null;
         };
-        ComputedFields: never;
         Insert: {
           attempts: number;
           failed_at?: string;
           id?: never;
           last_error: string;
-          message: NonNullable<Json>;
+          message: Json;
           queue_name: string;
           resolved_at?: string | null;
           resolved_by?: string | null;
@@ -251,7 +250,7 @@ export type Database = {
           failed_at?: string;
           id?: never;
           last_error?: string;
-          message?: NonNullable<Json>;
+          message?: Json;
           queue_name?: string;
           resolved_at?: string | null;
           resolved_by?: string | null;
@@ -284,7 +283,6 @@ export type Database = {
           store_id: string;
           template_item_id: string | null;
         };
-        ComputedFields: never;
         Insert: {
           archived_at?: string | null;
           category: string;
@@ -350,7 +348,6 @@ export type Database = {
           reserved_quantity: number;
           unit_price_paise: number;
         };
-        ComputedFields: never;
         Insert: {
           category: string;
           id?: string;
@@ -412,7 +409,6 @@ export type Database = {
           updated_at: string;
           user_id: string;
         };
-        ComputedFields: never;
         Insert: {
           created_at?: string;
           customer_name: string;
@@ -473,7 +469,6 @@ export type Database = {
           phone: string | null;
           role: Database['public']['Enums']['user_role'];
         };
-        ComputedFields: never;
         Insert: {
           created_at?: string;
           email: string;
@@ -498,7 +493,6 @@ export type Database = {
           session_id: string;
           user_id: string;
         };
-        ComputedFields: never;
         Insert: {
           last_seen_at: string;
           session_id: string;
@@ -532,7 +526,6 @@ export type Database = {
           updated_at: string;
           updated_by: string | null;
         };
-        ComputedFields: never;
         Insert: {
           client_error_sample_percent?: number;
           customer_order_history_limit?: number;
@@ -576,7 +569,6 @@ export type Database = {
           opens_at: string;
           store_id: string;
         };
-        ComputedFields: never;
         Insert: {
           closes_at: string;
           created_at?: string;
@@ -617,7 +609,6 @@ export type Database = {
           store_id: string;
           token_hash: string;
         };
-        ComputedFields: never;
         Insert: {
           accepted_at?: string | null;
           accepted_by?: string | null;
@@ -677,7 +668,6 @@ export type Database = {
           store_id: string;
           user_id: string;
         };
-        ComputedFields: never;
         Insert: {
           created_at?: string;
           created_by?: string | null;
@@ -730,7 +720,6 @@ export type Database = {
           starts_on: string;
           store_id: string;
         };
-        ComputedFields: never;
         Insert: {
           closes_at?: string | null;
           created_at?: string;
@@ -792,7 +781,6 @@ export type Database = {
           timezone: string;
           updated_at: string;
         };
-        ComputedFields: never;
         Insert: {
           accepting_orders?: boolean;
           address_line?: string | null;
@@ -950,10 +938,16 @@ export type Database = {
         };
         Returns: string;
       };
-      profile_name: { Args: { p_email: string; p_name: string }; Returns: string };
+      profile_name: {
+        Args: { p_email: string; p_name: string };
+        Returns: string;
+      };
       profile_phone: { Args: { p_phone: string }; Returns: string };
-      purge_domain_events: { Args: { p_keep?: string; p_now?: string }; Returns: number };
-      purge_session_activity: { Args: Record<PropertyKey, never>; Returns: number };
+      purge_domain_events: {
+        Args: { p_keep?: string; p_now?: string };
+        Returns: number;
+      };
+      purge_session_activity: { Args: never; Returns: number };
       queue_dead_letter: {
         Args: {
           p_attempts: number;
@@ -964,7 +958,10 @@ export type Database = {
         };
         Returns: boolean;
       };
-      queue_delete: { Args: { p_msg_id: number; p_queue: string }; Returns: boolean };
+      queue_delete: {
+        Args: { p_msg_id: number; p_queue: string };
+        Returns: boolean;
+      };
       queue_metrics: {
         Args: { p_queue: string };
         Returns: {
@@ -973,7 +970,12 @@ export type Database = {
         }[];
       };
       queue_read: {
-        Args: { p_poll_seconds: number; p_qty: number; p_queue: string; p_vt_seconds: number };
+        Args: {
+          p_poll_seconds: number;
+          p_qty: number;
+          p_queue: string;
+          p_vt_seconds: number;
+        };
         Returns: {
           enqueued_at: string;
           message: Json;
@@ -986,12 +988,22 @@ export type Database = {
         Returns: undefined;
       };
       reorder_menu: {
-        Args: { p_actor?: Json; p_item_ids: string[]; p_request_id?: string; p_store_id: string };
+        Args: {
+          p_actor?: Json;
+          p_item_ids: string[];
+          p_request_id?: string;
+          p_store_id: string;
+        };
         Returns: undefined;
       };
-      reset_demo_orders: { Args: Record<PropertyKey, never>; Returns: undefined };
+      reset_demo_orders: { Args: never; Returns: undefined };
       resume_store: {
-        Args: { p_actor?: Json; p_now?: string; p_request_id?: string; p_store_id: string };
+        Args: {
+          p_actor?: Json;
+          p_now?: string;
+          p_request_id?: string;
+          p_store_id: string;
+        };
         Returns: boolean;
       };
       set_menu_availability: {
@@ -1006,7 +1018,12 @@ export type Database = {
         Returns: number;
       };
       set_store_hours: {
-        Args: { p_actor?: Json; p_hours: Json; p_request_id?: string; p_store_id: string };
+        Args: {
+          p_actor?: Json;
+          p_hours: Json;
+          p_request_id?: string;
+          p_store_id: string;
+        };
         Returns: boolean;
       };
       set_store_status: {
@@ -1019,7 +1036,12 @@ export type Database = {
         Returns: string[];
       };
       touch_session: {
-        Args: { p_idle: string; p_now?: string; p_session_id: string; p_user_id: string };
+        Args: {
+          p_idle: string;
+          p_now?: string;
+          p_session_id: string;
+          p_user_id: string;
+        };
         Returns: boolean;
       };
       update_order_status: {
@@ -1063,7 +1085,9 @@ export type Tables<
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Views'])
     : never) = never,
-> = DefaultSchemaTableNameOrOptions extends { schema: keyof DatabaseWithoutInternals }
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals;
+}
   ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'] &
       DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Views'])[TableName] extends {
       Row: infer R;
@@ -1086,7 +1110,9 @@ export type TablesInsert<
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables']
     : never) = never,
-> = DefaultSchemaTableNameOrOptions extends { schema: keyof DatabaseWithoutInternals }
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals;
+}
   ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'][TableName] extends {
       Insert: infer I;
     }
@@ -1108,7 +1134,9 @@ export type TablesUpdate<
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables']
     : never) = never,
-> = DefaultSchemaTableNameOrOptions extends { schema: keyof DatabaseWithoutInternals }
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals;
+}
   ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'][TableName] extends {
       Update: infer U;
     }
@@ -1130,7 +1158,9 @@ export type Enums<
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions['schema']]['Enums']
     : never) = never,
-> = DefaultSchemaEnumNameOrOptions extends { schema: keyof DatabaseWithoutInternals }
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals;
+}
   ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions['schema']]['Enums'][EnumName]
   : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema['Enums']
     ? DefaultSchema['Enums'][DefaultSchemaEnumNameOrOptions]
@@ -1144,7 +1174,9 @@ export type CompositeTypes<
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions['schema']]['CompositeTypes']
     : never) = never,
-> = PublicCompositeTypeNameOrOptions extends { schema: keyof DatabaseWithoutInternals }
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals;
+}
   ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions['schema']]['CompositeTypes'][CompositeTypeName]
   : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema['CompositeTypes']
     ? DefaultSchema['CompositeTypes'][PublicCompositeTypeNameOrOptions]

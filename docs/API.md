@@ -411,7 +411,8 @@ move is a 409, `PLACED` → `PLACED` included. The request's `x-request-id` is r
 
 The menu editor's list (P3.4). Code: `requireAuth` → `requireStore('menu.edit')` → `menu.controller.listMenuItems` →
 `menu.service.listManagedItems`. Returns `{ items: ManagedMenuItemDto[] }`: every item of the store, archived ones
-included, in menu order, at most 1000 (`MANAGED_ITEMS_MAX`). Never cached. `menu.edit` is held by MANAGER and OWNER
+included (unarchived first, each part in menu order), at most 1000 (`MANAGED_ITEMS_MAX`): archived rows never push a
+live item out of the list. Never cached. `menu.edit` is held by MANAGER and OWNER
 (staff: 403); the brand's owner also reaches the brand template's menu ([PERMISSIONS.md](PERMISSIONS.md#store-roles)).
 
 ### POST /stores/:storeId/menu-items
@@ -459,9 +460,11 @@ mismatch (an item left out, an archived one, a repeat: usually a list loaded bef
 nothing. Quick edits of one store run one after the other, so two reorders at once leave one of them whole. 204; the same order again
 is 204 with no event.
 
-Every write here goes through the Data API with the `x-actor` and `x-request-id` headers, leaves one `menu_item.changed`
-audit row and one `menu.changed` event ([JOBS.md](JOBS.md#menu-events)), and drops the store's cached menu, so the
-next `GET /stores/:storeRef/menu` shows it.
+Create, edit and archive go through the Data API with the `x-actor` and `x-request-id` headers; the two quick edits
+call their SQL function with `p_actor` and `p_request_id`. Every write leaves one `menu_item.changed` audit row per
+item it changed and one `menu.changed` event ([JOBS.md](JOBS.md#menu-events)), none when it changed nothing (a repeated
+bulk switch or the same order again), and drops the store's cached menu, so the next `GET /stores/:storeRef/menu`
+shows it.
 
 ### PUT /stores/:storeId/hours
 

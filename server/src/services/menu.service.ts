@@ -90,6 +90,9 @@ export async function listManagedItems(storeId: string): Promise<Tables<'menu_it
     .from('menu_items')
     .select('*', { count: 'exact' })
     .eq('store_id', storeId)
+    // Unarchived first: archived rows pile up forever, and must never push a live item past the cap (a reorder needs
+    // every live item).
+    .order('archived_at', { nullsFirst: true })
     .order('sort_order')
     .order('id')
     .limit(MANAGED_ITEMS_MAX)

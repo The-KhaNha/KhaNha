@@ -201,7 +201,8 @@ in `p_status` changes nothing and emits nothing.
 
 The menu editor's quick edits each take `lock_store_menu(p_store_id)` (`NOT_FOUND` for a missing store, then a
 transaction advisory lock on the store's menu), so two on one store run one after the other and never deadlock;
-`place_order` takes no such lock and is never held up. `reorder_menu(p_store_id, p_item_ids, p_actor, p_request_id)
+`place_order` takes no such lock, though its stock update waits for an item row a quick edit is changing until that
+edit commits. `reorder_menu(p_store_id, p_item_ids, p_actor, p_request_id)
 returns void` sets each item's `sort_order` to its position in `p_item_ids` in one statement. The list must be every
 unarchived item of the store, each once: an id that is not the store's item raises `NOT_FOUND`, any other mismatch
 `VALIDATION_ERROR`, and nothing changes. `set_menu_availability(p_store_id, p_is_available, p_item_ids, p_category,
