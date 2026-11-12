@@ -176,6 +176,7 @@ export async function signIn(
   page: Page,
   role: Role,
   status: OrderStatus = 'PLACED',
+  account: Partial<User> = {},
 ): Promise<void> {
   const now = new Date().toISOString();
   const user: User = {
@@ -191,6 +192,7 @@ export async function signIn(
         ? [{ storeId: store.id, storeSlug: store.slug, storeName: store.name, role: 'STAFF' }]
         : [],
     ownedBrands: [],
+    ...account,
   };
   const order: Order = {
     id: 'o1',

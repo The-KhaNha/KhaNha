@@ -86,6 +86,7 @@ From `client/src/App.tsx`. Guards are described in [PERMISSIONS.md](PERMISSIONS.
 | `/profile`             | `ProfilePage`          | none                                         | "Profile", back to `/`             | yes        | yes         | no       | column       | eager  |
 | `/login`               | `LoginPage`            | none                                         | none                               | no         | no          | no       | full         | lazy   |
 | `/register`            | `RegisterPage`         | none                                         | none                               | no         | no          | no       | full         | lazy   |
+| `/join`                | `JoinPage`             | none                                         | none                               | no         | no          | no       | full         | lazy   |
 | `/staff`               | `StaffStoresPage`      | `RequireMembership`                          | none                               | no         | no          | no       | full         | lazy   |
 | `/staff/:storeSlug`    | `StaffDashboardPage`   | `RequireMembership`                          | none                               | no         | no          | no       | full         | lazy   |
 | `/admin`               | `AdminPage`            | `RequireRole role="ADMIN"`                   | "Admin", back to `/profile`        | yes        | no          | no       | column       | lazy   |

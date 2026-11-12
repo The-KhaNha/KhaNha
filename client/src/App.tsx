@@ -38,6 +38,7 @@ const RegisterPage = lazy(() =>
 );
 const AdminPage = lazy(() => import('./pages/Admin').then((m) => ({ default: m.AdminPage })));
 const ManagePage = lazy(() => import('./pages/Manage').then((m) => ({ default: m.ManagePage })));
+const JoinPage = lazy(() => import('./pages/Join').then((m) => ({ default: m.JoinPage })));
 const ManageStorePage = lazy(() =>
   import('./pages/ManageStore').then((m) => ({ default: m.ManageStorePage })),
 );
@@ -123,6 +124,7 @@ function AppShell() {
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
+            <Route path="/join" element={<JoinPage />} />
             <Route
               path="/staff"
               element={
