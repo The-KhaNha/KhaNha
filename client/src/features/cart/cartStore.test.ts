@@ -264,6 +264,15 @@ describe('migration from version 1', () => {
     expect(selectLines(useCartStore.getState())).toHaveLength(1);
   });
 
+  it('looks past a damaged or odd-shaped saved menu to a good one', async () => {
+    saved([line]);
+    localStorage.setItem(`${CACHE_PREFIX}menu:a`, '{not json');
+    localStorage.setItem(`${CACHE_PREFIX}menu:b`, JSON.stringify({ store: { id: 'x' } }));
+    savedMenu('menu:north', 'item-1');
+    await useCartStore.persist.rehydrate();
+    expect(useCartStore.getState()).toMatchObject({ storeId: 's9' });
+  });
+
   it('empties a cart whose store cannot be found', async () => {
     saved([line]);
     savedMenu('menu', 'another-item');

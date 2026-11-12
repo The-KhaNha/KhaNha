@@ -71,17 +71,29 @@ interface PersistedCart {
 
 /** The store of the saved (persisted) menu that lists this item, if any menu on this device does. */
 function storeOfSavedMenuItem(menuItemId: string): CartStoreRef | null {
+  let count: number;
   try {
-    for (let i = 0; i < localStorage.length; i += 1) {
+    count = localStorage.length;
+  } catch {
+    return null; // storage blocked
+  }
+  for (let i = 0; i < count; i += 1) {
+    // Per entry: one damaged or odd-shaped copy must not hide a good one further on.
+    try {
       const key = localStorage.key(i);
       if (!key?.startsWith(`${CACHE_PREFIX}menu`)) continue;
-      const menu = JSON.parse(localStorage.getItem(key) ?? 'null') as MenuResponse | null;
-      const listed = menu?.categories.some((c) => c.items.some((item) => item.id === menuItemId));
-      if (menu && listed)
-        return { id: menu.store.id, slug: menu.store.slug, name: menu.store.name };
+      const menu = JSON.parse(localStorage.getItem(key) ?? 'null') as Partial<MenuResponse> | null;
+      const store = menu?.store;
+      const listed =
+        Array.isArray(menu?.categories) &&
+        menu.categories.some(
+          (c) => Array.isArray(c?.items) && c.items.some((item) => item?.id === menuItemId),
+        );
+      if (listed && store && typeof store.id === 'string' && typeof store.slug === 'string')
+        return { id: store.id, slug: store.slug, name: store.name };
+    } catch {
+      // A malformed copy: try the next.
     }
-  } catch {
-    // Storage blocked or a malformed copy: no store found.
   }
   return null;
 }

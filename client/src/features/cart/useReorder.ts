@@ -29,11 +29,13 @@ export function useReorder() {
 
   const [asking, setAsking] = useState<Order | null>(null);
 
-  async function run(order: Order) {
+  /** `replace`: the customer chose to replace the cart; it is emptied only once the new menu is in hand. */
+  async function run(order: Order, replace = false) {
     setReorderingId(order.id);
     let notice: string[];
     try {
       const menu = await fetchStoreMenu(order.store.slug);
+      if (replace) useCartStore.getState().clear();
       notice = addOrderToCart(
         order,
         menu.categories.flatMap((category) => category.items),
@@ -56,9 +58,8 @@ export function useReorder() {
     toName: asking.store.name,
     onKeep: () => setAsking(null),
     onReplace: () => {
-      useCartStore.getState().clear();
       setAsking(null);
-      void run(asking);
+      void run(asking, true);
     },
   };
 

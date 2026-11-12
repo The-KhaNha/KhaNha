@@ -65,4 +65,13 @@ describe('useReorder with another store in the cart', () => {
       ['b1', 2],
     ]);
   });
+
+  it('keeps the old cart when the new menu cannot be loaded', async () => {
+    fetchStoreMenu.mockRejectedValue(new Error('offline'));
+    const { result } = renderHook(() => useReorder(), { wrapper });
+    act(() => result.current.reorder(order));
+    await act(async () => result.current.replace?.onReplace());
+    expect(useCartStore.getState()).toMatchObject({ storeId: 's1' });
+    expect(useCartStore.getState().lines).toHaveLength(1);
+  });
 });
