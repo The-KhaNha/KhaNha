@@ -15,7 +15,6 @@ const pollMs = (name: string) => integer(name, LIMITS.pollMs.min, LIMITS.pollMs.
 export const updateSettingsSchema = z
   .object({
     customerOrderHistoryLimit: limit('Customer order history limit', 200).optional(),
-    staffOrderListLimit: limit('Staff order list limit', 500).optional(),
     maxLinesPerOrder: limit('Items per order', 100).optional(),
     orderPollMs: pollMs('Order page refresh').optional(),
     ordersPollMs: pollMs('Order list refresh').optional(),

@@ -732,6 +732,11 @@ Docs: `docs/API.md` (the routes leave; a "Removed in P2" note), `docs/PERMISSION
 memberships; the brand owner), the roadmap's P2.7 checklist ticked. Intent: `--server minor --client minor`, with
 the CHANGELOG note the roadmap asks for.
 
+As built: PR 16 ships in two parts. 16a is the server contract (the migration, the removed routes, `requireStaff`, the
+cache keys and the site-setting field, with the suites moved to the store routes; `createTestUser('STAFF')` stays as
+a CUSTOMER profile plus a STAFF membership at the oldest store). 16b is the client cleanup (`services/store.ts` and
+`services/menu.ts`, `useStore`, the `homeFor` `STAFF` branch and the admin page's field).
+
 ## CLAUDE.md edits, aggregated
 
 | Section | Change                                                                                                                                                  | PR         |

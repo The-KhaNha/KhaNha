@@ -30,12 +30,11 @@ export async function createTestUser(role: Role = 'CUSTOMER'): Promise<TestUser>
   });
   if (error) throw error;
 
-  // The profile trigger always makes a CUSTOMER.
-  if (role !== 'CUSTOMER') {
+  // The profile trigger makes a CUSTOMER and STAFF is a membership role only, so 'STAFF' means: staff of the oldest
+  // store (the profile stays CUSTOMER).
+  if (role === 'ADMIN') {
     await supabaseAdmin.from('profiles').update({ role }).eq('id', data.user.id).throwOnError();
   }
-  // Like every STAFF profile the memberships migration backfilled: staff of the oldest store, so the old staff routes
-  // (scoped to the caller's stores since P2 PR 04) show them that store's board.
   if (role === 'STAFF') {
     await supabaseAdmin
       .from('store_memberships')
@@ -107,8 +106,8 @@ export function resetDemoData(): void {
 }
 
 /**
- * The store the single-store routes (`GET /api/menu`, `POST /api/orders` without a store) use until P2 PR 16: the
- * oldest. A test that orders "an item" must pick it from this store, or the API refuses it as another store's.
+ * The oldest store: where `createTestUser('STAFF')` works and what tests order from by default. A test that orders
+ * "an item" must pick it from this store, or the API refuses it as another store's.
  */
 export async function oldestStoreId(): Promise<string> {
   const { data } = await supabaseAdmin

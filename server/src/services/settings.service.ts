@@ -10,7 +10,6 @@ type SettingsUpdate = TablesUpdate<'site_settings'>;
 // API field → column. Only the fields the admin sent go into the update.
 const COLUMN: { [K in keyof UpdateSettingsInput]-?: keyof SettingsUpdate } = {
   customerOrderHistoryLimit: 'customer_order_history_limit',
-  staffOrderListLimit: 'staff_order_list_limit',
   maxLinesPerOrder: 'max_lines_per_order',
   orderPollMs: 'order_poll_ms',
   ordersPollMs: 'orders_poll_ms',

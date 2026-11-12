@@ -494,7 +494,6 @@ export type Database = {
           order_poll_ms: number;
           orders_poll_ms: number;
           staff_board_poll_ms: number;
-          staff_order_list_limit: number;
           updated_at: string;
           updated_by: string | null;
         };
@@ -507,7 +506,6 @@ export type Database = {
           order_poll_ms?: number;
           orders_poll_ms?: number;
           staff_board_poll_ms?: number;
-          staff_order_list_limit?: number;
           updated_at?: string;
           updated_by?: string | null;
         };
@@ -520,7 +518,6 @@ export type Database = {
           order_poll_ms?: number;
           orders_poll_ms?: number;
           staff_board_poll_ms?: number;
-          staff_order_list_limit?: number;
           updated_at?: string;
           updated_by?: string | null;
         };

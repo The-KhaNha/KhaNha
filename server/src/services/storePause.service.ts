@@ -11,7 +11,6 @@ const MINUTE_MS = 60 * 1000;
 /** The store row carries the pause: every cached read of it, and the menus that show its open state. */
 function invalidatePause(storeId: string): void {
   invalidate(`store:${storeId}`);
-  invalidate('store');
   invalidate('stores:list');
   invalidateMenus(storeId);
 }

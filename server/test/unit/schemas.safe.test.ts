@@ -8,6 +8,7 @@ import {
 } from '../../src/schemas/order.schema';
 
 const validOrder = {
+  storeId: '11111111-1111-4111-8111-111111111111',
   items: [{ menuItemId: 'item-1', quantity: 1 }],
   customerPhone: undefined,
   note: undefined,

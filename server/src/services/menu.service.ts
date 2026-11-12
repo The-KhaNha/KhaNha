@@ -4,7 +4,6 @@ import { logger } from '../utils/logger';
 import { supabaseAdmin } from '../utils/supabase';
 import { toMenuItemDto, toStoreDto, type StoreWithBrand } from '../utils/serializers';
 import { getOpenFields } from './schedule.service';
-import { getCachedStore } from './store.service';
 
 /**
  * Most items one menu response carries (docs/CONFIGURATION.md, platform constant). A campus café lists tens; the cap
@@ -12,15 +11,6 @@ import { getCachedStore } from './store.service';
  * arrives with the multi-branch catalog (P3.1).
  */
 export const MENU_ITEMS_MAX = 500;
-
-/**
- * Full menu including unavailable items (the client greys them out). Cached for PUBLIC_READ_TTL_MS; order.service
- * drops the cache whenever stock changes through this API (an order placed or cancelled).
- */
-export async function getMenu(): Promise<MenuResponse> {
-  const store = await getCachedStore();
-  return withOpenFields(await cached('menu', PUBLIC_READ_TTL_MS, () => loadMenu(store)), store);
-}
 
 /** The menu of one ACTIVE store (the caller resolved it through getActiveStore), cached under `menu:<storeId>`. */
 export async function getStoreMenu(store: StoreWithBrand): Promise<MenuResponse> {
@@ -35,9 +25,8 @@ async function withOpenFields(menu: MenuResponse, store: StoreWithBrand): Promis
   return { ...menu, store: { ...menu.store, ...(await getOpenFields(store)) } };
 }
 
-/** Drops the old single-store key and the store's own: stock changed through this API (an order placed or cancelled). */
+/** Drops the store's cached menu: stock changed through this API (an order placed or cancelled). */
 export function invalidateMenus(storeId: string): void {
-  invalidate('menu');
   invalidate(`menu:${storeId}`);
 }
 

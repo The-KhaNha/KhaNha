@@ -57,7 +57,6 @@ export async function updateStoreSettings(
   invalidate(`store_settings:${storeId}`);
   // The store row (`store:<id>`, `store`) carries the settings too, and the menu reads its rules off it.
   invalidate(`store:${storeId}`);
-  invalidate('store');
   invalidateMenus(storeId);
   return data;
 }

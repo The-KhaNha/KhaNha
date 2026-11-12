@@ -117,14 +117,14 @@ describe('orders', () => {
       .post('/api/orders')
       .set(auth(customer))
       .set('x-request-id', placedBy)
-      .send({ items: [{ menuItemId: tracked, quantity: 1 }] })
+      .send({ storeId, items: [{ menuItemId: tracked, quantity: 1 }] })
       .expect(201);
     const orderId: string = placed.body.order.id;
     expect(await auditForRequest(placedBy)).toEqual([]);
 
     const move = (status: string, requestId: string) =>
       api()
-        .patch(`/api/orders/${orderId}/status`)
+        .patch(`/api/stores/${storeId}/orders/${orderId}/status`)
         .set(auth(staff))
         .set('x-request-id', requestId)
         .send({ status })
@@ -162,14 +162,14 @@ describe('orders', () => {
 
 describe('changes outside the API', () => {
   it('a role change through the secret key is SYSTEM', async () => {
-    // createTestUser('STAFF') promoted the new profile with the secret key.
-    expect(await auditForEntity('profile', staff.id)).toEqual([
+    // createTestUser('ADMIN') promoted the new profile with the secret key.
+    expect(await auditForEntity('profile', admin.id)).toEqual([
       expect.objectContaining({
         actor_type: 'SYSTEM',
         actor_id: null,
         actor_role: null,
         action: 'profile.role_changed',
-        changes: { role: ['CUSTOMER', 'STAFF'] },
+        changes: { role: ['CUSTOMER', 'ADMIN'] },
         request_id: null,
       }),
     ]);
@@ -220,12 +220,12 @@ describe('an actor that does not parse', () => {
     // One statement (the CLI runs one): the after-row trigger fires once the CTE has set the actor.
     localSql<{ ok: number }>(
       `with actor as (select set_config('app.actor', 'not json', true))
-       update public.site_settings set staff_order_list_limit = ${expr} from actor returning 1 as ok`,
+       update public.site_settings set customer_order_history_limit = ${expr} from actor returning 1 as ok`,
     );
 
   it('is never read for a save that changes nothing, and fails a real change rather than skip its row', () => {
-    expect(save('staff_order_list_limit')).toEqual([{ ok: 1 }]);
-    expect(() => save('staff_order_list_limit + 1')).toThrow();
+    expect(save('customer_order_history_limit')).toEqual([{ ok: 1 }]);
+    expect(() => save('customer_order_history_limit + 1')).toThrow();
   });
 });
 

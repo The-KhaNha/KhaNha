@@ -116,7 +116,6 @@ export function toInviteDto(
 export function toSiteSettingsDto(settings: Tables<'site_settings'>): SiteSettingsDto {
   return {
     customerOrderHistoryLimit: settings.customer_order_history_limit,
-    staffOrderListLimit: settings.staff_order_list_limit,
     maxLinesPerOrder: settings.max_lines_per_order,
     orderPollMs: settings.order_poll_ms,
     ordersPollMs: settings.orders_poll_ms,

@@ -13,7 +13,6 @@ function invalidateHours(storeId: string): void {
   invalidate(`store_hours:${storeId}`);
   invalidate('stores:list');
   invalidate(`store:${storeId}`);
-  invalidate('store');
   invalidateMenus(storeId);
 }
 

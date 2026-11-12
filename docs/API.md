@@ -38,11 +38,9 @@ gets it from `supabase.auth.signInWithPassword` and supabase-js refreshes it (`j
    (fail-open, logged `error` "Session idle check failed").
 5. Sets `req.user = { id, role }`.
 
-`requireStaff` must run after `requireAuth`. A role other than `STAFF` is 403 `FORBIDDEN` "Only staff can do that."
-
 `requireAdmin` (guards `/api/admin/*`) must run after `requireAuth`. A role other than `ADMIN` is 403 `FORBIDDEN`
 "Only admins can do that." `ADMIN` is a separate, site-wide developer/operator role: it has no staff powers, so it
-still gets 403 from `requireStaff` (see [PERMISSIONS.md](PERMISSIONS.md#roles)).
+reads and moves orders only through a store membership (see [PERMISSIONS.md](PERMISSIONS.md#roles)).
 
 The API has no sign-in or sign-out route. The browser signs in and out with supabase-js directly
 (`client/src/services/auth.ts`).
@@ -57,15 +55,12 @@ The API has no sign-in or sign-out route. The browser signs in and out with supa
 | POST   | `/client-errors`                                    | none                       | body: [`clientErrorsSchema`](#post-client-errors)                          | 204, no body                                                  |
 | POST   | `/auth/register`                                    | none                       | body: [`registerSchema`](#post-authregister)                               | 201 `{ user: UserDto }`                                       |
 | GET    | `/auth/me`                                          | user                       | none                                                                       | 200 `{ user: UserDto }`                                       |
-| GET    | `/store`                                            | none                       | none                                                                       | 200 `{ store: StoreDto }`                                     |
 | GET    | `/stores`                                           | none                       | query `area?`                                                              | 200 `{ stores: StoreSummaryDto[] }`                           |
 | GET    | `/stores/:storeRef`                                 | none                       | none                                                                       | 200 `{ store: StoreDto }`                                     |
 | GET    | `/stores/:storeRef/menu`                            | none                       | none                                                                       | 200 `MenuResponse`                                            |
-| GET    | `/menu`                                             | none                       | none                                                                       | 200 `MenuResponse`                                            |
 | POST   | `/orders`                                           | user                       | body: [`createOrderSchema`](#post-orders)                                  | 201 `{ order: OrderDto }`                                     |
 | GET    | `/orders`                                           | user                       | query: [`listOrdersQuerySchema`](#get-orders)                              | 200 `{ orders: OrderDto[] }`                                  |
 | GET    | `/orders/:id`                                       | user                       | path: `id`                                                                 | 200 `{ order: OrderDto }`                                     |
-| PATCH  | `/orders/:id/status`                                | user + STAFF               | body: [`updateOrderStatusSchema`](#patch-ordersidstatus)                   | 200 `{ order: OrderDto }`                                     |
 | GET    | `/stores/:storeId/orders`                           | user + `orders.view`       | query: [`listOrdersQuerySchema`](#get-storesstoreidorders)                 | 200 `{ orders: OrderDto[] }`                                  |
 | PATCH  | `/stores/:storeId/orders/:orderId/status`           | user + `orders.transition` | body: [`updateOrderStatusSchema`](#patch-storesstoreidordersorderidstatus) | 200 `{ order: OrderDto }`                                     |
 | PUT    | `/stores/:storeId/hours`                            | user + `hours.edit`        | body: [`setStoreHoursSchema`](#put-storesstoreidhours)                     | 200 `StoreScheduleResponse`                                   |
@@ -85,6 +80,12 @@ The API has no sign-in or sign-out route. The browser signs in and out with supa
 `orderRouter.use(requireAuth)` runs before any `/orders` route matches. So any path under `/api/orders`, including
 one that matches no route, returns 401 without a valid token. `adminRouter.use(requireAuth, requireAdmin)` does the
 same for every path under `/api/admin`.
+
+**Removed in P2.** `GET /api/store`, `GET /api/menu` and `PATCH /api/orders/:id/status` answer 404; use
+`GET /api/stores/:storeRef`, `GET /api/stores/:storeRef/menu` and `PATCH /api/stores/:storeId/orders/:orderId/status`.
+`GET /api/orders` returns the caller's own orders for everyone (a store's board is `GET /api/stores/:storeId/orders`),
+`POST /api/orders` requires `storeId` (400 without), and `SiteSettingsDto` has no `staffOrderListLimit` (the per-store
+setting stays). The `STAFF` profile role is gone: staff are store memberships.
 
 ### GET /health
 
@@ -196,15 +197,9 @@ Code: `requireAuth` → `auth.controller.me` → `auth.service.getProfile`. Retu
 `{ user: UserDto }`. `getProfile` throws 404 `NOT_FOUND` "Account not found." when the profile is missing, but
 `requireAuth` has already returned 401 in that case.
 
-### GET /store
-
-Code: `store.controller.getStore` → `store.service.getStore`. Returns the oldest row of `stores` (`order by created_at, id`)
-with its brand as `{ store: StoreDto }`. With no store row: 404 `NOT_FOUND` "The store has not been set up yet. Run `pnpm run seed` in
-server/."
-
 ### GET /stores, /stores/:storeRef, /stores/:storeRef/menu, /stores/:storeRef/hours
 
-Public, cached (see Caching) and ETag'd like `/menu`. Code: `store.controller` → `store.service` (`listStores`,
+Public, cached (see Caching) and ETag'd. Code: `store.controller` → `store.service` (`listStores`,
 `resolveStoreRef`, `getActiveStore`) and `menu.service.getStoreMenu`.
 
 - `GET /stores?area=` lists `ACTIVE` stores (`stores.status`, the brand's status is not checked) ordered by `name`, `id`,
@@ -212,7 +207,13 @@ Public, cached (see Caching) and ETag'd like `/menu`. Code: `store.controller` �
   is 400; a warning is logged when the cap bites.
 - `:storeRef` is a store id (uuid, any case) or a slug. A ref that cannot be a slug (the `stores.slug` pattern) is 404
   without a database read; an unknown ref, or a store that is not `ACTIVE`, is 404 `NOT_FOUND` "Store not found." (the same for both, so a draft store does not leak).
-- `/stores/:storeRef/menu` returns the same `MenuResponse` as `GET /menu`, for that store.
+- `/stores/:storeRef/menu` returns the store's `MenuResponse`: every menu item including unavailable ones (the client
+  greys them out), ordered by `sort_order`: `rules` (`{ maxQuantityPerItem, lowStockThreshold }`, the store's settings,
+  [PATCH /stores/:storeId/settings](#patch-storesstoreidsettings) changes them and drops the cached menu), `store`
+  (`StoreDto`), `popular` (the items with `isPopular`, in `sortOrder` order) and `categories` (`{ name, items }[]`, a
+  category placed by its first item). An item's `isAvailable` is `is_available AND (stock_quantity IS NULL OR
+stock_quantity > 0)` (`isPurchasable` in `server/src/utils/serializers.ts`); `stockQuantity` is `null` when the
+  item does not track stock.
 - `/stores/:storeRef/hours` returns `{ timezone, hours: [{ dayOfWeek, opensAt, closesAt }], exceptions: [{ id, startsOn,
 endsOn, kind, opensAt, closesAt, label }] }`: `HH:MM` wall times in the store's zone, ISO weekdays (1 = Monday), and
   only the exceptions that have not ended (store-local today). Cached under `store_hours:<id>`.
@@ -226,21 +227,6 @@ endsOn, kind, opensAt, closesAt, label }] }`: `HH:MM` wall times in the store's 
   `PAUSED` is a [pause](#post-storesstoreidpause) that has not ended; it wins over the hours, and `nextChangeAt` is
   `pausedUntil` (null for a pause until resumed). `isOpen` is false.
 
-### GET /menu
-
-Code: `menu.controller.getMenu` → `menu.service.getMenu`. Returns every menu item of the store, including unavailable
-ones (the client greys them out), ordered by `sort_order`:
-
-- `rules`: `{ maxQuantityPerItem, lowStockThreshold }`, the cart rules, read from the store's settings (defaults 10 and 5;
-  [PATCH /stores/:storeId/settings](#patch-storesstoreidsettings) changes them and drops the cached menu).
-- `store`: `StoreDto`.
-- `popular`: the items with `isPopular` true, in `sortOrder` order.
-- `categories`: `{ name, items }[]`. A category is placed by its first (lowest `sortOrder`) item.
-
-Each item's `isAvailable` is `is_available AND (stock_quantity IS NULL OR stock_quantity > 0)` (`isPurchasable` in
-`server/src/utils/serializers.ts`). `stockQuantity` is `null` when the item does not track stock. Same 404 as
-`GET /store` when there is no store.
-
 ### POST /orders
 
 Code: `requireAuth` → `writeLimiter` → `validate(createOrderSchema)` → `order.controller.createOrder` →
@@ -248,17 +234,17 @@ Code: `requireAuth` → `writeLimiter` → `validate(createOrderSchema)` → `or
 
 Body (`server/src/schemas/order.schema.ts`):
 
-| Field                       | Type   | Rules                                                                                                              |
-| --------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------ |
-| `items`                     | array  | required, 1–30 entries (counted before duplicates are merged)                                                      |
-| `items[].menuItemId`        | string | required, at least 1 character                                                                                     |
-| `items[].quantity`          | number | required, whole number, at least 1                                                                                 |
-| `items[].expectedUnitPrice` | number | optional, whole rupees, at least 1: the price the customer was shown for this line; never charged, only compared   |
-| `customerName`              | string | optional, typed text, at most 60 characters; blank (also invisible-only) or missing falls back to the profile name |
-| `customerPhone`             | string | optional; see [phone numbers](#shared-field-rules)                                                                 |
-| `note`                      | string | optional, typed text, at most 200 characters                                                                       |
-| `idempotencyKey`            | string | optional, a UUID; one per checkout attempt, resent unchanged on every retry of that attempt                        |
-| `storeId`                   | string | optional until P2 PR 16, a UUID: the store the order is for; without it, the oldest store                          |
+| Field                       | Type   | Rules                                                                                                               |
+| --------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------- |
+| `items`                     | array  | required, 1–30 entries (counted before duplicates are merged)                                                       |
+| `items[].menuItemId`        | string | required, at least 1 character                                                                                      |
+| `items[].quantity`          | number | required, whole number, at least 1                                                                                  |
+| `items[].expectedUnitPrice` | number | optional, whole rupees, at least 1: the price the customer was shown for this line; never charged, only compared    |
+| `customerName`              | string | optional, typed text, at most 60 characters; blank (also invisible-only) or missing falls back to the profile name  |
+| `customerPhone`             | string | optional; see [phone numbers](#shared-field-rules)                                                                  |
+| `note`                      | string | optional, typed text, at most 200 characters                                                                        |
+| `idempotencyKey`            | string | optional, a UUID; one per checkout attempt, resent unchanged on every retry of that attempt                         |
+| `storeId`                   | string | required, a UUID: the store the order is for (no default store); missing is 400 `VALIDATION_ERROR`, field `storeId` |
 
 - Entries with the same `menuItemId` are merged into one line with the quantities summed (`mergeDuplicateItems`).
 - Unknown keys (`price`, `unitPrice`, `total`, …) are dropped by `z.object`. Prices come from the database only;
@@ -331,21 +317,10 @@ Code: `requireAuth` → `validate(listOrdersQuerySchema, 'query')` → `order.co
 Query: `status` (optional), one of `PLACED`, `PREPARING`, `READY`, `COLLECTED`, `CANCELLED`. Anything else is 400
 `VALIDATION_ERROR` "Status must be one of PLACED, PREPARING, READY, COLLECTED, CANCELLED."
 
-- Customers get their newest `customerOrderHistoryLimit` orders (a `site_settings` row, default 20).
-- A `STAFF` profile (until P2 PR 16) gets the board of **every store they work at** (their `store_memberships`, and every store of a brand they own;
-  none, an empty list), as [GET /stores/:storeId/orders](#get-storesstoreidorders) gives one store. Before P2 PR 04
-  it was every store's orders.
-- The board is **every active order** (`PLACED`, `PREPARING`, `READY`) across all customers, oldest first up to a safety
-  bound of 500 (`ACTIVE_ORDERS_HARD_MAX`), plus the newest `staffOrderListLimit` finished ones per store (`COLLECTED`,
-  `CANCELLED`; the store's own setting, default 100; the `site_settings` copy is no longer read), newest first overall. One limit over every status used to drop
-  the orders that had waited longest once enough newer orders existed. With `?status=`, an active status returns all
-  of it and a finished one returns the newest `staffOrderListLimit`.
-- Both limits are read fresh on every call through the same 10 s read cache as the menu and store (see
-  [Caching](#caching)). The customer limit is a site setting (`settings.service.getSettings()`), edited from the admin
-  dashboard, [GET/PATCH /admin/settings](#get-adminsettings). The staff limit is each store's own
-  (`storeSettings.service.getStoreSettings()`), edited by its manager or owner at
-  [PATCH /stores/:storeId/settings](#patch-storesstoreidsettings). Neither is a fixed constant any more.
-- Newest first (`created_at desc`). Lines within each order are in cart order (`line_number`).
+- Every caller gets their own orders only, newest first (`created_at desc`), capped at the newest
+  `customerOrderHistoryLimit` (a `site_settings` row, default 20, read through the 10 s read cache and edited at
+  [GET/PATCH /admin/settings](#get-adminsettings)). A store's board is [GET /stores/:storeId/orders](#get-storesstoreidorders).
+- Lines within each order are in cart order (`line_number`).
 
 ### GET /orders/:id
 
@@ -357,53 +332,12 @@ Code: `requireAuth` → `order.controller.getOrder` → `order.service.getOrder`
   404 as a missing order.
 - A path segment with bad percent-encoding (for example `/api/orders/%E0`) is 400 `BAD_REQUEST`.
 
-### PATCH /orders/:id/status
-
-Code: `requireAuth` → `requireStaff` → `validate(updateOrderStatusSchema)` → `order.controller.updateOrderStatus` →
-`order.service.updateOrderStatus` → `update_order_status` RPC.
-
-Body: `{ status }`, one of the five statuses (same message as the list filter). `requireStaff` runs before
-validation, so a customer gets 403 whatever the body. The service then reads the order's store: an order of a store
-where the caller's access does not hold `orders.transition` is 404, like a missing one. The caller's standing there
-is recorded as the actor's `storeRole` with the event and the audit row.
-
-Allowed transitions (`ALLOWED_TRANSITIONS` in `server/src/services/order.service.ts`, the single source of truth):
-
-| From        | To                       |
-| ----------- | ------------------------ |
-| `PLACED`    | `PREPARING`, `CANCELLED` |
-| `PREPARING` | `READY`, `CANCELLED`     |
-| `READY`     | `COLLECTED`              |
-| `COLLECTED` | none                     |
-| `CANCELLED` | none                     |
-
-The service passes every status that may move to the requested one as `p_from_statuses`. The database locks the
-order row, so two staff devices pressing at once are served one after the other. Cancelling puts the order's
-tracked stock back in the same transaction (see [SCHEMA.md](SCHEMA.md#update_order_status)).
-
-A repeat is not an error. When the order already has the requested status and some transition leads to that status
-(anything but `PLACED`), the answer is 200 with the order unchanged: nothing is written, no stock moves and no event is
-emitted. This makes a retry after a lost answer, and two devices pressing the same button, safe. Only a real invalid
-move is a 409, `PLACED` → `PLACED` included. The request's `x-request-id` is recorded with the event of a change
-([JOBS.md](JOBS.md#order-events)).
-
-| Status | Code                        | When                                                                                                                                                            |
-| ------ | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 200    |                             | `{ order: OrderDto }` with the new status, or unchanged for a repeat of a transition that already happened                                                      |
-| 400    | `VALIDATION_ERROR`          | `status` missing or not one of the five                                                                                                                         |
-| 401    | `UNAUTHORIZED`              | see [Authentication](#authentication)                                                                                                                           |
-| 403    | `FORBIDDEN`                 | caller is not `STAFF`                                                                                                                                           |
-| 404    | `NOT_FOUND`                 | `id` not a UUID, no such order, or an order of a store the caller does not work at                                                                              |
-| 409    | `MEMBERSHIP_EXISTS`         | `POST /stores/:storeId/invites`: the email already works at the store or has an open invite there ("That person is already on the team or has an open invite.") |
-| 409    | `INVALID_STATUS_TRANSITION` | "Order #<number> cannot move from <current status> to <requested status>." The status quoted is the order's current one.                                        |
-
 ### GET /stores/:storeId/orders
 
 Code: `requireAuth` → `requireStore('orders.view')` → `validate(listOrdersQuerySchema, 'query')` →
 `order.controller.listStoreOrders` → `order.service.listStoreOrders`.
 
-One store's board: the same lists, limits and `?status=` as a `STAFF` profile's [GET /orders](#get-orders), for
-this store only. `requireStore` answers 404 for a store the caller may not know about (unknown, or not `ACTIVE` with
+One store's board: **every active order** (`PLACED`, `PREPARING`, `READY`) across all customers, oldest first up to a safety bound of 500 (`ACTIVE_ORDERS_HARD_MAX`), plus the newest `staffOrderListLimit` finished ones (`COLLECTED`, `CANCELLED`; the store's own setting, default 100), newest first overall; `?status=` as in [GET /orders](#get-orders) (an active status returns all of it, a finished one the newest `staffOrderListLimit`). `requireStore` answers 404 for a store the caller may not know about (unknown, or not `ACTIVE` with
 no access there) and 403 `FORBIDDEN` for a visible store where their access does not hold `orders.view`
 ([PERMISSIONS.md](PERMISSIONS.md#store-roles)). A `:storeId` that is not a UUID is 404.
 
@@ -431,9 +365,36 @@ role, and drops `store_settings:<id>`, `store:<id>`, `store` and the store's men
 Code: `requireAuth` → `requireStore('orders.transition')` → `writeLimiter` → `validate(updateOrderStatusSchema)` →
 `order.controller.updateStoreOrderStatus` → `order.service.updateOrderStatus` → `update_order_status` RPC.
 
-The same body, transitions, repeats and answers as [PATCH /orders/:id/status](#patch-ordersidstatus), with the store
-check of `requireStore` first (404 or 403, as above). An order of another store is 404 through this store's route,
-even for a member of both stores.
+Body: `{ status }`, one of the five statuses. `requireStore` answers first (404 or 403, as above). An order of another store is 404 through this store's route, even for a member of both stores. The caller's standing is recorded as the actor's `storeRole` with the event and the audit row.
+
+Allowed transitions (`ALLOWED_TRANSITIONS` in `server/src/services/order.service.ts`, the single source of truth):
+
+| From        | To                       |
+| ----------- | ------------------------ |
+| `PLACED`    | `PREPARING`, `CANCELLED` |
+| `PREPARING` | `READY`, `CANCELLED`     |
+| `READY`     | `COLLECTED`              |
+| `COLLECTED` | none                     |
+| `CANCELLED` | none                     |
+
+The service passes every status that may move to the requested one as `p_from_statuses`. The database locks the
+order row, so two staff devices pressing at once are served one after the other. Cancelling puts the order's
+tracked stock back in the same transaction (see [SCHEMA.md](SCHEMA.md#update_order_status)).
+
+A repeat is not an error. When the order already has the requested status and some transition leads to that status
+(anything but `PLACED`), the answer is 200 with the order unchanged: nothing is written, no stock moves and no event is
+emitted. This makes a retry after a lost answer, and two devices pressing the same button, safe. Only a real invalid
+move is a 409, `PLACED` → `PLACED` included. The request's `x-request-id` is recorded with the event of a change
+([JOBS.md](JOBS.md#order-events)).
+
+| Status | Code                        | When                                                                                                                     |
+| ------ | --------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| 200    |                             | `{ order: OrderDto }` with the new status, or unchanged for a repeat of a transition that already happened               |
+| 400    | `VALIDATION_ERROR`          | `status` missing or not one of the five                                                                                  |
+| 401    | `UNAUTHORIZED`              | see [Authentication](#authentication)                                                                                    |
+| 403    | `FORBIDDEN`                 | a visible store where the caller's access does not hold `orders.transition`                                              |
+| 404    | `NOT_FOUND`                 | `:storeId` or the order id not a UUID, no such order, or an order of another store                                       |
+| 409    | `INVALID_STATUS_TRANSITION` | "Order #<number> cannot move from <current status> to <requested status>." The status quoted is the order's current one. |
 
 ### PUT /stores/:storeId/hours
 
@@ -684,7 +645,6 @@ nothing changes for clients. A new money field carries paise and says so in its 
 | Field                       | Type              | Notes                                                                                      |
 | --------------------------- | ----------------- | ------------------------------------------------------------------------------------------ |
 | `customerOrderHistoryLimit` | number            | 1–200, default 20; caps `GET /orders` for a customer                                       |
-| `staffOrderListLimit`       | number            | 1–500, default 100; no longer read (the board uses the store's own)                        |
 | `maxLinesPerOrder`          | number            | 1–100, default 30; most lines one order may have                                           |
 | `orderPollMs`               | number            | 2000–60000, default 4000; an open order's page poll interval (ms)                          |
 | `ordersPollMs`              | number            | 2000–60000, default 8000; the customer's order list poll interval (ms)                     |
@@ -881,7 +841,7 @@ shape carries a `kind`, and the client narrows on it.
 | 400    | `STORE_CLOSED`              | `POST /orders` (the API's check, or `place_order`'s)                                                                                                                                                                                                                                                                                                                                                                               |
 | 409    | `STORE_PAUSED`              | `POST /orders` (the API's check, or `place_order`'s): "<store name> has paused new orders. Back at 3:40 PM."                                                                                                                                                                                                                                                                                                                       |
 | 401    | `UNAUTHORIZED`              | `requireAuth`                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| 403    | `FORBIDDEN`                 | `requireStaff`, `requireAdmin`, `requireStore`; the team routes when acting on a manager without `team.manageManagers`                                                                                                                                                                                                                                                                                                             |
+| 403    | `FORBIDDEN`                 | `requireAdmin`, `requireStore`; the team routes when acting on a manager without `team.manageManagers`                                                                                                                                                                                                                                                                                                                             |
 | 429    | `RATE_LIMITED`              | `middleware/rateLimit.ts`: more requests than the window allows from one account (writes) or one address (all of `/api`, `POST /auth/register`); "Too many requests. Please wait a minute and try again." with `Retry-After`, `RateLimit-Policy` and `RateLimit` headers and `details: { kind: 'rateLimit', retryAfterSeconds }` (`RateLimitDetails`). Logged at `warn` for the first refusal per key per window, `debug` after it |
 | 426    | `CLIENT_OUTDATED`           | every route mounted after the [client version gate](#client-version-gate): the client's `X-Client-Version` is below `site_settings.min_client_version`. "A new version of Food Pickup is available. Refresh the page to continue." Logged at `debug`                                                                                                                                                                               |
 | 404    | `NOT_FOUND`                 | missing store, order or profile; an unmatched route ("No route matches <METHOD> <path>.")                                                                                                                                                                                                                                                                                                                                          |
@@ -980,7 +940,7 @@ body has not changed, the response is a bodiless `304 Not Modified` instead of t
 
 ### Server read cache (`server/src/utils/cache.ts`)
 
-`GET /api/menu`, `GET /api/store`, the three `GET /api/stores` routes and the `site_settings` row (read by every `GET /api/orders`, by
+The three `GET /api/stores` routes and the `site_settings` row (read by every `GET /api/orders`, by
 `GET /api/admin/settings`, by `GET /api/config` and by the client version gate) are additionally held in an in-process cache, so concurrent requests during a cold cache
 share one database round-trip instead of repeating it:
 
@@ -990,25 +950,23 @@ share one database round-trip instead of repeating it:
 | `invalidate(key?)`            | drops one key, or every key with no argument                                                                                                                                                                                                                                                                          |
 | `PUBLIC_READ_TTL_MS`          | the TTL used by the reads below: env `PUBLIC_READ_TTL_MS`, default 10000 ms (0 turns the cache off)                                                                                                                                                                                                                   |
 
-| Cached endpoint                                                           | Key                  | Loader                                                                                                                                                                         | Invalidated by                                                                                                                                                        |
-| ------------------------------------------------------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/menu`                                                           | `'menu'`             | `menu.service.getMenu` → `loadMenu`                                                                                                                                            | `order.service.createOrder` (in a `finally`, so a placed order and a stock-refused one both invalidate it) and `updateOrderStatus` when the new status is `CANCELLED` |
-| `GET /api/store`                                                          | `'store'`            | `store.service.getCachedStore` → `getStore`                                                                                                                                    | nothing today; a future store-editing endpoint must call `invalidate('store')`                                                                                        |
-| `GET /api/stores`                                                         | `'stores:list'`      | `store.service.listStores` (every `ACTIVE` store; `area` filters in memory afterwards)                                                                                         | nothing today; a store-editing endpoint must call `invalidate('stores:list')`                                                                                         |
-| `GET /api/stores/:storeRef`, `/menu` (the store)                          | `'store:<id>'`       | `store.service.getActiveStore`; the ref → id step is `'store_ref:<slug>'` (`resolveStoreRef`)                                                                                  | nothing today; a store-editing endpoint must call `invalidate('store:<id>')`                                                                                          |
-| `GET /api/stores/:storeRef/hours`, and the open state of every store read | `'store_hours:<id>'` | `schedule.service.getSchedule` (the week and the exceptions; the list reads them in two paged queries; the menu's open fields are computed per read, outside `menu:<storeId>`) | nothing today; the hours editor must call `invalidate('store_hours:<id>')` with `store:<id>`, `stores:list` and the menu                                              |
-| `GET /api/stores/:storeRef/menu`                                          | `'menu:<id>'`        | `menu.service.getStoreMenu` → `loadMenu`                                                                                                                                       | `menu.service.invalidateMenus(storeId)` from the same places as `'menu'` (it drops both)                                                                              |
-| `GET /api/orders`, `GET /api/admin/settings`, `GET /api/config`           | `'site_settings'`    | `settings.service.getSettings`                                                                                                                                                 | `settings.service.updateSettings` (`PATCH /api/admin/settings`), at once                                                                                              |
-| `GET /api/config` (`features`), every `flags.service.isEnabled` call      | `'feature_flags'`    | `flags.service.getFlags` (every flag, rules parsed; evaluated per caller, never cached per caller)                                                                             | `flags.service.setFlag` (`PATCH /api/admin/flags/:key`), at once                                                                                                      |
+| Cached endpoint                                                           | Key                  | Loader                                                                                                                                                                         | Invalidated by                                                                                                           |
+| ------------------------------------------------------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| `GET /api/stores`                                                         | `'stores:list'`      | `store.service.listStores` (every `ACTIVE` store; `area` filters in memory afterwards)                                                                                         | nothing today; a store-editing endpoint must call `invalidate('stores:list')`                                            |
+| `GET /api/stores/:storeRef`, `/menu` (the store)                          | `'store:<id>'`       | `store.service.getActiveStore`; the ref → id step is `'store_ref:<slug>'` (`resolveStoreRef`)                                                                                  | nothing today; a store-editing endpoint must call `invalidate('store:<id>')`                                             |
+| `GET /api/stores/:storeRef/hours`, and the open state of every store read | `'store_hours:<id>'` | `schedule.service.getSchedule` (the week and the exceptions; the list reads them in two paged queries; the menu's open fields are computed per read, outside `menu:<storeId>`) | nothing today; the hours editor must call `invalidate('store_hours:<id>')` with `store:<id>`, `stores:list` and the menu |
+| `GET /api/stores/:storeRef/menu`                                          | `'menu:<id>'`        | `menu.service.getStoreMenu` → `loadMenu`                                                                                                                                       | `menu.service.invalidateMenus(storeId)` from `order.service.createOrder` (in a `finally`), a cancel and the hours editor |
+| `GET /api/orders`, `GET /api/admin/settings`, `GET /api/config`           | `'site_settings'`    | `settings.service.getSettings`                                                                                                                                                 | `settings.service.updateSettings` (`PATCH /api/admin/settings`), at once                                                 |
+| `GET /api/config` (`features`), every `flags.service.isEnabled` call      | `'feature_flags'`    | `flags.service.getFlags` (every flag, rules parsed; evaluated per caller, never cached per caller)                                                                             | `flags.service.setFlag` (`PATCH /api/admin/flags/:key`), at once                                                         |
 
-`createOrder`'s own open check reads the store uncached through `getStore()` (and the schedule uncached through `loadSchedule`) and never `getCachedStore()` — a write
+`createOrder`'s own open check reads the store uncached through `getStore()` (and the schedule uncached through `loadSchedule`) — a write
 path never trusts a stale read of the data it is about to act on. Nothing user-specific (orders, profiles) is ever
 put through `cached()`; the cache is per-process (see the `ponytail:` note in `cache.ts` for the multi-instance
 ceiling — a shared cache such as Redis, or LISTEN/NOTIFY, is the upgrade if edits from a second API instance or the
 Supabase dashboard ever need to show up faster than the TTL).
 
 Tests: `server/test/unit/cache.safe.test.ts` (the cache primitive), `server/test/api/caching.safe.test.ts` (the HTTP
-headers and the 304), `server/test/api/menu-cache.test.ts` (the menu cache tracks a real order and its
+headers and the 304), `server/test/api/store-cache.test.ts` (the menu cache tracks a real order and its
 cancellation), `server/test/api/admin.test.ts` (settings bounds, `requireAdmin`, and the cache invalidation on
 save), `server/test/api/flags.test.ts` (a flip shows on the next evaluation after a cached read). See also
 [TESTING.md](TESTING.md).

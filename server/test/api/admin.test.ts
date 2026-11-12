@@ -1,7 +1,6 @@
 // Destructive: changes the site_settings row and inserts orders; resetDemoData() puts both back (local only).
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { invalidate } from '../../src/utils/cache';
 import { supabaseAdmin } from '../../src/utils/supabase';
 import {
   createTestUser,
@@ -59,10 +58,10 @@ describe('admin settings: role', () => {
 
   it('an admin has no staff powers', async () => {
     const res = await api()
-      .patch(`/api/orders/${crypto.randomUUID()}/status`)
+      .patch(`/api/stores/${await oldestStoreId()}/orders/${crypto.randomUUID()}/status`)
       .set(bearer(admin))
       .send({ status: 'PREPARING' });
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(403); // sees the store, holds no capability there
   });
 });
 
@@ -73,7 +72,6 @@ describe('admin settings: read and validate', () => {
     expect(res.body).toEqual({
       settings: {
         customerOrderHistoryLimit: 20,
-        staffOrderListLimit: 100,
         maxLinesPerOrder: 30,
         orderPollMs: 4000,
         ordersPollMs: 8000,
@@ -89,8 +87,6 @@ describe('admin settings: read and validate', () => {
     [{}, 'Send at least one setting'],
     [{ customerOrderHistoryLimit: 0 }, 'at least 1'],
     [{ customerOrderHistoryLimit: 201 }, 'at most 200'],
-    [{ staffOrderListLimit: 501 }, 'at most 500'],
-    [{ staffOrderListLimit: 2.5 }, 'whole number'],
     [{ customerOrderHistoryLimit: '20' }, 'must be a number'],
     [{ maxLinesPerOrder: 0 }, 'Items per order must be at least 1'],
     [{ maxLinesPerOrder: 101 }, 'Items per order must be at most 100'],
@@ -116,11 +112,10 @@ describe('admin settings: read and validate', () => {
     const res = await api()
       .patch('/api/admin/settings')
       .set(bearer(admin))
-      .send({ customerOrderHistoryLimit: 200, staffOrderListLimit: 1 });
+      .send({ customerOrderHistoryLimit: 200 });
     expect(res.status).toBe(200);
     expect(res.body.settings).toMatchObject({
       customerOrderHistoryLimit: 200,
-      staffOrderListLimit: 1,
     });
   });
 });
@@ -243,35 +238,12 @@ describe('admin settings: the limits apply to the next request', () => {
     ]);
   });
 
-  it("a store's staff list limit caps finished orders; the site setting no longer does", async () => {
-    await supabaseAdmin
-      .from('orders')
-      .update({ status: 'COLLECTED' })
-      .in('id', insertedOrderIds)
-      .throwOnError();
-    await api().patch('/api/admin/settings').set(bearer(admin)).send({ staffOrderListLimit: 1 });
-    await supabaseAdmin
-      .from('stores')
-      .update({ staff_order_list_limit: 2 })
-      .eq('id', await oldestStoreId())
-      .throwOnError();
-    invalidate();
-    const res = await api().get('/api/orders').set(bearer(staff));
-    const finished = (res.body.orders as { status: string }[]).filter(
-      (o) => o.status === 'COLLECTED' || o.status === 'CANCELLED',
-    );
-    expect(finished).toHaveLength(2);
-    await supabaseAdmin
-      .from('stores')
-      .update({ staff_order_list_limit: 100 })
-      .eq('id', await oldestStoreId())
-      .throwOnError();
-    invalidate();
-  });
-
   it('records who changed it and when', async () => {
     const before = (await api().get('/api/admin/settings').set(bearer(admin))).body.settings;
-    await api().patch('/api/admin/settings').set(bearer(admin)).send({ staffOrderListLimit: 50 });
+    await api()
+      .patch('/api/admin/settings')
+      .set(bearer(admin))
+      .send({ customerOrderHistoryLimit: 50 });
     const { data } = await supabaseAdmin
       .from('site_settings')
       .select('updated_by, updated_at')

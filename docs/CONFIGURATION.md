@@ -23,7 +23,6 @@ same in three places: the `site_settings` check constraints ([SCHEMA.md](SCHEMA.
 | Key (API)                   | Column                         | Type    | Default | Bounds     | Read by                                                                                                                          |
 | --------------------------- | ------------------------------ | ------- | ------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------- |
 | `customerOrderHistoryLimit` | `customer_order_history_limit` | integer | 20      | 1–200      | `GET /api/orders` for a customer                                                                                                 |
-| `staffOrderListLimit`       | `staff_order_list_limit`       | integer | 100     | 1–500      | no longer read: moved to the store settings below; the column stays so the deployed admin page keeps working                     |
 | `maxLinesPerOrder`          | `max_lines_per_order`          | integer | 30      | 1–100      | `POST /api/orders` (`createOrder`, lines counted before merging; up to 10 s late on other instances)                             |
 | `orderPollMs`               | `order_poll_ms`                | integer | 4000    | 2000–60000 | the order page's poll (`useOrder`, via `GET /api/config`)                                                                        |
 | `ordersPollMs`              | `orders_poll_ms`               | integer | 8000    | 2000–60000 | the customer's order list poll (`useOrders`)                                                                                     |
@@ -40,7 +39,7 @@ Columns of the `stores` row ([SCHEMA.md](SCHEMA.md#stores)), read through `getSt
 (`server/src/services/storeSettings.service.ts`, cached as `store_settings:<id>`; the write drops it and the store's
 menus). Bounds are the check constraints, `STORE_SETTING_BOUNDS` and `updateStoreSettingsSchema`, kept equal by
 `test/api/store-settings.test.ts`. A new store takes the defaults; the migration copied each existing store's
-`staff_order_list_limit` from the site setting once.
+`staff_order_list_limit` from the site setting once; P2 PR 16 then dropped the site-setting column.
 
 | Key (API)                     | Column                            | Default | Bounds | Read by                                                                  |
 | ----------------------------- | --------------------------------- | ------- | ------ | ------------------------------------------------------------------------ |

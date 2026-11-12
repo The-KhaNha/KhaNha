@@ -1893,10 +1893,10 @@ Until PR 16, the old calls keep working:
 
 **PR 16 (the contract):**
 
-- [ ] Remove the legacy endpoints (announced in API.md as "Removed in P2").
-- [ ] Migrate each `profiles.role = 'STAFF'` user to `CUSTOMER`, since the membership now holds their access. The
+- [x] Remove the legacy endpoints (announced in API.md as "Removed in P2").
+- [x] Migrate each `profiles.role = 'STAFF'` user to `CUSTOMER`, since the membership now holds their access. The
       enum value stays, unused.
-- [ ] Remove `requireStaff`.
+- [x] Remove `requireStaff`.
 - [ ] Record a server minor bump with a CHANGELOG note. It is not a major, because no deployed client calls the
       removed routes.
 

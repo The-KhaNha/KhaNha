@@ -37,7 +37,7 @@ server/
 │   └── utils/                env, logger, Supabase client, errors, serializers, money, ids, cache, version
 └── test/
     ├── setup/                api.ts, guard.ts, run-lock.ts, target.ts, helpers.ts (+ target.safe.test.ts)
-    ├── api/                  one suite per router: admin, audit, audit-read, auth, flags, health, menu, menu-cache, menu-cap, money-paise, orders, require-store, store, store-cache, stores-read, caching, security-headers
+    ├── api/                  one suite per router: admin, audit, audit-read, auth, flags, health, menu, menu-cap, money-paise, orders, require-store, store, store-cache, stores-read, caching, security-headers
     ├── unit/                 pure logic: cache, errors, flags, money, money-boundary, schemas, serializers, validate, rate-limit, backoff, permissions
     └── logging.safe.test.ts
 ```
