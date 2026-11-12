@@ -53,6 +53,7 @@ function store(overrides: Partial<StoreWithBrand> = {}): StoreWithBrand {
     paused_until: null,
     pause_reason: null,
     paused_by: null,
+    is_template: false,
     ...overrides,
   };
 }
@@ -70,6 +71,8 @@ function menuItem(overrides: Partial<Tables<'menu_items'>> = {}): Tables<'menu_i
     is_popular: true,
     sort_order: 1,
     stock_quantity: null,
+    template_item_id: null,
+    archived_at: null,
     ...overrides,
   };
 }

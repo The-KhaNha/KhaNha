@@ -87,19 +87,20 @@ the account was made.
 ### brands
 
 A brand is the business; it records its owner (ADR-001), who is treated as owner of every store of the brand. Created
-through the seed until P3.
+through the seed until P7.4. Each brand points at its template store (`template_store_id`, below).
 
-| Column        | Type           | Null | Default             | Notes                                                                          |
-| ------------- | -------------- | ---- | ------------------- | ------------------------------------------------------------------------------ |
-| `id`          | uuid           | no   | `gen_random_uuid()` | primary key                                                                    |
-| `name`        | text           | no   |                     | 2 to 80 characters                                                             |
-| `slug`        | text           | no   |                     | unique; `^[a-z0-9](?:[a-z0-9-]{0,58}[a-z0-9])?$`                               |
-| `description` | text           | no   | `''`                |                                                                                |
-| `logo_url`    | text           | yes  |                     |                                                                                |
-| `owner_id`    | uuid           | yes  |                     | references `profiles (id)` on delete set null; indexed (`brands_owner_id_idx`) |
-| `status`      | `store_status` | no   | `DRAFT`             |                                                                                |
-| `created_at`  | timestamptz    | no   | `now()`             |                                                                                |
-| `updated_at`  | timestamptz    | no   | `now()`             | `brands_set_updated_at`                                                        |
+| Column              | Type           | Null | Default             | Notes                                                                                                          |
+| ------------------- | -------------- | ---- | ------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `id`                | uuid           | no   | `gen_random_uuid()` | primary key                                                                                                    |
+| `name`              | text           | no   |                     | 2 to 80 characters                                                                                             |
+| `slug`              | text           | no   |                     | unique; `^[a-z0-9](?:[a-z0-9-]{0,58}[a-z0-9])?$`                                                               |
+| `description`       | text           | no   | `''`                |                                                                                                                |
+| `logo_url`          | text           | yes  |                     |                                                                                                                |
+| `owner_id`          | uuid           | yes  |                     | references `profiles (id)` on delete set null; indexed (`brands_owner_id_idx`)                                 |
+| `status`            | `store_status` | no   | `DRAFT`             |                                                                                                                |
+| `created_at`        | timestamptz    | no   | `now()`             |                                                                                                                |
+| `updated_at`        | timestamptz    | no   | `now()`             | `brands_set_updated_at`                                                                                        |
+| `template_store_id` | uuid           | yes  |                     | unique; references `stores (id)` on delete set null: the brand template (P3.1); set by `ensure_brand_template` |
 
 ### store_memberships
 
@@ -149,36 +150,54 @@ are revoked from `anon` and `authenticated`. Audited by `store_invites_audit` (`
 
 ### stores
 
-Three rows in the demo seed (Campus Cafe, and two branches of Brew Lane). Until the store-scoped routes land, the
-single-store routes use the oldest store (`order by created_at, id`).
+Five rows in the demo seed: Campus Cafe, two branches of Brew Lane, and each brand's template (`DRAFT`, never public).
 
-| Column                            | Type           | Null | Default             | Notes                                                         |
-| --------------------------------- | -------------- | ---- | ------------------- | ------------------------------------------------------------- |
-| `id`                              | uuid           | no   | `gen_random_uuid()` | primary key                                                   |
-| `name`                            | text           | no   |                     |                                                               |
-| `brand_id`                        | uuid           | no   |                     | references `brands (id)`; indexed (`stores_brand_id_idx`)     |
-| `slug`                            | text           | no   |                     | unique; same pattern as `brands.slug`                         |
-| `status`                          | `store_status` | no   | `ACTIVE`            |                                                               |
-| `timezone`                        | text           | no   | `Asia/Kolkata`      |                                                               |
-| `area`                            | text           | yes  |                     | the neighbourhood a customer filters by                       |
-| `address_line`                    | text           | yes  |                     | `StoreDto.address`                                            |
-| `contact_phone`                   | text           | yes  |                     |                                                               |
-| `tagline`                         | text           | no   |                     |                                                               |
-| `description`                     | text           | no   |                     |                                                               |
-| `image_url`                       | text           | yes  |                     |                                                               |
-| `is_open`                         | boolean        | no   | `true`              | false makes `POST /orders` return `STORE_CLOSED`              |
-| `prep_time_min_minutes`           | integer        | no   | `10`                |                                                               |
-| `prep_time_max_minutes`           | integer        | no   | `15`                | drives `orders.estimated_ready_at`                            |
-| `max_quantity_per_item`           | integer        | no   | `10`                | store setting; check 1–50; most of one item per order         |
-| `low_stock_threshold`             | integer        | no   | `5`                 | store setting; check 0–50; "only N left" at or below it       |
-| `staff_order_list_limit`          | integer        | no   | `100`               | store setting; check 1–500; finished orders on the board      |
-| `last_order_minutes_before_close` | integer        | no   | `0`                 | store setting; check 0–240; stored only until P2 PR 06        |
-| `created_at`                      | timestamptz    | no   | `now()`             |                                                               |
-| `updated_at`                      | timestamptz    | no   | `now()`             | `stores_set_updated_at`                                       |
-| `accepting_orders`                | boolean        | no   | `true`              | false = paused; see `pause_store`                             |
-| `paused_until`                    | timestamptz    | yes  |                     | when the pause ends; null while paused = until resumed        |
-| `pause_reason`                    | text           | yes  |                     | check: at most 120 characters                                 |
-| `paused_by`                       | uuid           | yes  |                     | FK `profiles(id)`, on delete set null; `stores_paused_by_idx` |
+| Column                            | Type           | Null | Default             | Notes                                                                                                                                               |
+| --------------------------------- | -------------- | ---- | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                              | uuid           | no   | `gen_random_uuid()` | primary key                                                                                                                                         |
+| `name`                            | text           | no   |                     |                                                                                                                                                     |
+| `brand_id`                        | uuid           | no   |                     | references `brands (id)`; indexed (`stores_brand_id_idx`)                                                                                           |
+| `slug`                            | text           | no   |                     | unique; same pattern as `brands.slug`                                                                                                               |
+| `status`                          | `store_status` | no   | `ACTIVE`            |                                                                                                                                                     |
+| `timezone`                        | text           | no   | `Asia/Kolkata`      |                                                                                                                                                     |
+| `area`                            | text           | yes  |                     | the neighbourhood a customer filters by                                                                                                             |
+| `address_line`                    | text           | yes  |                     | `StoreDto.address`                                                                                                                                  |
+| `contact_phone`                   | text           | yes  |                     |                                                                                                                                                     |
+| `tagline`                         | text           | no   |                     |                                                                                                                                                     |
+| `description`                     | text           | no   |                     |                                                                                                                                                     |
+| `image_url`                       | text           | yes  |                     |                                                                                                                                                     |
+| `is_open`                         | boolean        | no   | `true`              | false makes `POST /orders` return `STORE_CLOSED`                                                                                                    |
+| `prep_time_min_minutes`           | integer        | no   | `10`                |                                                                                                                                                     |
+| `prep_time_max_minutes`           | integer        | no   | `15`                | drives `orders.estimated_ready_at`                                                                                                                  |
+| `max_quantity_per_item`           | integer        | no   | `10`                | store setting; check 1–50; most of one item per order                                                                                               |
+| `low_stock_threshold`             | integer        | no   | `5`                 | store setting; check 0–50; "only N left" at or below it                                                                                             |
+| `staff_order_list_limit`          | integer        | no   | `100`               | store setting; check 1–500; finished orders on the board                                                                                            |
+| `last_order_minutes_before_close` | integer        | no   | `0`                 | store setting; check 0–240; stored only until P2 PR 06                                                                                              |
+| `created_at`                      | timestamptz    | no   | `now()`             |                                                                                                                                                     |
+| `updated_at`                      | timestamptz    | no   | `now()`             | `stores_set_updated_at`                                                                                                                             |
+| `accepting_orders`                | boolean        | no   | `true`              | false = paused; see `pause_store`                                                                                                                   |
+| `paused_until`                    | timestamptz    | yes  |                     | when the pause ends; null while paused = until resumed                                                                                              |
+| `pause_reason`                    | text           | yes  |                     | check: at most 120 characters                                                                                                                       |
+| `paused_by`                       | uuid           | yes  |                     | FK `profiles(id)`, on delete set null; `stores_paused_by_idx`                                                                                       |
+| `is_template`                     | boolean        | no   | `false`             | the brand template; check `stores_template_is_draft`: a template is always `DRAFT`; one per brand (`stores_one_template_per_brand`, partial unique) |
+
+**The brand template** (P3.1, ADR-001 as amended) is one store row per brand that is never public: `is_template`, kept
+`DRAFT` by its check constraint, so the public reads and `place_order` already refuse it. Its menu and settings live in
+the same tables as any store's. A new branch is a copy of it (`create_store_from_template`); each copied item keeps
+`menu_items.template_item_id`. Hours are never copied. Only the brand's owner reaches a template, and only for settings
+and the audit trail ([PERMISSIONS.md](PERMISSIONS.md#store-roles)).
+
+`ensure_brand_template(p_brand_id, p_actor, p_request_id) returns uuid` (plpgsql, invoker, `service_role` only;
+`20261112144103_brand_template.sql`) returns the brand's template, making it on the first call from the brand's oldest
+store: the store row `<brand slug>-template` (with an 8-character suffix from the brand id when that slug is taken) with that store's settings, prep times and timezone, its unarchived items with no stock and available, and lineage set on that store's items (by row) and on the brand's other stores' items (by name and category). A brand with no store gets an empty template on the column defaults. It emits `store.created` (`{ brandId, isTemplate: true }`);
+a repeat returns the same id and emits nothing; an unknown brand raises `NOT_FOUND`. The migration ran it for every
+existing brand; the seed runs it after a brand's first store.
+
+`create_store_from_template(p_brand_id, p_name, p_slug, p_area, p_address_line, p_actor, p_request_id) returns uuid`
+(same kind) inserts a `DRAFT` store with the template's settings, prep times, timezone, tagline, description and
+photo, copies the template's unarchived items with `template_item_id` set, and emits `store.created`
+(`{ brandId, templateStoreId }`). A taken slug fails the whole call (`23505`), leaving nothing behind. The seed opens
+each brand's later branches with it.
 
 The four store settings are edited through `PATCH /api/stores/:storeId/settings` ([API.md](API.md#patch-storesstoreidsettings)); their bounds are
 the check constraints (`stores_<column>_check`), mirrored by `STORE_SETTING_BOUNDS`. A new store takes the constant defaults
@@ -213,19 +232,21 @@ exception beats `SPECIAL_HOURS` on the same day. Index `(store_id, ends_on, star
 
 ### menu_items
 
-| Column           | Type    | Null | Default             | Constraints                                                                            |
-| ---------------- | ------- | ---- | ------------------- | -------------------------------------------------------------------------------------- |
-| `id`             | uuid    | no   | `gen_random_uuid()` | primary key                                                                            |
-| `store_id`       | uuid    | no   |                     | references `stores (id)`                                                               |
-| `category`       | text    | no   |                     |                                                                                        |
-| `name`           | text    | no   |                     |                                                                                        |
-| `description`    | text    | no   |                     |                                                                                        |
-| `price_paise`    | bigint  | no   |                     | `> 0` (`menu_items_price_paise_check`), `% 100 = 0` (whole rupees); the price in paise |
-| `image_url`      | text    | no   |                     |                                                                                        |
-| `is_available`   | boolean | no   | `true`              |                                                                                        |
-| `is_popular`     | boolean | no   | `false`             |                                                                                        |
-| `sort_order`     | integer | no   | `0`                 |                                                                                        |
-| `stock_quantity` | integer | yes  |                     | `check (stock_quantity >= 0)`; `null` = not tracked                                    |
+| Column             | Type        | Null | Default             | Constraints                                                                                                              |
+| ------------------ | ----------- | ---- | ------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `id`               | uuid        | no   | `gen_random_uuid()` | primary key                                                                                                              |
+| `store_id`         | uuid        | no   |                     | references `stores (id)`                                                                                                 |
+| `category`         | text        | no   |                     |                                                                                                                          |
+| `name`             | text        | no   |                     |                                                                                                                          |
+| `description`      | text        | no   |                     |                                                                                                                          |
+| `price_paise`      | bigint      | no   |                     | `> 0` (`menu_items_price_paise_check`), `% 100 = 0` (whole rupees); the price in paise                                   |
+| `image_url`        | text        | no   |                     |                                                                                                                          |
+| `is_available`     | boolean     | no   | `true`              |                                                                                                                          |
+| `is_popular`       | boolean     | no   | `false`             |                                                                                                                          |
+| `sort_order`       | integer     | no   | `0`                 |                                                                                                                          |
+| `stock_quantity`   | integer     | yes  |                     | `check (stock_quantity >= 0)`; `null` = not tracked                                                                      |
+| `template_item_id` | uuid        | yes  |                     | references `menu_items (id)` on delete set null; the template item it was copied from; `menu_items_template_item_id_idx` |
+| `archived_at`      | timestamptz | yes  |                     | an archived item is never copied; set by the first delete path (P3 PR 02)                                                |
 
 `stock_quantity` is decremented by `place_order` and restored when an order is cancelled, by what the order's lines
 reserved (`order_items.reserved_quantity`), not by what they ordered.

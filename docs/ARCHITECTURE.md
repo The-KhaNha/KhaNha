@@ -1044,6 +1044,7 @@ erDiagram
     text name
     text slug "unique"
     uuid owner_id FK "nullable, ON DELETE SET NULL"
+    uuid template_store_id FK "nullable, unique: the brand template"
     store_status status
   }
   STORES {
@@ -1060,6 +1061,7 @@ erDiagram
     boolean is_open
     int prep_time_min_minutes
     int prep_time_max_minutes "drives estimated_ready_at"
+    boolean is_template
   }
   MENU_ITEMS {
     uuid id PK
@@ -1104,6 +1106,12 @@ erDiagram
     int reserved_quantity "0 or quantity: what place_order took"
   }
 ```
+
+**Brand templates (P3.1, ADR-001 as amended).** Each brand keeps one never-public store, its template
+(`stores.is_template`, always `DRAFT`). A new branch is a copy of the template's menu and settings
+(`create_store_from_template`), and every copied item keeps `template_item_id`, its lineage. After the copy a branch
+changes freely: there is no override layer, and a template edit reaches an existing branch only through an explicit
+push (P3 PR 07). Details: [SCHEMA.md](SCHEMA.md#stores).
 
 Six tables: `profiles` (one per Auth user, holds the role), `brands` (the business, with its owner) and `stores` (each belongs to a brand; three in the demo seed), `menu_items` (with optional tracked stock), `orders` and `order_items` (name, price, photo and category on each line, and the store name, snapshotted at order time). Columns with their types, defaults and constraints, the indexes, triggers and the `place_order` / `update_order_status` / `reset_demo_orders` functions are in [SCHEMA.md](SCHEMA.md).
 
