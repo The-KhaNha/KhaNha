@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { MAX_QUANTITY_PER_ITEM } from '../../src/schemas/order.schema';
 import type { OrderStatus } from '../../src/types/enums';
 import { invalidate } from '../../src/utils/cache';
 import { paiseToRupees } from '../../src/utils/money';
@@ -8,6 +7,7 @@ import { supabaseAdmin } from '../../src/utils/supabase';
 import {
   createTestUser,
   deleteTestUser,
+  oldestStoreId,
   resetDemoData,
   testAuthMatrix,
   type TestUser,
@@ -229,12 +229,11 @@ describe('validation', () => {
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
     expect(res.body.error.message).toContain('Cold Coffee');
-    expect(res.body.error.message).toContain(String(MAX_QUANTITY_PER_ITEM));
+    expect(res.body.error.message).toContain('10');
   });
 
-  describe('MAX_QUANTITY_PER_ITEM boundary (10)', () => {
+  describe('per-item cap boundary (the default, 10)', () => {
     it('a single line at exactly 10 passes', async () => {
-      expect(MAX_QUANTITY_PER_ITEM).toBe(10);
       const res = await placeOrder(customer1, {
         items: [{ menuItemId: menuItem('Cold Coffee').id, quantity: 10 }],
       });
@@ -851,12 +850,13 @@ describe('envelope and DTO keys', () => {
 describe('the staff board keeps every active order', () => {
   const FINISHED_LIMIT = 2;
   const setLimit = async (limit: number) => {
+    // The board's length is the store's own setting (P2 PR 05); the staff here work at the oldest store.
     await supabaseAdmin
-      .from('site_settings')
+      .from('stores')
       .update({ staff_order_list_limit: limit })
-      .eq('id', true)
+      .eq('id', await oldestStoreId())
       .throwOnError();
-    invalidate('site_settings');
+    invalidate();
   };
   afterAll(() => setLimit(100));
 

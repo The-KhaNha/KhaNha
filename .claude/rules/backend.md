@@ -24,7 +24,7 @@ The principle is in `CLAUDE.md` §2c; the client side is in `.claude/rules/front
 - Every write through the API that changes cached data calls `invalidate(key)` in the same service, as
   `order.service.ts` does after an order is placed or cancelled. A new cached read ships with its invalidation, and a
   test that fails without it (`server/test/api/menu-cache.test.ts`). Keys: `menu`, `store` (old single-store routes),
-  `stores:list`, `store:<id>`, `store_ref:<slug>`, `menu:<storeId>`; stock changes call `invalidateMenus(storeId)`, which
+  `stores:list`, `store:<id>`, `store_settings:<id>`, `store_ref:<slug>`, `menu:<storeId>`; stock changes call `invalidateMenus(storeId)`, which
   drops `menu` and `menu:<storeId>` (`server/test/api/store-cache.test.ts`).
 - Write paths never read through the cache (`createOrder` checks `is_open` with the uncached `getStore()`).
   Nothing user-specific ever goes into `cached()`.

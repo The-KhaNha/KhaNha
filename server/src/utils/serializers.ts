@@ -9,6 +9,7 @@ import type {
   OrderItemDto,
   SiteSettingsDto,
   StoreDto,
+  StoreSettingsDto,
   StoreSummaryDto,
   UserDto,
 } from '../types/api';
@@ -62,6 +63,24 @@ export function toUserDto(profile: ProfileWithStanding): UserDto {
       role,
     })),
     ownedBrands: profile.brands.map(({ id, name, slug }) => ({ id, name, slug })),
+  };
+}
+
+/** A store's own limits: columns of its `stores` row (storeSettings.service). */
+export type StoreSettings = Pick<
+  Tables<'stores'>,
+  | 'max_quantity_per_item'
+  | 'low_stock_threshold'
+  | 'staff_order_list_limit'
+  | 'last_order_minutes_before_close'
+>;
+
+export function toStoreSettingsDto(settings: StoreSettings): StoreSettingsDto {
+  return {
+    maxQuantityPerItem: settings.max_quantity_per_item,
+    lowStockThreshold: settings.low_stock_threshold,
+    staffOrderListLimit: settings.staff_order_list_limit,
+    lastOrderMinutesBeforeClose: settings.last_order_minutes_before_close,
   };
 }
 

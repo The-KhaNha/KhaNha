@@ -40,6 +40,7 @@ a new file (see [DEPLOYMENT.md](DEPLOYMENT.md#schema-changes)).
 | `20261109094725_money_paise_contract.sql`          | drops `menu_items.price`, `orders.total`, `order_items.unit_price` and `line_total`, and the `menu_items_sync_price` trigger and function first; `place_order` (same signature) stops writing the rupee columns; `menu_items_audit` watches `price_paise` and no longer `price`                                                                                                                                                                                                                                                   |
 | `20261109122051_order_integrity.sql`               | `place_order` (same signature, grants kept) reads `stores.is_open` `for share` before stock (`STORE_CLOSED`) and refuses an item with `is_available = false` in its pricing read (`ITEM_UNAVAILABLE`); `menu_items_price_paise_check` becomes `price_paise > 0`                                                                                                                                                                                                                                                                   |
 | `20261111094853_brands_and_stores.sql`             | adds `store_status`, `brands` (RLS, revoked) and the `stores` columns `brand_id`, `slug`, `status`, `timezone`, `area`, `address_line`, `contact_phone`, `created_at`, `updated_at`, backfilled (one `ACTIVE` brand per store, slugged after its name) and then `not null`; `set_updated_at` and audit triggers on both                                                                                                                                                                                                           |
+| `20261112053921_store_settings_on_stores.sql`      | adds the four store settings columns (with checks) to `stores`, copies `staff_order_list_limit` from `site_settings` once without audit rows, and `stores_settings_audit`                                                                                                                                                                                                                                                                                                                                                         |
 | `20261111123222_store_memberships.sql`             | adds `store_role`, `store_memberships` (RLS, revoked) with its backfill of `STAFF` profiles into the oldest store and `store_memberships_audit`; redefines `audit_row_change()` to record inserts and deletes and the actor's `storeRole`                                                                                                                                                                                                                                                                                         |
 
 ## Enums
@@ -118,25 +119,34 @@ migration backfills every `profiles.role = 'STAFF'` account as a `STAFF` member 
 Three rows in the demo seed (Campus Cafe, and two branches of Brew Lane). Until the store-scoped routes land, the
 single-store routes use the oldest store (`order by created_at, id`).
 
-| Column                  | Type           | Null | Default             | Notes                                                     |
-| ----------------------- | -------------- | ---- | ------------------- | --------------------------------------------------------- |
-| `id`                    | uuid           | no   | `gen_random_uuid()` | primary key                                               |
-| `name`                  | text           | no   |                     |                                                           |
-| `brand_id`              | uuid           | no   |                     | references `brands (id)`; indexed (`stores_brand_id_idx`) |
-| `slug`                  | text           | no   |                     | unique; same pattern as `brands.slug`                     |
-| `status`                | `store_status` | no   | `ACTIVE`            |                                                           |
-| `timezone`              | text           | no   | `Asia/Kolkata`      |                                                           |
-| `area`                  | text           | yes  |                     | the neighbourhood a customer filters by                   |
-| `address_line`          | text           | yes  |                     | `StoreDto.address`                                        |
-| `contact_phone`         | text           | yes  |                     |                                                           |
-| `tagline`               | text           | no   |                     |                                                           |
-| `description`           | text           | no   |                     |                                                           |
-| `image_url`             | text           | yes  |                     |                                                           |
-| `is_open`               | boolean        | no   | `true`              | false makes `POST /orders` return `STORE_CLOSED`          |
-| `prep_time_min_minutes` | integer        | no   | `10`                |                                                           |
-| `prep_time_max_minutes` | integer        | no   | `15`                | drives `orders.estimated_ready_at`                        |
-| `created_at`            | timestamptz    | no   | `now()`             |                                                           |
-| `updated_at`            | timestamptz    | no   | `now()`             | `stores_set_updated_at`                                   |
+| Column                            | Type           | Null | Default             | Notes                                                     |
+| --------------------------------- | -------------- | ---- | ------------------- | --------------------------------------------------------- |
+| `id`                              | uuid           | no   | `gen_random_uuid()` | primary key                                               |
+| `name`                            | text           | no   |                     |                                                           |
+| `brand_id`                        | uuid           | no   |                     | references `brands (id)`; indexed (`stores_brand_id_idx`) |
+| `slug`                            | text           | no   |                     | unique; same pattern as `brands.slug`                     |
+| `status`                          | `store_status` | no   | `ACTIVE`            |                                                           |
+| `timezone`                        | text           | no   | `Asia/Kolkata`      |                                                           |
+| `area`                            | text           | yes  |                     | the neighbourhood a customer filters by                   |
+| `address_line`                    | text           | yes  |                     | `StoreDto.address`                                        |
+| `contact_phone`                   | text           | yes  |                     |                                                           |
+| `tagline`                         | text           | no   |                     |                                                           |
+| `description`                     | text           | no   |                     |                                                           |
+| `image_url`                       | text           | yes  |                     |                                                           |
+| `is_open`                         | boolean        | no   | `true`              | false makes `POST /orders` return `STORE_CLOSED`          |
+| `prep_time_min_minutes`           | integer        | no   | `10`                |                                                           |
+| `prep_time_max_minutes`           | integer        | no   | `15`                | drives `orders.estimated_ready_at`                        |
+| `max_quantity_per_item`           | integer        | no   | `10`                | store setting; check 1–50; most of one item per order     |
+| `low_stock_threshold`             | integer        | no   | `5`                 | store setting; check 0–50; "only N left" at or below it   |
+| `staff_order_list_limit`          | integer        | no   | `100`               | store setting; check 1–500; finished orders on the board  |
+| `last_order_minutes_before_close` | integer        | no   | `0`                 | store setting; check 0–240; stored only until P2 PR 06    |
+| `created_at`                      | timestamptz    | no   | `now()`             |                                                           |
+| `updated_at`                      | timestamptz    | no   | `now()`             | `stores_set_updated_at`                                   |
+
+The four store settings are edited through `PATCH /api/stores/:storeId/settings` ([API.md](API.md#patch-storesstoreidsettings)); their bounds are
+the check constraints (`stores_<column>_check`), mirrored by `STORE_SETTING_BOUNDS`. A new store takes the constant defaults
+(no insert trigger); the migration copied each existing store's `staff_order_list_limit` from `site_settings` once, writing no audit rows.
+Audited by `stores_settings_audit` (`store_settings.changed`), apart from `stores_audit`.
 
 ### menu_items
 
@@ -356,6 +366,7 @@ write for one small nightly scan.
 | `brands_set_updated_at`        | before update on `brands`, each row                                                                                                                                       | `set_updated_at()`                                                      |
 | `stores_set_updated_at`        | before update on `stores`, each row                                                                                                                                       | `set_updated_at()`                                                      |
 | `brands_audit`                 | after update on `brands`, each row                                                                                                                                        | `audit_row_change('brand.changed', '*')`                                |
+| `stores_settings_audit`        | after update of `max_quantity_per_item`, `low_stock_threshold`, `staff_order_list_limit`, `last_order_minutes_before_close` on `stores`, each row                         | `audit_row_change('store_settings.changed', …)`                         |
 | `stores_audit`                 | after update of `name`, `slug`, `status`, `is_open`, `area`, `address_line`, `contact_phone`, `timezone` on `stores`, each row (its audit row has `store_id = stores.id`) | `audit_row_change('store.changed', …)`                                  |
 | `store_memberships_audit`      | after insert or update or delete on `store_memberships`, each row (`membership.changed`: `user_id`, `store_id`, `role`)                                                   | `audit_row_change('membership.changed', 'user_id', 'store_id', 'role')` |
 | `feature_flags_audit`          | after update on `feature_flags`, each row                                                                                                                                 | `audit_row_change('feature_flag.changed', '*')`                         |

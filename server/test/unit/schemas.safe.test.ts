@@ -119,7 +119,7 @@ describe('createOrderSchema', () => {
     });
     expect(result.success).toBe(true);
     if (result.success) {
-      // 21 > MAX_QUANTITY_PER_ITEM (10): the merged line is what order.service later refuses. Every shown price is
+      // 21 > the store's cap (default 10): the merged line is what order.service later refuses. Every shown price is
       // kept, so a stale one on a duplicate line is still compared.
       expect(result.data.items).toEqual([
         { menuItemId: 'item-1', quantity: 21, expectedUnitPrices: [120, 100] },

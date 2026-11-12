@@ -422,6 +422,25 @@ Docs: `docs/CONFIGURATION.md` (the new **store setting** tier and its four rows;
 `docs/SCHEMA.md`, `docs/API.md`, `plans/ROADMAP.md` A1 (three rows resolved). Intent: `--server minor --client
 patch`.
 
+As built: the settings are four columns on `stores`, not a `store_settings` table (user decision, 2026-11-12), so there
+is no insert trigger, no `updated_by` and no separate audit trigger on a new table: `stores_settings_audit`
+(`store_settings.changed`) sits beside `stores_audit`. Bounds: `max_quantity_per_item` 1–50 (default 10),
+`low_stock_threshold` 0–50 (5), `staff_order_list_limit` 1–500 (100), `last_order_minutes_before_close` 0–240 (0, stored
+only until PR 06). A new store takes the constant defaults; the migration copied existing stores' `staff_order_list_limit`
+from `site_settings` once, with the audit and `updated_at` triggers disabled, so the backfill wrote no audit rows. The
+client half (`cartRules.ts`, `useMenu`, `fallbacks.json`) is PR 05c.
+
+### PR 05c — Client: the store's limits (P2.3)
+
+- [ ] Merged
+
+Split from PR 05 for size. `cartRules.ts` takes the limits as arguments instead of `MAX_LINE_QUANTITY` and
+`LOW_STOCK_MAX`; `useMenu` hands `rules` to the cart and the stock pill; the fallback when no menu is loaded lives in
+`config/fallbacks.json` with its parity test; `cartRules.test.ts` (limits from arguments). The `/admin` page drops its
+"Staff order list limit" field, which no longer does anything (the API keeps accepting it for older clients).
+ROADMAP A1's two client rows; the `docs/API.md` note that the client still applies its own copies goes. Intent:
+`--client patch`.
+
 ### PR 06 — Opening hours: the rule and the reads (P2.4)
 
 - [ ] Merged

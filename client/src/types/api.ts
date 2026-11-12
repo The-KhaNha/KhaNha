@@ -118,6 +118,15 @@ export interface ApiErrorEnvelope {
   error: { code: string; message: string; details?: ApiErrorDetails };
 }
 
+/** A store's own limits (GET/PATCH /api/stores/:storeId/settings), edited by its manager or owner. */
+export interface StoreSettings {
+  maxQuantityPerItem: number;
+  lowStockThreshold: number;
+  staffOrderListLimit: number;
+  /** Minutes before closing at which the store stops taking orders; 0 = until it closes. */
+  lastOrderMinutesBeforeClose: number;
+}
+
 /** Site-wide limits edited on the admin dashboard. */
 export interface SiteSettings {
   customerOrderHistoryLimit: number;

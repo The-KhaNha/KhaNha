@@ -1,6 +1,6 @@
 import { accessFor, can, type Capability } from '../domain/permissions';
 import { LIMITS } from '../schemas/limits';
-import { MAX_QUANTITY_PER_ITEM, type CreateOrderInput } from '../schemas/order.schema';
+import { type CreateOrderInput } from '../schemas/order.schema';
 import type { AuthUser, RequestContext } from '../types/auth';
 import type { Tables } from '../types/database';
 import { ORDER_STATUSES, type OrderStatus } from '../types/enums';
@@ -23,6 +23,7 @@ import { invalidateMenus } from './menu.service';
 import { simulatePayment } from './payment.service';
 import { getSettings } from './settings.service';
 import { getStore } from './store.service';
+import { getStoreSettings } from './storeSettings.service';
 
 /** The single source of truth for which status changes staff may make. */
 const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
@@ -129,7 +130,12 @@ export async function createOrder(
     menuItems.filter((item) => item.store_id === store.id).map((item) => [item.id, item]),
   );
 
-  const { lines, totalPaise } = priceLines(input.items, byId, store.id);
+  const { lines, totalPaise } = priceLines(
+    input.items,
+    byId,
+    store.id,
+    store.max_quantity_per_item,
+  );
   // A real gateway would be charged here. With one, a refusal from place_order (sold out, price changed) must refund it.
   const paymentStatus = await simulatePayment(totalPaise);
 
@@ -240,7 +246,7 @@ async function storesWorkedAt(user: AuthUser): Promise<string[]> {
 
 /**
  * The kitchen board of `storeIds` (the caller was admitted to each): every active order, and the newest
- * `staff_order_list_limit` finished ones (collected, cancelled) as history. One limit over every status used to cut the
+ * store's `staff_order_list_limit` finished ones (collected, cancelled) as history. One limit over every status used to cut the
  * orders that had waited longest as soon as enough newer orders existed, collected ones included, with nothing on the
  * board to say so. Newest first, as before; the board sorts.
  */
@@ -249,7 +255,6 @@ export async function listStoreOrders(
   status?: OrderStatus,
 ): Promise<OrderWithDetails[]> {
   if (storeIds.length === 0) return [];
-  const finishedLimit = (await getSettings()).staff_order_list_limit;
   const active = async (statuses: OrderStatus[]) =>
     (
       await selectOrders()
@@ -260,19 +265,25 @@ export async function listStoreOrders(
         .throwOnError()
     ).data;
   const finished = async (statuses: OrderStatus[]) =>
+    // Each store keeps its own number of finished orders (its settings), so one query per store.
+    // ponytail: N queries per poll for a caller at N stores; one windowed RPC if owners run many stores.
     (
-      await selectOrders()
-        .in('store_id', storeIds)
-        .in('status', statuses)
-        .order('created_at', { ascending: false })
-        .limit(finishedLimit)
-        .throwOnError()
-    ).data;
+      await Promise.all(
+        storeIds.map(async (id) =>
+          selectOrders()
+            .eq('store_id', id)
+            .in('status', statuses)
+            .order('created_at', { ascending: false })
+            .limit((await getStoreSettings(id)).staff_order_list_limit)
+            .throwOnError(),
+        ),
+      )
+    ).flatMap(({ data }) => data);
 
   if (status)
     return ACTIVE_STATUSES.includes(status)
       ? (await active([status])).reverse()
-      : finished([status]);
+      : (await finished([status])).sort((a, b) => b.created_at.localeCompare(a.created_at));
   const [open, done] = await Promise.all([active(ACTIVE_STATUSES), finished(TERMINAL_STATUSES)]);
   return [...open, ...done].sort((a, b) => b.created_at.localeCompare(a.created_at));
 }
@@ -384,6 +395,7 @@ function priceLines(
   requested: CreateOrderInput['items'],
   byId: Map<string, MenuItem>,
   storeId: string,
+  maxQuantity: number,
 ): { lines: OrderLine[]; totalPaise: number } {
   let totalPaise = 0;
   const lines = requested.map(({ menuItemId, quantity, expectedUnitPrices }) => {
@@ -395,9 +407,9 @@ function priceLines(
       });
     }
     if (!item.is_available) throw itemUnavailable(menuItemId, item.name);
-    if (quantity > MAX_QUANTITY_PER_ITEM) {
+    if (quantity > maxQuantity) {
       throw validationError(
-        `You can order at most ${MAX_QUANTITY_PER_ITEM} of ${item.name}. Please reduce the quantity in your cart.`,
+        `You can order at most ${maxQuantity} of ${item.name}. Please reduce the quantity in your cart.`,
       );
     }
     // The customer saw another price (a cart kept from before a price change): refused before any charge.
