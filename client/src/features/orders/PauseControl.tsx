@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pause, Play } from 'lucide-react';
 import type { Store } from '../../types/api';
 import { Button } from '../../components/Button';
@@ -31,15 +31,34 @@ export function PauseControl({ storeId, store, mutate, loadFailed, onRetry }: Pa
   const [error, setError] = useState<string | null>(null);
   // One request at a time: a late answer must never overwrite a newer change (pause, then Resume at once).
   const [pending, setPending] = useState(false);
+  // Every press swaps the buttons, so the pressed one leaves the screen: move focus within the control, never let it
+  // fall back to the page (a keyboard or screen-reader user would lose their place).
+  const box = useRef<HTMLDivElement>(null);
+  const refocus = useRef(false);
 
   const until = store?.nextChangeAt ? Date.parse(store.nextChangeAt) : null;
   // A timed pause that ran out is over even before the next refresh says so.
   const paused = store?.openState === 'PAUSED' && (until === null || until > now.getTime());
   const minutesLeft = until === null ? null : Math.round((until - now.getTime()) / 60_000);
 
+  useEffect(() => {
+    if (!refocus.current) return;
+    refocus.current = false;
+    const firstPreset = choosing
+      ? box.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')
+      : null;
+    (firstPreset ?? box.current)?.focus();
+  }, [choosing, paused]);
+
+  const choose = (open: boolean) => {
+    refocus.current = true;
+    setChoosing(open);
+  };
+
   async function change(next: Partial<Store>, request: () => Promise<Store>) {
     if (!store || pending) return;
     const previous = store;
+    refocus.current = true;
     setPending(true);
     setChoosing(false);
     setError(null);
@@ -79,7 +98,13 @@ export function PauseControl({ storeId, store, mutate, loadFailed, onRetry }: Pa
     );
 
   return (
-    <div className="flex min-h-11 flex-wrap items-center gap-2 py-1">
+    <div
+      ref={box}
+      role="group"
+      aria-label="Pause new orders"
+      tabIndex={-1}
+      className="flex min-h-11 flex-wrap items-center gap-2 py-1 outline-none"
+    >
       {paused ? (
         <>
           <p role="status" className="text-body font-semibold text-gold-700">
@@ -112,7 +137,7 @@ export function PauseControl({ storeId, store, mutate, loadFailed, onRetry }: Pa
               {p.label}
             </Button>
           ))}
-          <Button variant="ghost" onClick={() => setChoosing(false)}>
+          <Button variant="ghost" onClick={() => choose(false)}>
             Cancel
           </Button>
         </div>
@@ -129,7 +154,7 @@ export function PauseControl({ storeId, store, mutate, loadFailed, onRetry }: Pa
         <Button
           variant="secondary"
           disabled={!store || pending}
-          onClick={() => setChoosing(true)}
+          onClick={() => choose(true)}
           iconLeft={<Pause className="h-4 w-4" aria-hidden />}
         >
           Pause orders

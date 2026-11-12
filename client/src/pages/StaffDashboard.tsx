@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { Store as StoreIcon } from 'lucide-react';
+import { ButtonLink } from '../components/Button';
 import { Card } from '../components/Card';
 import { EmptyState } from '../components/EmptyState';
 import type { Order, OrderStatus } from '../types/api';
@@ -197,9 +198,9 @@ export function StaffStoresPage() {
           title="You are not on a store's team."
           description="Ask a manager to invite you."
           action={
-            <Link to="/" className="text-center text-body font-semibold text-brand-700 underline">
+            <ButtonLink to="/" variant="secondary" fullWidth>
               Browse stores
-            </Link>
+            </ButtonLink>
           }
         />
       ) : (

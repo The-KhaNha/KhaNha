@@ -16,6 +16,22 @@ function Harness({ initial }: { initial: Store }) {
 }
 
 describe('PauseControl', () => {
+  // The pressed button leaves the screen each time: focus must stay in the control, never fall back to the page.
+  it('keeps keyboard focus in the control as its buttons change', async () => {
+    api.pauseStore.mockReset().mockReturnValue(new Promise<Store>(() => {}));
+    render(<Harness initial={open} />);
+    const pauseButton = screen.getByRole('button', { name: 'Pause orders' });
+    pauseButton.focus();
+    fireEvent.click(pauseButton);
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: '15 min' }));
+    fireEvent.click(screen.getByRole('button', { name: '15 min' }));
+    await waitFor(() => expect(screen.getByRole('status')).toBeInTheDocument());
+    expect(document.activeElement).not.toBe(document.body);
+    expect(screen.getByRole('group', { name: 'Pause new orders' })).toContainElement(
+      document.activeElement as HTMLElement,
+    );
+  });
+
   it('shows the pause at once, then Resume brings the store back', async () => {
     let settle: (s: Store) => void = () => {};
     api.pauseStore.mockReturnValue(new Promise<Store>((r) => (settle = r)));

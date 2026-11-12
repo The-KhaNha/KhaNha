@@ -244,7 +244,7 @@ sequenceDiagram
     API-->>Store: 201 { user }
     Store->>Store: login(email, password), see 3.3
     Store-->>Page: user
-    Page->>U: redirect: roles.homeFor(role) for STAFF/ADMIN, else ?next or /
+    Page->>U: redirect: a same-site ?next, else roles.homeFor(user)
   end
 ```
 
@@ -285,7 +285,7 @@ sequenceDiagram
       API-->>Store: { user }
       Store->>Store: set user + token
       Store-->>Page: user
-      Page->>U: roles.homeFor(role) for STAFF/ADMIN, CUSTOMER → ?next or /
+      Page->>U: a same-site ?next, else roles.homeFor(user)
     else profile could not be loaded
       Store->>Store: clearSession() so no half-signed-in state remains
       Store-->>Page: error message

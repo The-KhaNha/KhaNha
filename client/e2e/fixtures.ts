@@ -91,11 +91,15 @@ export async function mockApi(page: Page): Promise<void> {
     const json = (body: unknown, status = 200) =>
       route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
     if (path === '/api/config') return json(config);
-    if (path === '/api/store') return json({ store });
-    if (path === '/api/menu') return json(menu);
     if (path === '/api/stores') return json({ stores: [summary(store)] });
     if (path === '/api/stores/cafe') return json({ store });
     if (path === '/api/stores/cafe/menu') return json(menu);
+    if (path === '/api/stores/s1/hours')
+      return json({
+        timezone: 'Asia/Kolkata',
+        hours: [{ dayOfWeek: 1, opensAt: '09:00', closesAt: '17:00' }],
+        exceptions: [],
+      });
     return json({ error: { code: 'NOT_FOUND', message: `No route matches ${path}.` } }, 404);
   });
 }
