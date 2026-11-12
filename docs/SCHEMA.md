@@ -41,6 +41,7 @@ a new file (see [DEPLOYMENT.md](DEPLOYMENT.md#schema-changes)).
 | `20261109122051_order_integrity.sql`               | `place_order` (same signature, grants kept) reads `stores.is_open` `for share` before stock (`STORE_CLOSED`) and refuses an item with `is_available = false` in its pricing read (`ITEM_UNAVAILABLE`); `menu_items_price_paise_check` becomes `price_paise > 0`                                                                                                                                                                                                                                                                   |
 | `20261111094853_brands_and_stores.sql`             | adds `store_status`, `brands` (RLS, revoked) and the `stores` columns `brand_id`, `slug`, `status`, `timezone`, `area`, `address_line`, `contact_phone`, `created_at`, `updated_at`, backfilled (one `ACTIVE` brand per store, slugged after its name) and then `not null`; `set_updated_at` and audit triggers on both                                                                                                                                                                                                           |
 | `20261112053921_store_settings_on_stores.sql`      | adds the four store settings columns (with checks) to `stores`, copies `staff_order_list_limit` from `site_settings` once without audit rows, and `stores_settings_audit`                                                                                                                                                                                                                                                                                                                                                         |
+| `20261112063852_store_hours.sql`                   | adds `schedule_exception_kind`, `store_hours` and `store_schedule_exceptions` (RLS on, revoked, cascade from `stores`); no audit triggers yet (the editing PR adds them)                                                                                                                                                                                                                                                                                                                                                          |
 | `20261111123222_store_memberships.sql`             | adds `store_role`, `store_memberships` (RLS, revoked) with its backfill of `STAFF` profiles into the oldest store and `store_memberships_audit`; redefines `audit_row_change()` to record inserts and deletes and the actor's `storeRole`                                                                                                                                                                                                                                                                                         |
 
 ## Enums
@@ -147,6 +148,20 @@ The four store settings are edited through `PATCH /api/stores/:storeId/settings`
 the check constraints (`stores_<column>_check`), mirrored by `STORE_SETTING_BOUNDS`. A new store takes the constant defaults
 (no insert trigger); the migration copied each existing store's `staff_order_list_limit` from `site_settings` once, writing no audit rows.
 Audited by `stores_settings_audit` (`store_settings.changed`), apart from `stores_audit`.
+
+### store_hours
+
+Weekly opening intervals of a store, several a day. `day_of_week` is ISO (1 = Monday); `closes_at` before `opens_at`
+means the interval runs past midnight into the next day; `opens_at <> closes_at` and both are before 24:00 (checks).
+Index `(store_id, day_of_week)`. No rows means "open all day": the manual `stores.is_open` switch decides. Overlap
+rules belong to the write path (`set_store_hours`, a later PR).
+
+### store_schedule_exceptions
+
+Date ranges (`starts_on` to `ends_on`, store-local dates) that replace the week: `kind` `CLOSED` (no times) or
+`SPECIAL_HOURS` (both times, same checks as `store_hours`), with a `label` of 2 to 60 characters ("Diwali"). A `CLOSED`
+exception beats `SPECIAL_HOURS` on the same day. Index `(store_id, ends_on, starts_on)`. The rule that reads both is
+[ARCHITECTURE.md](ARCHITECTURE.md#44-the-open-state).
 
 ### menu_items
 

@@ -534,6 +534,41 @@ export type Database = {
           },
         ];
       };
+      store_hours: {
+        Row: {
+          closes_at: string;
+          created_at: string;
+          day_of_week: number;
+          id: string;
+          opens_at: string;
+          store_id: string;
+        };
+        Insert: {
+          closes_at: string;
+          created_at?: string;
+          day_of_week: number;
+          id?: string;
+          opens_at: string;
+          store_id: string;
+        };
+        Update: {
+          closes_at?: string;
+          created_at?: string;
+          day_of_week?: number;
+          id?: string;
+          opens_at?: string;
+          store_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'store_hours_store_id_fkey';
+            columns: ['store_id'];
+            isOneToOne: false;
+            referencedRelation: 'stores';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       store_memberships: {
         Row: {
           created_at: string;
@@ -579,6 +614,50 @@ export type Database = {
             columns: ['user_id'];
             isOneToOne: false;
             referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      store_schedule_exceptions: {
+        Row: {
+          closes_at: string | null;
+          created_at: string;
+          ends_on: string;
+          id: string;
+          kind: Database['public']['Enums']['schedule_exception_kind'];
+          label: string;
+          opens_at: string | null;
+          starts_on: string;
+          store_id: string;
+        };
+        Insert: {
+          closes_at?: string | null;
+          created_at?: string;
+          ends_on: string;
+          id?: string;
+          kind: Database['public']['Enums']['schedule_exception_kind'];
+          label: string;
+          opens_at?: string | null;
+          starts_on: string;
+          store_id: string;
+        };
+        Update: {
+          closes_at?: string | null;
+          created_at?: string;
+          ends_on?: string;
+          id?: string;
+          kind?: Database['public']['Enums']['schedule_exception_kind'];
+          label?: string;
+          opens_at?: string | null;
+          starts_on?: string;
+          store_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'store_schedule_exceptions_store_id_fkey';
+            columns: ['store_id'];
+            isOneToOne: false;
+            referencedRelation: 'stores';
             referencedColumns: ['id'];
           },
         ];
@@ -769,6 +848,7 @@ export type Database = {
       actor_type: 'USER' | 'WORKER' | 'RECONCILER' | 'WEBHOOK' | 'SCHEDULER' | 'SYSTEM';
       order_status: 'PLACED' | 'PREPARING' | 'READY' | 'COLLECTED' | 'CANCELLED';
       payment_status: 'PENDING' | 'PAID';
+      schedule_exception_kind: 'CLOSED' | 'SPECIAL_HOURS';
       store_role: 'MANAGER' | 'STAFF';
       store_status: 'DRAFT' | 'ACTIVE' | 'SUSPENDED' | 'ARCHIVED';
       user_role: 'CUSTOMER' | 'STAFF' | 'ADMIN';
@@ -899,6 +979,7 @@ export const Constants = {
       actor_type: ['USER', 'WORKER', 'RECONCILER', 'WEBHOOK', 'SCHEDULER', 'SYSTEM'],
       order_status: ['PLACED', 'PREPARING', 'READY', 'COLLECTED', 'CANCELLED'],
       payment_status: ['PENDING', 'PAID'],
+      schedule_exception_kind: ['CLOSED', 'SPECIAL_HOURS'],
       store_role: ['MANAGER', 'STAFF'],
       store_status: ['DRAFT', 'ACTIVE', 'SUSPENDED', 'ARCHIVED'],
       user_role: ['CUSTOMER', 'STAFF', 'ADMIN'],
