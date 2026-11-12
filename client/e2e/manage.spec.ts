@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { mockApi, noHorizontalOverflow, signIn, store, summary } from './fixtures';
+import { menu, mockApi, noHorizontalOverflow, signIn, store, summary } from './fixtures';
 
 test('a manager closes today and the store list says so', async ({ page }) => {
   await mockApi(page);
@@ -44,4 +44,45 @@ test('a manager closes today and the store list says so', async ({ page }) => {
 
   await page.goto('/');
   await expect(page.getByText('Closed for Diwali')).toBeVisible();
+});
+
+test('a manager adds an item and a customer sees it', async ({ page }) => {
+  await mockApi(page);
+  await signIn(page, 'CUSTOMER', 'PLACED', {
+    memberships: [
+      { storeId: store.id, storeSlug: store.slug, storeName: store.name, role: 'MANAGER' },
+    ],
+  });
+  const added = { ...menu.categories[0]!.items[0]!, id: 'i9', name: 'Masala Chai', price: 30 };
+  let created = false;
+  await page.route('**/api/stores/s1/menu-items', (route) => {
+    if (route.request().method() === 'POST') {
+      created = true;
+      return route.fulfill({
+        status: 201,
+        json: { item: { ...added, isEnabled: true, archivedAt: null } },
+      });
+    }
+    return route.fulfill({ json: { items: [] } });
+  });
+  // The customer's menu answers with the new item once it exists.
+  await page.route('**/api/stores/cafe/menu', (route) =>
+    route.fulfill({
+      json: created
+        ? { ...menu, categories: [{ name: 'Coffee', items: [added] }], popular: [] }
+        : menu,
+    }),
+  );
+
+  await page.goto('/manage/cafe/menu');
+  await noHorizontalOverflow(page);
+  await page.getByRole('button', { name: 'Add item' }).first().click();
+  await page.getByLabel('Name').fill('Masala Chai');
+  await page.getByLabel('Price (₹)').fill('30');
+  await page.getByLabel('Category', { exact: true }).last().fill('Coffee');
+  await page.getByRole('dialog').getByRole('button', { name: 'Add item' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+
+  await page.goto('/s/cafe/menu');
+  await expect(page.getByText('Masala Chai').first()).toBeVisible();
 });

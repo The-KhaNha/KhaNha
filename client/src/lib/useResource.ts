@@ -63,6 +63,11 @@ function writeCache(key: string, data: unknown): void {
   }
 }
 
+/** Drops one persisted response, so the next visit refetches it (a manager's edit must not hide behind a saved menu). */
+export function dropPersisted(key: string): void {
+  removeKeys((k) => k === CACHE_PREFIX + key);
+}
+
 /** Removes every key that matches. Keys are collected first: removing while scanning can reorder them and skip one. */
 function removeKeys(matches: (key: string) => boolean): void {
   try {

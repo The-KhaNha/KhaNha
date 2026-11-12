@@ -132,6 +132,13 @@ export interface MenuItem {
 
 export type Diet = 'VEG' | 'NON_VEG' | 'EGG';
 
+/** An item in the menu editor (GET /api/stores/:storeId/menu-items): archived ones too, with the raw switch. */
+export interface ManagedMenuItem extends MenuItem {
+  /** The switch alone; `isAvailable` also counts stock. */
+  isEnabled: boolean;
+  archivedAt: string | null;
+}
+
 export interface MenuCategory {
   name: string;
   items: MenuItem[];
