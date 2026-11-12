@@ -14,41 +14,65 @@ export interface Schedule {
   exceptions: (ScheduleException & { id: string })[];
 }
 
-const DAY_MS = 86_400_000;
+// A unit conversion, not a tunable duration (check:durations looks for the latter).
+const DAY_MS = 24 * 60 * 60 * 1000;
+// The Data API answers at most `max_rows` rows (1000 in config.toml, Supabase's default) and says nothing when it cuts.
+// ponytail: a page this size assumes max_rows >= 1000; lowering max_rows would end the paging early.
+const PAGE = 1000;
+
+/** Every row of an ordered query, a page at a time. */
+async function readAll<Row>(
+  page: (from: number, to: number) => PromiseLike<{ data: Row[] }>,
+): Promise<Row[]> {
+  const rows: Row[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data } = await page(from, from + PAGE - 1);
+    rows.push(...data);
+    if (data.length < PAGE) return rows;
+  }
+}
 
 /**
- * The weeks and the upcoming exceptions of `storeIds`, two queries whatever the count. Exceptions that ended before
- * yesterday (UTC, so any zone's today is covered) can never matter and are not read.
+ * The weeks and the upcoming exceptions of `storeIds`, two queries (a page each, past 1000 rows) whatever the count.
+ * Exceptions that ended before the UTC date two days back can never matter and are not read: at UTC-12, the previous
+ * local day, whose overnight exception still runs into today, can be that date.
  */
 async function loadSchedules(storeIds: string[]): Promise<Map<string, Schedule>> {
-  const since = new Date(Date.now() - DAY_MS).toISOString().slice(0, 10);
+  const since = new Date(Date.now() - 2 * DAY_MS).toISOString().slice(0, 10);
   const [hours, exceptions] = await Promise.all([
-    supabaseAdmin
-      .from('store_hours')
-      .select('store_id, day_of_week, opens_at, closes_at')
-      .in('store_id', storeIds)
-      .order('day_of_week')
-      .order('opens_at')
-      .throwOnError(),
-    supabaseAdmin
-      .from('store_schedule_exceptions')
-      .select('id, store_id, starts_on, ends_on, kind, opens_at, closes_at, label')
-      .in('store_id', storeIds)
-      .gte('ends_on', since)
-      .order('starts_on')
-      .order('id')
-      .throwOnError(),
+    readAll((from, to) =>
+      supabaseAdmin
+        .from('store_hours')
+        .select('store_id, day_of_week, opens_at, closes_at')
+        .in('store_id', storeIds)
+        .order('day_of_week')
+        .order('opens_at')
+        .order('id')
+        .range(from, to)
+        .throwOnError(),
+    ),
+    readAll((from, to) =>
+      supabaseAdmin
+        .from('store_schedule_exceptions')
+        .select('id, store_id, starts_on, ends_on, kind, opens_at, closes_at, label')
+        .in('store_id', storeIds)
+        .gte('ends_on', since)
+        .order('starts_on')
+        .order('id')
+        .range(from, to)
+        .throwOnError(),
+    ),
   ]);
   const schedules = new Map<string, Schedule>(
     storeIds.map((id) => [id, { hours: [], exceptions: [] }]),
   );
-  for (const row of hours.data)
+  for (const row of hours)
     schedules.get(row.store_id)?.hours.push({
       dayOfWeek: row.day_of_week,
       opensAt: row.opens_at,
       closesAt: row.closes_at,
     });
-  for (const row of exceptions.data)
+  for (const row of exceptions)
     schedules.get(row.store_id)?.exceptions.push({
       id: row.id,
       startsOn: row.starts_on,
@@ -61,12 +85,14 @@ async function loadSchedules(storeIds: string[]): Promise<Map<string, Schedule>>
   return schedules;
 }
 
+/** One store's schedule, uncached: what a write path (an order's acceptance) checks against. */
+export async function loadSchedule(storeId: string): Promise<Schedule> {
+  return (await loadSchedules([storeId])).get(storeId) ?? { hours: [], exceptions: [] };
+}
+
 /** One store's schedule, cached under `store_hours:<id>`; the hours editor (PR 07) drops the key on every write. */
 export function getSchedule(storeId: string): Promise<Schedule> {
-  return cached(`store_hours:${storeId}`, PUBLIC_READ_TTL_MS, async () => {
-    const schedules = await loadSchedules([storeId]);
-    return schedules.get(storeId) ?? { hours: [], exceptions: [] };
-  });
+  return cached(`store_hours:${storeId}`, PUBLIC_READ_TTL_MS, () => loadSchedule(storeId));
 }
 
 export async function getSchedules(storeIds: string[]): Promise<Map<string, Schedule>> {

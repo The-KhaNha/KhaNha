@@ -4,7 +4,7 @@ import { logger } from '../utils/logger';
 import { supabaseAdmin } from '../utils/supabase';
 import { toMenuItemDto, toStoreDto, type StoreWithBrand } from '../utils/serializers';
 import { getOpenFields } from './schedule.service';
-import { getStore } from './store.service';
+import { getCachedStore } from './store.service';
 
 /**
  * Most items one menu response carries (docs/CONFIGURATION.md, platform constant). A campus café lists tens; the cap
@@ -17,13 +17,22 @@ export const MENU_ITEMS_MAX = 500;
  * Full menu including unavailable items (the client greys them out). Cached for PUBLIC_READ_TTL_MS; order.service
  * drops the cache whenever stock changes through this API (an order placed or cancelled).
  */
-export function getMenu(): Promise<MenuResponse> {
-  return cached('menu', PUBLIC_READ_TTL_MS, async () => loadMenu(await getStore()));
+export async function getMenu(): Promise<MenuResponse> {
+  const store = await getCachedStore();
+  return withOpenFields(await cached('menu', PUBLIC_READ_TTL_MS, () => loadMenu(store)), store);
 }
 
 /** The menu of one ACTIVE store (the caller resolved it through getActiveStore), cached under `menu:<storeId>`. */
-export function getStoreMenu(store: StoreWithBrand): Promise<MenuResponse> {
-  return cached(`menu:${store.id}`, PUBLIC_READ_TTL_MS, () => loadMenu(store));
+export async function getStoreMenu(store: StoreWithBrand): Promise<MenuResponse> {
+  return withOpenFields(
+    await cached(`menu:${store.id}`, PUBLIC_READ_TTL_MS, () => loadMenu(store)),
+    store,
+  );
+}
+
+/** The open state changes with the clock, not with the menu: computed on every read, never cached with the menu. */
+async function withOpenFields(menu: MenuResponse, store: StoreWithBrand): Promise<MenuResponse> {
+  return { ...menu, store: { ...menu.store, ...(await getOpenFields(store)) } };
 }
 
 /** Drops the old single-store key and the store's own: stock changed through this API (an order placed or cancelled). */

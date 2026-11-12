@@ -23,7 +23,7 @@ import { invalidateMenus } from './menu.service';
 import { simulatePayment } from './payment.service';
 import { getSettings } from './settings.service';
 import { describeWhen } from '../domain/schedule';
-import { computeOpenState, getSchedule } from './schedule.service';
+import { computeOpenState, loadSchedule } from './schedule.service';
 import { getStore } from './store.service';
 import { getStoreSettings } from './storeSettings.service';
 
@@ -104,7 +104,8 @@ export async function createOrder(
     getSettings(),
     getStore(input.storeId),
     // The legacy single-store call names no store yet: its schedule is read below, once the store is known.
-    input.storeId ? getSchedule(input.storeId) : null,
+    // Uncached, like the store: a write never reads through the cache.
+    input.storeId ? loadSchedule(input.storeId) : null,
     input.customerName ?? lookupUserName(user.id),
     supabaseAdmin
       .from('menu_items')
@@ -130,7 +131,7 @@ export async function createOrder(
   const now = new Date();
   const { state, nextChangeAt } = computeOpenState(
     store,
-    earlySchedule ?? (await getSchedule(store.id)),
+    earlySchedule ?? (await loadSchedule(store.id)),
     now,
   );
   if (state !== 'OPEN' && state !== 'CLOSING_SOON')

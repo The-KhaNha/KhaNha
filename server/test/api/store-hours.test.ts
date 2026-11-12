@@ -3,13 +3,14 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { StoreDto, StoreScheduleResponse, StoreSummaryDto } from '../../src/types/api';
+import { getSchedule, getSchedules } from '../../src/services/schedule.service';
 import { invalidate } from '../../src/utils/cache';
 import { supabaseAdmin } from '../../src/utils/supabase';
 import { api } from '../setup/api';
 import { createTestUser, deleteTestStores, type TestUser } from '../setup/helpers';
 
 const tag = randomUUID().slice(0, 8);
-const store = { open: '', ended: '', week: '' };
+const store = { open: '', ended: '', week: '', bulk: '' };
 const item = { open: '', ended: '' };
 let brandId = '';
 let customer: TestUser;
@@ -110,7 +111,7 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
-  const ids = Object.values(store);
+  const ids = Object.values(store).filter(Boolean);
   await supabaseAdmin.from('orders').delete().in('store_id', ids);
   await supabaseAdmin.from('menu_items').delete().in('store_id', ids);
   await deleteTestStores(ids, [brandId], [customer]);
@@ -176,5 +177,104 @@ describe('POST /api/orders against the schedule', () => {
   it('takes the same order at a store with no hours', async () => {
     const res = await order(store.open, item.open);
     expect(res.status).toBe(201);
+  });
+});
+
+// A CLOSED exception covering today (UTC, the test stores' zone), written behind the API's back.
+async function closeToday(storeId: string): Promise<() => Promise<void>> {
+  const today = utc(Date.now()).slice(0, 10);
+  const { data } = await supabaseAdmin
+    .from('store_schedule_exceptions')
+    .insert({
+      store_id: storeId,
+      starts_on: today,
+      ends_on: today,
+      kind: 'CLOSED',
+      label: 'Shut today',
+    })
+    .select('id')
+    .single()
+    .throwOnError();
+  return async () => {
+    await supabaseAdmin.from('store_schedule_exceptions').delete().eq('id', data.id).throwOnError();
+    invalidate();
+  };
+}
+
+describe('schedule reads and their caches', () => {
+  it('an order is checked against the schedule as it is now, not a cached copy', async () => {
+    await api().get(`/api/stores/${slug('open')}/hours`); // fills store_hours:<id>
+    const reopen = await closeToday(store.open);
+    try {
+      const res = await order(store.open, item.open);
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('STORE_CLOSED');
+    } finally {
+      await reopen();
+    }
+  });
+
+  it("the menu's open state is computed per read, outside the menu's cache", async () => {
+    const menu = () => api().get(`/api/stores/${slug('open')}/menu`);
+    expect((await menu()).body.store.openState).toBe('OPEN');
+    const reopen = await closeToday(store.open);
+    try {
+      // What the hours editor drops on a write: the schedule's key, not every menu's.
+      invalidate(`store_hours:${store.open}`);
+      expect((await menu()).body.store.openState).toBe('CLOSED');
+    } finally {
+      await reopen();
+    }
+  });
+
+  it('reads an exception that ended two UTC dates ago: the previous local day of a zone west of UTC', async () => {
+    const twoDaysAgo = utc(Date.now() - 48 * HOUR).slice(0, 10);
+    const { data } = await supabaseAdmin
+      .from('store_schedule_exceptions')
+      .insert({
+        store_id: store.week,
+        starts_on: twoDaysAgo,
+        ends_on: twoDaysAgo,
+        kind: 'SPECIAL_HOURS',
+        opens_at: '20:00',
+        closes_at: '18:00',
+        label: 'Late night',
+      })
+      .select('id')
+      .single()
+      .throwOnError();
+    invalidate();
+    try {
+      expect((await getSchedule(store.week)).exceptions.map((e) => e.id)).toContain(data.id);
+    } finally {
+      await supabaseAdmin.from('store_schedule_exceptions').delete().eq('id', data.id);
+      invalidate();
+    }
+  });
+
+  it('a batch read returns every row past the Data API row cap (max_rows = 1000)', async () => {
+    const { data } = await supabaseAdmin
+      .from('stores')
+      .insert({
+        name: 'Hours bulk',
+        slug: slug('bulk'),
+        brand_id: brandId,
+        status: 'DRAFT',
+        timezone: 'UTC',
+        tagline: 'Test',
+        description: 'A store for store-hours.test.ts',
+      })
+      .select('id')
+      .single()
+      .throwOnError();
+    store.bulk = data.id;
+    const rows = Array.from({ length: 1005 }, (_, i) => ({
+      store_id: store.bulk,
+      day_of_week: (i % 7) + 1,
+      opens_at: `00:${String(Math.floor(i / 60)).padStart(2, '0')}:${String(i % 60).padStart(2, '0')}`,
+      closes_at: '23:00',
+    }));
+    await supabaseAdmin.from('store_hours').insert(rows).throwOnError();
+    expect((await getSchedules([store.bulk])).get(store.bulk)?.hours).toHaveLength(1005);
   });
 });
