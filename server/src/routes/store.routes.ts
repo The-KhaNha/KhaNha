@@ -1,9 +1,11 @@
 import { Router } from 'express';
+import * as admin from '../controllers/admin.controller';
 import * as orders from '../controllers/order.controller';
 import * as store from '../controllers/store.controller';
 import { requireAuth, requireStore } from '../middleware/auth';
 import { writeLimiter } from '../middleware/rateLimit';
 import { validate } from '../middleware/validate';
+import { auditQuerySchema } from '../schemas/admin.schema';
 import { listOrdersQuerySchema, updateOrderStatusSchema } from '../schemas/order.schema';
 import { updateStoreSettingsSchema } from '../schemas/storeSettings.schema';
 import { storeListQuerySchema, storeRefParamsSchema } from '../schemas/store.schema';
@@ -47,4 +49,11 @@ storesRouter.patch(
   writeLimiter,
   validate(updateStoreSettingsSchema),
   store.updateStoreSettings,
+);
+storesRouter.get(
+  '/:storeId/audit',
+  requireAuth,
+  requireStore('audit.store'),
+  validate(auditQuerySchema, 'query'),
+  admin.listStoreAudit,
 );

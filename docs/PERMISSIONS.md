@@ -97,6 +97,7 @@ it has (so a visible store answers 403), else none. An ADMIN who is also a STAFF
 | `PATCH /api/stores/:storeId/orders/:orderId/status` | 401        | `orders.transition` there; another store's order 404 | `orders.transition` there; another store's order 404 | `orders.transition` there; another store's order 404 | `requireAuth` + `requireStore('orders.transition')` + `order.service.updateOrderStatus` |
 | `GET /api/admin/settings`                           | 401        | 403                                                  | 403                                                  | yes                                                  | `requireAuth` + `requireAdmin`                                                          |
 | `PATCH /api/admin/settings`                         | 401        | 403                                                  | 403                                                  | yes                                                  | `requireAuth` + `requireAdmin`                                                          |
+| `GET /api/stores/:storeId/audit`                    | 401        | 403                                                  | `audit.store` there (MANAGER, OWNER), else 403       | 403 unless a MANAGER/OWNER/ADMIN standing there      | `requireAuth` + `requireStore('audit.store')`                                           |
 | `GET /api/admin/audit`                              | 401        | 403                                                  | 403                                                  | yes                                                  | `requireAuth` + `requireAdmin`                                                          |
 | `PATCH /api/admin/flags/:key`                       | 401        | 403                                                  | 403                                                  | yes (unknown key 404)                                | `requireAuth` + `requireAdmin`                                                          |
 | `/admin` (client route)                             | → `/login` | → `/`                                                | → `/`                                                | renders `AdminPage`                                  | `RequireRole role="ADMIN"` (client only)                                                |
@@ -237,7 +238,8 @@ flowchart LR
   update or delete, and its own triggers refuse an update, delete or truncate even from the owner. An audited write
   names its actor through a transition function's `p_actor` or the `x-actor` header
   ([SCHEMA.md](SCHEMA.md#audit_row_change)); anything else is recorded as `SYSTEM`. Admins read it through
-  `GET /api/admin/audit`.
+  `GET /api/admin/audit`; a store's MANAGER, OWNER and ADMIN read that store's rows through
+  `GET /api/stores/:storeId/audit` (`audit.store`, the store filter forced from `req.store`).
 - `feature_flags` is closed like every table; admins flip a flag through `PATCH /api/admin/flags/:key`, which names
   them in its audit row. A flip made in the SQL editor is recorded as `SYSTEM`, so production flags are flipped
   through the API.

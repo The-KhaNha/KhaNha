@@ -1,5 +1,5 @@
 import type { RequestHandler } from 'express';
-import { requestContext } from '../middleware/auth';
+import { currentStore, requestContext } from '../middleware/auth';
 import type { AuditQuery, UpdateFlagInput, UpdateSettingsInput } from '../schemas/admin.schema';
 import * as auditService from '../services/audit.service';
 import * as flagsService from '../services/flags.service';
@@ -38,4 +38,11 @@ export const updateFlag: BodyHandler<UpdateFlagInput, { key: string }> = async (
     'Feature flag changed',
   );
   res.json({ flag });
+};
+
+/** GET /api/stores/:storeId/audit, after requireStore('audit.store'): the store comes from `req.store`, not the query. */
+export const listStoreAudit: QueryHandler<AuditQuery> = async (req, res) => {
+  const { rows, nextCursor } = await auditService.listAudit(req.query, currentStore(req).id);
+  const page: AuditPageDto = { entries: rows.map(toAuditEntryDto), nextCursor };
+  res.set('Cache-Control', 'no-store').json(page);
 };
