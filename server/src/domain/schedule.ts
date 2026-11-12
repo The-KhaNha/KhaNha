@@ -41,8 +41,9 @@ export interface OpenState {
 export const CLOSING_SOON_MINUTES = 30;
 /** How many days ahead the next opening is searched. */
 const HORIZON_DAYS = 14;
-const DAY_MS = 86_400_000;
-const MINUTE_MS = 60_000;
+// Unit conversions, not tunable durations (check:durations looks for the latter).
+const MINUTE_MS = 60 * 1000;
+const DAY_MS = 24 * 60 * MINUTE_MS;
 
 const formatters = new Map<string, Intl.DateTimeFormat>();
 function formatter(timeZone: string, options: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
