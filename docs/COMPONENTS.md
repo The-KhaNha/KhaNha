@@ -284,21 +284,20 @@ on the order success screen. Props: `className?`. Every other icon is a named im
 
 **`cartRules.ts`**: the cart's business rules. Components call these instead of comparing numbers themselves.
 
-| Export                                      | Returns                                                                                                    |
-| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `MAX_LINE_QUANTITY = 10`                    | mirrors the server's fixed per-item cap (`MAX_QUANTITY_PER_ITEM`, not a `site_settings` value)             |
-| `LOW_STOCK_MAX = 5`                         | "Only N left" threshold                                                                                    |
-| `availableQuantity(item)`                   | `0` when unavailable, the stock when tracked, `null` when not tracked                                      |
-| `isLowStock(item)`                          | available, tracked, and at most 5 left (type guard)                                                        |
-| `unavailableLabel(item)`                    | `"Sold out"` when stock is 0, else `"Unavailable"`                                                         |
-| `lineLimit(maxQuantity)`                    | `min(10, maxQuantity ?? 10)`                                                                               |
-| `lineProblem(line)` → `LineProblem \| null` | `{ kind: 'sold-out' }` when the limit is ≤ 0, `{ kind: 'over-limit', available }` when quantity exceeds it |
-| `problemLabel(problem)`                     | `"Sold out"` / `"Only 1 left"`                                                                             |
-| `describeProblem(name, problem)`            | `"Cheese Toast is sold out."` / `"Only 1 Cheese Toast left."`                                              |
-| `describeProblems(lines)`                   | one sentence per flagged line, joined                                                                      |
-| `limitCaption(maxQuantity)`                 | `"Only N available"` below the cap, else `"Max 10 per order"`                                              |
-| `isItemErrorCode(code)`                     | true for `INSUFFICIENT_STOCK`, `ITEM_UNAVAILABLE`, `ITEM_NOT_FOUND`                                        |
-| `orderItems(lines)`                         | `POST /orders` items; `expectedUnitPrice` only for a positive integer price (an old cart line sends none)  |
+| Export                                              | Returns                                                                                                           |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `CartLimits`                                        | `{ maxQuantityPerItem, lowStockThreshold }`: the store's limits (`MenuResponse.rules`), passed to the rules below |
+| `availableQuantity(item)`                           | `0` when unavailable, the stock when tracked, `null` when not tracked                                             |
+| `isLowStock(item, limits)`                          | available, tracked, and at most `lowStockThreshold` left (type guard)                                             |
+| `unavailableLabel(item)`                            | `"Sold out"` when stock is 0, else `"Unavailable"`                                                                |
+| `lineLimit(maxQuantity, limits)`                    | `min(cap, maxQuantity ?? cap)`, `cap` = `maxQuantityPerItem`                                                      |
+| `lineProblem(line, limits)` → `LineProblem \| null` | `{ kind: 'sold-out' }` when the limit is ≤ 0, `{ kind: 'over-limit', available }` when quantity exceeds it        |
+| `problemLabel(problem)`                             | `"Sold out"` / `"Only 1 left"`                                                                                    |
+| `describeProblem(name, problem)`                    | `"Cheese Toast is sold out."` / `"Only 1 Cheese Toast left."`                                                     |
+| `describeProblems(lines, limits)`                   | one sentence per flagged line, joined                                                                             |
+| `limitCaption(maxQuantity, limits)`                 | `"Only N available"` below the cap, else `"Max N per order"`                                                      |
+| `isItemErrorCode(code)`                             | true for `INSUFFICIENT_STOCK`, `ITEM_UNAVAILABLE`, `ITEM_NOT_FOUND`                                               |
+| `orderItems(lines)`                                 | `POST /orders` items; `expectedUnitPrice` only for a positive integer price (an old cart line sends none)         |
 
 **`cartStore.ts`**: `useCartStore` (persisted as `fp_cart`). `CartLine { menuItemId, name, unitPrice, imageUrl,
 quantity, maxQuantity }`, where `maxQuantity` is `null` (no limit) or the units the shop can sell (0 = sold out or
@@ -315,11 +314,14 @@ off the menu).
 | `syncAvailability(items)`        | refreshes every line's `maxQuantity` from a menu load; items missing from the menu become 0. Prices, names and photos are never changed |
 | `syncPrices(items)`              | sets every line's `unitPrice` from a menu load; Checkout calls it only on the reload after a `PRICE_CHANGED` refusal; Pay waits for it  |
 
-Selectors: `selectLines`, `selectCount`, `selectTotal`, `selectQuantityOf(id)`. It also re-exports
-`MAX_LINE_QUANTITY`.
+`limits` (the store's `CartLimits`, persisted; starts at `fallbacks.json` `storeDefaults`) is set by `setLimits(rules)`,
+called by `useMenu` and `useReorder` with each loaded menu's `rules` (none keeps the defaults). Components read it
+with `selectLimits`.
+
+Selectors: `selectLines`, `selectCount`, `selectTotal`, `selectQuantityOf(id)`, `selectLimits`.
 
 **`useReorder.ts`**: `useReorder()` → `{ reorder(order), reorderingId }`. Fetches the current menu, adds the order's
-items on top of the cart at current prices, capped by stock and the 20 cap, then navigates to `/cart` with one
+items on top of the cart at current prices, capped by stock and the store's per-item cap, then navigates to `/cart` with one
 notice per shortfall ("Cheese Toast: only 1 left, added 1", "Berry Smoothie is sold out, skipped"). On a failed menu
 load it adds nothing and says so. `readReorderNotice(state)` reads those notices from router state.
 

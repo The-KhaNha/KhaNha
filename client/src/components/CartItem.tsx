@@ -1,6 +1,6 @@
 import { CircleAlert, UtensilsCrossed } from 'lucide-react';
 import { lineLimit, lineProblem, problemLabel } from '../features/cart/cartRules';
-import { useCartStore, type CartLine } from '../features/cart/cartStore';
+import { selectLimits, useCartStore, type CartLine } from '../features/cart/cartStore';
 import { cn } from '../lib/cn';
 import { FoodPhoto } from './FoodPhoto';
 import { Price } from './Price';
@@ -24,9 +24,10 @@ export function CartItem({ line }: CartItemProps) {
   const increment = useCartStore((s) => s.increment);
   const decrement = useCartStore((s) => s.decrement);
   const remove = useCartStore((s) => s.remove);
+  const limits = useCartStore(selectLimits);
   const fix = useCartStore((s) => s.fix);
-  const limit = lineLimit(line.maxQuantity);
-  const problem = lineProblem(line);
+  const limit = lineLimit(line.maxQuantity, limits);
+  const problem = lineProblem(line, limits);
   const soldOut = problem?.kind === 'sold-out';
 
   return (

@@ -1,7 +1,7 @@
 import { memo, useRef } from 'react';
 import type { MenuItem } from '../types/api';
 import { availableQuantity, lineLimit } from '../features/cart/cartRules';
-import { selectQuantityOf, useCartStore } from '../features/cart/cartStore';
+import { selectLimits, selectQuantityOf, useCartStore } from '../features/cart/cartStore';
 import { cn } from '../lib/cn';
 import { cardClasses } from './Card';
 import { AddControl } from './AddControl';
@@ -32,8 +32,9 @@ export const FoodCard = memo(function FoodCard({
 }: FoodCardProps) {
   const photoRef = useRef<HTMLSpanElement>(null);
   const inCart = useCartStore(selectQuantityOf(item.id));
+  const limits = useCartStore(selectLimits);
   const unavailable = !item.isAvailable;
-  const showStock = inCart < lineLimit(availableQuantity(item));
+  const showStock = inCart < lineLimit(availableQuantity(item), limits);
 
   return (
     <article

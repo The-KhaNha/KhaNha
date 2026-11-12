@@ -44,7 +44,8 @@ describe('AdminPage', () => {
     render(<AdminPage />);
 
     expect(await screen.findByLabelText('Customer order history')).toHaveValue('20');
-    expect(screen.getByLabelText('Staff board size')).toHaveValue('100');
+    // The staff list limit is a per-store setting now: no field for it here.
+    expect(screen.queryByLabelText('Staff board size')).toBeNull();
   });
 
   it('renders every setting in the registry, the poll intervals and the minimum version included', async () => {
@@ -157,7 +158,7 @@ describe('AdminPage', () => {
       new ApiError(409, 'CONFLICT', 'Someone else just changed these settings.'),
     );
     render(<AdminPage />);
-    const input = await screen.findByLabelText('Staff board size');
+    const input = await screen.findByLabelText('Customer order history');
 
     fireEvent.change(input, { target: { value: '150' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));

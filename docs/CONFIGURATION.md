@@ -42,12 +42,15 @@ menus). Bounds are the check constraints, `STORE_SETTING_BOUNDS` and `updateStor
 `test/api/store-settings.test.ts`. A new store takes the defaults; the migration copied each existing store's
 `staff_order_list_limit` from the site setting once.
 
-| Key (API)                     | Column                            | Default | Bounds | Read by                                                           |
-| ----------------------------- | --------------------------------- | ------- | ------ | ----------------------------------------------------------------- |
-| `maxQuantityPerItem`          | `max_quantity_per_item`           | 10      | 1–50   | `createOrder` (a line's merged quantity), `MenuResponse.rules`    |
-| `lowStockThreshold`           | `low_stock_threshold`             | 5       | 0–50   | `MenuResponse.rules` (the "only N left" pill)                     |
-| `staffOrderListLimit`         | `staff_order_list_limit`          | 100     | 1–500  | the store's board: finished orders kept (active ones always show) |
-| `lastOrderMinutesBeforeClose` | `last_order_minutes_before_close` | 0       | 0–240  | stored only; enforced by P2 PR 06                                 |
+| Key (API)                     | Column                            | Default | Bounds | Read by                                                                  |
+| ----------------------------- | --------------------------------- | ------- | ------ | ------------------------------------------------------------------------ |
+| `maxQuantityPerItem`          | `max_quantity_per_item`           | 10      | 1–50   | `createOrder` (a line's merged quantity), `MenuResponse.rules`, the cart |
+| `lowStockThreshold`           | `low_stock_threshold`             | 5       | 0–50   | `MenuResponse.rules` (the "only N left" pill)                            |
+| `staffOrderListLimit`         | `staff_order_list_limit`          | 100     | 1–500  | the store's board: finished orders kept (active ones always show)        |
+| `lastOrderMinutesBeforeClose` | `last_order_minutes_before_close` | 0       | 0–240  | stored only; enforced by P2 PR 06                                        |
+
+The client reads the first two from the menu's `rules`; with no menu loaded it uses `storeDefaults` in
+`client/src/config/fallbacks.json`, which `limits-parity.safe.test.ts` pins to the column defaults.
 
 ## Feature flags
 

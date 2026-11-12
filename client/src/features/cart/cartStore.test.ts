@@ -1,14 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { fillStorage } from '../../test/storage';
 import type { MenuItem } from '../../types/api';
-import {
-  MAX_LINE_QUANTITY,
-  selectCount,
-  selectLines,
-  selectQuantityOf,
-  selectTotal,
-  useCartStore,
-} from './cartStore';
+import { selectCount, selectLines, selectQuantityOf, selectTotal, useCartStore } from './cartStore';
+
+const CAP = 10;
 
 function menuItem(overrides: Partial<MenuItem> = {}): MenuItem {
   return {
@@ -29,7 +24,10 @@ function menuItem(overrides: Partial<MenuItem> = {}): MenuItem {
 beforeEach(() => {
   // Not setState(_, true): cartStore keeps its actions on the same state object as `lines`, and a
   // replace=true reset would wipe them along with the data. A plain merge resets just the data.
-  useCartStore.setState({ lines: [] });
+  useCartStore.setState({
+    lines: [],
+    limits: { maxQuantityPerItem: CAP, lowStockThreshold: 5 },
+  });
   localStorage.clear();
 });
 
@@ -53,9 +51,26 @@ describe('add', () => {
     expect(selectQuantityOf('item-1')(useCartStore.getState())).toBe(2);
   });
 
-  it('caps at MAX_LINE_QUANTITY when there is no stock limit', () => {
-    useCartStore.getState().add(menuItem(), MAX_LINE_QUANTITY + 10);
-    expect(selectQuantityOf('item-1')(useCartStore.getState())).toBe(MAX_LINE_QUANTITY);
+  it('caps at CAP when there is no stock limit', () => {
+    useCartStore.getState().add(menuItem(), CAP + 10);
+    expect(selectQuantityOf('item-1')(useCartStore.getState())).toBe(CAP);
+  });
+
+  it('caps at the store’s own limit when the menu rules say so', () => {
+    useCartStore.getState().setLimits({ maxQuantityPerItem: 3, lowStockThreshold: 1 });
+    useCartStore.getState().add(menuItem(), 8);
+    expect(selectQuantityOf('item-1')(useCartStore.getState())).toBe(3);
+    useCartStore.getState().increment('item-1');
+    expect(selectQuantityOf('item-1')(useCartStore.getState())).toBe(3);
+  });
+
+  it('falls back to the defaults when a menu carries no rules', () => {
+    useCartStore.getState().setLimits({ maxQuantityPerItem: 3, lowStockThreshold: 1 });
+    useCartStore.getState().setLimits(undefined);
+    expect(useCartStore.getState().limits).toEqual({
+      maxQuantityPerItem: 10,
+      lowStockThreshold: 5,
+    });
   });
 
   it('does nothing (limit <= 0) for an unavailable item', () => {

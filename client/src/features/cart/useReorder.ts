@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { MenuItem, Order } from '../../types/api';
+import type { MenuItem, MenuResponse, Order } from '../../types/api';
 import { fetchMenu } from '../../services/menu';
-import { MAX_LINE_QUANTITY, availableQuantity, lineLimit } from './cartRules';
+import { availableQuantity, lineLimit } from './cartRules';
 import { selectQuantityOf, useCartStore } from './cartStore';
 
 /** Router-state key under which /cart receives one line per item that could not be added in full. */
@@ -33,6 +33,7 @@ export function useReorder() {
       notice = addOrderToCart(
         order,
         menu.categories.flatMap((category) => category.items),
+        menu.rules,
       );
     } catch {
       notice = ["We couldn't load the menu, so nothing was added. Please try again."];
@@ -45,9 +46,15 @@ export function useReorder() {
 }
 
 /** Adds the order's items to the cart, each capped by what the menu can sell right now. Returns the shortfalls. */
-function addOrderToCart(order: Order, menuItems: MenuItem[]): string[] {
+function addOrderToCart(
+  order: Order,
+  menuItems: MenuItem[],
+  rules: MenuResponse['rules'],
+): string[] {
   const cart = useCartStore.getState();
+  cart.setLimits(rules);
   cart.syncAvailability(menuItems);
+  const { limits } = useCartStore.getState();
   const byId = new Map(menuItems.map((item) => [item.id, item]));
   const notice: string[] = [];
 
@@ -63,13 +70,13 @@ function addOrderToCart(order: Order, menuItems: MenuItem[]): string[] {
       continue;
     }
 
-    const limit = lineLimit(available);
+    const limit = lineLimit(available, limits);
     const inCart = selectQuantityOf(item.id)(useCartStore.getState());
     const added = Math.max(0, Math.min(wanted.quantity, limit - inCart));
     if (added > 0) cart.add(item, added);
     if (added < wanted.quantity) {
       const reason =
-        available === null ? `max ${MAX_LINE_QUANTITY} per order` : `only ${limit} left`;
+        available === null ? `max ${limits.maxQuantityPerItem} per order` : `only ${limit} left`;
       notice.push(
         added > 0
           ? `${item.name}: ${reason}, added ${added}`

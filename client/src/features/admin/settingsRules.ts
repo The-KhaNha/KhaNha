@@ -1,8 +1,11 @@
 import type { SiteSettings } from '../../types/api';
 import { VALIDATION } from '../config/fallbacks';
 
-/** Every editable site setting: the keys of SiteSettings except the timestamp. */
-export type SettingKey = Exclude<keyof SiteSettings, 'updatedAt'>;
+/**
+ * Every setting the form edits: the keys of SiteSettings except the timestamp and `staffOrderListLimit`, which is a
+ * per-store setting now (the API still accepts it here for older clients, so the type keeps it).
+ */
+export type SettingKey = Exclude<keyof SiteSettings, 'updatedAt' | 'staffOrderListLimit'>;
 
 interface IntegerSetting {
   kind: 'integer';
@@ -31,13 +34,6 @@ export const SETTING_FIELDS: Record<SettingKey, SettingField> = {
     hint: 'How many of their newest orders a customer sees',
     min: 1,
     max: 200,
-  },
-  staffOrderListLimit: {
-    kind: 'integer',
-    label: 'Staff board size',
-    hint: 'Finished orders kept on the kitchen board (active orders always show)',
-    min: 1,
-    max: 500,
   },
   maxLinesPerOrder: {
     kind: 'integer',

@@ -2,9 +2,11 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { safeJSONStorage } from '../../lib/safeStorage';
 import type { MenuItem } from '../../types/api';
-import { availableQuantity, lineLimit } from './cartRules';
+import fallbacks from '../../config/fallbacks.json';
+import { availableQuantity, lineLimit, type CartLimits } from './cartRules';
 
-export { MAX_LINE_QUANTITY } from './cartRules';
+/** The limits used until a menu says otherwise (config/fallbacks.json, parity-tested against the store defaults). */
+const DEFAULT_LIMITS: CartLimits = fallbacks.storeDefaults;
 
 export interface CartLine {
   menuItemId: string;
@@ -21,7 +23,11 @@ export interface CartLine {
 
 interface CartState {
   lines: CartLine[];
-  /** Adds `quantity` (default 1) of a menu item, never past its stock or MAX_LINE_QUANTITY. */
+  /** The store's limits from its last menu (`MenuResponse.rules`); persisted so the cart page has them without a menu. */
+  limits: CartLimits;
+  /** Records a loaded menu's rules; an older menu without them keeps the defaults. */
+  setLimits: (rules: CartLimits | undefined) => void;
+  /** Adds `quantity` (default 1) of a menu item, never past its stock or the store's per-item cap. */
   add: (item: MenuItem, quantity?: number) => void;
   /** No-op once the line is at its limit (the stepper shakes instead). */
   increment: (menuItemId: string) => void;
@@ -42,6 +48,7 @@ interface CartState {
 /** What survives a reload; the actions are recreated by the store. */
 interface PersistedCart {
   lines: CartLine[];
+  limits?: CartLimits;
 }
 
 /** Applies `update` to one line; returns the SAME array when nothing changed so the store can skip the update. */
@@ -70,11 +77,22 @@ export const useCartStore = create<CartState>()(
   persist(
     (set) => ({
       lines: [],
+      limits: DEFAULT_LIMITS,
+
+      setLimits(rules) {
+        const limits = rules ?? DEFAULT_LIMITS;
+        set((state) =>
+          state.limits.maxQuantityPerItem === limits.maxQuantityPerItem &&
+          state.limits.lowStockThreshold === limits.lowStockThreshold
+            ? state
+            : { limits },
+        );
+      },
 
       add(item, quantity = 1) {
         set((state) => {
           const maxQuantity = availableQuantity(item);
-          const limit = lineLimit(maxQuantity);
+          const limit = lineLimit(maxQuantity, state.limits);
           if (limit <= 0) return state;
 
           const existing = state.lines.find((line) => line.menuItemId === item.id);
@@ -110,7 +128,9 @@ export const useCartStore = create<CartState>()(
           withLines(
             state,
             updateLine(state.lines, menuItemId, (l) =>
-              l.quantity >= lineLimit(l.maxQuantity) ? l : { ...l, quantity: l.quantity + 1 },
+              l.quantity >= lineLimit(l.maxQuantity, state.limits)
+                ? l
+                : { ...l, quantity: l.quantity + 1 },
             ),
           ),
         );
@@ -137,7 +157,7 @@ export const useCartStore = create<CartState>()(
           withLines(
             state,
             updateLine(state.lines, menuItemId, (l) => {
-              const limit = lineLimit(l.maxQuantity);
+              const limit = lineLimit(l.maxQuantity, state.limits);
               if (limit <= 0) return null;
               return l.quantity > limit ? { ...l, quantity: limit } : l;
             }),
@@ -190,17 +210,22 @@ export const useCartStore = create<CartState>()(
       name: 'fp_cart',
       version: 1,
       storage: safeJSONStorage(),
-      partialize: (state): PersistedCart => ({ lines: state.lines }),
+      partialize: (state): PersistedCart => ({ lines: state.lines, limits: state.limits }),
       // Carts saved before stock limits existed have no maxQuantity: treat them as unlimited until a menu load says otherwise.
       migrate: (persisted) => {
-        const lines = (persisted as Partial<PersistedCart> | undefined)?.lines ?? [];
-        return { lines: lines.map((line) => ({ ...line, maxQuantity: line.maxQuantity ?? null })) };
+        const saved = persisted as Partial<PersistedCart> | undefined;
+        const lines = saved?.lines ?? [];
+        return {
+          lines: lines.map((line) => ({ ...line, maxQuantity: line.maxQuantity ?? null })),
+          limits: saved?.limits ?? DEFAULT_LIMITS,
+        };
       },
     },
   ),
 );
 
 /* Derived selectors — count and total are never stored. */
+export const selectLimits = (state: CartState) => state.limits;
 export const selectLines = (state: CartState) => state.lines;
 export const selectCount = (state: CartState) =>
   state.lines.reduce((sum, l) => sum + l.quantity, 0);
