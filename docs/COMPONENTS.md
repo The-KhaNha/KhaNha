@@ -186,7 +186,7 @@ otherwise. Props: `item: Pick<MenuItem, 'isAvailable' | 'stockQuantity'>`, `clas
 
 **`StoreCard`** / **`StoreCardSkeleton`** (`StoreCard.tsx`). `variant="full"` (default): the store page's card: storefront photo (a plain `<img>`,
 not `FoodPhoto`, with `photoSrcSet` + `sizes`), `OpenPill`, name, tagline, prep-time chip and a "View Menu" `ButtonLink` to `/s/<slug>/menu`. Props: `store: Store`,
-`className?`. `variant="compact"`: one row of the store list, the whole card a link to `/s/<slug>` (80px photo, name, area, `OpenPill`); props `store: StoreSummary`, `priority?`
+`className?`. `variant="compact"`: one row of the store list, the whole card a link to `/s/<slug>` (80px photo, name, area, `OpenPill`); props `store: StoreSummary`, `priority?`, `to?` (the link target; `/manage` points it at `/manage/<slug>`)
 (the list's first card: eager, `fetchpriority="high"`; the rest are lazy). The skeleton takes `className?` and the same `variant`.
 
 **`OpenPill`** (`OpenPill.tsx`). The store's open state: `OPEN` with a slow green pulse, `CLOSING_SOON` and `PAUSED` in gold, `CLOSED` and `UNAVAILABLE` in slate.

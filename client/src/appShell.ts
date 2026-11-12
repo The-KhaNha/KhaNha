@@ -104,6 +104,17 @@ const SHELL_BY_ROUTE: { pattern: string; config: ShellConfig }[] = [
       bottomNav: false,
     },
   },
+  // The management area: the owner's and managers' pages, with no customer tabs or cart.
+  ...['/manage', '/manage/:storeSlug/*'].map((pattern) => ({
+    pattern,
+    config: {
+      ...column,
+      title: 'Manage store',
+      topBar: { title: 'Manage', backTo: '/profile' },
+      cartButton: false,
+      bottomNav: false,
+    },
+  })),
   { pattern: '/login', config: { ...fullScreen, title: 'Sign in' } },
   { pattern: '/register', config: { ...fullScreen, title: 'Create your account' } },
   { pattern: '/staff', config: { ...fullScreen, title: 'Staff board' } },

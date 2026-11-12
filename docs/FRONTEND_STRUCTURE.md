@@ -53,6 +53,8 @@ client/
     │   ├── cart/           cartStore, cartRules, useReorder, CartBar, AddToCart, ReplaceCartSheet
     │   ├── checkout/       checkoutDraftStore (the form as typed + the idempotency key, sessionStorage)
     │   ├── config/         useConfig (GET /api/config, persisted), fallbacks (config/fallbacks.json)
+    │   ├── manage/         manageRules (canManage, managedStores, MANAGE_TABS): who may open `/manage`, and its tabs
+    │   ├── manage/         manageRules (canManage, managedStores, MANAGE_TABS): who may open `/manage`, and its tabs
     │   ├── menu/           useMenu, useStore, CategoryChips, ItemDetailSheet
     │   ├── stores/         useStores, useStoreByRef, useStoreMenu, storeRules, HomeHero, MenuRedirect
     │   ├── version/        versionStore (the 426 "outdated" flag), OutdatedBanner
@@ -71,23 +73,25 @@ client/
 
 From `client/src/App.tsx`. Guards are described in [PERMISSIONS.md](PERMISSIONS.md#client).
 
-| Path                  | Page                   | Guard                      | Top bar                            | Bottom nav | Cart button | Cart bar | Layout       | Loaded |
-| --------------------- | ---------------------- | -------------------------- | ---------------------------------- | ---------- | ----------- | -------- | ------------ | ------ |
-| `/`                   | `StoreListPage`        | none                       | wordmark, `tone: 'brand'`          | yes        | yes         | yes      | column       | eager  |
-| `/s/:storeSlug`       | `HomePage` (one store) | none                       | wordmark, `tone: 'brand'`          | yes        | yes         | yes      | column       | eager  |
-| `/s/:storeSlug/menu`  | `MenuPage`             | none                       | "Menu", back to `/`                | yes        | yes         | yes      | column, wide | eager  |
-| `/menu`               | `MenuRedirect`         | none                       | "Menu", back to `/`                | yes        | yes         | no       | column, wide | eager  |
-| `/cart`               | `CartPage`             | none                       | "Your cart", back to `/menu`       | yes        | no          | no       | column       | eager  |
-| `/checkout`           | `CheckoutPage`         | `RequireAuth`              | "Checkout", back to `/cart`        | yes        | no          | no       | column       | lazy   |
-| `/orders`             | `OrdersPage`           | `RequireAuth`              | "Your orders", back to `/`         | yes        | yes         | no       | column       | eager  |
-| `/orders/:id`         | `OrderPage`            | `RequireAuth`              | "Order details", back to `/orders` | yes        | yes         | no       | column       | eager  |
-| `/orders/:id/success` | `OrderSuccessPage`     | `RequireAuth`              | none                               | no         | no          | no       | full         | lazy   |
-| `/profile`            | `ProfilePage`          | none                       | "Profile", back to `/`             | yes        | yes         | no       | column       | eager  |
-| `/login`              | `LoginPage`            | none                       | none                               | no         | no          | no       | full         | lazy   |
-| `/register`           | `RegisterPage`         | none                       | none                               | no         | no          | no       | full         | lazy   |
-| `/staff`              | `StaffDashboardPage`   | `RequireRole role="STAFF"` | none                               | no         | no          | no       | full         | lazy   |
-| `/admin`              | `AdminPage`            | `RequireRole role="ADMIN"` | "Admin", back to `/profile`        | yes        | no          | no       | column       | lazy   |
-| `*`                   | `NotFoundPage`         | none                       | "Not found", back to `/`           | yes        | no          | no       | column       | eager  |
+| Path                   | Page                   | Guard                                        | Top bar                            | Bottom nav | Cart button | Cart bar | Layout       | Loaded |
+| ---------------------- | ---------------------- | -------------------------------------------- | ---------------------------------- | ---------- | ----------- | -------- | ------------ | ------ |
+| `/`                    | `StoreListPage`        | none                                         | wordmark, `tone: 'brand'`          | yes        | yes         | yes      | column       | eager  |
+| `/s/:storeSlug`        | `HomePage` (one store) | none                                         | wordmark, `tone: 'brand'`          | yes        | yes         | yes      | column       | eager  |
+| `/s/:storeSlug/menu`   | `MenuPage`             | none                                         | "Menu", back to `/`                | yes        | yes         | yes      | column, wide | eager  |
+| `/menu`                | `MenuRedirect`         | none                                         | "Menu", back to `/`                | yes        | yes         | no       | column, wide | eager  |
+| `/cart`                | `CartPage`             | none                                         | "Your cart", back to `/menu`       | yes        | no          | no       | column       | eager  |
+| `/checkout`            | `CheckoutPage`         | `RequireAuth`                                | "Checkout", back to `/cart`        | yes        | no          | no       | column       | lazy   |
+| `/orders`              | `OrdersPage`           | `RequireAuth`                                | "Your orders", back to `/`         | yes        | yes         | no       | column       | eager  |
+| `/orders/:id`          | `OrderPage`            | `RequireAuth`                                | "Order details", back to `/orders` | yes        | yes         | no       | column       | eager  |
+| `/orders/:id/success`  | `OrderSuccessPage`     | `RequireAuth`                                | none                               | no         | no          | no       | full         | lazy   |
+| `/profile`             | `ProfilePage`          | none                                         | "Profile", back to `/`             | yes        | yes         | no       | column       | eager  |
+| `/login`               | `LoginPage`            | none                                         | none                               | no         | no          | no       | full         | lazy   |
+| `/register`            | `RegisterPage`         | none                                         | none                               | no         | no          | no       | full         | lazy   |
+| `/staff`               | `StaffDashboardPage`   | `RequireRole role="STAFF"`                   | none                               | no         | no          | no       | full         | lazy   |
+| `/admin`               | `AdminPage`            | `RequireRole role="ADMIN"`                   | "Admin", back to `/profile`        | yes        | no          | no       | column       | lazy   |
+| `/manage`              | `ManagePage`           | `RequireAuth`                                | "Manage", back to `/profile`       | no         | no          | no       | column       | lazy   |
+| `/manage/:storeSlug/*` | `ManageStorePage`      | `RequireAuth` + `canManage` (else not found) | "Manage", back to `/profile`       | no         | no          | no       | column       | lazy   |
+| `*`                    | `NotFoundPage`         | none                                         | "Not found", back to `/`           | yes        | no          | no       | column       | eager  |
 
 Lazy pages are `lazy()` imports in `App.tsx`, wrapped in `PageBoundary`: the screens a customer does not need to
 browse the menu and fill a cart. See [Caching](#caching).
@@ -205,15 +209,16 @@ persisted, so the reload loses nothing.
 
 ## Feature folders
 
-| Folder              | Rules and hooks                                                                         | UI                                                                         |
-| ------------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| `features/admin`    | `settingsRules.ts`, `useSiteSettings.ts`                                                | (`pages/Admin.tsx` owns the form UI directly)                              |
-| `features/auth`     | `authStore.ts`, `roles.ts`, `sessionActivity.ts`, `useAuthRedirect.ts`, `validation.ts` | `AuthCard`, `RequireAuth`, `RequireRole`                                   |
-| `features/cart`     | `cartStore.ts`, `cartRules.ts`, `useReorder.ts`                                         | `CartBar`                                                                  |
-| `features/checkout` | `checkoutDraftStore.ts`                                                                 | (`pages/Checkout.tsx` owns the form)                                       |
-| `features/menu`     | `useMenu.ts`, `useStore.ts`                                                             | `CategoryChips`, `ItemDetailSheet`                                         |
-| `features/stores`   | `useStores.ts`, `useStoreMenu.ts`, `storeRules.ts`                                      | `HomeHero`, `MenuRedirect`                                                 |
-| `features/orders`   | `orderStatus.ts`, `useOrder.ts`, `useOrders.ts`                                         | `OrderHero`, `StaffHeader`, `StaffFilters`, `StaffBoard`, `StaffOrderCard` |
+| Folder              | Rules and hooks                                                                         | UI                                                                                                  |
+| ------------------- | --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `features/admin`    | `settingsRules.ts`, `useSiteSettings.ts`                                                | (`pages/Admin.tsx` owns the form UI directly)                                                       |
+| `features/auth`     | `authStore.ts`, `roles.ts`, `sessionActivity.ts`, `useAuthRedirect.ts`, `validation.ts` | `AuthCard`, `RequireAuth`, `RequireRole`                                                            |
+| `features/cart`     | `cartStore.ts`, `cartRules.ts`, `useReorder.ts`                                         | `CartBar`                                                                                           |
+| `features/checkout` | `checkoutDraftStore.ts`                                                                 | (`pages/Checkout.tsx` owns the form)                                                                |
+| `features/manage`   | `manageRules.ts`                                                                        | (`pages/Manage.tsx`, `pages/ManageStore.tsx` own the UI; tabs are placeholders until PR 14b and 15) |
+| `features/menu`     | `useMenu.ts`, `useStore.ts`                                                             | `CategoryChips`, `ItemDetailSheet`                                                                  |
+| `features/stores`   | `useStores.ts`, `useStoreMenu.ts`, `storeRules.ts`                                      | `HomeHero`, `MenuRedirect`                                                                          |
+| `features/orders`   | `orderStatus.ts`, `useOrder.ts`, `useOrders.ts`                                         | `OrderHero`, `StaffHeader`, `StaffFilters`, `StaffBoard`, `StaffOrderCard`                          |
 
 Details of each export: [COMPONENTS.md](COMPONENTS.md#feature-rules-and-hooks).
 

@@ -36,6 +36,10 @@ const RegisterPage = lazy(() =>
   import('./pages/Register').then((m) => ({ default: m.RegisterPage })),
 );
 const AdminPage = lazy(() => import('./pages/Admin').then((m) => ({ default: m.AdminPage })));
+const ManagePage = lazy(() => import('./pages/Manage').then((m) => ({ default: m.ManagePage })));
+const ManageStorePage = lazy(() =>
+  import('./pages/ManageStore').then((m) => ({ default: m.ManageStorePage })),
+);
 const StaffDashboardPage = lazy(() =>
   import('./pages/StaffDashboard').then((m) => ({ default: m.StaffDashboardPage })),
 );
@@ -121,6 +125,22 @@ function AppShell() {
                 <RequireRole role="STAFF">
                   <StaffDashboardPage />
                 </RequireRole>
+              }
+            />
+            <Route
+              path="/manage"
+              element={
+                <RequireAuth>
+                  <ManagePage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/manage/:storeSlug/*"
+              element={
+                <RequireAuth>
+                  <ManageStorePage />
+                </RequireAuth>
               }
             />
             <Route
