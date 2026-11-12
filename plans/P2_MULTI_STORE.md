@@ -505,6 +505,11 @@ store is 404).
 Docs: `docs/API.md`, `docs/SCHEMA.md`, `docs/PERMISSIONS.md`, `docs/CONFIGURATION.md` (the two bounds). Intent:
 `--server minor`.
 
+As built: `20261112120000_set_store_hours.sql` drops 06a's per-row `store_hours_audit` and `set_store_hours` writes the
+one `store_hours.changed` audit row (old and new week, none for an unchanged week) and emits `store.hours_changed`; it is
+security definer because `service_role` cannot insert into `audit_log`. The bounds are `HOURS_LIMITS` in
+`schemas/limits.ts`; exception writes go through the Data API with the `x-actor` and `x-request-id` headers.
+
 ### PR 08 — Pause and resume (P2.5)
 
 - [ ] Merged

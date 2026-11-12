@@ -45,6 +45,7 @@ a new file (see [DEPLOYMENT.md](DEPLOYMENT.md#schema-changes)).
 | `20261111123222_store_memberships.sql`             | adds `store_role`, `store_memberships` (RLS, revoked) with its backfill of `STAFF` profiles into the oldest store and `store_memberships_audit`; redefines `audit_row_change()` to record inserts and deletes and the actor's `storeRole`                                                                                                                                                                                                                                                                                         |
 | `20261112083000_store_invites.sql`                 | adds `store_invites` (RLS on, revoked; two CHECKs, `store_invites_open_email_key` and three more indexes) with `store_invites_audit`                                                                                                                                                                                                                                                                                                                                                                                              |
 | `20261112093000_accept_store_invite.sql`           | adds `accept_store_invite()` (`service_role` only): accepts an invite in one transaction                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `20261112120000_set_store_hours.sql`               | adds `set_store_hours()` (`service_role` only) and drops `store_hours_audit`: one audit row and one event per saved week                                                                                                                                                                                                                                                                                                                                                                                                          |
 
 ## Enums
 
@@ -182,8 +183,11 @@ Audited by `stores_settings_audit` (`store_settings.changed`), apart from `store
 
 Weekly opening intervals of a store, several a day. `day_of_week` is ISO (1 = Monday); `closes_at` before `opens_at`
 means the interval runs past midnight into the next day; `opens_at <> closes_at` and both are before 24:00 (checks).
-Index `(store_id, day_of_week)`. No rows means "open all day": the manual `stores.is_open` switch decides. Overlap
-rules belong to the write path (`set_store_hours`, a later PR).
+Index `(store_id, day_of_week)`. No rows means "open all day": the manual `stores.is_open` switch decides. Written only by
+`set_store_hours(p_store_id, p_hours, p_actor, p_request_id)` (security definer, `service_role` only): it replaces the week in
+one transaction, refuses overlapping intervals (overnight and Sunday-into-Monday included) with `P0001`
+`VALIDATION_ERROR`, writes one `store_hours.changed` audit row (`changes.week` = `[old, new]`) and emits
+`store.hours_changed`; an unchanged week returns false and writes neither. The per-row audit trigger is dropped.
 
 ### store_schedule_exceptions
 
@@ -415,7 +419,6 @@ write for one small nightly scan.
 | `stores_set_updated_at`           | before update on `stores`, each row                                                                                                                                       | `set_updated_at()`                                                                 |
 | `brands_audit`                    | after update on `brands`, each row                                                                                                                                        | `audit_row_change('brand.changed', '*')`                                           |
 | `stores_settings_audit`           | after update of `max_quantity_per_item`, `low_stock_threshold`, `staff_order_list_limit`, `last_order_minutes_before_close` on `stores`, each row                         | `audit_row_change('store_settings.changed', …)`                                    |
-| `store_hours_audit`               | after insert, update or delete on `store_hours`, each row                                                                                                                 | `audit_row_change('store_hours.changed', …)`                                       |
 | `store_schedule_exceptions_audit` | after insert, update or delete on `store_schedule_exceptions`, each row                                                                                                   | `audit_row_change('schedule_exception.changed', …)`                                |
 | `stores_audit`                    | after update of `name`, `slug`, `status`, `is_open`, `area`, `address_line`, `contact_phone`, `timezone` on `stores`, each row (its audit row has `store_id = stores.id`) | `audit_row_change('store.changed', …)`                                             |
 | `store_invites_audit`             | after insert or update or delete on `store_invites`, each row (`invite.changed`: `role`, `email`, `accepted_at`, `revoked_at`; never `token_hash`)                        | `audit_row_change('invite.changed', 'role', 'email', 'accepted_at', 'revoked_at')` |
@@ -442,6 +445,7 @@ object (SQLSTATE `P0001`). How the API maps them is in [API.md](API.md#database-
 | `reset_demo_orders()`        | sql      | definer  | void                | `server/scripts/seed.ts`                                                                | `service_role`       |
 | `emit_event(...)`            | plpgsql  | definer  | uuid                | `place_order`, `update_order_status`, `accept_store_invite`                             | `service_role`       |
 | `accept_store_invite(...)`   | plpgsql  | invoker  | `store_memberships` | `team.service.acceptInvite`                                                             | `service_role`       |
+| `set_store_hours(...)`       | plpgsql  | definer  | boolean             | `storeHours.service.setStoreHours`                                                      | `service_role`       |
 | `queue_read(...)`            | plpgsql  | definer  | table               | the worker (P1 PR 03)                                                                   | `service_role`       |
 | `queue_delete(...)`          | sql      | definer  | boolean             | the worker                                                                              | `service_role`       |
 | `queue_retry(...)`           | sql      | definer  | void                | the worker                                                                              | `service_role`       |
