@@ -103,7 +103,10 @@ export type StoreWithBrand = Tables<'stores'> & {
   brand: Pick<Tables<'brands'>, 'id' | 'name' | 'slug'>;
 };
 
-export function toStoreDto(store: StoreWithBrand): StoreDto {
+/** The open-state fields of a store DTO (services/schedule.service.ts computes them). */
+export type OpenFields = Pick<StoreDto, 'isOpen' | 'openState' | 'nextChangeAt' | 'openLabel'>;
+
+export function toStoreDto(store: StoreWithBrand, open: OpenFields): StoreDto {
   return {
     id: store.id,
     slug: store.slug,
@@ -114,13 +117,13 @@ export function toStoreDto(store: StoreWithBrand): StoreDto {
     tagline: store.tagline,
     description: store.description,
     imageUrl: store.image_url,
-    isOpen: store.is_open,
+    ...open,
     prepTimeMinMinutes: store.prep_time_min_minutes,
     prepTimeMaxMinutes: store.prep_time_max_minutes,
   };
 }
 
-export function toStoreSummaryDto(store: StoreWithBrand): StoreSummaryDto {
+export function toStoreSummaryDto(store: StoreWithBrand, open: OpenFields): StoreSummaryDto {
   return {
     id: store.id,
     slug: store.slug,
@@ -129,7 +132,7 @@ export function toStoreSummaryDto(store: StoreWithBrand): StoreSummaryDto {
     imageUrl: store.image_url,
     area: store.area,
     brand: store.brand,
-    isOpen: store.is_open,
+    ...open,
   };
 }
 

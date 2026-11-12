@@ -25,6 +25,9 @@ export const store: Store = {
   description: 'Order ahead and skip the queue.',
   imageUrl: '/images/cafe-cover.jpg',
   isOpen: true,
+  openState: 'OPEN',
+  nextChangeAt: null,
+  openLabel: null,
   prepTimeMinMinutes: 10,
   prepTimeMaxMinutes: 15,
 };

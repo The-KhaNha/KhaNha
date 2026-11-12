@@ -135,9 +135,16 @@ describe('toUserDto', () => {
   });
 });
 
+const open = {
+  isOpen: true,
+  openState: 'OPEN',
+  nextChangeAt: null,
+  openLabel: null,
+} as const;
+
 describe('toStoreDto', () => {
   it('maps snake_case store fields to camelCase', () => {
-    expect(toStoreDto(store())).toEqual({
+    expect(toStoreDto(store(), open)).toEqual({
       id: 'store-1',
       slug: 'campus-cafe',
       name: 'Campus Cafe',
@@ -147,14 +154,14 @@ describe('toStoreDto', () => {
       tagline: 'Coffee • Snacks • Quick Bites',
       description: 'Quick bites, coffee and snacks.',
       imageUrl: '/images/cafe-cover.jpg',
-      isOpen: true,
+      ...open,
       prepTimeMinMinutes: 10,
       prepTimeMaxMinutes: 15,
     });
   });
 
   it('passes through a null image', () => {
-    expect(toStoreDto(store({ image_url: null })).imageUrl).toBeNull();
+    expect(toStoreDto(store({ image_url: null }), open).imageUrl).toBeNull();
   });
 });
 

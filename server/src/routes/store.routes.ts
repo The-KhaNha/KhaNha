@@ -18,6 +18,7 @@ export const storesRouter = Router();
 
 storesRouter.get('/', validate(storeListQuerySchema, 'query'), store.listStores);
 storesRouter.get('/:storeRef', validate(storeRefParamsSchema, 'params'), store.getStoreByRef);
+storesRouter.get('/:storeRef/hours', validate(storeRefParamsSchema, 'params'), store.getStoreHours);
 storesRouter.get('/:storeRef/menu', validate(storeRefParamsSchema, 'params'), store.getStoreMenu);
 
 // Store-scoped staff routes (P2.3): requireStore admits the caller by capability (domain/permissions.ts).

@@ -19,6 +19,9 @@ describe('GET /api/store', () => {
         'isOpen',
         'prepTimeMinMinutes',
         'prepTimeMaxMinutes',
+        'openState',
+        'nextChangeAt',
+        'openLabel',
       ].sort(),
     );
   });

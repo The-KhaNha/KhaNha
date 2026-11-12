@@ -1,4 +1,5 @@
 // Response shapes shared with the client. Keep these in sync with the API contract.
+import type { OpenStateName } from '../domain/schedule';
 import type { ActorType, OrderStatus, PaymentStatus, Role, StoreRole } from './enums';
 
 export interface UserDto {
@@ -25,6 +26,11 @@ export interface StoreDto {
   description: string;
   imageUrl: string | null;
   isOpen: boolean;
+  openState: OpenStateName;
+  /** The next change of state: the closing time while open, the next opening while closed; null when unknown. */
+  nextChangeAt: string | null;
+  /** Ready to show: "Closes at 9:00 PM", "Opens tomorrow at 8:00 AM", "Closed for Diwali". */
+  openLabel: string | null;
   prepTimeMinMinutes: number;
   prepTimeMaxMinutes: number;
 }
@@ -32,8 +38,43 @@ export interface StoreDto {
 /** One row of GET /api/stores: what a store picker shows. */
 export type StoreSummaryDto = Pick<
   StoreDto,
-  'id' | 'slug' | 'name' | 'tagline' | 'imageUrl' | 'area' | 'brand' | 'isOpen'
+  | 'id'
+  | 'slug'
+  | 'name'
+  | 'tagline'
+  | 'imageUrl'
+  | 'area'
+  | 'brand'
+  | 'isOpen'
+  | 'openState'
+  | 'nextChangeAt'
+  | 'openLabel'
 >;
+
+/** One weekly interval of GET /api/stores/:storeRef/hours; `HH:MM`, `closesAt` before `opensAt` runs past midnight. */
+export interface StoreHoursDto {
+  /** ISO weekday: 1 = Monday ... 7 = Sunday. */
+  dayOfWeek: number;
+  opensAt: string;
+  closesAt: string;
+}
+
+export interface ScheduleExceptionDto {
+  id: string;
+  startsOn: string;
+  endsOn: string;
+  kind: 'CLOSED' | 'SPECIAL_HOURS';
+  opensAt: string | null;
+  closesAt: string | null;
+  label: string;
+}
+
+/** GET /api/stores/:storeRef/hours: the week, and the exceptions from today (store time) on. */
+export interface StoreScheduleResponse {
+  timezone: string;
+  hours: StoreHoursDto[];
+  exceptions: ScheduleExceptionDto[];
+}
 
 export interface MenuItemDto {
   id: string;

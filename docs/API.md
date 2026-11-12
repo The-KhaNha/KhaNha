@@ -194,7 +194,7 @@ Code: `store.controller.getStore` → `store.service.getStore`. Returns the olde
 with its brand as `{ store: StoreDto }`. With no store row: 404 `NOT_FOUND` "The store has not been set up yet. Run `pnpm run seed` in
 server/."
 
-### GET /stores, /stores/:storeRef, /stores/:storeRef/menu
+### GET /stores, /stores/:storeRef, /stores/:storeRef/menu, /stores/:storeRef/hours
 
 Public, cached (see Caching) and ETag'd like `/menu`. Code: `store.controller` → `store.service` (`listStores`,
 `resolveStoreRef`, `getActiveStore`) and `menu.service.getStoreMenu`.
@@ -205,6 +205,16 @@ Public, cached (see Caching) and ETag'd like `/menu`. Code: `store.controller` �
 - `:storeRef` is a store id (uuid, any case) or a slug. A ref that cannot be a slug (the `stores.slug` pattern) is 404
   without a database read; an unknown ref, or a store that is not `ACTIVE`, is 404 `NOT_FOUND` "Store not found." (the same for both, so a draft store does not leak).
 - `/stores/:storeRef/menu` returns the same `MenuResponse` as `GET /menu`, for that store.
+- `/stores/:storeRef/hours` returns `{ timezone, hours: [{ dayOfWeek, opensAt, closesAt }], exceptions: [{ id, startsOn,
+endsOn, kind, opensAt, closesAt, label }] }`: `HH:MM` wall times in the store's zone, ISO weekdays (1 = Monday), and
+  only the exceptions that have not ended (store-local today). Cached under `store_hours:<id>`.
+- **Open state.** `StoreDto` and `StoreSummaryDto` carry `openState` (`OPEN`, `CLOSING_SOON`, `CLOSED`, `PAUSED`,
+  `UNAVAILABLE`), `nextChangeAt` (ISO 8601: the last-order time while open (the closing time when the store has no cutoff), the next opening while closed; null when
+  unknown) and `openLabel` ("Last orders at 8:30 PM", "Closes at 9:00 PM", "Opens tomorrow at 8:00 AM", "Closed for Diwali"). `isOpen` keeps its
+  meaning for the deployed client: `openState` is `OPEN` or `CLOSING_SOON`. A store with no weekly hours is `OPEN`
+  unless `is_open` is off. The single-store and menu reads compute it on each call; the list's entry is built once per
+  `PUBLIC_READ_TTL_MS`, so a listed state is at most that old. `CLOSING_SOON` is display only (the last
+  `CLOSING_SOON_MINUTES` before the last order); orders stop `last_order_minutes_before_close` before closing.
 
 ### GET /menu
 
@@ -261,8 +271,8 @@ What the service checks, in this order:
 
 1. The store (`storeId`, read uncached) exists and is `ACTIVE`, else 404 `NOT_FOUND` "Store not found.". Only a
    replay of the same order at the same store is answered before this check, so no other answer (a reused key, too
-   many lines) tells a store that is not trading from an unknown id. Then it is open (`stores.is_open`), else 400 `STORE_CLOSED` "<store name> is closed right now. Please come back
-   when it opens."
+   many lines) tells a store that is not trading from an unknown id. Then its open state accepts orders (`OPEN` or `CLOSING_SOON`: the `is_open` switch, the weekly hours and exceptions), else 400 `STORE_CLOSED` "<store name> opens at 9:00 AM." with `details` `{ kind: 'storeClosed', nextChangeAt }`; when no opening is known the message is "<store name> is closed right now. Please come back
+   when it opens." with no details.
 2. For each line, in cart order (`priceLines`):
    - the item exists **at the order's store** (ids that are not UUIDs are never queried and count as missing; another
      store's item counts as missing too, so an order never mixes stores), else 400 `ITEM_NOT_FOUND`
@@ -572,25 +582,28 @@ nothing changes for clients. A new money field carries paise and says so in its 
 | `minClientVersion`          | string            | default `0.0.0`; clients below it get 426 `CLIENT_OUTDATED` ([gate](#client-version-gate)) |
 | `updatedAt`                 | string (ISO 8601) | set whenever a setting is saved                                                            |
 
-`StoreSummaryDto`: `id`, `slug`, `name`, `tagline`, `imageUrl`, `area`, `brand` (`{ id, name, slug }`), `isOpen`; the
+`StoreSummaryDto`: `id`, `slug`, `name`, `tagline`, `imageUrl`, `area`, `brand` (`{ id, name, slug }`), `isOpen`, `openState`, `nextChangeAt`, `openLabel`; the
 fields of `StoreDto` a store picker needs (client: `StoreSummary`).
 
 `StoreDto`
 
-| Field                | Type                                         |
-| -------------------- | -------------------------------------------- |
-| `id`                 | string (uuid)                                |
-| `slug`               | string                                       |
-| `name`               | string                                       |
-| `brand`              | `{ id: string, name: string, slug: string }` |
-| `area`               | string \| null                               |
-| `address`            | string \| null                               |
-| `tagline`            | string                                       |
-| `description`        | string                                       |
-| `imageUrl`           | string \| null                               |
-| `isOpen`             | boolean                                      |
-| `prepTimeMinMinutes` | number                                       |
-| `prepTimeMaxMinutes` | number                                       |
+| Field                | Type                                                                |
+| -------------------- | ------------------------------------------------------------------- |
+| `id`                 | string (uuid)                                                       |
+| `slug`               | string                                                              |
+| `name`               | string                                                              |
+| `brand`              | `{ id: string, name: string, slug: string }`                        |
+| `area`               | string \| null                                                      |
+| `address`            | string \| null                                                      |
+| `tagline`            | string                                                              |
+| `description`        | string                                                              |
+| `imageUrl`           | string \| null                                                      |
+| `isOpen`             | boolean                                                             |
+| `openState`          | `'OPEN' \| 'CLOSING_SOON' \| 'CLOSED' \| 'PAUSED' \| 'UNAVAILABLE'` |
+| `nextChangeAt`       | string (ISO 8601) \| null                                           |
+| `openLabel`          | string \| null                                                      |
+| `prepTimeMinMinutes` | number                                                              |
+| `prepTimeMaxMinutes` | number                                                              |
 
 `MenuItemDto`
 
@@ -720,6 +733,7 @@ shape carries a `kind`, and the client narrows on it.
 | `ItemErrorDetails`     | `INSUFFICIENT_STOCK`, `ITEM_UNAVAILABLE`, `ITEM_NOT_FOUND`  | `{ menuItemId: string, name?: string, available: number }`; `available` is 0 for a sold-out, unavailable or missing item                                                                         |
 | `ReplayedOrderDetails` | `IDEMPOTENCY_KEY_REUSED`                                    | `{ orderId, orderNumber }`                                                                                                                                                                       |
 | `FieldErrorDetails`    | a `VALIDATION_ERROR` about one request field, `EMAIL_TAKEN` | `{ field }`: the top-level field at fault (`customerPhone`, `email`, `items` for `items[2].quantity`), so a form shows the message on it; a rule with no single field (the lines limit) has none |
+| `StoreClosedDetails`   | `STORE_CLOSED`                                              | `{ kind: 'storeClosed', nextChangeAt }`: when the store next opens (ISO 8601); absent when no opening is known                                                                                   |
 | `RateLimitDetails`     | `RATE_LIMITED`                                              | `{ kind: 'rateLimit', retryAfterSeconds }`: the same number as the `Retry-After` header, the seconds until that key's window resets                                                              |
 
 ### Error codes
@@ -839,17 +853,18 @@ share one database round-trip instead of repeating it:
 | `invalidate(key?)`            | drops one key, or every key with no argument                                                                                                                                                                                                                                                                          |
 | `PUBLIC_READ_TTL_MS`          | the TTL used by the reads below: env `PUBLIC_READ_TTL_MS`, default 10000 ms (0 turns the cache off)                                                                                                                                                                                                                   |
 
-| Cached endpoint                                                      | Key               | Loader                                                                                             | Invalidated by                                                                                                                                                        |
-| -------------------------------------------------------------------- | ----------------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/menu`                                                      | `'menu'`          | `menu.service.getMenu` → `loadMenu`                                                                | `order.service.createOrder` (in a `finally`, so a placed order and a stock-refused one both invalidate it) and `updateOrderStatus` when the new status is `CANCELLED` |
-| `GET /api/store`                                                     | `'store'`         | `store.service.getCachedStore` → `getStore`                                                        | nothing today; a future store-editing endpoint must call `invalidate('store')`                                                                                        |
-| `GET /api/stores`                                                    | `'stores:list'`   | `store.service.listStores` (every `ACTIVE` store; `area` filters in memory afterwards)             | nothing today; a store-editing endpoint must call `invalidate('stores:list')`                                                                                         |
-| `GET /api/stores/:storeRef`, `/menu` (the store)                     | `'store:<id>'`    | `store.service.getActiveStore`; the ref → id step is `'store_ref:<slug>'` (`resolveStoreRef`)      | nothing today; a store-editing endpoint must call `invalidate('store:<id>')`                                                                                          |
-| `GET /api/stores/:storeRef/menu`                                     | `'menu:<id>'`     | `menu.service.getStoreMenu` → `loadMenu`                                                           | `menu.service.invalidateMenus(storeId)` from the same places as `'menu'` (it drops both)                                                                              |
-| `GET /api/orders`, `GET /api/admin/settings`, `GET /api/config`      | `'site_settings'` | `settings.service.getSettings`                                                                     | `settings.service.updateSettings` (`PATCH /api/admin/settings`), at once                                                                                              |
-| `GET /api/config` (`features`), every `flags.service.isEnabled` call | `'feature_flags'` | `flags.service.getFlags` (every flag, rules parsed; evaluated per caller, never cached per caller) | `flags.service.setFlag` (`PATCH /api/admin/flags/:key`), at once                                                                                                      |
+| Cached endpoint                                                           | Key                  | Loader                                                                                                                                                                         | Invalidated by                                                                                                                                                        |
+| ------------------------------------------------------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/menu`                                                           | `'menu'`             | `menu.service.getMenu` → `loadMenu`                                                                                                                                            | `order.service.createOrder` (in a `finally`, so a placed order and a stock-refused one both invalidate it) and `updateOrderStatus` when the new status is `CANCELLED` |
+| `GET /api/store`                                                          | `'store'`            | `store.service.getCachedStore` → `getStore`                                                                                                                                    | nothing today; a future store-editing endpoint must call `invalidate('store')`                                                                                        |
+| `GET /api/stores`                                                         | `'stores:list'`      | `store.service.listStores` (every `ACTIVE` store; `area` filters in memory afterwards)                                                                                         | nothing today; a store-editing endpoint must call `invalidate('stores:list')`                                                                                         |
+| `GET /api/stores/:storeRef`, `/menu` (the store)                          | `'store:<id>'`       | `store.service.getActiveStore`; the ref → id step is `'store_ref:<slug>'` (`resolveStoreRef`)                                                                                  | nothing today; a store-editing endpoint must call `invalidate('store:<id>')`                                                                                          |
+| `GET /api/stores/:storeRef/hours`, and the open state of every store read | `'store_hours:<id>'` | `schedule.service.getSchedule` (the week and the exceptions; the list reads them in two paged queries; the menu's open fields are computed per read, outside `menu:<storeId>`) | nothing today; the hours editor must call `invalidate('store_hours:<id>')` with `store:<id>`, `stores:list` and the menu                                              |
+| `GET /api/stores/:storeRef/menu`                                          | `'menu:<id>'`        | `menu.service.getStoreMenu` → `loadMenu`                                                                                                                                       | `menu.service.invalidateMenus(storeId)` from the same places as `'menu'` (it drops both)                                                                              |
+| `GET /api/orders`, `GET /api/admin/settings`, `GET /api/config`           | `'site_settings'`    | `settings.service.getSettings`                                                                                                                                                 | `settings.service.updateSettings` (`PATCH /api/admin/settings`), at once                                                                                              |
+| `GET /api/config` (`features`), every `flags.service.isEnabled` call      | `'feature_flags'`    | `flags.service.getFlags` (every flag, rules parsed; evaluated per caller, never cached per caller)                                                                             | `flags.service.setFlag` (`PATCH /api/admin/flags/:key`), at once                                                                                                      |
 
-`createOrder`'s own `is_open` check calls the uncached `getStore()` directly, never `getCachedStore()` — a write
+`createOrder`'s own open check reads the store uncached through `getStore()` (and the schedule uncached through `loadSchedule`) and never `getCachedStore()` — a write
 path never trusts a stale read of the data it is about to act on. Nothing user-specific (orders, profiles) is ever
 put through `cached()`; the cache is per-process (see the `ponytail:` note in `cache.ts` for the multi-instance
 ceiling — a shared cache such as Redis, or LISTEN/NOTIFY, is the upgrade if edits from a second API instance or the

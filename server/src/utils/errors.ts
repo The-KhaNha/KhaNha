@@ -45,12 +45,22 @@ export interface RateLimitDetails {
   retryAfterSeconds: number;
 }
 
+/** When a closed store opens next (ISO 8601), for a client that shows a countdown. */
+export interface StoreClosedDetails {
+  kind: 'storeClosed';
+  nextChangeAt: string;
+}
+
 /**
  * Every shape `error.details` can take. The first three predate `kind` and stay untagged, because the deployed client
  * reads them by `code`; every new shape carries a `kind` (docs/API.md "Error details").
  */
 export type ErrorDetails =
-  ItemErrorDetails | ReplayedOrderDetails | FieldErrorDetails | RateLimitDetails;
+  | ItemErrorDetails
+  | ReplayedOrderDetails
+  | FieldErrorDetails
+  | RateLimitDetails
+  | StoreClosedDetails;
 
 /**
  * A dependency (Supabase's database or Auth, later the payment provider) failed or could not be reached. The error
@@ -194,13 +204,24 @@ export const itemUnavailable = (menuItemId: string, name: string): AppError =>
     },
   );
 
-/** The store is closed, by the API's check or by place_order's when it closed in between. */
-export const storeClosed = (storeName: string): AppError =>
-  new AppError(
-    400,
-    'STORE_CLOSED',
-    `${storeName} is closed right now. Please come back when it opens.`,
-  );
+/**
+ * The store is closed, by the API's check or by place_order's when it closed in between. `opening` is the next
+ * opening when the schedule knows it: the message names it ("Campus Cafe opens at 9:00 AM") and the details carry it.
+ */
+export const storeClosed = (
+  storeName: string,
+  opening?: { nextChangeAt: Date; when: string },
+): AppError =>
+  opening
+    ? new AppError(400, 'STORE_CLOSED', `${storeName} opens ${opening.when}.`, {
+        kind: 'storeClosed',
+        nextChangeAt: opening.nextChangeAt.toISOString(),
+      })
+    : new AppError(
+        400,
+        'STORE_CLOSED',
+        `${storeName} is closed right now. Please come back when it opens.`,
+      );
 
 /**
  * An item's price is not the one the customer saw (a cart line's `expectedUnitPrice`), or it changed between the API's

@@ -449,6 +449,8 @@ defaults in `limits-parity.safe.test.ts`.
 
 - [ ] Merged
 
+As built: `store_hours` and `store_schedule_exceptions` with the roadmap's checks plus `< 24:00` bounds; `openState` is computed per read from a cached schedule (`store_hours:<id>`), `createOrder` reads it uncached (`loadSchedule`); the menu attaches its open fields after its cache read; `getSchedules` loads the list's schedules in two paged queries (past the Data API's 1000-row cap), exceptions from the UTC date two days back; the place_order `is_open` check is unchanged.
+
 `/before-write`: schema-guard, NEW TABLE ×2; reuse-scout, NO MATCH (`domain/schedule.ts`).
 
 Migration `<ts>_store_hours.sql`: `store_hours` and `store_schedule_exceptions` as in the roadmap, RLS on, revoked.

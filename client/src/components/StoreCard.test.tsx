@@ -1,9 +1,10 @@
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { Store } from '../types/api';
 import { StoreCard } from './StoreCard';
 
-const store = {
+const store: Store = {
   id: 's1',
   slug: 'cafe',
   brand: { id: 'b1', name: 'Cafe', slug: 'cafe' },
@@ -14,6 +15,9 @@ const store = {
   description: 'Quick bites.',
   imageUrl: '/images/cafe-cover.jpg',
   isOpen: true,
+  openState: 'OPEN',
+  nextChangeAt: null,
+  openLabel: null,
   prepTimeMinMinutes: 10,
   prepTimeMaxMinutes: 15,
 };
