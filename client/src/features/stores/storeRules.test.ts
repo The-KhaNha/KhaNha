@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { StoreSummary } from '../../types/api';
-import { groupByArea, menuMatchesCart } from './storeRules';
+import { cartHoldsOtherStore, groupByArea } from './storeRules';
 
 const s = (id: string, area: string | null) => ({ id, area }) as StoreSummary;
 
@@ -19,13 +19,13 @@ describe('groupByArea', () => {
   });
 });
 
-describe('menuMatchesCart', () => {
-  const items = [{ id: 'x' }, { id: 'y' }];
-  it("applies to an empty cart or one holding this menu's items", () => {
-    expect(menuMatchesCart([], items)).toBe(true);
-    expect(menuMatchesCart([{ menuItemId: 'y' }], items)).toBe(true);
+describe('cartHoldsOtherStore', () => {
+  const lines = [{ menuItemId: 'x' }];
+  it('is false for an empty cart, whatever store it last named', () => {
+    expect(cartHoldsOtherStore({ lines: [], storeId: 'a' }, 'b')).toBe(false);
   });
-  it("never to another store's cart", () => {
-    expect(menuMatchesCart([{ menuItemId: 'other' }], items)).toBe(false);
+  it("is false for this store's cart and true for another's", () => {
+    expect(cartHoldsOtherStore({ lines, storeId: 'a' }, 'a')).toBe(false);
+    expect(cartHoldsOtherStore({ lines, storeId: 'a' }, 'b')).toBe(true);
   });
 });

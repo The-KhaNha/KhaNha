@@ -15,7 +15,7 @@ const requestStoreMenu = (ref: string) =>
 export const fetchStoreHours = (ref: string) =>
   request<StoreScheduleResponse>(path(ref, '/hours'), { auth: false });
 
-// Started while the app boots (main.tsx), like prefetchMenu: handed out once, so later calls ask the server again.
+// Started while the app boots (main.tsx): handed out once, so later calls ask the server again.
 const prefetched = new Map<string, Promise<unknown>>();
 
 function take<T>(key: string, make: () => Promise<T>): Promise<T> {

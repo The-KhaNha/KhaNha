@@ -34,7 +34,7 @@ interface Resource<T> extends ResourceState<T> {
 const CACHE_ROOT = 'fp_cache:';
 // Bump when a persisted response shape changes, so an old cached shape is never rendered by new code. v2: a store
 // gained slug, brand, area and address (P2).
-const CACHE_PREFIX = `${CACHE_ROOT}v2:`;
+export const CACHE_PREFIX = `${CACHE_ROOT}v2:`;
 // Keys whose storage failure was already logged: writeCache runs on every successful poll.
 const reportedKeys = new Set<string>();
 

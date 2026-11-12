@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { fillStorage } from '../../test/storage';
 import type { MenuItem } from '../../types/api';
+import { CACHE_PREFIX } from '../../lib/useResource';
 import { selectCount, selectLines, selectQuantityOf, selectTotal, useCartStore } from './cartStore';
 
 const CAP = 10;
@@ -25,6 +26,9 @@ beforeEach(() => {
   // Not setState(_, true): cartStore keeps its actions on the same state object as `lines`, and a
   // replace=true reset would wipe them along with the data. A plain merge resets just the data.
   useCartStore.setState({
+    storeId: null,
+    storeSlug: null,
+    storeName: null,
     lines: [],
     limits: { maxQuantityPerItem: CAP, lowStockThreshold: 5 },
   });
@@ -209,5 +213,62 @@ describe('with browser storage full', () => {
 
   it('syncAvailability on an empty cart does not throw', () => {
     expect(() => useCartStore.getState().syncAvailability([menuItem()])).not.toThrow();
+  });
+});
+
+describe('one cart per store', () => {
+  const cafe = { id: 's1', slug: 'cafe', name: 'Cafe' };
+  const bakery = { id: 's2', slug: 'bakery', name: 'Bakery' };
+
+  it('takes the store of its first line and keeps it while there are lines', () => {
+    useCartStore.getState().add(menuItem(), 1, cafe);
+    expect(useCartStore.getState()).toMatchObject({ storeId: 's1', storeSlug: 'cafe' });
+  });
+
+  it('refuses another store until the cart is cleared (replace), and Keep leaves it as it was', () => {
+    useCartStore.getState().add(menuItem(), 1, cafe);
+    useCartStore.getState().add(menuItem({ id: 'item-2' }), 1, bakery);
+    expect(selectLines(useCartStore.getState()).map((l) => l.menuItemId)).toEqual(['item-1']);
+
+    useCartStore.getState().clear();
+    useCartStore.getState().add(menuItem({ id: 'item-2' }), 1, bakery);
+    expect(selectLines(useCartStore.getState()).map((l) => l.menuItemId)).toEqual(['item-2']);
+    expect(useCartStore.getState().storeName).toBe('Bakery');
+  });
+});
+
+describe('migration from version 1', () => {
+  const line = {
+    menuItemId: 'item-1',
+    name: 'Cold Coffee',
+    unitPrice: 120,
+    imageUrl: null,
+    quantity: 2,
+  };
+  const saved = (lines: unknown[]) =>
+    localStorage.setItem('fp_cart', JSON.stringify({ state: { lines }, version: 1 }));
+  const savedMenu = (key: string, id: string) =>
+    localStorage.setItem(
+      `${CACHE_PREFIX}${key}`,
+      JSON.stringify({
+        store: { id: 's9', slug: 'north', name: 'North' },
+        categories: [{ name: 'Coffee', items: [{ id }] }],
+      }),
+    );
+
+  it('gives the cart the store whose saved menu lists its first line', async () => {
+    saved([line]);
+    savedMenu('menu:north', 'item-1');
+    await useCartStore.persist.rehydrate();
+    expect(useCartStore.getState()).toMatchObject({ storeId: 's9', storeSlug: 'north' });
+    expect(selectLines(useCartStore.getState())).toHaveLength(1);
+  });
+
+  it('empties a cart whose store cannot be found', async () => {
+    saved([line]);
+    savedMenu('menu', 'another-item');
+    await useCartStore.persist.rehydrate();
+    expect(selectLines(useCartStore.getState())).toHaveLength(0);
+    expect(useCartStore.getState().storeId).toBeNull();
   });
 });

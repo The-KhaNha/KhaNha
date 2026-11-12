@@ -4,7 +4,7 @@ import { ArrowRight } from 'lucide-react';
 import { Price } from '../../components/Price';
 import { cn } from '../../lib/cn';
 import { useChangeKey } from '../../lib/useChangeKey';
-import { selectCount, selectTotal, useCartStore } from './cartStore';
+import { selectCount, selectStoreName, selectTotal, useCartStore } from './cartStore';
 
 interface CartBarProps {
   /** Max-width classes matching the page column (App passes it). */
@@ -19,6 +19,7 @@ interface CartBarProps {
 export function CartBar({ widthClass = 'max-w-md md:max-w-lg' }: CartBarProps) {
   const count = useCartStore(selectCount);
   const total = useCartStore(selectTotal);
+  const storeName = useCartStore(selectStoreName);
   const totalKey = useChangeKey(total);
   const countKey = useChangeKey(count);
 
@@ -41,11 +42,16 @@ export function CartBar({ widthClass = 'max-w-md md:max-w-lg' }: CartBarProps) {
             </span>
           </span>
           {/* The label gives way, never the money: a clipped total would mislead. */}
-          <span className="min-w-0 flex-1 truncate text-body font-bold">
-            View cart
-            <span className="ml-2 font-medium text-white/60">
-              · {count} item{count === 1 ? '' : 's'}
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-body font-bold">
+              View cart
+              <span className="ml-2 font-medium text-white/60">
+                · {count} item{count === 1 ? '' : 's'}
+              </span>
             </span>
+            {storeName && (
+              <span className="block truncate text-2xs font-medium text-white/60">{storeName}</span>
+            )}
           </span>
           <span className="shrink-0 overflow-hidden">
             <Price

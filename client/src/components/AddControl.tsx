@@ -1,6 +1,7 @@
 import type { RefObject } from 'react';
 import type { MenuItem } from '../types/api';
 import { availableQuantity, lineLimit, unavailableLabel } from '../features/cart/cartRules';
+import { useAddToCart } from '../features/cart/useAddToCart';
 import { selectLimits, selectQuantityOf, useCartStore } from '../features/cart/cartStore';
 import { flyToCart } from '../lib/flyToCart';
 import { AddButton } from './AddButton';
@@ -20,13 +21,13 @@ interface AddControlProps {
 export function AddControl({ item, photoRef }: AddControlProps) {
   const quantity = useCartStore(selectQuantityOf(item.id));
   const limits = useCartStore(selectLimits);
-  const add = useCartStore((s) => s.add);
+  const addToCart = useAddToCart();
   const increment = useCartStore((s) => s.increment);
   const decrement = useCartStore((s) => s.decrement);
 
   function handleAdd() {
+    if (!addToCart(item)) return;
     if (photoRef.current) flyToCart(photoRef.current, item.imageUrl);
-    add(item);
   }
 
   if (!item.isAvailable) {

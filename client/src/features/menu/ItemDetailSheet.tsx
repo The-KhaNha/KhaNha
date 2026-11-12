@@ -12,6 +12,7 @@ import { IconButton } from '../../components/IconButton';
 import { cn } from '../../lib/cn';
 import { useFocusTrap } from '../../lib/useFocusTrap';
 import { useReducedMotion } from '../../lib/useReducedMotion';
+import { useAddToCart } from '../cart/useAddToCart';
 import { availableQuantity, lineLimit } from '../cart/cartRules';
 import { selectLimits, selectQuantityOf, useCartStore } from '../cart/cartStore';
 
@@ -34,7 +35,7 @@ const CLOSE_FALLBACK_MS = 400;
  * The local count can only go as high as what is left after what the cart already holds.
  */
 export function ItemDetailSheet({ item, onClose }: ItemDetailSheetProps) {
-  const add = useCartStore((s) => s.add);
+  const addToCart = useAddToCart();
   const inCart = useCartStore(selectQuantityOf(item?.id ?? ''));
   const limits = useCartStore(selectLimits);
   const reducedMotion = useReducedMotion();
@@ -93,7 +94,8 @@ export function ItemDetailSheet({ item, onClose }: ItemDetailSheetProps) {
 
   function handleAdd() {
     if (!item || phase !== 'open' || !canAdd) return;
-    add(item, Math.min(quantity, room));
+    // Asked first (another store's cart): the replace sheet takes over, so this one just closes.
+    if (!addToCart(item, Math.min(quantity, room))) return requestClose();
     setPhase('added');
     holdTimer.current = window.setTimeout(requestClose, ADDED_HOLD_MS);
   }
