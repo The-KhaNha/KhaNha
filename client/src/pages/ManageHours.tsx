@@ -49,12 +49,14 @@ export function ManageHoursPage({ store, onChanged }: ManageHoursPageProps) {
   const [week, setWeek] = useState<Week | null>(null);
   const [busy, setBusy] = useState(false);
   const [weekError, setWeekError] = useState<string | null>(null);
+  const [removeError, setRemoveError] = useState<string | null>(null);
 
-  // A fresh answer replaces the edit (set during render, the React way to derive state from a changed value).
+  // A fresh answer replaces the week only when it holds no unsaved edit (derived during render, the React way).
   const [synced, setSynced] = useState(data);
   if (data !== synced) {
+    const clean = !week || !synced || sameWeek(week, weekFromHours(synced.hours));
     setSynced(data);
-    setWeek(data ? weekFromHours(data.hours) : null);
+    if (clean) setWeek(data ? weekFromHours(data.hours) : null);
   }
 
   if (!allowed)
@@ -106,6 +108,17 @@ export function ManageHoursPage({ store, onChanged }: ManageHoursPageProps) {
   const dirty = !sameWeek(week, weekFromHours(data.hours));
   return (
     <div className="pt-4">
+      {error && (
+        <ErrorState
+          compact
+          className="mb-3"
+          title="Showing the saved hours"
+          message="We couldn't refresh them just now."
+          retryLabel="Retry"
+          onRetry={reload}
+          unreachable={error.isUnreachable}
+        />
+      )}
       <p className="text-sm text-muted">Times are in the store's time zone ({data.timezone}).</p>
       {data.hours.length === 0 && !dirty && (
         <EmptyState
@@ -139,8 +152,15 @@ export function ManageHoursPage({ store, onChanged }: ManageHoursPageProps) {
         exceptions={data.exceptions}
         busy={busy}
         onAdd={(draft) => mutate(() => createScheduleException(store.id, exceptionBody(draft)))}
-        onRemove={(id) => void mutate(() => deleteScheduleException(store.id, id))}
+        onRemove={async (id) =>
+          setRemoveError(await mutate(() => deleteScheduleException(store.id, id)))
+        }
       />
+      {removeError && (
+        <p role="alert" className="mt-3 text-caption font-medium text-brand-700">
+          {removeError}
+        </p>
+      )}
     </div>
   );
 }

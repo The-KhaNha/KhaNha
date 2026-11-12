@@ -116,22 +116,17 @@ describe('ManageHoursPage', () => {
   });
 
   it('adds a special day from a preset and removes one', async () => {
+    const day = '2030-01-01';
+    const holiday = { id: 'e1', startsOn: day, endsOn: day, kind: 'CLOSED', label: 'Holiday' };
     api.fetchStoreHours.mockResolvedValue(
-      week([monday], [
-        {
-          id: 'e1',
-          startsOn: '2030-01-01',
-          endsOn: '2030-01-01',
-          kind: 'CLOSED',
-          opensAt: null,
-          closesAt: null,
-          label: 'Holiday',
-        },
-      ] as never),
+      week([monday], [{ ...holiday, opensAt: null, closesAt: null }] as never),
     );
     api.createScheduleException.mockResolvedValue({});
-    api.deleteScheduleException.mockResolvedValue(undefined);
+    api.deleteScheduleException.mockRejectedValue(
+      new ApiError(500, 'INTERNAL', 'Could not remove.'),
+    );
     show();
+    fireEvent.change(await screen.findByLabelText('Monday closes'), { target: { value: '18:00' } });
     fireEvent.click(await screen.findByRole('button', { name: 'Closed for …' }));
     fireEvent.change(screen.getByLabelText('Label'), { target: { value: 'Closed for Diwali' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add special day' }));
@@ -139,10 +134,13 @@ describe('ManageHoursPage', () => {
     const body = api.createScheduleException.mock.calls[0]![1];
     expect(body).toMatchObject({ kind: 'CLOSED', label: 'Closed for Diwali' });
     expect(body.opensAt).toBeUndefined();
+    await waitFor(() => expect(api.fetchStoreHours).toHaveBeenCalledTimes(2));
+    expect(screen.getByLabelText('Monday closes')).toHaveValue('18:00');
 
     const row = screen.getByText('Holiday').closest('li')!;
     fireEvent.click(within(row).getByRole('button', { name: 'Remove Holiday' }));
     await waitFor(() => expect(api.deleteScheduleException).toHaveBeenCalledWith('s1', 'e1'));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not remove.');
   });
 
   it('offers an admin no editor, and never loads the hours for them', () => {
