@@ -119,7 +119,11 @@ function toRow(input: UpdateMenuItemInput): TablesUpdate<'menu_items'> {
  */
 async function lastPlaceIn(storeId: string, category: string): Promise<number> {
   const last = async (inCategory: boolean) => {
-    let query = supabaseAdmin.from('menu_items').select('sort_order').eq('store_id', storeId);
+    let query = supabaseAdmin
+      .from('menu_items')
+      .select('sort_order')
+      .eq('store_id', storeId)
+      .is('archived_at', null);
     if (inCategory) query = query.eq('category', category);
     const { data } = await query
       .order('sort_order', { ascending: false })

@@ -325,6 +325,22 @@ describe('creating, editing and archiving an item', () => {
     expect((await archive(moved)).status).toBe(204);
   });
 
+  it('an archived item does not hold a category a place: a category with only archived items goes last', async () => {
+    const ghost = (await create({ ...valid, name: 'Ghost', category: 'Ghosts' })).body.item.id;
+    const later = (await create({ ...valid, name: 'Later', category: 'Later' })).body.item.id;
+    expect((await archive(ghost)).status).toBe(204);
+    const revived = (await create({ ...valid, name: 'Revived', category: 'Ghosts' })).body.item.id;
+    const { data: rows } = await supabaseAdmin
+      .from('menu_items')
+      .select('id, sort_order')
+      .in('id', [later, revived])
+      .throwOnError();
+    const sortOf = (id: string) => rows.find((row) => row.id === id)?.sort_order ?? -1;
+    expect(sortOf(revived)).toBeGreaterThan(sortOf(later));
+    expect((await archive(later)).status).toBe(204);
+    expect((await archive(revived)).status).toBe(204);
+  });
+
   it('switching an item off keeps it listed as unavailable', async () => {
     const res = await patch(chai, { isAvailable: false });
     expect(res.body.item).toMatchObject({ isAvailable: false, isEnabled: false });
@@ -339,7 +355,11 @@ describe('creating, editing and archiving an item', () => {
       true,
     );
     expect(audit[0]?.changes).toMatchObject({ name: [null, 'Masala Chai'], diet: [null, 'VEG'] });
-    expect(audit[1]?.changes).toEqual({ price_paise: [3000, 3500], diet: ['VEG', null] });
+    expect(audit[1]?.changes).toEqual({
+      price_paise: [3000, 3500],
+      diet: ['VEG', null],
+      is_popular: [false, true],
+    });
     const events = await eventsFor(chai);
     expect(events).toHaveLength(4);
     for (const [index, event] of events.entries()) {

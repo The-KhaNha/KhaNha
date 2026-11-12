@@ -19,14 +19,16 @@ alter table public.menu_items
 -- An order line copies the item's photo, which may now be missing.
 alter table public.order_items alter column image_url drop not null;
 
--- Audited on insert too, and on the fields the editor adds. Stock stays out (P3.5 gives it its own trail).
+-- Audited on insert too, and on the fields the editor adds. Stock stays out (P3.5 gives it its own trail), and so does
+-- image_variants (derived from image_url by the image pipeline; the url change is the audited one).
 drop trigger menu_items_audit on public.menu_items;
 create trigger menu_items_audit
-  after insert or update of name, price_paise, is_available, image_url, category, description, diet, archived_at
+  after insert or update of name, price_paise, is_available, image_url, category, description, diet, archived_at,
+    is_popular, sort_order
   on public.menu_items
   for each row execute function public.audit_row_change(
     'menu_item.changed', 'name', 'price_paise', 'is_available', 'image_url', 'category', 'description', 'diet',
-    'archived_at'
+    'archived_at', 'is_popular', 'sort_order'
   );
 
 -- menu.changed, in the transaction of any write that changed what a menu shows: one event per store per statement,

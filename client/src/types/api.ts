@@ -90,8 +90,11 @@ export interface MenuItem {
   price: number; // whole rupees
   /** null: no photo yet (an item made in the editor before its upload). */
   imageUrl: string | null;
-  /** null: not marked. */
-  diet: Diet | null;
+  /**
+   * null: not marked. Optional because a menu persisted before the field existed (fp_cache) lacks it; read it as
+   * `item.diet ?? null`.
+   */
+  diet?: Diet | null;
   /** Effective availability: false when the shop switched the item off OR its tracked stock ran out. */
   isAvailable: boolean;
   isPopular: boolean;
