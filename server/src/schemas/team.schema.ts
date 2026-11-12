@@ -15,3 +15,9 @@ export const createInviteSchema = z.object({
   role: z.enum(['MANAGER', 'STAFF'], 'role must be MANAGER or STAFF.'),
 });
 export type CreateInviteInput = z.infer<typeof createInviteSchema>;
+
+export const acceptInviteSchema = z.object({
+  // 32 random bytes in base64url are 43 characters; anything far from that is no token, and never reaches a hash.
+  token: z.string().min(1, 'token is required.').max(100, 'That invite link is not valid.'),
+});
+export type AcceptInviteInput = z.infer<typeof acceptInviteSchema>;

@@ -1,7 +1,7 @@
 import type { Request, RequestHandler } from 'express';
 import { accessFor, can } from '../domain/permissions';
 import { currentStore, currentUser, requestContext } from '../middleware/auth';
-import type { CreateInviteInput } from '../schemas/team.schema';
+import type { AcceptInviteInput, CreateInviteInput } from '../schemas/team.schema';
 import * as team from '../services/team.service';
 import type { BodyHandler } from '../types/http';
 
@@ -53,4 +53,15 @@ export const removeMember: RequestHandler = async (req, res) => {
     requestContext(req),
   );
   res.status(204).end();
+};
+
+/** POST /api/me/invites/accept, after requireAuth. */
+export const acceptInvite: BodyHandler<AcceptInviteInput> = async (req, res) => {
+  const membership = await team.acceptInvite(
+    req.body.token,
+    currentUser(req).id,
+    requestContext(req),
+  );
+  req.log.info({ storeId: membership.store.id, membershipId: membership.id }, 'Invite accepted');
+  res.json({ membership });
 };

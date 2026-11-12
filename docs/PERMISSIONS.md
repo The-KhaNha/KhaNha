@@ -90,6 +90,9 @@ Code: `server/src/controllers/team.controller.ts`, `server/src/services/team.ser
 - `team.controller.managesManagers` re-checks `accessFor(user, store, 'team.manageManagers')` instead of reusing
   `req.storeAccess`, so an ADMIN who is also a MANAGER member is judged by the standing that holds the capability.
 - The brand's owner has no membership, so no route can remove them. Removal takes effect on the person's next request.
+- Accepting (`POST /api/me/invites/accept`) needs only a signed-in account whose email is the invite's, plus the
+  token. Every refusal is 404 ([API.md](API.md#post-meinvitesaccept)); the role comes from the invite, never from the
+  request.
 - The invite table is reachable only through the API ([SCHEMA.md](SCHEMA.md#store_invites)).
 
 Known limitation: an invite is bound to an email, but sign-up does not verify email ownership yet. Whoever holds the
@@ -122,6 +125,7 @@ band, and it is shown once, stored only as a hash and never logged. Follow-up: v
 | `POST /api/stores/:storeId/invites`                 | 401        | 403                                                  | `team.manageStaff` there (MANAGER, OWNER), else 403  | `team.manageStaff` (ADMIN), else 403                 | same + `writeLimiter`; a `MANAGER` invite also needs `team.manageManagers`              |
 | `DELETE /api/stores/:storeId/invites/:inviteId`     | 401        | 403                                                  | `team.manageStaff` there (MANAGER, OWNER), else 403  | `team.manageStaff` (ADMIN), else 403                 | same; a `MANAGER` invite also needs `team.manageManagers`                               |
 | `DELETE /api/stores/:storeId/members/:membershipId` | 401        | 403                                                  | `team.manageStaff` there (MANAGER, OWNER), else 403  | `team.manageStaff` (ADMIN), else 403                 | same; a `MANAGER` member needs `team.manageManagers`, or is the caller                  |
+| `POST /api/me/invites/accept`                       | 401        | yes, with the invite's token and email               | yes, with the invite's token and email               | yes, with the invite's token and email               | `requireAuth` + `inviteAcceptLimiter`; every refusal 404                                |
 | `GET /api/admin/audit`                              | 401        | 403                                                  | 403                                                  | yes                                                  | `requireAuth` + `requireAdmin`                                                          |
 | `PATCH /api/admin/flags/:key`                       | 401        | 403                                                  | 403                                                  | yes (unknown key 404)                                | `requireAuth` + `requireAdmin`                                                          |
 | `/admin` (client route)                             | → `/login` | → `/`                                                | → `/`                                                | renders `AdminPage`                                  | `RequireRole role="ADMIN"` (client only)                                                |
