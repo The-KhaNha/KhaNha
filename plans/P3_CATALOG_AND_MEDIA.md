@@ -6,18 +6,23 @@ are copied from. The roadmap says what P3 builds and why; this file says in whic
 which files, tests, docs and checks, and where P3 deliberately builds something different from the roadmap's text
 (each with its reason and the phase that picks it up). When a PR merges, tick its box here and in the roadmap.
 
-> **Status: proposal** (11 November 2026). P3 starts when [P2](P2_MULTI_STORE.md) is in `dev`. The roadmap's P3.1
+> **Status: in progress** (12 November 2026): P2 is in `dev` (#75), `feat/P3` was cut from it, and the user answered
+> every [decision](#decisions) (D6 differs from the default: owners open branches, PRs 01b and 07b).
+>
+> Written as a proposal (11 November 2026). The roadmap's P3.1
 > ("a brand catalog with per-store listings and price overrides") was rejected in
 > [ADR-001](../docs/adr/001-brands-own-stores.md) as amended: a store is a **copy** of its brand's template and then
 > changes freely. This plan follows the ADR; [P2's PR 00](P2_MULTI_STORE.md#pr-00--the-roadmap-says-what-adr-001-decided)
-> rewrites the roadmap's P3.1 from [the model below](#the-model-p3-builds). The [decisions](#decisions) are open;
-> each has a default, and the plan is written for the defaults.
+> rewrites the roadmap's P3.1 from [the model below](#the-model-p3-builds).
 
 ## How the team works P3
 
 The P2 rules stand ([P2 plan](P2_MULTI_STORE.md#how-the-team-works-p2), CLAUDE.md §13–§21), with `feat/P3` as the
 phase branch (cut from `dev` once `feat/P2` is merged, and covered by the `ci-ok required` ruleset's `feat/P[0-9]` pattern),
-work branches `feat/p3-<NN>-<slug>`, PR titles `P3 PR <NN> — <title>`, and the same size limit. Two additions:
+work branches `feat/p3-<NN>-<slug>`, PR titles `P3 PR <NN> — <title>`. Changes from P2 (the user, 12 November 2026):
+the size limit is **50 changed files or 1000 changed lines** (`.claude/rules/workflow.md` "PR size"); the agent merges
+each PR into `feat/P3` once `ci-ok` is green and CodeRabbit is clear, and the user merges `feat/P3` into `dev`; PRs run
+in parallel worktrees as late P2 did, with at most one schema-changing PR in flight. Two additions:
 
 - **Every menu write invalidates `menu:<storeId>`** and ships the cache test that fails without it (CLAUDE.md §2c).
 - **Every store route ships `testStoreIsolation`** (P2 PR 04); every upload path ships its refusal cases.
@@ -43,12 +48,14 @@ What the code has when P2 is done (P1 and P2 as planned), and what P3 adds.
 | #   | PR                                                  | Step       | Depends on | Size (files / lines) |
 | --- | --------------------------------------------------- | ---------- | ---------- | -------------------- |
 | 01  | The brand template and its lineage                  | P3.1       | –          | 12 / 560             |
+| 01b | Owner opens a branch: create, profile, publish      | P3.1       | 01         | 16 / 700             |
 | 02  | Menu editing API                                    | P3.4       | 01         | 16 / 640             |
 | 03  | Quick edits: availability, bulk, order              | P3.4       | 02         | 10 / 380             |
 | 04  | Stock: one function, its trail, the staff setting   | P3.4, P3.5 | 02         | 14 / 560             |
 | 05  | Client: the menu screen and the item editor         | P3.4       | 02, 03     | 20 / 720             |
 | 06  | Client: stock in `/manage` and on the staff board   | P3.4, P3.5 | 04, 05     | 14 / 520             |
 | 07  | Template push                                       | P3.1       | 05         | 14 / 560             |
+| 07b | Client: open a branch, its profile, publish         | P3.1       | 01b        | 14 / 600             |
 | 08  | Media: the port, local storage, the uploads API     | P3.3       | 02         | 16 / 620             |
 | 09  | Media: S3 and MinIO                                 | P3.3       | 08         | 14 / 480             |
 | 10  | Media: the image pipeline in the worker             | P3.3       | 09         | 14 / 600             |
@@ -128,6 +135,11 @@ snapshot. `stock_movements` and `media_uploads` are given with their PRs.
 | `menu.edit` (items, photos, modifiers) | ✗                           | ✓       | ✓     | ✗              |
 | `stock.update`                         | when `staff_can_edit_stock` | ✓       | ✓     | ✗              |
 | `template.push`                        | ✗                           | ✗       | ✓     | ✗              |
+| `store.profile` (name, address, phone) | ✗                           | ✓       | ✓     | ✗              |
+| `store.publish` (publish, unpublish)   | ✗                           | ✗       | ✓     | ✗              |
+
+Opening a branch is a brand-level right, not a store capability: only the brand's owner (`ownedBrandIds`) may, and
+anyone else gets 404 on the brand (D6).
 
 A template store has no members: only its brand's owner reaches it, and an invite to it is refused.
 
@@ -151,6 +163,7 @@ PR 00 for P3.1.
 | P3.4 `stock_movements` rows for every stock change, sales included                                                           | manual changes only (`MANUAL_SET`, `MANUAL_ADJUST`, `WASTE`); sales and cancels are in `order_items.reserved_quantity`                                                                                     | P7.1, if its reports need one table                   |
 | P3.4, P3.5 stock changes in the audit log **and** in `stock_movements`                                                       | `stock_movements` is the trail (who, when, how much, why); no second row in `audit_log`                                                                                                                    | –                                                     |
 | P3.4 routes `/deals`, `/analytics`, `/payouts`, `/reviews`, `/policy` under `/manage`                                        | Menu and Stock only                                                                                                                                                                                        | P5.8, P5.6, P7.3, P7.5, and P3.6 when built           |
+| P7.4 the admin console creates stores                                                                                        | the brand's owner opens a branch (a copy of the template, `DRAFT`) and publishes it after a checklist (D6); brands are still created by the seed                                                           | P7.4 creates brands and owners                        |
 | P3.4 drag to reorder                                                                                                         | up and down buttons (accessible, and no drag library in the bundle)                                                                                                                                        | a measured need                                       |
 | P3.5 "Mark sold out" on an order line                                                                                        | not built: it lives in the order detail of staff dashboard v2                                                                                                                                              | P6.4                                                  |
 | P3.6 surplus lots and deals                                                                                                  | deferred whole (D4)                                                                                                                                                                                        | after P5.9 ([below](#deferred-p36-surplus-and-deals)) |
@@ -172,11 +185,11 @@ Migration `<ts>_brand_template.sql`:
 - the `stores`, `brands` and `menu_items.template_item_id` changes [above](#the-model-p3-builds), and
   `menu_items.archived_at`, because the copy below filters on it (nothing sets it until PR 02);
 - backfill, per brand: a template store (`<brand slug>-template`, `DRAFT`, `is_template`) whose menu and
-  `store_settings` are copied from the brand's oldest store; that store's items get `template_item_id`, and the
+  settings columns are copied from the brand's oldest store; that store's items get `template_item_id`, and the
   brand's other stores' items get it by matching name (the seed's branches share names; an unmatched item stays
   null, which is correct: it has no template ancestor);
 - `create_store_from_template(p_brand_id, p_name, p_slug, p_area, p_address_line, p_actor, p_request_id) returns
-uuid`: inserts the store (`DRAFT`), overwrites its `store_settings` row with the template's, and copies the
+uuid`: inserts the store (`DRAFT`), copies the template's settings columns (P2 keeps them on `stores`), and copies the
   template's unarchived items with `template_item_id` set; emits `store.created`. Hours are not copied (a new
   branch sets its own). Granted to `service_role` only.
 
@@ -192,6 +205,46 @@ activating a template is refused by the constraint; only the owner passes `requi
 Docs: `docs/SCHEMA.md`, `docs/ARCHITECTURE.md` (template, copy, lineage), `docs/PERMISSIONS.md`. The ADR needs no
 change here: the user amended [ADR-001](../docs/adr/001-brands-own-stores.md) on 11 November 2026 to store the
 template as a never-public store row (D1). Intent: `--server minor`.
+
+### PR 01b — Owner opens a branch: create, profile, publish (P3.1, D6)
+
+- [ ] Merged
+
+`/before-write`: reuse-scout, expected EXTEND (`store.service.ts`, `requireStore`, `toStoreDto`); schema-guard,
+expected REUSE (`stores`, `store_hours`, `menu_items`), one new function. Skill: `/new-endpoint`. The main agent
+implements it (permissions and who may make a store public).
+
+Migration `<ts>_store_publish.sql`: `set_store_status(p_store_id, p_status, p_actor, p_request_id) returns text[]`
+moves `DRAFT` → `ACTIVE` (publish) or `ACTIVE` → `DRAFT` (unpublish) under a row lock, sets `app.actor` and
+`app.request_id`, and emits `store.changed`. Publish checks, in the same transaction, that the store is not a
+template, has an `address_line`, at least one `store_hours` row and at least one available, unarchived item; it
+returns what is missing (`{address, hours, menu}`) and changes nothing when any is. `SUSPENDED` and `ARCHIVED` stay
+operator states (no route). A repeat is a no-op with no event. Granted to `service_role` only.
+
+Server:
+
+| Method + path                         | Guard                           | Does                                                                                                                                                   |
+| ------------------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /api/brands/mine`                | `requireAuth`                   | the brands the caller owns, each with its stores (all statuses) and its template; `[]` for anyone else                                                 |
+| `POST /api/brands/:brandId/stores`    | owner of the brand, else 404    | `create_store_from_template` (PR 01): `name`, `slug?` (from the name), `area?`, `addressLine?`; the store is `DRAFT`; a taken slug is 409 `SLUG_TAKEN` |
+| `PATCH /api/stores/:storeId/profile`  | `requireStore('store.profile')` | `name`, `tagline`, `description`, `area`, `addressLine`, `contactPhone`; never `slug` or `status`                                                      |
+| `POST /api/stores/:storeId/publish`   | `requireStore('store.publish')` | publish; 409 `STORE_NOT_READY` with `details.missing`                                                                                                  |
+| `POST /api/stores/:storeId/unpublish` | `requireStore('store.publish')` | back to `DRAFT`: it leaves the store list and refuses new orders; orders already placed are still served on the staff board                            |
+
+Writes use `writeLimiter`, and invalidate `stores:list` and `store:<id>`. Bounds go in `schemas/limits.ts` with their
+check constraints and the parity test (name 2–60, slug `^[a-z0-9-]{3,48}$`, address ≤ 200, phone as P2's). The
+client `StoreDto` copy and `docs/API.md` error codes are updated in the same change.
+
+Tests: `test/api/store-lifecycle.test.ts`: create as the owner, as a manager of the brand's store, as another
+brand's owner and as an admin (only the first succeeds; the rest 404); the copy is the template's menu; a taken slug
+leaves nothing behind; each missing checklist item blocks publish alone; publish then shows the store in
+`GET /api/stores` (seen failing without the invalidation); unpublish hides it, refuses a new order, and an order
+placed before it can still move PLACED → COLLECTED; a template cannot be published; profile edits by staff are 403
+and by another store's manager 404 (`testStoreIsolation`); every change leaves one `store.changed` event and a repeat
+leaves none.
+
+Docs: `docs/API.md`, `docs/PERMISSIONS.md`, `docs/SCHEMA.md` (the function), `docs/ARCHITECTURE.md` (a store's life:
+draft, published, unpublished). Intent: `--server minor --client patch`.
 
 ### PR 02 — Menu editing API (P3.4)
 
@@ -247,13 +300,13 @@ Docs: `docs/API.md`, `docs/SCHEMA.md`. Intent: `--server minor`.
 
 - [ ] Merged
 
-`/before-write`: schema-guard, NEW TABLE (`stock_movements`), EXTEND (`store_settings`).
+`/before-write`: schema-guard, NEW TABLE (`stock_movements`), EXTEND (`stores`, whose columns hold the settings since P2).
 
 Migration `<ts>_adjust_stock.sql`:
 
 - `stock_reason` enum (`MANUAL_SET`, `MANUAL_ADJUST`, `WASTE`) and `stock_movements` as in the roadmap, minus
   `order_id`; index `(menu_item_id, created_at desc)`;
-- `store_settings.staff_can_edit_stock boolean not null default true` (roadmap decision 16);
+- `stores.staff_can_edit_stock boolean not null default true` (roadmap decision 16);
 - `adjust_stock(p_store_id, p_menu_item_id, p_set integer, p_delta integer, p_untracked boolean, p_reason, p_actor,
 p_request_id) returns integer`: exactly one of set, delta or untracked; one conditional update that can never go
   below zero (`INSUFFICIENT_STOCK` otherwise); writes the movement with the resulting quantity; emits
@@ -333,6 +386,27 @@ one request id); `PushSheet.test.tsx`.
 
 Docs: `docs/API.md`, `docs/SCHEMA.md`, `docs/PERMISSIONS.md`, `docs/ARCHITECTURE.md`. Intent:
 `--server minor --client minor`.
+
+### PR 07b — Client: open a branch, its profile, publish (P3.1, D6)
+
+- [ ] Merged
+
+`/before-write`: reuse-scout (the `/manage` shell and store picker from P2 PR 14a, the Settings form from PR 15,
+`Input`, `Button`, `Skeleton`, `EmptyState`, `ErrorState`).
+
+- The owner's store picker gains "Open a branch": a form (name, area, address; the slug shown, editable) that
+  lands on the new store's `/manage` page.
+- `/manage/:storeSlug/profile` (lazy): the profile form for managers and owners.
+- A "Go live" card on the store's `/manage` home for the owner of a `DRAFT` store: the three checklist items, each
+  linking to the screen that fixes it, and Publish (enabled once all pass; the server still decides). A published
+  store shows Unpublish behind a confirm dialog that says new orders stop.
+- `services/manageStores.ts`; every mutation reloads the picker's brands, the store, and the public store list.
+
+Tests: `OpenBranch.test.tsx` (field errors from the API, a taken slug), `GoLive.test.tsx` (each checklist state,
+`STORE_NOT_READY` from the server, the unpublish confirm), e2e: the owner opens a branch, adds hours and an item,
+publishes it, and a customer finds it. Visual gate at 390px throttled and 1280px.
+
+Docs: `docs/FRONTEND_STRUCTURE.md`, `docs/COMPONENTS.md` for any new component. Intent: `--client minor`.
 
 ### PR 08 — Media: the port, local storage, the uploads API (P3.3)
 
@@ -619,18 +693,18 @@ Only the user accepts or amends an ADR, and an accepted decision is never rewrit
 
 ## Decisions
 
-Open. The plan is written for the defaults; a different answer changes the PRs named.
+Answered by the user on 12 November 2026 (D1 on 11 November). Every answer is the default except D6.
 
-| #   | Decision                                                         | Default                                                                                                                               | Applies to |
-| --- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| D1  | How the brand template is stored                                 | **answered (the user, 11 November 2026):** as a never-public store row (`is_template`), sharing every menu table (ADR-001 as amended) | 01, 07, 13 |
-| D2  | What a push may overwrite                                        | name, description, price, category, diet and photo; never stock, availability, order or popularity                                    | 07         |
-| D3  | Where stock changes are recorded                                 | `stock_movements` for manual changes only; sales stay on the order lines; no duplicate in `audit_log`                                 | 04         |
-| D4  | P3.6 (surplus and deals) in P3, or after P5.9                    | after P5.9, whole                                                                                                                     | –          |
-| D5  | HEIC uploads                                                     | not accepted by the server; the editor converts what the browser can show                                                             | 08, 11     |
-| D6  | Who creates a brand's next store before the admin console (P7.4) | the seed and `create_store_from_template` through SQL; no endpoint in P3                                                              | 01         |
-| D7  | When the bundled photos are deleted                              | after local and staging have migrated (PR 12b); production starts on media, since it first deploys in P8                              | 12         |
-| D8  | Staff may edit stock by default (roadmap decision 16)            | yes                                                                                                                                   | 04         |
+| #   | Decision                                                         | Default                                                                                                                                                                                                                                                      | Applies to   |
+| --- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------ |
+| D1  | How the brand template is stored                                 | **answered (the user, 11 November 2026):** as a never-public store row (`is_template`), sharing every menu table (ADR-001 as amended)                                                                                                                        | 01, 07, 13   |
+| D2  | What a push may overwrite                                        | **answered:** name, description, price, category, diet and photo; never stock, availability, order or popularity                                                                                                                                             | 07           |
+| D3  | Where stock changes are recorded                                 | **answered:** `stock_movements` for manual changes only; sales stay on the order lines; no duplicate in `audit_log`                                                                                                                                          | 04           |
+| D4  | P3.6 (surplus and deals) in P3, or after P5.9                    | **answered:** after P5.9, whole                                                                                                                                                                                                                              | –            |
+| D5  | HEIC uploads                                                     | **answered:** not accepted by the server; the editor converts what the browser can show                                                                                                                                                                      | 08, 11       |
+| D6  | Who creates a brand's next store before the admin console (P7.4) | **answered (not the default):** the brand's owner, through the API and `/manage`; the store starts `DRAFT` and the owner publishes it once it has an address, weekly hours and an available item, and may unpublish it. Brands are still created by the seed | 01, 01b, 07b |
+| D7  | When the bundled photos are deleted                              | **answered:** after local and staging have migrated (PR 12b); production starts on media, since it first deploys in P8                                                                                                                                       | 12           |
+| D8  | Staff may edit stock by default (roadmap decision 16)            | **answered:** yes                                                                                                                                                                                                                                            | 04           |
 
 ## Closing P3
 
@@ -639,13 +713,14 @@ WebKit smoke, and `/break` (P3 changes how orders are priced and adds file uploa
 `feat/P3`. Then the PR `feat/P3` → `dev` ("P3 — catalog and media", exempt from the size limit,
 `@coderabbitai ignore`, listing its migrations in order); the user merges it. The milestone check (M3) on staging: a
 manager edits an item, its photo and its stock from a phone; a customer orders a customised item and the kitchen
-sees the options; the owner pushes a price from the template to one branch and not the other.
+sees the options; the owner pushes a price from the template to one branch and not the other; the owner opens a new
+branch, publishes it from a phone, and a customer orders from it.
 
 ## User steps (cannot be done from the repository)
 
-- Answer the [decisions](#decisions), or accept the defaults.
-- Create `feat/P3` from `dev` once P2 is merged (the `ci-ok required` ruleset's `feat/P[0-9]` pattern already covers it).
-- Merge each PR into `feat/P3`; push its migrations to staging (`pnpm run db:push:staging`).
+- ~~Answer the [decisions](#decisions)~~ (done 12 November 2026).
+- ~~Create `feat/P3` from `dev`~~ (cut by the agent from 7b53c34 on 12 November 2026).
+- Merge `feat/P3` into `dev` when P3 closes; push its migrations to staging (`pnpm run db:push:staging`).
 - Photos on staging: staging is not hosted on AWS until after the first release
   ([P8 plan](P8_INFRASTRUCTURE.md#later-staging-on-aws)), so a local stack pointed at staging uses
   `MEDIA_STORAGE=local`, and the presigned flow is exercised against MinIO locally and in CI. Production's bucket

@@ -1560,6 +1560,8 @@ green, both images build and pass `/healthz`, `pnpm release:dry` prints the same
 settings, served by one app. **Items:** R1, R3 (store settings), R26, R31, and the role split R11 depends on.
 **Depends on:** P1. **Size:** L. **Flag:** none (the plan drops `multi_store_ui`).
 
+> **Done** (#75, merged into `dev` on 12 November 2026; [the plan](P2_MULTI_STORE.md) lists every PR).
+>
 > **How it is built:** [P2_MULTI_STORE.md](P2_MULTI_STORE.md), PR by PR on the `feat/P2` branch. This section
 > follows [ADR-001](../docs/adr/001-brands-own-stores.md) as amended (per-store memberships, the owner on the brand,
 > brand templates) and the plan's model; the plan's differences table says where P2 builds less than this text.
@@ -1924,7 +1926,8 @@ edit an item once for every branch. **Items:** R1 (multi-branch catalog), R4.2.1
 > **How it is built:** [P3_CATALOG_AND_MEDIA.md](P3_CATALOG_AND_MEDIA.md), PR by PR on the `feat/P3` branch. P3.1
 > below is the brand template of [ADR-001](../docs/adr/001-brands-own-stores.md) as amended (a live catalog with
 > per-store overrides was rejected there). P3.2 to P3.5 below still say "brand" and `catalog_items` in places: the
-> plan's differences table wins. The plan also moves P3.6 behind P5.9 (an open decision there).
+> plan's differences table wins. The user decided (12 November 2026) that P3.6 waits for P5.9 and that a brand's
+> owner opens and publishes branches from `/manage` (plan D4, D6).
 
 ### P3.1 Catalog for multi-branch brands
 
@@ -1953,7 +1956,8 @@ create index menu_items_template_item_id_idx on public.menu_items (template_item
   can never become `ACTIVE`. Its menu and settings live in the same tables as any store's, so there are no template
   tables, and the owner edits it with the same screens. Only the brand's owner reaches it; it has no members, and an
   invite to it is refused.
-- **Copy at creation, push on demand.** A new store is created as a copy of the template's menu and
+- **Copy at creation, push on demand.** The brand's owner opens a branch from `/manage`; it starts as an unlisted
+  draft, and the owner publishes it once it has an address, weekly hours and an available item. A new store is created as a copy of the template's menu and
   `store_settings`. A later template edit reaches only stores created after it, unless the owner pushes it to chosen
   stores; a push overwrites the pushed fields in those copies and is audited (`template.push`, owner only).
 - **Lineage.** Each copied item keeps `template_item_id`, so analytics compare the same dish across stores after a
