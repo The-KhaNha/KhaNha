@@ -5,12 +5,16 @@ import {
   toOrderDto,
   toStoreDto,
   toUserDto,
+  type ProfileWithStanding,
   type OrderWithDetails,
+  type StoreWithBrand,
 } from '../../src/utils/serializers';
 import type { Tables } from '../../src/types/database';
 
-function profile(overrides: Partial<Tables<'profiles'>> = {}): Tables<'profiles'> {
+function profile(overrides: Partial<ProfileWithStanding> = {}): ProfileWithStanding {
   return {
+    memberships: [],
+    brands: [],
     id: 'user-1',
     name: 'Ann',
     email: 'ann@example.test',
@@ -21,9 +25,19 @@ function profile(overrides: Partial<Tables<'profiles'>> = {}): Tables<'profiles'
   };
 }
 
-function store(overrides: Partial<Tables<'stores'>> = {}): Tables<'stores'> {
+function store(overrides: Partial<StoreWithBrand> = {}): StoreWithBrand {
   return {
     id: 'store-1',
+    slug: 'campus-cafe',
+    brand_id: 'brand-1',
+    brand: { id: 'brand-1', name: 'Campus Cafe', slug: 'campus-cafe' },
+    status: 'ACTIVE',
+    timezone: 'Asia/Kolkata',
+    area: 'Main Campus',
+    address_line: null,
+    contact_phone: null,
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
     name: 'Campus Cafe',
     tagline: 'Coffee • Snacks • Quick Bites',
     description: 'Quick bites, coffee and snacks.',
@@ -31,6 +45,14 @@ function store(overrides: Partial<Tables<'stores'>> = {}): Tables<'stores'> {
     is_open: true,
     prep_time_min_minutes: 10,
     prep_time_max_minutes: 15,
+    max_quantity_per_item: 10,
+    low_stock_threshold: 5,
+    staff_order_list_limit: 100,
+    last_order_minutes_before_close: 0,
+    accepting_orders: true,
+    paused_until: null,
+    pause_reason: null,
+    paused_by: null,
     ...overrides,
   };
 }
@@ -65,8 +87,10 @@ function orderWithDetails(overrides: Partial<OrderWithDetails> = {}): OrderWithD
     estimated_ready_at: '2026-09-25 10:15:00.000+00',
     created_at: '2026-09-25 10:00:00.000+00',
     updated_at: '2026-09-25 10:00:00.000+00',
+    user_id: 'user-1',
     store_id: 'store-1',
     store_name: 'Campus Cafe',
+    store: { slug: 'campus-cafe', brand_id: 'brand-1' },
     order_items: [
       {
         id: 'oi-1',
@@ -92,7 +116,22 @@ describe('toUserDto', () => {
       phone: '9876543210',
       role: 'CUSTOMER',
       createdAt: new Date('2026-09-25 10:00:00.123+00').toISOString(),
+      memberships: [],
+      ownedBrands: [],
     });
+  });
+
+  it('maps the embedded memberships and owned brands', () => {
+    const dto = toUserDto(
+      profile({
+        memberships: [{ role: 'MANAGER', store: { id: 's-1', slug: 'north', name: 'North' } }],
+        brands: [{ id: 'b-1', name: 'Brew', slug: 'brew' }],
+      }),
+    );
+    expect(dto.memberships).toEqual([
+      { storeId: 's-1', storeSlug: 'north', storeName: 'North', role: 'MANAGER' },
+    ]);
+    expect(dto.ownedBrands).toEqual([{ id: 'b-1', name: 'Brew', slug: 'brew' }]);
   });
 
   it('passes through a null phone', () => {
@@ -100,22 +139,33 @@ describe('toUserDto', () => {
   });
 });
 
+const open = {
+  isOpen: true,
+  openState: 'OPEN',
+  nextChangeAt: null,
+  openLabel: null,
+} as const;
+
 describe('toStoreDto', () => {
   it('maps snake_case store fields to camelCase', () => {
-    expect(toStoreDto(store())).toEqual({
+    expect(toStoreDto(store(), open)).toEqual({
       id: 'store-1',
+      slug: 'campus-cafe',
       name: 'Campus Cafe',
+      brand: { id: 'brand-1', name: 'Campus Cafe', slug: 'campus-cafe' },
+      area: 'Main Campus',
+      address: null,
       tagline: 'Coffee • Snacks • Quick Bites',
       description: 'Quick bites, coffee and snacks.',
       imageUrl: '/images/cafe-cover.jpg',
-      isOpen: true,
+      ...open,
       prepTimeMinMinutes: 10,
       prepTimeMaxMinutes: 15,
     });
   });
 
   it('passes through a null image', () => {
-    expect(toStoreDto(store({ image_url: null })).imageUrl).toBeNull();
+    expect(toStoreDto(store({ image_url: null }), open).imageUrl).toBeNull();
   });
 });
 
@@ -172,7 +222,7 @@ describe('toOrderDto', () => {
       estimatedReadyAt: new Date('2026-09-25 10:15:00.000+00').toISOString(),
       createdAt: new Date('2026-09-25 10:00:00.000+00').toISOString(),
       updatedAt: new Date('2026-09-25 10:00:00.000+00').toISOString(),
-      store: { id: 'store-1', name: 'Campus Cafe' },
+      store: { id: 'store-1', name: 'Campus Cafe', slug: 'campus-cafe' },
       items: [
         {
           id: 'oi-1',

@@ -59,7 +59,7 @@ flowchart LR
   Vite["Vite dev server :5173<br/>proxies /api"]
 
   subgraph API["Express API :8000 (server/)"]
-    Routes["routes → middleware<br/>(requireAuth, requireStaff, validate)"]
+    Routes["routes → middleware<br/>(requireAuth, requireStore, validate)"]
     Services["controllers → services<br/>(auth, store, menu, order, payment)"]
     Admin["supabaseAdmin<br/>(secret key = service_role)"]
     Verify["@supabase/server<br/>verifyCredentials"]
@@ -244,7 +244,7 @@ sequenceDiagram
     API-->>Store: 201 { user }
     Store->>Store: login(email, password), see 3.3
     Store-->>Page: user
-    Page->>U: redirect: roles.homeFor(role) for STAFF/ADMIN, else ?next or /
+    Page->>U: redirect: a same-site ?next, else roles.homeFor(user)
   end
 ```
 
@@ -285,7 +285,7 @@ sequenceDiagram
       API-->>Store: { user }
       Store->>Store: set user + token
       Store-->>Page: user
-      Page->>U: roles.homeFor(role) for STAFF/ADMIN, CUSTOMER → ?next or /
+      Page->>U: a same-site ?next, else roles.homeFor(user)
     else profile could not be loaded
       Store->>Store: clearSession() so no half-signed-in state remains
       Store-->>Page: error message
@@ -401,14 +401,14 @@ flowchart TD
   ToLogin --> LoginDone["After sign-in: roles.homeFor(role)<br/>(STAFF → /staff, ADMIN → /admin),<br/>else the ?next path if it is same-site, else /"]
 ```
 
-The guards only improve the UX. The API enforces the same rules with `requireAuth`, `requireStaff` and
+The guards only improve the UX. The API enforces the same rules with `requireAuth`, `requireStore(capability)` and
 `requireAdmin`.
 
 ---
 
 ## 4. Browsing the store and menu
 
-Code: [client/src/features/menu/useStore.ts](../client/src/features/menu/useStore.ts), [client/src/features/menu/useMenu.ts](../client/src/features/menu/useMenu.ts), [server/src/services/store.service.ts](../server/src/services/store.service.ts), [server/src/services/menu.service.ts](../server/src/services/menu.service.ts).
+Code: [client/src/features/stores/useStores.ts](../client/src/features/stores/useStores.ts), [client/src/features/menu/useMenu.ts](../client/src/features/menu/useMenu.ts), [server/src/services/store.service.ts](../server/src/services/store.service.ts), [server/src/services/menu.service.ts](../server/src/services/menu.service.ts).
 
 ```mermaid
 sequenceDiagram
@@ -421,17 +421,13 @@ sequenceDiagram
   participant DB as Postgres
 
   U->>Home: open /
-  Home->>API: GET /api/store (no token)
-  API->>DB: select * from stores limit 1
-  alt no store row
-    API-->>Home: 404 "The store has not been set up yet. Run pnpm run seed"
-  else
-    API-->>Home: { store } open state, prep time 10-15 min
-  end
+  Home->>API: GET /api/stores (no token)
+  API->>DB: ACTIVE stores with their brand (listStores)
+  API-->>Home: { stores } each with its open state (none yet: an empty list)
 
-  U->>Menu: View Menu
-  Menu->>API: GET /api/menu (no token), loaded once per visit
-  API->>DB: stores limit 1
+  U->>Menu: View Menu of one store
+  Menu->>API: GET /api/stores/:storeRef/menu (no token), loaded once per visit
+  API->>DB: resolve :storeRef (slug or id; unknown: 404)
   API->>DB: menu_items where store_id order by sort_order
   API->>API: toMenuItemDto: isAvailable = is_available AND (stock null OR stock > 0)<br/>popular = is_popular items<br/>categories grouped by first appearance
   API-->>Menu: { store, popular, categories }
@@ -443,6 +439,31 @@ sequenceDiagram
 The menu is public and is not polled. The Cart and Checkout pages load it again on arrival, so stock limits are fresh right before paying.
 
 ---
+
+### 4.4 The open state
+
+`domain/schedule.ts` (`openState`, pure) turns a store row, its weekly hours, its exceptions, `last_order_minutes_before_close`
+and the clock into `{ state, nextChangeAt, label }`; `schedule.service` loads the schedule (cached `store_hours:<id>`)
+and the store reads, the menu and `createOrder` call it. Intervals belong to the local date they start on, so a
+past-midnight interval still counts the next morning.
+
+```mermaid
+flowchart TD
+  Row["stores row + schedule"] --> Status{"status ACTIVE?"}
+  Status -->|"no"| Off["UNAVAILABLE"]
+  Status -->|"yes"| Pause{"paused? (P2.5)"}
+  Pause -->|"yes"| Paused["PAUSED"]
+  Pause -->|"no"| Manual{"is_open?"}
+  Manual -->|"no"| Closed0["CLOSED"]
+  Manual -->|"yes"| Day["a CLOSED exception empties the day, SPECIAL_HOURS replace the week,<br/>else the weekly intervals; no weekly rows = open all day"]
+  Day --> In{"inside an interval,<br/>before the last-order cutoff?"}
+  In -->|"no"| Closed["CLOSED, nextChangeAt = next opening"]
+  In -->|"yes"| Soon{"within CLOSING_SOON_MINUTES of the cutoff?"}
+  Soon -->|"yes"| CS["CLOSING_SOON, nextChangeAt = last order"]
+  Soon -->|"no"| Open["OPEN, nextChangeAt = last order"]
+```
+
+`createOrder` refuses with `STORE_CLOSED` (naming `nextChangeAt`) unless the state is `OPEN` or `CLOSING_SOON`.
 
 ## 5. Cart
 
@@ -508,7 +529,7 @@ sequenceDiagram
   participant DB as Postgres
 
   U->>CO: Proceed to Checkout (RequireAuth: signed in)
-  CO->>API: GET /api/menu (refresh stock limits)
+  CO->>API: GET /api/stores/:storeRef/menu (refresh stock limits)
   API-->>CO: menu
   CO->>Cart: syncAvailability
   alt some line is flagged
@@ -698,12 +719,12 @@ flowchart TD
   Idle -.-> Vis
 ```
 
-| Hook                              | Endpoint                          | Interval                         |
-| --------------------------------- | --------------------------------- | -------------------------------- |
-| `useOrder`                        | `GET /api/orders/:id`             | 4 s until COLLECTED or CANCELLED |
-| `useOrders` (customer Orders tab) | `GET /api/orders`                 | 8 s                              |
-| `useOrders` (staff board)         | `GET /api/orders`                 | 4 s                              |
-| `useMenu`, `useStore`             | `GET /api/menu`, `GET /api/store` | once per mount                   |
+| Hook                              | Endpoint                                       | Interval                         |
+| --------------------------------- | ---------------------------------------------- | -------------------------------- |
+| `useOrder`                        | `GET /api/orders/:id`                          | 4 s until COLLECTED or CANCELLED |
+| `useOrders` (customer Orders tab) | `GET /api/orders`                              | 8 s                              |
+| `useOrders` (staff board)         | `GET /api/stores/:storeId/orders`              | 4 s                              |
+| `useStoreMenu`, `useStores`       | `GET /api/stores/:ref/menu`, `GET /api/stores` | once per mount                   |
 
 ### 7.3 Order history
 
@@ -727,7 +748,7 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-  Tap["Order Again on an order"] --> Fetch["GET /api/menu (current prices and stock)"]
+  Tap["Order Again on an order"] --> Fetch["GET /api/stores/:storeRef/menu (current prices and stock)"]
   Fetch -->|"fails"| FailNote["Notice: couldn't load the menu, nothing added"]
   Fetch -->|"ok"| Sync["cartStore.syncAvailability(menu items)"]
   Sync --> Each["For each line of the old order"]
@@ -766,11 +787,11 @@ sequenceDiagram
   participant API as Express API
   participant DB as Postgres
 
-  S->>B: /staff (RequireRole role="STAFF")
-  B->>API: GET /api/store (name for the header)
-  loop every 4 s (paused while hidden)
-    B->>API: GET /api/orders (requireAuth, role STAFF)
-    API->>DB: newest staffOrderListLimit orders across all customers (site setting, default 100), created_at desc
+  S->>B: /staff/:storeSlug (RequireMembership; /staff alone is the store switcher)
+  loop every polling.staffBoardMs, 4 s (paused while hidden)
+    B->>API: GET /api/stores/:storeRef (name, open state, pause for the header)
+    B->>API: GET /api/stores/:storeId/orders (requireAuth → requireStore('orders.view'))
+    API->>DB: that store's active orders (all, oldest first) + its newest staff_order_list_limit finished ones (store setting)
     API-->>B: { orders }
     B->>B: counts per filter: All, New (PLACED), Preparing, Ready, Done (COLLECTED + CANCELLED)
     B->>B: sort: active oldest-first (fair queue), finished newest-first
@@ -792,11 +813,11 @@ sequenceDiagram
 
   S->>B: Start Preparing / Mark Ready / Mark Collected / Cancel order
   B->>B: mark card pending, clear its old error
-  B->>API: PATCH /api/orders/:id/status { status }
-  API->>API: requireAuth → requireStaff (else 403 FORBIDDEN)
+  B->>API: PATCH /api/stores/:storeId/orders/:orderId/status { status }
+  API->>API: requireAuth → requireStore('orders.transition') (not a member: 404)
   API->>API: validate: status is one of the 5 enum values (else 400)
-  API->>Svc: updateOrderStatus(id, next)
-  Svc->>Svc: id must be a UUID (else 404)
+  API->>Svc: updateOrderStatus(id, next, storeId)
+  Svc->>Svc: id must be a UUID and the order of :storeId (else 404)
   Svc->>Svc: from = every status whose ALLOWED_TRANSITIONS include next
   Svc->>DB: rpc update_order_status(id, next, from, actor, request id), one transaction (8.3)
   alt order does not exist
@@ -919,14 +940,14 @@ flowchart TD
   Json --> Router{"/api router"}
   Router -->|"GET /health"| Health["{ ok: true }"]
   Router -->|"POST /client-errors"| ValCE["clientErrorLimiter → validate(clientErrorsSchema)"] --> CECtl["clientErrors.controller: one warn per report, 204"]
-  Router -->|"GET /store, GET /menu"| Public["controller → service"]
+  Router -->|"GET /stores, /stores/:storeRef, /stores/:storeRef/menu"| Public["controller → service"]
   Router -->|"POST /auth/register"| ValReg["validate(registerSchema)"] --> RegCtl["auth.controller.register"]
   Router -->|"GET /auth/me"| AuthMe["requireAuth"] --> MeCtl["auth.controller.me"]
   Router -->|"/orders/*"| AuthO["requireAuth (all order routes)"]
   AuthO -->|"POST /"| ValC["validate(createOrderSchema)"] --> CCtl["createOrder"]
   AuthO -->|"GET /"| ValQ["validate(listOrdersQuerySchema, query)"] --> LCtl["listOrders"]
   AuthO -->|"GET /:id"| GCtl["getOrder"]
-  AuthO -->|"PATCH /:id/status"| Staff["requireStaff"] --> ValS["validate(updateOrderStatusSchema)"] --> UCtl["updateOrderStatus"]
+  Router -->|"PATCH /stores/:storeId/orders/:orderId/status"| Staff["requireAuth → requireStore('orders.transition')"] --> ValS["validate(updateOrderStatusSchema)"] --> UCtl["updateStoreOrderStatus"]
   Public --> Svc["services → supabaseAdmin (PostgREST / rpc) → Postgres"]
   RegCtl --> Svc
   MeCtl --> Svc
@@ -990,6 +1011,8 @@ erDiagram
   AUTH_USERS ||--|| PROFILES : "on_auth_user_created trigger"
   PROFILES o|--o| SITE_SETTINGS : updated_by
   PROFILES ||--o{ ORDERS : places
+  PROFILES o|--o{ BRANDS : owns
+  BRANDS ||--|{ STORES : operates
   STORES ||--o{ MENU_ITEMS : sells
   STORES ||--o{ ORDERS : receives
   ORDERS ||--|{ ORDER_ITEMS : contains
@@ -1016,8 +1039,20 @@ erDiagram
     timestamptz updated_at
     uuid updated_by FK "nullable, ON DELETE SET NULL"
   }
+  BRANDS {
+    uuid id PK
+    text name
+    text slug "unique"
+    uuid owner_id FK "nullable, ON DELETE SET NULL"
+    store_status status
+  }
   STORES {
     uuid id PK
+    uuid brand_id FK
+    text slug "unique"
+    store_status status
+    text area
+    text address_line
     text name
     text tagline
     text description
@@ -1070,7 +1105,7 @@ erDiagram
   }
 ```
 
-Five tables: `profiles` (one per Auth user, holds the role), `stores` (one row in V0), `menu_items` (with optional tracked stock), `orders` and `order_items` (name, price, photo and category on each line, and the store name, snapshotted at order time). Columns with their types, defaults and constraints, the indexes, triggers and the `place_order` / `update_order_status` / `reset_demo_orders` functions are in [SCHEMA.md](SCHEMA.md).
+Six tables: `profiles` (one per Auth user, holds the role), `brands` (the business, with its owner) and `stores` (each belongs to a brand; three in the demo seed), `menu_items` (with optional tracked stock), `orders` and `order_items` (name, price, photo and category on each line, and the store name, snapshotted at order time). Columns with their types, defaults and constraints, the indexes, triggers and the `place_order` / `update_order_status` / `reset_demo_orders` functions are in [SCHEMA.md](SCHEMA.md).
 
 ---
 

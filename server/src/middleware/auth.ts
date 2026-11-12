@@ -2,9 +2,11 @@ import type { Request, RequestHandler } from 'express';
 import type { Logger } from 'pino';
 import { verifyCredentials } from '@supabase/server/core';
 import { isAuthSessionMissingError } from '@supabase/supabase-js';
-import type { AuthUser, RequestContext } from '../types/auth';
+import { accessFor, can, type Capability } from '../domain/permissions';
+import { getStoreById } from '../services/store.service';
+import type { AuthUser, RequestContext, StoreContext } from '../types/auth';
 import { env } from '../utils/env';
-import { forbidden, IntegrationError, unauthorized } from '../utils/errors';
+import { forbidden, IntegrationError, notFound, unauthorized } from '../utils/errors';
 import { isUuid } from '../utils/ids';
 import { supabaseAdmin, supabaseEnv } from '../utils/supabase';
 
@@ -56,16 +58,24 @@ export const requireAuth: RequestHandler = async (req, _res, next) => {
   if (error && error.status >= 500) throw error;
   if (!auth?.userClaims) throw unauthorized(SESSION_EXPIRED);
 
-  const { data: user } = await supabaseAdmin
+  // One read for the role and every store standing, so a removed membership stops working on the next request.
+  const { data: profile } = await supabaseAdmin
     .from('profiles')
-    .select('id, role')
+    .select(
+      'id, role, memberships:store_memberships!store_memberships_user_id_fkey(store_id, role), brands!brands_owner_id_fkey(id)',
+    )
     .eq('id', auth.userClaims.id)
     .maybeSingle()
     .throwOnError();
-  if (!user) throw unauthorized('That account no longer exists. Please sign in again.');
+  if (!profile) throw unauthorized('That account no longer exists. Please sign in again.');
 
-  await enforceSessionIdle(auth.jwtClaims?.session_id, user.id, token, req.log);
-  req.user = user;
+  await enforceSessionIdle(auth.jwtClaims?.session_id, profile.id, token, req.log);
+  req.user = {
+    id: profile.id,
+    role: profile.role,
+    memberships: profile.memberships.map((m) => ({ storeId: m.store_id, role: m.role })),
+    ownedBrandIds: profile.brands.map((b) => b.id),
+  };
   next();
 };
 
@@ -159,12 +169,6 @@ async function checkSession(
   return 'ok';
 }
 
-/** Must run after `requireAuth`. */
-export const requireStaff: RequestHandler = (req, _res, next) => {
-  if (currentUser(req).role !== 'STAFF') throw forbidden('Only staff can do that.');
-  next();
-};
-
 /**
  * Must run after `requireAuth`. ADMIN is the site-wide developer role (the admin dashboard), separate from staff:
  * an admin has no staff powers and staff cannot change site settings.
@@ -174,14 +178,49 @@ export const requireAdmin: RequestHandler = (req, _res, next) => {
   next();
 };
 
+/**
+ * Must run after `requireAuth`, on a route with a `:storeId` param. Admits the caller to that store when their access
+ * there holds `capability` (domain/permissions.ts), and sets `req.store` and `req.storeAccess`. A store the caller may
+ * not know about (not ACTIVE, and they have no access there) is 404 like an unknown one; a store they can see but may
+ * not do this at is 403.
+ */
+export function requireStore(capability: Capability): RequestHandler {
+  return async (req, _res, next) => {
+    const user = currentUser(req);
+    const storeId = req.params.storeId;
+    if (typeof storeId !== 'string' || !isUuid(storeId)) throw notFound('Store not found.');
+    const store = await getStoreById(storeId.toLowerCase());
+    const access = accessFor(user, { id: store.id, brandId: store.brand_id }, capability);
+    if (store.status !== 'ACTIVE' && access === null) throw notFound('Store not found.');
+    if (!can(access, capability)) throw forbidden('You cannot do that at this store.');
+    req.store = {
+      id: store.id,
+      brandId: store.brand_id,
+      status: store.status,
+      timezone: store.timezone,
+    };
+    req.storeAccess = access ?? undefined;
+    next();
+  };
+}
+
 /** Reads the user set by `requireAuth`; throws if the route forgot to require it. */
 export function currentUser(req: { user?: AuthUser }): AuthUser {
   if (!req.user) throw unauthorized();
   return req.user;
 }
 
+/** Reads the store set by `requireStore`; throws if the route forgot to require it. */
+export function currentStore(req: { store?: StoreContext }): StoreContext {
+  if (!req.store) throw notFound('Store not found.');
+  return req.store;
+}
+
 /** Who is asking, and which request: a write records them with the event it emits and its audit row. */
 export function requestContext(req: Request): RequestContext {
   const { id, role } = currentUser(req);
-  return { actor: { type: 'USER', id, role }, requestId: String(req.id) };
+  const actor = req.storeAccess
+    ? { type: 'USER' as const, id, role, storeRole: req.storeAccess }
+    : { type: 'USER' as const, id, role };
+  return { actor, requestId: String(req.id) };
 }

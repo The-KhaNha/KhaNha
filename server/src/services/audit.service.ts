@@ -9,15 +9,17 @@ interface AuditPage {
 
 /**
  * One page of the audit log, newest first, keyset-paged on the id (`before` = the last id of the previous page), so a
- * row written mid-walk never shifts a page. Admin-only and always fresh: never read through `cached()`.
+ * row written mid-walk never shifts a page. Always fresh: never read through `cached()`. `storeId` narrows to one
+ * store's rows; the store route passes it from `req.store`, never from the query, and the admin route omits it.
  */
-export async function listAudit(query: AuditQuery): Promise<AuditPage> {
+export async function listAudit(query: AuditQuery, storeId?: string): Promise<AuditPage> {
   const limit = query.limit ?? AUDIT_PAGE.default;
   let select = supabaseAdmin
     .from('audit_log')
     .select(
       'id, occurred_at, actor_type, actor_id, actor_role, store_id, action, entity_type, entity_id, changes, reason, request_id',
     );
+  if (storeId) select = select.eq('store_id', storeId);
   if (query.entityType) select = select.eq('entity_type', query.entityType);
   if (query.entityId) select = select.eq('entity_id', query.entityId);
   if (query.actorId) select = select.eq('actor_id', query.actorId);

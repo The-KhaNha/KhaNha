@@ -97,7 +97,7 @@ It prints the URLs and logins when both servers answer. Press **Ctrl+C** once to
 - **Frees the API, worker and web ports first** (8000, 8001 and 5173 unless configured) — anything still listening on them (a stray `pnpm run dev`, an earlier `start.sh`) is killed. Don't run it while another copy of the project is deliberately serving those ports.
 - `--seed` runs `pnpm run seed` before starting (see [Re-seeding wipes orders](#re-seeding-wipes-orders)).
 - Starts the API and the job worker (`tsx watch`, auto-reload on server edits) and the web app (Vite, hot reloads client edits). Their output goes to **`.logs/server.log`**, **`.logs/worker.log`** and **`.logs/client.log`** (gitignored) — look there when something misbehaves.
-- Waits until `GET /api/health`, the worker's `http://localhost:8001/health`, the web app and `GET /api/menu` all return 200. If the API is up but the menu isn't, it says **"Database looks empty or unreachable — run ./start.sh --seed"** and stops.
+- Waits until `GET /api/health`, the worker's `http://localhost:8001/health`, the web app return 200 and `GET /api/stores` lists a store. If the API is up but no store is listed, it says **"Database looks empty or unreachable — run ./start.sh --seed"** and stops.
 - Does _not_ start Supabase or apply migrations — that is step 1 above (or `pnpm run db:push:staging` for staging).
 
 ### Manual start (two terminals)
@@ -120,14 +120,21 @@ The Vite dev server proxies `/api/*` to `http://localhost:8000`. The only client
 
 ## Test accounts
 
-| Role     | Email                    | Password (local) |
-| -------- | ------------------------ | ---------------- |
-| Customer | `anishka@example.com`    | `test1234`       |
-| Staff    | `staff@campuscafe.local` | `staff123`       |
-| Admin    | `admin@campuscafe.local` | `admin123`       |
+| Role                        | Email                                                                | Password (local)         |
+| --------------------------- | -------------------------------------------------------------------- | ------------------------ |
+| Customer                    | `anishka@example.com`                                                | `test1234`               |
+| Staff                       | `staff@campuscafe.local`                                             | `staff123`               |
+| Manager (Campus Cafe)       | `manager@campuscafe.local`                                           | `manager123`             |
+| Staff, manager (North Gate) | `staff@northgate.brewlane.local`, `manager@northgate.brewlane.local` | `staff123`, `manager123` |
+| Staff, manager (Tech Park)  | `staff@techpark.brewlane.local`, `manager@techpark.brewlane.local`   | `staff123`, `manager123` |
+| Admin                       | `admin@campuscafe.local`                                             | `admin123`               |
+| Owner (Campus Cafe)         | `owner@campuscafe.local`                                             | `owner123`               |
+| Owner (Brew Lane)           | `owner@brewlane.local`                                               | `owner123`               |
+
+Store team accounts (staff and manager) have the `STAFF` profile role until P2 PR 16, so the current `/staff` board admits them; their store role is a membership ([PERMISSIONS.md](docs/PERMISSIONS.md#store-roles)).
 
 These passwords work on the local stack only. Shared staging uses deployment-provided passwords
-(`SEED_STAFF_PASSWORD`, `SEED_ADMIN_PASSWORD`, `SEED_CUSTOMER_PASSWORD`; see
+(`SEED_STAFF_PASSWORD`, which every store team account uses, `SEED_ADMIN_PASSWORD`, `SEED_CUSTOMER_PASSWORD`, `SEED_OWNER_PASSWORD`; see
 [DEPLOYMENT.md](docs/DEPLOYMENT.md#server-environment-variables)), and production has no demo accounts.
 
 Or tap **Create an account** in the app; new accounts are customers. The admin account is a site-wide
@@ -167,6 +174,8 @@ Customer on the phone (or a narrow window), staff on the laptop:
 19. Staff finds the card (the **Ready** filter shows only orders waiting for pickup).
 20. Tap **Mark Collected**.
 21. The customer sees **"Order collected!"** with **Order Again**; the Orders tab lists the order as Collected.
+
+Two-store management (owner and manager): sign in as the brand owner, open **/manage**, pick a store and use **Settings** (the four limits) and **Team** (invite by email with a role; the one-time link is shown with **Copy**; **Revoke** and **Remove** ask first). A manager sees the same tabs without the **Manager** role option, and cannot remove or revoke other managers. The invitee opens the link (`/join#<token>`), signs in or registers with the invited email, and lands on the staff board or `/manage`.
 
 Also worth showing: **Order Again** adds a past order to the cart (and says what it couldn't add in full), **–** at quantity 1 (or the **Remove** link) removes the line, **Clear cart** shows the empty state, the unavailable **Berry Smoothie** can't be added, **+** stops at 10 of one item ("Max 10 per order"), and the stock-limited **Cheese Toast** shows "Only 1 left" — its **+** stops at 1, and if someone else buys it first, checkout names it and offers **Fix cart** (see [Stock limits](#stock-limits)). The staff dashboard also has a signed-in-only **Admin dashboard** (`/admin`, `admin@campuscafe.local`; local-only credentials, see [Test accounts](#test-accounts)) where the customer order history and staff board size limits can be changed.
 

@@ -6,6 +6,8 @@ import { MENU } from '../../scripts/seed-data';
 import { supabaseAdmin } from '../../src/utils/supabase';
 import { api } from '../setup/api';
 import {
+  menuPath,
+  oldestStoreId,
   createTestUser,
   deleteTestUser,
   localSql,
@@ -27,6 +29,7 @@ beforeAll(async () => {
   ({ data: item } = await supabaseAdmin
     .from('menu_items')
     .select('id, store_id, name, price_paise')
+    .eq('store_id', await oldestStoreId())
     .is('stock_quantity', null)
     .eq('is_available', true)
     .order('id')
@@ -140,7 +143,11 @@ describe('a price that changed after the API charged for it', () => {
       const res = await api()
         .post('/api/orders')
         .set('Authorization', `Bearer ${customer.token}`)
-        .send({ idempotencyKey: randomUUID(), items: [{ menuItemId: item.id, quantity: 1 }] });
+        .send({
+          storeId: await oldestStoreId(),
+          idempotencyKey: randomUUID(),
+          items: [{ menuItemId: item.id, quantity: 1 }],
+        });
       // Status and body together, so a failure shows which error came back instead of a bare status.
       expect({ status: res.status, body: res.body }).toEqual({
         status: 409,
@@ -223,6 +230,7 @@ describe('the API still speaks whole rupees', () => {
     expect(rows.length).toBeGreaterThanOrEqual(2);
     const quantityOf = (i: number) => 2 * i + 1;
     const body = {
+      storeId: await oldestStoreId(),
       idempotencyKey: randomUUID(),
       items: rows.map((row, i) => ({ menuItemId: row.id, quantity: quantityOf(i) })),
     };
@@ -275,7 +283,7 @@ describe('the API still speaks whole rupees', () => {
     expect(replay.body.order.total).toBe(sum);
 
     // The menu keeps whole rupees too.
-    const menu = await api().get('/api/menu');
+    const menu = await api().get(await menuPath());
     const menuItems = menu.body.categories.flatMap(
       (c: { items: { id: string; price: number }[] }) => c.items,
     );
@@ -309,7 +317,11 @@ describe('every read path derives rupees from paise (PR 16)', () => {
     const res = await api()
       .post('/api/orders')
       .set('Authorization', `Bearer ${customer.token}`)
-      .send({ idempotencyKey: randomUUID(), items: [{ menuItemId: row.id, quantity: 3 }] });
+      .send({
+        storeId: await oldestStoreId(),
+        idempotencyKey: randomUUID(),
+        items: [{ menuItemId: row.id, quantity: 3 }],
+      });
     expect(res.status).toBe(201);
     placed = res.body.order;
     expectedTotal = (row.price_paise * 3) / 100;
@@ -324,7 +336,9 @@ describe('every read path derives rupees from paise (PR 16)', () => {
       .get(`/api/orders/${placed.id}`)
       .set('Authorization', `Bearer ${customer.token}`);
     const list = await api().get('/api/orders').set('Authorization', `Bearer ${customer.token}`);
-    const board = await api().get('/api/orders').set('Authorization', `Bearer ${staff.token}`);
+    const board = await api()
+      .get(`/api/stores/${await oldestStoreId()}/orders`)
+      .set('Authorization', `Bearer ${staff.token}`);
     expect(detail.status).toBe(200);
     expect(list.status).toBe(200);
     expect(board.status).toBe(200);
@@ -343,7 +357,7 @@ describe('every read path derives rupees from paise (PR 16)', () => {
 
 describe('the seed and the API agree on prices (PR 16)', () => {
   it('every seeded item the menu returns carries its seed-data rupee price', async () => {
-    const res = await api().get('/api/menu');
+    const res = await api().get(await menuPath());
     const items: { name: string; price: number }[] = res.body.categories.flatMap(
       (c: { items: { name: string; price: number }[] }) => c.items,
     );

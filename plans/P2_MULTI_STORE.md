@@ -17,14 +17,15 @@ picks it up). When a PR merges, tick its box here and in the roadmap.
 
 The P1 rules stand ([P1 plan](P1_PLATFORM_CORE.md#how-the-team-works-p1), CLAUDE.md §13–§21):
 
-- **Every P2 PR goes into `feat/P2`**, cut from `dev` after PR 00, and added by its exact name to the
-  `ci-ok required` ruleset. `feat/P2` goes into `dev` as one PR when P2 is done; the user merges it.
+- **Every P2 PR, PR 00 included, goes into `feat/P2`**, cut from `dev` on 11 November 2026 and covered by
+  the `ci-ok required` ruleset's `feat/P[0-9]` pattern. `feat/P2` goes into `dev` as one PR when P2 is done; the user merges it.
 - **At most 38 changed files or 750 changed lines per PR** against `origin/feat/P2` (lockfiles,
   `server/src/types/database.ts` and Markdown do not count; tests do), one theme each. A PR that grows past the limit
   splits at the seam its section names.
 - **One agent, one PR at a time,** in the [build order](#build-order). Each PR branches as `feat/p2-<NN>-<slug>` from
   a fresh `origin/feat/P2`, is finished (gate, `/post-change`, intent, owning docs, its box ticked here), opened as
-  `P2 PR <NN> — <title>`, and then the agent stops until the user says it merged (D7).
+  `P2 PR <NN> — <title>`, and then the agent merges it into `feat/P2` itself once `ci-ok` is green and CodeRabbit is
+  clear (D7; this applies to P2 only, P3 PRs are merged by the user).
 - **Migrations.** A new migration is newer than the newest on `feat/P2`. Staging takes migrations from `feat/P2`
   while P2 is open (`pnpm run db:push:staging`, a user step). When `dev` moves, merge `dev` into `feat/P2` before
   the next PR.
@@ -158,15 +159,23 @@ create table public.store_invites (
   id uuid primary key default gen_random_uuid(),
   store_id uuid not null references public.stores (id) on delete cascade,
   role public.store_role not null,
-  email text not null,                       -- the account that may accept it
+  email text not null check (email = lower(email) and char_length(email) between 3 and 320),
+                                             -- the account that may accept it
   token_hash text not null unique,           -- sha-256 of the token; the token itself is shown once
   expires_at timestamptz not null,
   accepted_at timestamptz,
+  accepted_by uuid references public.profiles (id) on delete set null,
   revoked_at timestamptz,
   created_by uuid references public.profiles (id) on delete set null,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  check (expires_at > created_at),
+  check (accepted_at is null or revoked_at is null)
 );
+create unique index store_invites_open_email_key
+  on public.store_invites (store_id, email) where accepted_at is null and revoked_at is null;
 create index store_invites_store_id_idx on public.store_invites (store_id);
+create index store_invites_created_by_idx on public.store_invites (created_by);
+create index store_invites_accepted_by_idx on public.store_invites (accepted_by);
 ```
 
 **Capabilities in P2** (`domain/permissions.ts`, tested cell by cell):
@@ -212,7 +221,7 @@ Approved with the plan. PR 00 updates the roadmap to match.
 
 ### PR 00 — The roadmap says what ADR-001 decided
 
-- [ ] Merged (into `dev`, before `feat/P2` is cut)
+- [x] Merged (into `feat/P2`, like every P2 PR)
 
 Docs only (`no-release`). `plans/ROADMAP.md`: the P2 design, P2.1, P2.2 and P2.7 follow
 [the model above](#the-model-p2-builds) and the [differences table](#where-p2-differs-from-the-roadmap); P3.1
@@ -229,7 +238,7 @@ with no configured default store (D1). This PR only brings the roadmap into line
 
 ### PR 01 — Brands and stores: expand, and the seed (P2.1)
 
-- [ ] Merged
+- [x] Merged
 
 `/before-write`: schema-guard, NEW TABLE (`brands`), EXTEND (`stores`).
 
@@ -258,7 +267,7 @@ in `stores`.
 
 ### PR 02 — Public store reads (P2.1)
 
-- [ ] Merged
+- [x] Merged
 
 `/before-write`: reuse-scout, expected EXTEND (`store.service.ts`, `menu.service.ts`, `cached()`).
 
@@ -288,7 +297,7 @@ Verify: `curl :8000/api/stores`, then `/api/stores/<slug>/menu` twice: the secon
 
 ### PR 03 — Memberships and the capability map (P2.2)
 
-- [ ] Merged
+- [x] Merged
 
 `/before-write`: schema-guard, NEW TABLE (`store_memberships`); reuse-scout, NO MATCH (`domain/` is new).
 
@@ -332,7 +341,7 @@ Docs: `docs/PERMISSIONS.md` (memberships, the owner, the matrix, 404-or-403), `d
 
 ### PR 04 — Store-scoped orders and the isolation matrix (P2.3)
 
-- [ ] Merged
+- [x] Merged (the split seam taken: the lint rule and `scoped` are PR 04b)
 
 `/before-write`: reuse-scout, expected EXTEND (`order.service.ts`, the order routes).
 
@@ -373,6 +382,24 @@ rule), `docs/BACKEND_STRUCTURE.md` (`scoped`), `.claude/rules/backend.md` §10. 
 
 Split seam if over the limit: the lint rule and `scoped` adoption in existing services move to a PR 04b.
 
+As built: another store's item stays 400 `ITEM_NOT_FOUND` (the stable code its existing test pins), not
+`ITEM_UNAVAILABLE`. `createTestUser('STAFF')` is also a STAFF member of the oldest store, as the memberships backfill
+made every STAFF profile, so the old suites pass unchanged; the guards are new tests in `store-orders.test.ts`.
+
+### PR 04b — `scoped` and the table-ownership lint rule (P2.3)
+
+- [x] Merged
+
+PR 04's split seam: `utils/scoped.ts`, the `no-restricted-syntax` rule in `server/eslint.config.mjs` with its own test
+file, and the adoption in existing services, as PR 04 describes them. Docs: `docs/TESTING.md` (the lint rule),
+`docs/BACKEND_STRUCTURE.md` (`scoped`). Intent: `--server patch`.
+
+As built: the lint rule only (`TABLE_OWNERS` in `server/eslint.config.mjs`, `table-ownership.safe.test.ts`). `scoped`
+was dropped. A supabase-js `.from()` has no `.eq` before `.select()`/`.update()`, `order_items` has no `store_id`, and
+the board reads several stores at once (`.in('store_id', …)`), so a generic wrapper needed casts and fitted no caller.
+The owning services filter by store explicitly, and `testStoreIsolation` proves each store route. Nothing under
+`server/src` changed, so there is no intent; the PR is `no-release`.
+
 ### PR 05 — Store settings (P2.3)
 
 - [ ] Merged
@@ -403,9 +430,34 @@ Docs: `docs/CONFIGURATION.md` (the new **store setting** tier and its four rows;
 `docs/SCHEMA.md`, `docs/API.md`, `plans/ROADMAP.md` A1 (three rows resolved). Intent: `--server minor --client
 patch`.
 
+As built: the settings are four columns on `stores`, not a `store_settings` table (user decision, 2026-11-12), so there
+is no insert trigger, no `updated_by` and no separate audit trigger on a new table: `stores_settings_audit`
+(`store_settings.changed`) sits beside `stores_audit`. Bounds: `max_quantity_per_item` 1–50 (default 10),
+`low_stock_threshold` 0–50 (5), `staff_order_list_limit` 1–500 (100), `last_order_minutes_before_close` 0–240 (0, stored
+only until PR 06). A new store takes the constant defaults; the migration copied existing stores' `staff_order_list_limit`
+from `site_settings` once, with the audit and `updated_at` triggers disabled, so the backfill wrote no audit rows. The
+client half (`cartRules.ts`, `useMenu`, `fallbacks.json`) is PR 05c.
+
+### PR 05c — Client: the store's limits (P2.3)
+
+- [ ] Merged
+
+Split from PR 05 for size. `cartRules.ts` takes the limits as arguments instead of `MAX_LINE_QUANTITY` and
+`LOW_STOCK_MAX`; `useMenu` hands `rules` to the cart and the stock pill; the fallback when no menu is loaded lives in
+`config/fallbacks.json` with its parity test; `cartRules.test.ts` (limits from arguments). The `/admin` page drops its
+"Staff order list limit" field, which no longer does anything (the API keeps accepting it for older clients).
+ROADMAP A1's two client rows; the `docs/API.md` note that the client still applies its own copies goes. Intent:
+`--client patch`.
+
+As built: the limits live on the cart store (`limits`, persisted with the lines, set by `useMenu` and `useReorder`
+through `setLimits`); the fallback is `storeDefaults` in `fallbacks.json`, parity-tested against the `stores` column
+defaults in `limits-parity.safe.test.ts`.
+
 ### PR 06 — Opening hours: the rule and the reads (P2.4)
 
 - [ ] Merged
+
+As built: `store_hours` and `store_schedule_exceptions` with the roadmap's checks plus `< 24:00` bounds; `openState` is computed per read from a cached schedule (`store_hours:<id>`), `createOrder` reads it uncached (`loadSchedule`); the menu attaches its open fields after its cache read; `getSchedules` loads the list's schedules in two paged queries (past the Data API's 1000-row cap), exceptions from the UTC date two days back; the place_order `is_open` check is unchanged.
 
 `/before-write`: schema-guard, NEW TABLE ×2; reuse-scout, NO MATCH (`domain/schedule.ts`).
 
@@ -453,6 +505,11 @@ store is 404).
 Docs: `docs/API.md`, `docs/SCHEMA.md`, `docs/PERMISSIONS.md`, `docs/CONFIGURATION.md` (the two bounds). Intent:
 `--server minor`.
 
+As built: `20261112120000_set_store_hours.sql` drops 06a's per-row `store_hours_audit` and `set_store_hours` writes the
+one `store_hours.changed` audit row (old and new week, none for an unchanged week) and emits `store.hours_changed`; it is
+security definer because `service_role` cannot insert into `audit_log`. The bounds are `HOURS_LIMITS` in
+`schemas/limits.ts`; exception writes go through the Data API with the `x-actor` and `x-request-id` headers.
+
 ### PR 08 — Pause and resume (P2.5)
 
 - [ ] Merged
@@ -461,7 +518,8 @@ Migration `<ts>_store_pause.sql`: the four pause columns; `pause_store(p_store_i
 p_request_id, p_now default now())` and `resume_store(...)`, each setting the actor and emitting `store.paused` /
 `store.resumed` (a repeat is a no-op that emits nothing); `place_order` re-created from its latest body with one
 more check: a store that is not `ACTIVE`, or is paused at `p_now`, raises `STORE_PAUSED` (or `STORE_CLOSED` for the
-status). `stores_audit` watches the pause columns.
+status); and its stock update gains `and store_id = p_store_id`, so the database also refuses another store's item
+(today only `createOrder` drops it, `ITEM_NOT_FOUND`; deferred here from the PR 01 review). `stores_audit` watches the pause columns.
 
 Server: `POST /api/stores/:storeId/pause { minutes | until, reason? }` and `POST .../resume` (`store.pause`);
 `storePaused(storeName, pausedUntil)` → 409 `STORE_PAUSED` ("Campus Cafe has paused new orders. Back at 3:40 PM.");
@@ -475,6 +533,17 @@ ones; a repeated pause is 200 with one event). The lifecycle walk checks `domain
 
 Docs: `docs/API.md` (routes, `STORE_PAUSED`), `docs/SCHEMA.md`, `docs/JOBS.md` (the two events; no subscription
 yet), `plans/ROADMAP.md` A3 and A5. Intent: `--server minor --client patch` (the client learns the code in PR 11).
+
+From PR 04's review (CodeRabbit on #50): `createOrder` checks `stores.status` on its own uncached read, so a store
+suspended between that read and `place_order` can still take one order. The re-created `place_order` checks
+`status = 'ACTIVE'` under its store lock as well, raising a code `createOrder` maps to 404 "Store not found.", with a
+test that suspends the store mid-flight.
+
+As built: the columns are `accepting_orders`, `paused_until`, `pause_reason`, `paused_by` (ROADMAP P2.5). `pause_store`
+and `resume_store` are invoker functions, `service_role` only. `place_order` also checks `status = 'ACTIVE'` (a
+store that stopped trading raises `NOT_FOUND`, mapped to 404 "Store not found.") and `STORE_PAUSED` under its share lock,
+before `STORE_CLOSED`. A foreign item reads as not found inside `place_order` (`INSUFFICIENT_STOCK`, available 0). A
+resume of a pause that already ran out clears the columns without an event.
 
 ### PR 09 — Team: members and invites (P2.2)
 
@@ -511,6 +580,8 @@ membership; the access-log line of a successful accept and of a rejected one con
 Docs: `docs/API.md`, `docs/PERMISSIONS.md` (who may invite whom), `docs/SCHEMA.md`, `docs/LOGGING.md` (never logged:
 invite tokens), `plans/ROADMAP.md` A3. Intent: `--server minor`.
 
+Shipped in two PRs for size: 09a (the table, the team list and its writes) and 09b (`accept_store_invite` in its own migration, `POST /api/me/invites/accept`, its limiter and the log guard). As built: `team.service.ts` owns `store_memberships` and `store_invites` (`TABLE_OWNERS`). `team.controller.managesManagers` re-checks `accessFor(..., 'team.manageManagers')`, so an admin who is also a member is judged by the standing that holds it; revoking a MANAGER invite also needs `team.manageManagers`. Expired open invites for the email are revoked before a new insert (the open-email index counts them). A member of another role is `NOT_FOUND` and the invite stays open. `REDACT_PATHS` already covered `token` and `*.token`, so the logging guard is `test/api/team-logs.test.ts` instead of a new path. Known limitation: sign-up does not verify email ownership, so the token is the real secret (follow-up in `plans/ROADMAP.md`).
+
 ### PR 10 — The store's audit trail (P1.3, deferred)
 
 - [ ] Merged
@@ -527,6 +598,8 @@ in the query string is ignored).
 
 Docs: `docs/API.md`, `docs/PERMISSIONS.md`. Intent: `--server minor`.
 
+As built: `audit.service.listAudit(query, storeId?)` gains the optional store filter; the route uses `listStoreAudit` with `currentStore(req).id`; `testStoreIsolation` gained an optional `memberRole` (MANAGER here, since `audit.store` excludes STAFF).
+
 ### PR 11 — Client: the store list and store pages (P2.6)
 
 - [ ] Merged
@@ -540,8 +613,8 @@ inside the `@theme` tokens (CLAUDE.md §7, §16).
   a redirect to the cart's store, else `/`.
 - `services/stores.ts` (`GET /stores`, `/stores/:ref`, `/stores/:ref/menu`, `/stores/:ref/hours`);
   `features/stores/useStores.ts` and `useStoreMenu(storeRef)`, both `useResource` with `persist: true`, keys
-  `stores` and `menu:<storeId>`. `CACHE_PREFIX` becomes `fp_cache:v2:` (old entries are dropped on first load, with
-  a test).
+  `stores` and `menu:<storeId>`. `CACHE_PREFIX` is already
+  `fp_cache:v2:` (bumped in PR 01, where the store DTO grew; old entries are dropped on every load, with a test).
 - `StoreCard` gains `variant="compact"` (photo, name, area, open state); `OpenPill` takes `state` and `label`
   ("Closes at 9 PM", "Opens tomorrow at 8 AM", "Closed for Diwali", "Paused · back at 3:40 PM").
 - Budgets (CLAUDE.md §2b): the first card's photo is the LCP candidate on `/` (eager, 400px `srcset`), the rest
@@ -659,6 +732,11 @@ Docs: `docs/API.md` (the routes leave; a "Removed in P2" note), `docs/PERMISSION
 memberships; the brand owner), the roadmap's P2.7 checklist ticked. Intent: `--server minor --client minor`, with
 the CHANGELOG note the roadmap asks for.
 
+As built: PR 16 ships in two parts. 16a is the server contract (the migration, the removed routes, `requireStaff`, the
+cache keys and the site-setting field, with the suites moved to the store routes; `createTestUser('STAFF')` stays as
+a CUSTOMER profile plus a STAFF membership at the oldest store). 16b is the client cleanup (`services/store.ts` and
+`services/menu.ts`, `useStore`, the `homeFor` `STAFF` branch and the admin page's field).
+
 ## CLAUDE.md edits, aggregated
 
 | Section | Change                                                                                                                                                  | PR         |
@@ -688,16 +766,16 @@ difference from an ADR's text is either an amendment the user approves or a chan
 
 Open. The plan is written for the defaults; a different answer changes the PRs named.
 
-| #   | Decision                                                                                       | Default                                                                                                                           | Applies to |
-| --- | ---------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| D1  | Keep the single-store API until a contract release (the roadmap), or contract inside the phase | **answered (the user, 11 November 2026):** inside the phase; no `default_store_id`, no `multi_store_ui` flag (ADR-001 as amended) | 01, 16     |
-| D2  | A store with no weekly hours                                                                   | follows its manual switch alone (open all day while `is_open`)                                                                    | 06         |
-| D3  | How an invite reaches a person before notifications exist (P6.3)                               | a link the inviter shares; accepting needs an account with the invited email                                                      | 09, 15     |
-| D4  | Who manages the team                                                                           | a manager invites and removes staff; the owner (and a platform admin) also managers                                               | 03, 09     |
-| D5  | What a platform admin may do at a store in P2                                                  | pause and resume, manage the team, read the audit trail; no orders (read-only support views are P7.4's)                           | 03         |
-| D6  | Who creates brands, stores and owners before the admin console (P7.4)                          | the seed, locally and on staging; no endpoint in P2                                                                               | 01         |
-| D7  | Who merges PRs into `feat/P2`                                                                  | the user; the agent stops after opening each PR (P1's standing permission ended with P1)                                          | all        |
-| D8  | Staging data when `feat/P2`'s first migration is pushed                                        | re-seeded (`pnpm run seed` against staging): the single store becomes Campus Cafe under its own brand, plus the demo chain        | 01         |
+| #   | Decision                                                                                       | Default                                                                                                                                                                | Applies to |
+| --- | ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| D1  | Keep the single-store API until a contract release (the roadmap), or contract inside the phase | **answered (the user, 11 November 2026):** inside the phase; no `default_store_id`, no `multi_store_ui` flag (ADR-001 as amended)                                      | 01, 16     |
+| D2  | A store with no weekly hours                                                                   | follows its manual switch alone (open all day while `is_open`)                                                                                                         | 06         |
+| D3  | How an invite reaches a person before notifications exist (P6.3)                               | a link the inviter shares; accepting needs an account with the invited email                                                                                           | 09, 15     |
+| D4  | Who manages the team                                                                           | a manager invites and removes staff; the owner (and a platform admin) also managers                                                                                    | 03, 09     |
+| D5  | What a platform admin may do at a store in P2                                                  | pause and resume, manage the team, read the audit trail; no orders (read-only support views are P7.4's)                                                                | 03         |
+| D6  | Who creates brands, stores and owners before the admin console (P7.4)                          | the seed, locally and on staging; no endpoint in P2                                                                                                                    | 01         |
+| D7  | Who merges PRs into `feat/P2`                                                                  | **answered (the user, 11 November 2026):** the agent merges each PR into `feat/P2` once `ci-ok` is green and CodeRabbit is clear; the user merges `feat/P2` into `dev` | all        |
+| D8  | Staging data when `feat/P2`'s first migration is pushed                                        | re-seeded (`pnpm run seed` against staging): the single store becomes Campus Cafe under its own brand, plus the demo chain                                             | 01         |
 
 ## Closing P2
 
@@ -711,10 +789,11 @@ branch cannot see the other; a cart cannot mix stores.
 ## User steps (cannot be done from the repository)
 
 - Answer the [decisions](#decisions), or accept the defaults.
-- Merge PR 00 into `dev`, create `feat/P2` from `dev`, and add `feat/P2` by its exact name to the `ci-ok required`
-  ruleset (Settings → Rules).
-- Merge each PR into `feat/P2` (D7), and merge `dev` into `feat/P2` when `dev` has moved.
-- Push `feat/P2`'s migrations to staging (`pnpm run db:push:staging`), then re-seed it (D8). PR 16's migration goes
+- Merge `feat/P2` into `dev` when P2 is done (D7; the agent merges the PRs into `feat/P2`), and merge `dev` into
+  `feat/P2` when `dev` has moved.
+- Push `feat/P2`'s migrations to staging (`pnpm run db:push:staging`), then re-seed it (D8). The seed finds Campus
+  Cafe by its slug (`campus-cafe`, backfilled from the store's name): if the staging store had been renamed, the seed
+  adds a second Campus Cafe, and the leftover store should be archived or deleted. PR 16's migration goes
   to staging only when every client pointed at staging is on `feat/P2` (there is no hosted staging app before P8).
 - Optional, once P2 is on staging: set `min_client_version` (Admin → site settings) to P2's client version, so a
   stray older build asks for a reload instead of calling routes that are gone.

@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { MAX_QUANTITY_PER_ITEM } from '../../src/schemas/order.schema';
 import type { OrderStatus } from '../../src/types/enums';
 import { invalidate } from '../../src/utils/cache';
 import { paiseToRupees } from '../../src/utils/money';
@@ -8,6 +7,7 @@ import { supabaseAdmin } from '../../src/utils/supabase';
 import {
   createTestUser,
   deleteTestUser,
+  oldestStoreId,
   resetDemoData,
   testAuthMatrix,
   type TestUser,
@@ -39,6 +39,8 @@ beforeAll(async () => {
   const { data: store } = await supabaseAdmin
     .from('stores')
     .select('id')
+    .order('created_at')
+    .order('id')
     .limit(1)
     .single()
     .throwOnError();
@@ -89,6 +91,7 @@ function menuItem(name: string): MenuItemRow {
 
 function orderBody(overrides: OrderBodyOverrides = {}): OrderBodyOverrides {
   return {
+    storeId,
     items: [{ menuItemId: menuItem('Cold Coffee').id, quantity: 1 }],
     ...overrides,
   };
@@ -99,7 +102,10 @@ function placeOrder(user: TestUser, overrides: OrderBodyOverrides = {}) {
 }
 
 function patchStatus(orderId: string, status: string, token = staff.token) {
-  return api().patch(`/api/orders/${orderId}/status`).set(auth(token)).send({ status });
+  return api()
+    .patch(`/api/stores/${storeId}/orders/${orderId}/status`)
+    .set(auth(token))
+    .send({ status });
 }
 
 const NO_STACK_TRACE = /\bat .*\.(ts|js)|stack|PGRST|SQLSTATE|select |insert |update /i;
@@ -111,8 +117,8 @@ const NO_STACK_TRACE = /\bat .*\.(ts|js)|stack|PGRST|SQLSTATE|select |insert |up
 testAuthMatrix('POST /api/orders', (http) => http.post('/api/orders').send(orderBody()));
 testAuthMatrix('GET /api/orders', (http) => http.get('/api/orders'));
 testAuthMatrix('GET /api/orders/:id', (http) => http.get(`/api/orders/${randomUUID()}`));
-testAuthMatrix('PATCH /api/orders/:id/status', (http) =>
-  http.patch(`/api/orders/${randomUUID()}/status`).send({ status: 'PREPARING' }),
+testAuthMatrix('PATCH /api/stores/:storeId/orders/:id/status', (http) =>
+  http.patch(`/api/stores/${storeId}/orders/${randomUUID()}/status`).send({ status: 'PREPARING' }),
 );
 
 // ---------------------------------------------------------------------------
@@ -227,12 +233,11 @@ describe('validation', () => {
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
     expect(res.body.error.message).toContain('Cold Coffee');
-    expect(res.body.error.message).toContain(String(MAX_QUANTITY_PER_ITEM));
+    expect(res.body.error.message).toContain('10');
   });
 
-  describe('MAX_QUANTITY_PER_ITEM boundary (10)', () => {
+  describe('per-item cap boundary (the default, 10)', () => {
     it('a single line at exactly 10 passes', async () => {
-      expect(MAX_QUANTITY_PER_ITEM).toBe(10);
       const res = await placeOrder(customer1, {
         items: [{ menuItemId: menuItem('Cold Coffee').id, quantity: 10 }],
       });
@@ -388,6 +393,41 @@ describe('not found', () => {
     const res = await patchStatus(randomUUID(), 'PREPARING');
     expect(res.status).toBe(404);
     expect(res.body.error.code).toBe('NOT_FOUND');
+  });
+
+  it("another store's item -> 400 ITEM_NOT_FOUND, and that store's stock is untouched", async () => {
+    const { data: foreign } = await supabaseAdmin
+      .from('menu_items')
+      .select('id, stock_quantity')
+      .neq('store_id', storeId)
+      .order('id')
+      .limit(1)
+      .single()
+      .throwOnError();
+    // A real stock count, so a decrement would show (the seed leaves the other stores' items uncounted).
+    await supabaseAdmin
+      .from('menu_items')
+      .update({ stock_quantity: 5 })
+      .eq('id', foreign.id)
+      .throwOnError();
+    try {
+      const res = await placeOrder(customer1, { items: [{ menuItemId: foreign.id, quantity: 1 }] });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('ITEM_NOT_FOUND');
+      const { data: after } = await supabaseAdmin
+        .from('menu_items')
+        .select('stock_quantity')
+        .eq('id', foreign.id)
+        .single()
+        .throwOnError();
+      expect(after.stock_quantity).toBe(5);
+    } finally {
+      await supabaseAdmin
+        .from('menu_items')
+        .update({ stock_quantity: foreign.stock_quantity })
+        .eq('id', foreign.id)
+        .throwOnError();
+    }
   });
 
   it('/api/orders/%E0 -> 400 BAD_REQUEST (bad percent-encoding)', async () => {
@@ -814,12 +854,13 @@ describe('envelope and DTO keys', () => {
 describe('the staff board keeps every active order', () => {
   const FINISHED_LIMIT = 2;
   const setLimit = async (limit: number) => {
+    // The board's length is the store's own setting (P2 PR 05); the staff here work at the oldest store.
     await supabaseAdmin
-      .from('site_settings')
+      .from('stores')
       .update({ staff_order_list_limit: limit })
-      .eq('id', true)
+      .eq('id', await oldestStoreId())
       .throwOnError();
-    invalidate('site_settings');
+    invalidate();
   };
   afterAll(() => setLimit(100));
 
@@ -837,7 +878,7 @@ describe('the staff board keeps every active order', () => {
       .in('id', newer)
       .throwOnError();
 
-    const res = await api().get('/api/orders').set(auth(staff.token));
+    const res = await api().get(`/api/stores/${storeId}/orders`).set(auth(staff.token));
     expect(res.status).toBe(200);
     const ids = (res.body.orders as { id: string; status: OrderStatus }[]).map((o) => o.id);
     expect(ids).toContain(oldest);
@@ -851,9 +892,11 @@ describe('the staff board keeps every active order', () => {
     await supabaseAdmin.rpc('reset_demo_orders').throwOnError();
     await setLimit(FINISHED_LIMIT);
     for (let i = 0; i < FINISHED_LIMIT + 2; i += 1) await placeOrder(customer1);
-    const res = await api().get('/api/orders').set(auth(staff.token));
+    const res = await api().get(`/api/stores/${storeId}/orders`).set(auth(staff.token));
     expect(res.body.orders).toHaveLength(FINISHED_LIMIT + 2);
-    const placed = await api().get('/api/orders?status=PLACED').set(auth(staff.token));
+    const placed = await api()
+      .get(`/api/stores/${storeId}/orders?status=PLACED`)
+      .set(auth(staff.token));
     expect(placed.body.orders).toHaveLength(FINISHED_LIMIT + 2);
   });
 });
@@ -1003,5 +1046,13 @@ describe('idempotencyKey', () => {
     const key = randomUUID();
     const ok = await placeOrder(customer1, { idempotencyKey: key });
     expect(JSON.stringify(ok.body)).not.toContain(key);
+  });
+
+  describe('POST /api/orders after the multi-store contract', () => {
+    it('no storeId -> 400 VALIDATION_ERROR naming the field (there is no default store any more)', async () => {
+      const res = await placeOrder(customer1, { storeId: undefined });
+      expect(res.status).toBe(400);
+      expect(res.body.error.details).toEqual({ field: 'storeId' });
+    });
   });
 });

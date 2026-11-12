@@ -34,7 +34,9 @@ const flip = (key: string, user: TestUser, body: object) =>
 beforeAll(async () => {
   const { data: store } = await supabaseAdmin
     .from('stores')
-    .select('id')
+    .select('id, brand_id')
+    .order('created_at')
+    .order('id')
     .limit(1)
     .single()
     .throwOnError();
@@ -43,6 +45,8 @@ beforeAll(async () => {
     .from('stores')
     .insert({
       name: 'Flags Test Kiosk',
+      slug: `flags-test-kiosk-${randomUUID().slice(0, 8)}`,
+      brand_id: store.brand_id,
       tagline: 'Test',
       description: 'A second store for flags.test.ts',
     })

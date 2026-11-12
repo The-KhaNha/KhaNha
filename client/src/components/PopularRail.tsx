@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Flame } from 'lucide-react';
 import type { MenuItem } from '../types/api';
 import { availableQuantity, lineLimit } from '../features/cart/cartRules';
-import { selectQuantityOf, useCartStore } from '../features/cart/cartStore';
+import { selectLimits, selectQuantityOf, useCartStore } from '../features/cart/cartStore';
 import { cn } from '../lib/cn';
 import { cardClasses } from './Card';
 import { AddControl } from './AddControl';
@@ -75,8 +75,9 @@ export function PopularRail({ items, onOpen, id }: PopularRailProps) {
 function RailCard({ item, onOpen }: { item: MenuItem; onOpen: (item: MenuItem) => void }) {
   const photoRef = useRef<HTMLSpanElement>(null);
   const inCart = useCartStore(selectQuantityOf(item.id));
+  const limits = useCartStore(selectLimits);
   const unavailable = !item.isAvailable;
-  const showStock = inCart < lineLimit(availableQuantity(item));
+  const showStock = inCart < lineLimit(availableQuantity(item), limits);
 
   return (
     <li className={cn(CARD_WIDTH_CLASS, 'flex shrink-0 snap-start')}>

@@ -43,11 +43,18 @@ const menu: MenuResponse = {
   rules: { maxQuantityPerItem: 10, lowStockThreshold: 5 },
   store: {
     id: 's1',
+    slug: 'cafe',
+    brand: { id: 'b1', name: 'Cafe', slug: 'cafe' },
+    area: null,
+    address: null,
     name: 'Campus Cafe',
     tagline: 'Coffee',
     description: '',
     imageUrl: null,
     isOpen: true,
+    openState: 'OPEN',
+    nextChangeAt: null,
+    openLabel: null,
     prepTimeMinMinutes: 10,
     prepTimeMaxMinutes: 15,
   },
@@ -57,8 +64,8 @@ const menu: MenuResponse = {
     { name: 'Snacks', items: items.filter((i) => i.category === 'Snacks') },
   ],
 };
-vi.mock('./features/menu/useMenu', () => ({
-  useMenu: () => ({ menu, isLoading: false, error: null, retry: () => {} }),
+vi.mock('./features/stores/useStoreMenu', () => ({
+  useStoreMenu: () => ({ menu, isLoading: false, error: null, retry: () => {} }),
 }));
 const { default: App } = await import('./App');
 
@@ -66,7 +73,7 @@ const { default: App } = await import('./App');
 // phone, against the 200 ms INP budget. Adding one item re-renders that card, not the list.
 describe('menu re-renders', () => {
   it('adding an item re-renders its own card, not the other nineteen', () => {
-    window.history.pushState({}, '', '/menu');
+    window.history.pushState({}, '', '/s/cafe/menu');
     render(<App />);
     const before = priceRenders.count;
     act(() => {
@@ -78,7 +85,7 @@ describe('menu re-renders', () => {
   // The React side above is half of it: 500 cards on the page still cost 130-250 ms per tap in style, layout and paint.
   // A category off screen skips all three, with a rem size estimate until it is first drawn.
   it('lets a category off screen skip rendering', () => {
-    window.history.pushState({}, '', '/menu');
+    window.history.pushState({}, '', '/s/cafe/menu');
     const { container } = render(<App />);
     const sections = container.querySelectorAll<HTMLElement>('section[id^="section-"]');
     expect(sections.length).toBe(2);

@@ -6,12 +6,14 @@ export type ErrorCode =
   | 'ITEM_UNAVAILABLE'
   | 'INSUFFICIENT_STOCK'
   | 'STORE_CLOSED'
+  | 'STORE_PAUSED'
   | 'UNAUTHORIZED'
   | 'FORBIDDEN'
   | 'NOT_FOUND'
   | 'EMAIL_TAKEN'
   | 'INVALID_STATUS_TRANSITION'
   | 'IDEMPOTENCY_KEY_REUSED'
+  | 'MEMBERSHIP_EXISTS'
   | 'PRICE_CHANGED'
   | 'CLIENT_OUTDATED'
   | 'RATE_LIMITED'
@@ -45,12 +47,29 @@ export interface RateLimitDetails {
   retryAfterSeconds: number;
 }
 
+/** When a closed store opens next (ISO 8601), for a client that shows a countdown. */
+export interface StoreClosedDetails {
+  kind: 'storeClosed';
+  nextChangeAt: string;
+}
+
 /**
  * Every shape `error.details` can take. The first three predate `kind` and stay untagged, because the deployed client
  * reads them by `code`; every new shape carries a `kind` (docs/API.md "Error details").
  */
+/** When a paused store takes orders again (ISO 8601), or null when it is paused until someone resumes it. */
+export interface StorePausedDetails {
+  kind: 'storePaused';
+  pausedUntil: string | null;
+}
+
 export type ErrorDetails =
-  ItemErrorDetails | ReplayedOrderDetails | FieldErrorDetails | RateLimitDetails;
+  | ItemErrorDetails
+  | ReplayedOrderDetails
+  | FieldErrorDetails
+  | RateLimitDetails
+  | StoreClosedDetails
+  | StorePausedDetails;
 
 /**
  * A dependency (Supabase's database or Auth, later the payment provider) failed or could not be reached. The error
@@ -194,12 +213,45 @@ export const itemUnavailable = (menuItemId: string, name: string): AppError =>
     },
   );
 
-/** The store is closed, by the API's check or by place_order's when it closed in between. */
-export const storeClosed = (storeName: string): AppError =>
+/** The email already works at the store, or already has an open invite there (P2.2). */
+export const membershipExists = (): AppError =>
   new AppError(
-    400,
-    'STORE_CLOSED',
-    `${storeName} is closed right now. Please come back when it opens.`,
+    409,
+    'MEMBERSHIP_EXISTS',
+    'That person is already on the team or has an open invite.',
+  );
+
+/**
+ * The store is closed, by the API's check or by place_order's when it closed in between. `opening` is the next
+ * opening when the schedule knows it: the message names it ("Campus Cafe opens at 9:00 AM") and the details carry it.
+ */
+export const storeClosed = (
+  storeName: string,
+  opening?: { nextChangeAt: Date; when: string },
+): AppError =>
+  opening
+    ? new AppError(400, 'STORE_CLOSED', `${storeName} opens ${opening.when}.`, {
+        kind: 'storeClosed',
+        nextChangeAt: opening.nextChangeAt.toISOString(),
+      })
+    : new AppError(
+        400,
+        'STORE_CLOSED',
+        `${storeName} is closed right now. Please come back when it opens.`,
+      );
+
+/** The store paused new orders (P2.5): "Campus Cafe has paused new orders. Back at 3:40 PM." */
+export const storePaused = (
+  storeName: string,
+  back: { pausedUntil: Date; when: string } | null,
+): AppError =>
+  new AppError(
+    409,
+    'STORE_PAUSED',
+    back
+      ? `${storeName} has paused new orders. Back ${back.when}.`
+      : `${storeName} has paused new orders.`,
+    { kind: 'storePaused', pausedUntil: back?.pausedUntil.toISOString() ?? null },
   );
 
 /**

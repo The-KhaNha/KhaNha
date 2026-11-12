@@ -15,11 +15,18 @@ vi.stubGlobal('IntersectionObserver', NoopObserver);
 const menu: MenuResponse = {
   store: {
     id: 's1',
+    slug: 'cafe',
+    brand: { id: 'b1', name: 'Cafe', slug: 'cafe' },
+    area: null,
+    address: null,
     name: 'Campus Cafe',
     tagline: 'Coffee',
     description: '',
     imageUrl: null,
     isOpen: true,
+    openState: 'OPEN',
+    nextChangeAt: null,
+    openLabel: null,
     prepTimeMinMinutes: 10,
     prepTimeMaxMinutes: 15,
   },
@@ -30,8 +37,8 @@ const state = vi.hoisted(() => ({
   error: null as null | { message: string; isUnreachable: boolean },
   retry: () => {},
 }));
-vi.mock('../features/menu/useMenu', () => ({
-  useMenu: () => ({ menu, isLoading: false, error: state.error, retry: state.retry }),
+vi.mock('../features/stores/useStoreMenu', () => ({
+  useStoreMenu: () => ({ menu, isLoading: false, error: state.error, retry: state.retry }),
 }));
 const { MenuPage } = await import('./Menu');
 

@@ -3,7 +3,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { LIMITS } from '../../src/schemas/limits';
 import { supabaseAdmin } from '../../src/utils/supabase';
 import { api } from '../setup/api';
-import { throwawayClient } from '../setup/helpers';
+import { throwawayClient, oldestStoreId } from '../setup/helpers';
 
 // An account can be made without POST /api/auth/register (a direct Auth signup with the bundled publishable key, the
 // dashboard), so its metadata never met the API's zod rules. handle_new_user is the one door every account passes:
@@ -91,6 +91,7 @@ describe('profiles made from Auth metadata keep the API bounds', () => {
     const { data: item } = await supabaseAdmin
       .from('menu_items')
       .select('id')
+      .eq('store_id', await oldestStoreId())
       .is('stock_quantity', null)
       .eq('is_available', true)
       .limit(1)
@@ -100,7 +101,7 @@ describe('profiles made from Auth metadata keep the API bounds', () => {
     const res = await api()
       .post('/api/orders')
       .set('Authorization', `Bearer ${session.session.access_token}`)
-      .send({ items: [{ menuItemId: item.id, quantity: 1 }] });
+      .send({ storeId: await oldestStoreId(), items: [{ menuItemId: item.id, quantity: 1 }] });
     expect(res.status).toBe(201);
     expect(res.body.order.customerName).toHaveLength(LIMITS.nameMax);
   });

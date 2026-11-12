@@ -15,6 +15,8 @@ const me: User = {
   phone: null,
   role: 'CUSTOMER',
   createdAt: '2026-09-27T00:00:00Z',
+  memberships: [],
+  ownedBrands: [],
 };
 vi.mock('../../lib/supabase', () => ({
   getSupabase: async () => ({
@@ -124,5 +126,21 @@ describe('authStore with browser storage full', () => {
     useAuthStore.setState({ user: me, token: 'tok' });
     expect(() => useAuthStore.getState().clearSession()).not.toThrow();
     expect(useAuthStore.getState()).toMatchObject({ user: null, token: null });
+  });
+});
+
+describe('authStore.addMembership', () => {
+  const cafe = { storeId: 's1', storeSlug: 'cafe', storeName: 'Cafe', role: 'STAFF' as const };
+
+  it('adds the store once, replacing an older role there', () => {
+    useAuthStore.setState({ user: { ...me, memberships: [cafe] }, token: 't' });
+    useAuthStore.getState().addMembership({ ...cafe, role: 'MANAGER' });
+    expect(useAuthStore.getState().user?.memberships).toEqual([{ ...cafe, role: 'MANAGER' }]);
+  });
+
+  it('does nothing when nobody is signed in', () => {
+    useAuthStore.setState({ user: null, token: null });
+    useAuthStore.getState().addMembership(cafe);
+    expect(useAuthStore.getState().user).toBeNull();
   });
 });

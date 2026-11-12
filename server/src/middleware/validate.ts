@@ -2,7 +2,7 @@ import type { RequestHandler } from 'express';
 import type { z } from 'zod';
 import { validationError } from '../utils/errors';
 
-type Source = 'body' | 'query';
+type Source = 'body' | 'query' | 'params';
 
 /**
  * Parses `req[source]` with the schema and replaces it with the parsed value,
@@ -18,6 +18,8 @@ export function validate(schema: z.ZodType, source: Source = 'body'): RequestHan
 
     if (source === 'body') {
       req.body = result.data;
+    } else if (source === 'params') {
+      req.params = result.data as typeof req.params;
     } else {
       // Express 5 defines req.query as a prototype getter, so shadow it with an own property.
       Object.defineProperty(req, 'query', {

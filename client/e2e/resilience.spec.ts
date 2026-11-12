@@ -23,6 +23,8 @@ const customer = (): User => ({
   phone: null,
   role: 'CUSTOMER',
   createdAt: new Date().toISOString(),
+  memberships: [],
+  ownedBrands: [],
 });
 
 // Storage that is there but full (older iOS private mode, a full quota, some WebViews): every write throws. zustand's
@@ -38,7 +40,7 @@ test('storage full: /menu renders and sign-in works', async ({ page }) => {
   const user = customer();
   await mockSupabaseToken(page, user);
 
-  await page.goto('/menu');
+  await page.goto('/s/cafe/menu');
   await expect(page.getByRole('heading', { name: store.name })).toBeVisible();
   await page.getByRole('button', { name: 'Add to cart' }).first().click();
   await expect(page.getByLabel('Cart, 1 item')).toBeVisible();
@@ -47,7 +49,7 @@ test('storage full: /menu renders and sign-in works', async ({ page }) => {
   await page.getByLabel('Email', { exact: true }).fill(user.email);
   await page.getByLabel('Password', { exact: true }).fill('test1234');
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/(s\/cafe)?$/);
   await expect(page.getByText('Something went wrong')).toHaveCount(0);
   expect(problems).toEqual([]);
 });
@@ -58,10 +60,10 @@ test('a malformed menu once does not outlive a Reload, and a malformed config st
   page,
 }) => {
   let broken = true;
-  await page.route('**/api/menu', (route) =>
+  await page.route('**/api/stores/cafe/menu', (route) =>
     broken ? route.fulfill({ json: { ...menu, categories: null } }) : route.fallback(),
   );
-  await page.goto('/menu');
+  await page.goto('/s/cafe/menu');
   const reload = page.getByRole('button', { name: 'Reload' });
   await expect(reload).toBeVisible();
   broken = false;
@@ -117,7 +119,7 @@ test('a phone clock hours fast refreshes the token at most once across page load
   await page.getByLabel('Email', { exact: true }).fill(user.email);
   await page.getByLabel('Password', { exact: true }).fill('test1234');
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/(s\/cafe)?$/);
   for (const path of ['/orders', '/profile']) {
     await page.goto(path);
     await page.waitForLoadState('networkidle');

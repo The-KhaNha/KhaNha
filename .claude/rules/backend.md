@@ -23,7 +23,9 @@ The principle is in `CLAUDE.md` §2c; the client side is in `.claude/rules/front
   after the read; the flip (`setFlag`) invalidates them. Never cache an evaluated result: it is per user.
 - Every write through the API that changes cached data calls `invalidate(key)` in the same service, as
   `order.service.ts` does after an order is placed or cancelled. A new cached read ships with its invalidation, and a
-  test that fails without it (`server/test/api/menu-cache.test.ts`).
+  test that fails without it (`server/test/api/menu-cache.test.ts`). Keys: `menu`, `store` (old single-store routes),
+  `stores:list`, `store:<id>`, `store_settings:<id>`, `store_ref:<slug>`, `menu:<storeId>`; stock changes call `invalidateMenus(storeId)`, which
+  drops `menu` and `menu:<storeId>` (`server/test/api/store-cache.test.ts`).
 - Write paths never read through the cache (`createOrder` checks `is_open` with the uncached `getStore()`).
   Nothing user-specific ever goes into `cached()`.
 
@@ -35,7 +37,8 @@ gzip on. See `docs/DEPLOYMENT.md` "Containers".
 ## 4. Server layering
 
 `routes/*.routes.ts` → `middleware/validate.ts` (zod) → `controllers/*.controller.ts` → `services/*.service.ts` →
-`utils/serializers.ts`. Controllers are thin and have no try/catch: Express 5 forwards rejected promises to
+`utils/serializers.ts`. Pure rules with no I/O live in `domain/` (`permissions.ts`: the capability map, `can`,
+`accessFor`). Controllers are thin and have no try/catch: Express 5 forwards rejected promises to
 `middleware/errorHandler.ts`. `src/app.ts` builds the app (`createApp()`); `src/server.ts` only listens.
 `src/worker.ts`, the second entry point, runs the queue consumers in `jobs/` (`docs/JOBS.md`). The map is
 `docs/BACKEND_STRUCTURE.md`.
@@ -57,7 +60,7 @@ gzip on. See `docs/DEPLOYMENT.md` "Containers".
   `set_config('app.request_id', …, true)`, and calls `emit_event` before returning, in the same transaction. The
   service passes the controller's `RequestContext` (`types/auth.ts`). A repeat of a transition that already happened
   changes nothing and emits nothing (`update_order_status`; docs/JOBS.md "Order events").
-- **Audited tables** (`site_settings`, `orders.status`, `profiles.role`, `menu_items` except stock, `feature_flags`; docs/SCHEMA.md
+- **Audited tables** (`site_settings`, `orders.status`, `profiles.role`, `menu_items` except stock, `feature_flags`, `brands`, `stores`, `store_memberships`; docs/SCHEMA.md
   `audit_row_change`) are written through a transition function, or through the Data API with
   `.setHeader('x-actor', JSON.stringify(ctx.actor)).setHeader('x-request-id', ctx.requestId)` as
   `settings.service.updateSettings` and `flags.service.setFlag` do. Anything else is recorded as `SYSTEM`. A new audited table gets its
@@ -65,8 +68,14 @@ gzip on. See `docs/DEPLOYMENT.md` "Containers".
 - **Money is paise in the database** (`bigint`, `…_paise`), whole rupees in the API's existing fields; `utils/money.ts`
   is the only converter (`money-boundary.safe.test.ts`), and `place_order` prices every line from `menu_items` itself
   and refuses one whose charged `unit_price_paise` is no longer the price, `PRICE_CHANGED` (ADR-004).
-- **Trust nothing from the client:** prices and totals come from the database. Someone else's resource is 404, never 403. The role is read from `profiles` on every request, never from the token.
-- **`supabaseAdmin` bypasses RLS,** so every query scopes by user explicitly.
+- **Trust nothing from the client:** prices and totals come from the database. Someone else's resource is 404, never 403. The role is read from `profiles` on every request, never from the token, with the caller's memberships and owned brands in the same read.
+- **Store routes** take `/:storeId` and run `requireAuth, requireStore(capability)`: a store the caller may not know
+  about (not `ACTIVE`, no access there) is 404, a visible one without the capability is 403. A new capability is a
+  row in `domain/permissions.ts` with its cells in `permissions.safe.test.ts`; `requestContext` then records the
+  caller's `storeRole`, which the audit row keeps as `actor_role` (docs/PERMISSIONS.md). A resource of another store
+  addressed through a store route is 404; every store route runs `testStoreIsolation` (docs/TESTING.md).
+- **`supabaseAdmin` bypasses RLS,** so every query scopes by user explicitly. A store-scoped table is queried only
+  in the files `TABLE_OWNERS` in `server/eslint.config.mjs` names; lint fails elsewhere (docs/TESTING.md "Table ownership").
 - Public reads are cached with `cached()` and invalidated by the writes that change them (§2c).
 - Sessions: access tokens stay 1 h (refreshed by supabase-js). A sign-in ends after 7 days without use; each use
   restarts the week (`client/src/features/auth/sessionActivity.ts` + `auth.sessions.inactivity_timeout = "168h"` in

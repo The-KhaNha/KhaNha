@@ -8,6 +8,7 @@ import { Price } from '../components/Price';
 import { Skeleton } from '../components/Skeleton';
 import { StatusTracker } from '../components/StatusTracker';
 import { TimeText } from '../components/TimeText';
+import { ReplaceCartSheet } from '../features/cart/ReplaceCartSheet';
 import { useReorder } from '../features/cart/useReorder';
 import { OrderHero } from '../features/orders/OrderHero';
 import { amountLabel, timelineLabel } from '../features/orders/orderStatus';
@@ -17,7 +18,7 @@ import { APP_TITLE } from '../config/app';
 export function OrderPage() {
   const { id } = useParams<{ id: string }>();
   const { order, isLoading, error, retry } = useOrder(id);
-  const { reorder, reorderingId } = useReorder();
+  const { reorder, reorderingId, replace } = useReorder();
 
   const status = order?.status;
   const orderNumber = order?.orderNumber;
@@ -134,6 +135,7 @@ export function OrderPage() {
         Placed <TimeText iso={order.createdAt} withDay /> · Picking up as{' '}
         <bdi>{order.customerName}</bdi>
       </p>
+      {replace && <ReplaceCartSheet {...replace} />}
     </div>
   );
 }

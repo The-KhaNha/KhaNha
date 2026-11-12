@@ -7,15 +7,24 @@ import { CartItem } from '../components/CartItem';
 import { EmptyState } from '../components/EmptyState';
 import { Price } from '../components/Price';
 import { describeProblems, lineProblem } from '../features/cart/cartRules';
-import { selectCount, selectLines, selectTotal, useCartStore } from '../features/cart/cartStore';
+import {
+  selectCount,
+  selectLimits,
+  selectLines,
+  selectStoreName,
+  selectTotal,
+  useCartStore,
+} from '../features/cart/cartStore';
 import { readReorderNotice } from '../features/cart/useReorder';
 import { useMenu } from '../features/menu/useMenu';
 import { cn } from '../lib/cn';
 
 export function CartPage() {
   const lines = useCartStore(selectLines);
+  const limits = useCartStore(selectLimits);
   const count = useCartStore(selectCount);
   const total = useCartStore(selectTotal);
+  const storeName = useCartStore(selectStoreName);
   const clear = useCartStore((s) => s.clear);
   const location = useLocation();
   const navigate = useNavigate();
@@ -23,7 +32,7 @@ export function CartPage() {
   useMenu();
 
   const notice = readReorderNotice(location.state);
-  const flagged = lines.filter((line) => lineProblem(line) !== null);
+  const flagged = lines.filter((line) => lineProblem(line, limits) !== null);
   const dismissNotice = () => navigate(location.pathname, { replace: true, state: null });
 
   if (lines.length === 0) {
@@ -50,6 +59,7 @@ export function CartPage() {
         <ReorderNotice lines={notice} onDismiss={dismissNotice} className="mb-4" />
       )}
 
+      {storeName && <p className="eyebrow mb-2 wrap-anywhere text-muted">From {storeName}</p>}
       <Card padding="none" className="px-4">
         <ul className="divide-y divide-line/70">
           {lines.map((line) => (
@@ -109,8 +119,8 @@ export function CartPage() {
             >
               <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={2.5} aria-hidden />
               <span>
-                {describeProblems(flagged)} Fix {flagged.length === 1 ? 'it' : 'them'} above to
-                continue.
+                {describeProblems(flagged, limits)} Fix {flagged.length === 1 ? 'it' : 'them'} above
+                to continue.
               </span>
             </p>
           </>

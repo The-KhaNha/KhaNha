@@ -8,9 +8,9 @@ import { validate } from '../middleware/validate';
 import { clientErrorsSchema } from '../schemas/clientErrors.schema';
 import { adminRouter } from './admin.routes';
 import { authRouter } from './auth.routes';
-import { menuRouter } from './menu.routes';
+import { meRouter } from './me.routes';
 import { orderRouter } from './order.routes';
-import { storeRouter } from './store.routes';
+import { storesRouter } from './store.routes';
 
 export const apiRouter = Router();
 
@@ -34,7 +34,7 @@ apiRouter.post(
 apiRouter.use(clientVersionGate);
 
 apiRouter.use('/auth', authRouter);
-apiRouter.use('/store', storeRouter);
-apiRouter.use('/menu', menuRouter);
+apiRouter.use('/stores', storesRouter);
+apiRouter.use('/me', meRouter);
 apiRouter.use('/orders', orderRouter);
 apiRouter.use('/admin', adminRouter);

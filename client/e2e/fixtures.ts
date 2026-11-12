@@ -16,11 +16,18 @@ import type {
 
 export const store: Store = {
   id: 's1',
+  slug: 'cafe',
+  brand: { id: 'b1', name: 'Cafe', slug: 'cafe' },
+  area: null,
+  address: null,
   name: 'Campus Cafe',
   tagline: 'Coffee and toasties by the quad',
   description: 'Order ahead and skip the queue.',
   imageUrl: '/images/cafe-cover.jpg',
   isOpen: true,
+  openState: 'OPEN',
+  nextChangeAt: null,
+  openLabel: null,
   prepTimeMinMinutes: 10,
   prepTimeMaxMinutes: 15,
 };
@@ -63,14 +70,36 @@ export const menu: MenuResponse = {
 
 export const config: Config = { serverVersion: '0.0.0', ...fallbacks };
 
+/** What GET /api/stores sends for a store. */
+export const summary = ({ id, slug, name, tagline, imageUrl, area, brand, ...open }: Store) => ({
+  id,
+  slug,
+  name,
+  tagline,
+  imageUrl,
+  area,
+  brand,
+  isOpen: open.isOpen,
+  openState: open.openState,
+  nextChangeAt: open.nextChangeAt,
+  openLabel: open.openLabel,
+});
+
 export async function mockApi(page: Page): Promise<void> {
   await page.route('**/api/**', (route) => {
     const path = new URL(route.request().url()).pathname;
     const json = (body: unknown, status = 200) =>
       route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
     if (path === '/api/config') return json(config);
-    if (path === '/api/store') return json({ store });
-    if (path === '/api/menu') return json(menu);
+    if (path === '/api/stores') return json({ stores: [summary(store)] });
+    if (path === '/api/stores/cafe') return json({ store });
+    if (path === '/api/stores/cafe/menu') return json(menu);
+    if (path === '/api/stores/s1/hours')
+      return json({
+        timezone: 'Asia/Kolkata',
+        hours: [{ dayOfWeek: 1, opensAt: '09:00', closesAt: '17:00' }],
+        exceptions: [],
+      });
     return json({ error: { code: 'NOT_FOUND', message: `No route matches ${path}.` } }, 404);
   });
 }
@@ -103,9 +132,10 @@ export const CART_LINE = {
 
 /** Persists a cart holding `line`, as an earlier visit would have left it. */
 export async function seedCart(page: Page, line: typeof CART_LINE = CART_LINE): Promise<void> {
-  await page.addInitScript((line) => {
-    localStorage.setItem('fp_cart', JSON.stringify({ state: { lines: [line] }, version: 1 }));
-  }, line);
+  const state = { lines: [line], storeId: store.id, storeSlug: store.slug, storeName: store.name };
+  await page.addInitScript((state) => {
+    localStorage.setItem('fp_cart', JSON.stringify({ state, version: 2 }));
+  }, state);
 }
 
 /**
@@ -150,6 +180,7 @@ export async function signIn(
   page: Page,
   role: Role,
   status: OrderStatus = 'PLACED',
+  account: Partial<User> = {},
 ): Promise<void> {
   const now = new Date().toISOString();
   const user: User = {
@@ -159,6 +190,13 @@ export async function signIn(
     phone: null,
     role,
     createdAt: now,
+    // The staff board is per store: a staff account works at the fixture store.
+    memberships:
+      role === 'STAFF'
+        ? [{ storeId: store.id, storeSlug: store.slug, storeName: store.name, role: 'STAFF' }]
+        : [],
+    ownedBrands: [],
+    ...account,
   };
   const order: Order = {
     id: 'o1',
@@ -172,7 +210,7 @@ export async function signIn(
     estimatedReadyAt: now,
     createdAt: now,
     updatedAt: now,
-    store: { id: store.id, name: store.name },
+    store: { id: store.id, name: store.name, slug: store.slug },
     items: [
       {
         id: 'l1',
@@ -185,10 +223,11 @@ export async function signIn(
     ],
   };
   await page.route('**/api/auth/me', (route) => route.fulfill({ json: { user } }));
-  await page.route('**/api/orders**', (route) =>
+  await page.route(/\/api\/(stores\/s1\/)?orders/, (route) =>
     route.fulfill({
-      json:
-        new URL(route.request().url()).pathname === '/api/orders' ? { orders: [order] } : { order },
+      json: /\/orders$/.test(new URL(route.request().url()).pathname)
+        ? { orders: [order] }
+        : { order },
     }),
   );
   await page.addInitScript((user) => {

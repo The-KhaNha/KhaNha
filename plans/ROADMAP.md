@@ -411,7 +411,7 @@ with no policies, all privileges revoked from `anon` and `authenticated`, an FK 
 erDiagram
   PROFILES ||--o{ STORE_MEMBERSHIPS : "holds"
   BRANDS ||--o{ STORES : "operates"
-  BRANDS ||--o{ STORE_MEMBERSHIPS : "brand-wide role"
+  PROFILES |o--o{ BRANDS : "owns"
   STORES ||--o{ STORE_MEMBERSHIPS : "store role"
   STORES ||--|| STORE_SETTINGS : "configured by"
   STORES ||--o{ STORE_HOURS : "weekly hours"
@@ -444,16 +444,15 @@ erDiagram
   }
   STORE_MEMBERSHIPS {
     uuid user_id FK
-    uuid brand_id FK
-    uuid store_id FK "null means every store of the brand"
-    store_role role "OWNER, MANAGER or STAFF"
+    uuid store_id FK "one store; never null"
+    store_role role "MANAGER or STAFF"
   }
   CATALOG_ITEMS {
     uuid id PK
     uuid brand_id FK
     uuid category_id FK
     text name
-    int base_price "whole rupees"
+    bigint base_price_paise
     int prep_offset_minutes
     boolean requires_acceptance
   }
@@ -492,9 +491,9 @@ erDiagram
     text pickup_token "per store per business day"
     order_status status
     payment_status payment_status
-    int subtotal
-    int discount_total
-    int total "whole rupees"
+    bigint subtotal_paise
+    bigint discount_total_paise
+    bigint total_paise
     int commission_bps "snapshot"
     timestamptz promised_ready_at
     timestamptz pickup_deadline
@@ -541,10 +540,11 @@ erDiagram
   MENU_ITEMS ||--o{ ITEM_ASSOCIATIONS : "goes well with"
 ```
 
-Money: menu and order amounts stay in **whole rupees** (`integer`), as today, so the API contract does not change.
-The payments and ledger domain uses **paise** (`bigint`), because commissions and fees are fractional. Only one
-module, `server/src/utils/money.ts`, converts between the two (ADR-004). Each gateway adapter converts paise to its
-provider's own unit.
+Money: every money column is **paise** (`bigint`, named `*_paise`), because commissions and fees are fractional
+(ADR-004 as amended). The API's existing menu and order fields stay in whole rupees, converted by the serializers, so
+the contract does not change; new API fields carry paise and say so in their name. Only one module,
+`server/src/utils/money.ts`, converts between the two. Each gateway adapter converts paise to its provider's own
+unit.
 
 ### Key flows
 
@@ -641,7 +641,7 @@ account**, never as a separate transfer.
 | Environment    | env vars read only by `server/src/utils/env.ts`; client runtime env (`/runtime-env.js`, P0.6) | deploy pipeline, from Secrets Manager / SSM | ports, origins, keys, `PUBLIC_READ_TTL_MS`, `TRUST_PROXY_HOPS`, `PAYMENT_PROVIDER`    |
 | Site settings  | the `site_settings` row (typed columns with check constraints)                                | platform admin (`/admin`)                   | reservation TTL, poll intervals, default commission, refund speed, min client version |
 | Store settings | the `store_settings` row per store (typed, bounded)                                           | store owner or manager (`/manage`)          | max quantity per item, acceptance timeout, pickup window, SLA buffer, ETA parameters  |
-| Feature flags  | `feature_flags` rows (key, enabled, rules for stores, roles and percent)                      | platform admin                              | `multi_store_ui`, `real_payments`, `acceptance_flow`, `pickup_qr`, `recommendations`  |
+| Feature flags  | `feature_flags` rows (key, enabled, rules for stores, roles and percent)                      | platform admin                              | `real_payments`, `acceptance_flow`, `pickup_qr`, `recommendations`                    |
 
 Reads go through one function per tier (`env`, `getSettings()`, `getStoreSettings(storeId)`, `isEnabled(flag, ctx)`),
 each cached like the existing settings read, and every write invalidates its cache key. The client gets what it needs
@@ -650,15 +650,15 @@ from the API: store rules come with the menu, and global config and flags from `
 
 ### Roles and permissions (target)
 
-| Role                          | Stored in                                     | Scope                  | Can                                                                                                               |
-| ----------------------------- | --------------------------------------------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| anonymous                     | –                                             | –                      | browse stores and menus, register, sign in                                                                        |
-| `CUSTOMER`                    | `profiles.role` (default)                     | own data               | order, pay, cancel by policy, track, review own orders                                                            |
-| `STAFF`                       | `store_memberships.role`                      | one store              | order board, accept/reject, status changes, pickup verification, stock (when the store allows it)                 |
-| `MANAGER`                     | `store_memberships.role`                      | one store              | everything staff can, plus menu listings, stock, deals, hours, pause, policy, settings, analytics, team           |
-| `OWNER`                       | `store_memberships.role` with `store_id` null | every store of a brand | everything a manager can at every branch, plus the brand catalog, payout account, brand analytics                 |
-| `ADMIN` (platform)            | `profiles.role`                               | whole platform         | onboarding, site settings, flags, support views (read-only across stores), refunds console, reconciliation, audit |
-| worker / reconciler / webhook | process identity (service key)                | system                 | the transitions their jobs own; every write audited with `actor_type`                                             |
+| Role                          | Stored in                             | Scope                  | Can                                                                                                               |
+| ----------------------------- | ------------------------------------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| anonymous                     | –                                     | –                      | browse stores and menus, register, sign in                                                                        |
+| `CUSTOMER`                    | `profiles.role` (default)             | own data               | order, pay, cancel by policy, track, review own orders                                                            |
+| `STAFF`                       | `store_memberships.role`              | one store              | order board, accept/reject, status changes, pickup verification, stock (when the store allows it)                 |
+| `MANAGER`                     | `store_memberships.role`              | one store              | everything staff can, plus menu listings, stock, deals, hours, pause, policy, settings, analytics, team           |
+| `OWNER`                       | `brands.owner_id` (no membership row) | every store of a brand | everything a manager can at every branch, plus the brand template, payout account, brand analytics                |
+| `ADMIN` (platform)            | `profiles.role`                       | whole platform         | onboarding, site settings, flags, support views (read-only across stores), refunds console, reconciliation, audit |
+| worker / reconciler / webhook | process identity (service key)        | system                 | the transitions their jobs own; every write audited with `actor_type`                                             |
 
 Rules carried over:
 
@@ -675,10 +675,10 @@ Each of these is written up in P0.8 as an ADR in `docs/adr/` (context, options, 
 
 | ADR | Decision                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Main alternative rejected, and why                                                                                                                                                                                |
 | --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 001 | Brands own stores (branches). A brand catalog feeds per-store listings (price override, stock, availability). Store roles are memberships                                                                                                                                                                                                                                                                                                                            | Per-store menus only: every chain edit becomes N edits, and cross-branch analytics has no key                                                                                                                     |
+| 001 | Brands own stores (branches). A brand holds a template that a new store is copied from, and the store then changes freely. The owner is recorded on the brand. Store roles are memberships per store                                                                                                                                                                                                                                                                 | Per-store menus only: every chain edit becomes N edits, and cross-branch analytics has no key                                                                                                                     |
 | 002 | Background work: transactional outbox into **pgmq** queues in the existing Postgres, a Node worker, and **pg_cron** for time triggers                                                                                                                                                                                                                                                                                                                                | BullMQ/Redis or SQS: a dual write (commit, then enqueue) plus new infrastructure                                                                                                                                  |
 | 003 | The payment aggregator and money model are **chosen on evidence in P4**. The proposal is Cashfree with Easy Split and 0% UPI in writing, with a fallback ladder. Every design choice here holds for any provider: UPI intent and QR; payment captured, then refunded on rejection; server-side status plus signed webhooks as the truth; refunds via the PA API to the original method; one payout port for model A (deferred split) and model B (scheduled payouts) | Razorpay at list price (a 2% UPI platform fee, and Route needs ₹40 lakh of turnover); holding marketplace money in our own account (RBI PA Directions); returning money by separate transfer (no dispute linkage) |
-| 004 | Order and menu money stays in whole rupees. Payments and ledger use paise in `bigint`. One conversion module                                                                                                                                                                                                                                                                                                                                                         | Moving everything to paise now: a breaking API change for no user benefit yet                                                                                                                                     |
+| 004 | Every money column is paise in `bigint`; whole rupees exist only at the API boundary, for the fields the client already reads. One conversion module                                                                                                                                                                                                                                                                                                                 | Rupees for menus and orders, paise for payments (two units in one database), or paise in the API too (a breaking API change)                                                                                      |
 | 005 | One codebase, three processes (`api`, `worker`, `reconciler`): a modular monolith                                                                                                                                                                                                                                                                                                                                                                                    | Separate repos or services per domain: network hops, and duplicated auth and scoping code                                                                                                                         |
 | 006 | Media in S3 behind CloudFront on the app's own origin. Uploads by presigned POST, variants by the worker (replaces the Supabase Storage plan in CLAUDE.md §9)                                                                                                                                                                                                                                                                                                        | Supabase Storage: the roadmap asks for S3, and the CDN and hosting are on AWS anyway                                                                                                                              |
 | 007 | Pilot on EC2 with docker compose behind ALB + CloudFront, images in ECR, deploys via SSM. Kubernetes (EKS) only after a measured gate                                                                                                                                                                                                                                                                                                                                | Kubernetes first: the operational cost arrives before any load justifies it                                                                                                                                       |
@@ -795,7 +795,7 @@ a temp file and a script applies the bump.
   server: patch
   ---
 
-  Store list and per-store menus behind the multi_store_ui flag.
+  Store list and per-store menus.
   ```
 
 - **Level rules.** They go into CLAUDE.md in a new "Versioning and branches" section:
@@ -1502,7 +1502,6 @@ create table public.feature_flags (
 - **Client.** It gets the `client_visible` flags, already evaluated for the caller, through `GET /api/config`. A
   signed-in caller's flags come from `GET /api/me/config`, which is not persisted, because it is user-specific.
 - **Planned flags:**
-  - `multi_store_ui` (P2)
   - `modifiers` (P3)
   - `real_payments` (per store, P5)
   - `acceptance_flow`, `cancellation_by_customer` (P5)
@@ -1559,26 +1558,27 @@ green, both images build and pass `/healthz`, `pnpm release:dry` prints the same
 
 **Goal:** many restaurants, some of them chains with several branches, each with its own staff, hours, stock and
 settings, served by one app. **Items:** R1, R3 (store settings), R26, R31, and the role split R11 depends on.
-**Depends on:** P1. **Size:** L. **Flag:** `multi_store_ui`.
+**Depends on:** P1. **Size:** L. **Flag:** none (the plan drops `multi_store_ui`).
 
 > **How it is built:** [P2_MULTI_STORE.md](P2_MULTI_STORE.md), PR by PR on the `feat/P2` branch. This section
-> predates [ADR-001](../docs/adr/001-brands-own-stores.md) as amended (per-store memberships, the owner on the
-> brand, brand templates): where they disagree, the ADR and the plan win until the plan's PR 00 rewrites this
-> section.
+> follows [ADR-001](../docs/adr/001-brands-own-stores.md) as amended (per-store memberships, the owner on the brand,
+> brand templates) and the plan's model; the plan's differences table says where P2 builds less than this text.
 
 ### Design (HLD)
 
 - **Brands own stores.** A **brand** is the business (and, by default, the payee). A **store** is one physical pickup
   point: a branch, with its own address, hours, pause switch, stock, staff and settings. A single café is a brand with
   one store, so today's data migrates as exactly that.
-- **Roles are memberships.** Store roles move out of `profiles.role` into memberships, scoped to a store or to a whole
-  brand. `profiles.role` keeps only platform-level meaning: `CUSTOMER` or `ADMIN`. `STAFF` survives for the transition
+- **Roles are memberships per store, and the owner is on the brand.** Manager and staff roles move out of
+  `profiles.role` into memberships of one store; nobody but the owner reaches across stores. The brand's owner
+  (`brands.owner_id`) is treated as `OWNER` of every store of the brand, with no membership rows. `profiles.role` keeps only platform-level meaning: `CUSTOMER` or `ADMIN`. `STAFF` survives for the transition
   (P2.7).
 - **Every store-scoped route names its store** (`/api/stores/:storeId/...`). One middleware resolves the caller's
   memberships and permissions for that store, and every query inside goes through a scoping helper that adds
   `store_id`.
-- **Legacy endpoints keep working.** `GET /api/store`, `GET /api/menu`, `POST /api/orders` and
-  `PATCH /api/orders/:id/status` serve a configured default store until the contract step.
+- **Legacy endpoints keep working inside the phase.** `GET /api/store`, `GET /api/menu`, `POST /api/orders` and
+  `PATCH /api/orders/:id/status` serve the oldest store until the plan's PR 16 removes them (nothing is deployed
+  before P8, so there is no contract release and no configured default store).
 
 ### P2.1 Brands and stores v2
 
@@ -1591,10 +1591,12 @@ create table public.brands (
   slug text not null unique check (slug ~ '^[a-z0-9](?:[a-z0-9-]{0,58}[a-z0-9])?$'),
   description text not null default '',
   logo_url text,
+  owner_id uuid references public.profiles (id) on delete set null,   -- the brand owner (ADR-001)
   status public.store_status not null default 'DRAFT',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+create index brands_owner_id_idx on public.brands (owner_id);
 
 alter table public.stores
   add column brand_id uuid references public.brands (id),
@@ -1603,24 +1605,17 @@ alter table public.stores
   add column timezone text not null default 'Asia/Kolkata',
   add column address_line text,
   add column area text,                              -- grouping on the discovery page ("North campus")
-  add column latitude numeric(9, 6),
-  add column longitude numeric(9, 6),
   add column contact_phone text,
-  add column fssai_license_no text,                  -- shown on the store page; check FSSAI e-commerce rules
   add column created_at timestamptz not null default now(),
   add column updated_at timestamptz not null default now();
 create index stores_brand_id_idx on public.stores (brand_id);
-
-alter table public.site_settings add column default_store_id uuid references public.stores (id) on delete set null;
 ```
 
-- **Migration order (expand).**
-  1. Add the columns as nullable.
-  2. Backfill: create one brand for the existing store (with its name and slug), set `stores.brand_id` and `slug`, and
-     point `site_settings.default_store_id` at it.
-  3. A second migration sets `brand_id` and `slug` to `not null`.
+- **Migration (expand, in one file).** Add the columns as nullable, backfill (one brand for the existing store, with
+  its name and slug; `stores.brand_id` and `slug` set), then set `brand_id` and `slug` to `not null`. No API runs
+  between the steps. `latitude`, `longitude` and `fssai_license_no` wait for P12.2 and P9.4.
 - **Public DTOs (additive).** `StoreDto` gains `slug`, `brand: { id, name, slug }`, `area`, `address`,
-  `openState` (from P2.4), `nextChangeAt`, `etaMinutes` (P6.1) and `rating` (P7.5). The new
+  `openState` (from P2.4) and `nextChangeAt`; `etaMinutes` (P6.1) and `rating` (P7.5) come with their phases. The new
   `StoreSummaryDto` is the lean card for lists.
 - **Endpoints (public, cached, persisted on the client).**
   - `GET /api/stores?area=` → `{ stores: StoreSummaryDto[] }`, cache key `stores:list`.
@@ -1630,62 +1625,71 @@ alter table public.site_settings add column default_store_id uuid references pub
   Every write that changes one of them invalidates its key (CLAUDE.md §2c), and each cached read ships with the test
   that fails without its invalidation, as `menu-cache.test.ts` does today.
 
-- **Legacy.** `GET /api/store` and `GET /api/menu` return the default store's data (documented as deprecated in
-  API.md, with the removal release).
-- **Seed.** Two brands: one with a single café, and one chain with two branches in different areas. Also memberships,
-  hours and one closed-day exception, so every P2 flow can be demonstrated.
+- **Legacy.** `GET /api/store` and `GET /api/menu` return the oldest store's data until the plan's PR 16 removes
+  them.
+- **Seed.** Two brands: one with a single café, and one chain with two branches in different areas. Also their
+  owners, store memberships, hours and one closed-day exception, so every P2 flow can be demonstrated.
 
 ### P2.2 Memberships and store roles
 
 ```sql
-create type public.store_role as enum ('OWNER', 'MANAGER', 'STAFF');
+create type public.store_role as enum ('MANAGER', 'STAFF');   -- OWNER is the brand's owner, not a row
 
 create table public.store_memberships (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.profiles (id) on delete cascade,
-  brand_id uuid not null references public.brands (id) on delete cascade,
-  store_id uuid references public.stores (id) on delete cascade,   -- null = every store of the brand
+  store_id uuid not null references public.stores (id) on delete cascade,
   role public.store_role not null,
   created_at timestamptz not null default now(),
   created_by uuid references public.profiles (id) on delete set null,
-  unique nulls not distinct (user_id, brand_id, store_id)
+  unique (user_id, store_id)
 );
-create index store_memberships_user_id_idx on public.store_memberships (user_id);
 create index store_memberships_store_id_idx on public.store_memberships (store_id);
 
-create table public.store_invites (         -- invite by email or phone; accepted on the next sign-in
+create table public.store_invites (         -- by email; the inviter shares the link (nothing sends mail before P6.3)
   id uuid primary key default gen_random_uuid(),
-  brand_id uuid not null references public.brands (id) on delete cascade,
-  store_id uuid references public.stores (id) on delete cascade,
+  store_id uuid not null references public.stores (id) on delete cascade,
   role public.store_role not null,
-  email text, phone text,
-  token_hash text not null unique,
+  email text not null check (email = lower(email) and char_length(email) between 3 and 320),
+                                            -- the account that may accept it
+  token_hash text not null unique,          -- sha-256 of the token, which is shown once
   expires_at timestamptz not null,
   accepted_at timestamptz,
+  accepted_by uuid references public.profiles (id) on delete set null,
+  revoked_at timestamptz,
   created_by uuid references public.profiles (id) on delete set null,
-  check (num_nonnulls(email, phone) = 1)
+  created_at timestamptz not null default now(),
+  check (expires_at > created_at),
+  check (accepted_at is null or revoked_at is null)
 );
+create unique index store_invites_open_email_key
+  on public.store_invites (store_id, email) where accepted_at is null and revoked_at is null;
+create index store_invites_store_id_idx on public.store_invites (store_id);
+create index store_invites_created_by_idx on public.store_invites (created_by);
+create index store_invites_accepted_by_idx on public.store_invites (accepted_by);
 ```
 
 **Permissions** (`server/src/domain/permissions.ts`) are one capability map, the single source of truth, unit-tested
-as a matrix:
+as a matrix. The full target matrix is below; P2 adds only the rows its routes check (the plan's six), and each later
+phase adds its own:
 
-| Capability                                                                          | STAFF                       | MANAGER   | OWNER (brand-wide) | Platform ADMIN |
-| ----------------------------------------------------------------------------------- | --------------------------- | --------- | ------------------ | -------------- |
-| `orders.view`, `orders.transition`, `pickup.verify`                                 | ✓                           | ✓         | ✓                  | view only      |
-| `orders.viewCustomerPhone` (audited)                                                | ✓                           | ✓         | ✓                  | ✗              |
-| `stock.update`                                                                      | when `staff_can_edit_stock` | ✓         | ✓                  | ✗              |
-| `store.pause`                                                                       | ✓                           | ✓         | ✓                  | ✓ (support)    |
-| `listings.edit`, `deals.edit`, `hours.edit`, `policy.edit`, `settings.edit`         | ✗                           | ✓         | ✓                  | ✗              |
-| `team.manage`                                                                       | ✗                           | own store | ✓                  | ✓              |
-| `catalog.edit`, `payouts.view`, `analytics.brand`                                   | ✗                           | ✗         | ✓                  | view           |
-| `analytics.store`, `reviews.manage`, `audit.store`                                  | ✗                           | ✓         | ✓                  | ✓              |
-| `stores.onboard`, `stores.suspend`, `settings.site`, `flags.edit`, `refunds.manual` | ✗                           | ✗         | ✗                  | ✓              |
+| Capability                                                                          | STAFF                       | MANAGER   | OWNER (the brand's owner) | Platform ADMIN |
+| ----------------------------------------------------------------------------------- | --------------------------- | --------- | ------------------------- | -------------- |
+| `orders.view`, `orders.transition`, `pickup.verify`                                 | ✓                           | ✓         | ✓                         | view only      |
+| `orders.viewCustomerPhone` (audited)                                                | ✓                           | ✓         | ✓                         | ✗              |
+| `stock.update`                                                                      | when `staff_can_edit_stock` | ✓         | ✓                         | ✗              |
+| `store.pause`                                                                       | ✓                           | ✓         | ✓                         | ✓ (support)    |
+| `listings.edit`, `deals.edit`, `hours.edit`, `policy.edit`, `settings.edit`         | ✗                           | ✓         | ✓                         | ✗              |
+| `team.manage`                                                                       | ✗                           | own store | ✓                         | ✓              |
+| `catalog.edit`, `payouts.view`, `analytics.brand`                                   | ✗                           | ✗         | ✓                         | view           |
+| `analytics.store`, `reviews.manage`, `audit.store`                                  | ✗                           | ✓         | ✓                         | ✓              |
+| `stores.onboard`, `stores.suspend`, `settings.site`, `flags.edit`, `refunds.manual` | ✗                           | ✗         | ✗                         | ✓              |
 
-- **Middleware.** `requireAuth` loads the profile and the memberships in one query, into `req.user.memberships`.
-  `requireStore(capability)` reads `:storeId` and answers:
-  - a store that does not exist → 404;
-  - a caller with no capability there → 403 `FORBIDDEN` (store existence is public);
+- **Middleware.** `requireAuth` loads the profile, its memberships and the brands it owns in one query, into
+  `req.user`. `requireStore(capability)` reads `:storeId` and answers:
+  - a store that does not exist, or one that is not `ACTIVE` where the caller is not its member, its brand's owner or
+    an admin → 404;
+  - a visible store where the caller lacks the capability → 403 `FORBIDDEN`;
   - otherwise it sets `req.store`.
 
   Inside, resources of another store, such as an order id that belongs elsewhere, answer 404, never 403 (CLAUDE.md
@@ -1696,10 +1700,13 @@ as a matrix:
   files that own those tables.
 - **Where users land.** `homeFor(user)` sends platform admins to `/admin`, owners and managers to `/manage`, staff to
   `/staff`, and customers to `/`. With several stores, the page opens with a store switcher.
-- **Team API** (`team.manage`). `GET /api/stores/:storeId/members` and `POST .../invites` (email or phone, role).
-  `DELETE .../members/:membershipId`. Invites are accepted through `POST /api/me/invites/accept`, with the token in the body, never in a path that is
-  logged. Every change
-  is audited, and nobody can remove the brand's last owner.
+- **Team API** (`team.manageStaff`, `team.manageManagers`). `GET /api/stores/:storeId/members` and `POST .../invites`
+  (an email and a role). `DELETE .../members/:membershipId`. A manager manages staff; only the owner or an admin
+  manages managers. An invite yields a link the inviter shares, and accepting needs a signed-in account with that
+  email. Invites are accepted through `POST /api/me/invites/accept`, with the token in the body, never in a path that
+  is logged. Follow-up: verify email ownership at sign-up (invites are bound to an email that sign-up does not verify, so whoever holds the token and registers with that email can accept it). Every change is audited. Removing a membership never removes the brand's owner, because the owner is not a membership. A brand can still
+  have no owner: the one the P2 migration creates starts without one, and deleting the owner's profile clears
+  `owner_id` (`on delete set null`). Setting `brands.owner_id` is an admin action.
 
 ### P2.3 Store-scoped orders and settings
 
@@ -1853,12 +1860,12 @@ alter table public.stores
   - `/` → the store list (`StoreCard` gains a compact variant: photo, name, open state, ETA, rating), grouped by
     `area`. When only one store is active, it goes straight to today's single-store Home.
   - `/s/:storeSlug` → the store page, and `/s/:storeSlug/menu` → its menu.
-  - The legacy `/menu` redirects to the default store's menu.
+  - The legacy `/menu` redirects to the oldest store's menu (PR 16 removes the old routes).
   - `/staff` (with a store switcher) and `/staff/:storeSlug`.
 - **Data hooks.** `useStores()` and `useStoreMenu(storeRef)` are `useResource` with `persist: true`, keyed
   `stores` and `menu:<storeId>`. Bump `CACHE_PREFIX` to `fp_cache:v2:`, because the menu shape gains `rules`.
 - **Cart.** `cartStore` moves to v2 (`fp_cart`, version 2):
-  - It holds `{ storeId, storeSlug, storeName, lines }`, and `migrate` gives v1 carts the default store.
+  - It holds `{ storeId, storeSlug, storeName, lines }`, and `migrate` gives v1 carts the oldest store.
   - Adding an item from another store opens a sheet: "Start a new cart? Your cart has items from Campus Cafe"
     (Replace or Keep).
   - `Order Again` switches to the order's store, after the same confirmation.
@@ -1870,24 +1877,27 @@ alter table public.stores
 
 ### P2.7 Compatibility and contract
 
-Clients from before P2 keep working until the contract release:
+> **As built:** nothing is deployed before P8, so there is no contract release, no 14-day wait and no
+> `min_client_version` bump. The old routes serve the oldest store while P2 is built, and the plan's last PR (16)
+> removes them.
 
-| Legacy call                          | Serves until the contract release                                           |
+Until PR 16, the old calls keep working:
+
+| Legacy call                          | Serves until PR 16                                                          |
 | ------------------------------------ | --------------------------------------------------------------------------- |
-| `GET /api/store`, `GET /api/menu`    | the default store                                                           |
-| `POST /api/orders` without `storeId` | an order at the default store                                               |
-| `GET /api/orders` as `STAFF`         | orders of every store the caller is a member of                             |
+| `GET /api/store`, `GET /api/menu`    | the oldest store                                                            |
+| `POST /api/orders` without `storeId` | an order at the oldest store                                                |
+| `GET /api/orders` as `STAFF`         | orders of the stores the caller is a member of                              |
 | `PATCH /api/orders/:id/status`       | the membership-checked transition                                           |
 | `UserDto.role = 'STAFF'`             | still reported for migrated staff, so the V0 client routes them to `/staff` |
 
-**Contract release**, after the new client has run for at least one release and the access logs show no legacy calls
-for 14 days:
+**PR 16 (the contract):**
 
-- [ ] Raise `min_client_version` to the first client version that uses the new routes.
-- [ ] Remove the legacy endpoints (their removal is announced in API.md's deprecation list).
-- [ ] Migrate each `profiles.role = 'STAFF'` user to `CUSTOMER`, since the membership now holds their access.
-- [ ] Remove `requireStaff`.
-- [ ] Record a server minor bump with a CHANGELOG note. It is not a major, because no current client calls the
+- [x] Remove the legacy endpoints (announced in API.md as "Removed in P2").
+- [x] Migrate each `profiles.role = 'STAFF'` user to `CUSTOMER`, since the membership now holds their access. The
+      enum value stays, unused.
+- [x] Remove `requireStaff`.
+- [ ] Record a server minor bump with a CHANGELOG note. It is not a major, because no deployed client calls the
       removed routes.
 
 **Tests for P2**
@@ -1912,63 +1922,49 @@ edit an item once for every branch. **Items:** R1 (multi-branch catalog), R4.2.1
 **Depends on:** P2, and P8.3 for the staging bucket. **Size:** L. **Flag:** `modifiers`.
 
 > **How it is built:** [P3_CATALOG_AND_MEDIA.md](P3_CATALOG_AND_MEDIA.md), PR by PR on the `feat/P3` branch. P3.1
-> below (a live brand catalog with per-store overrides) was rejected in
-> [ADR-001](../docs/adr/001-brands-own-stores.md) as amended; the plan builds the brand template instead, and P2's
-> PR 00 rewrites P3.1. The plan also moves P3.6 behind P5.9 (an open decision there).
+> below is the brand template of [ADR-001](../docs/adr/001-brands-own-stores.md) as amended (a live catalog with
+> per-store overrides was rejected there). P3.2 to P3.5 below still say "brand" and `catalog_items` in places: the
+> plan's differences table wins. The plan also moves P3.6 behind P5.9 (an open decision there).
 
 ### P3.1 Catalog for multi-branch brands
 
-What the brand sells is separate from what a branch has today.
+A brand keeps a **template**, and a store is a copy of it ([ADR-001](../docs/adr/001-brands-own-stores.md) as
+amended). What the brand sells is set once in the template; each new branch starts from a copy and then changes
+anything freely, so there is no override layer.
 
 ```sql
-create table public.menu_categories (
-  id uuid primary key default gen_random_uuid(),
-  brand_id uuid not null references public.brands (id) on delete cascade,
-  name text not null check (char_length(name) between 1 and 40),
-  sort_order integer not null default 0,
-  unique (brand_id, name)
-);
+-- The template is a store row that can never be public (ADR-001).
+alter table public.stores
+  add column is_template boolean not null default false,
+  add constraint stores_template_is_draft check (not is_template or status = 'DRAFT');
+alter table public.brands
+  add column template_store_id uuid references public.stores (id);
 
-create type public.diet_marker as enum ('VEG', 'NON_VEG', 'EGG');   -- the customary Indian menu marker
-
-create table public.catalog_items (
-  id uuid primary key default gen_random_uuid(),
-  brand_id uuid not null references public.brands (id) on delete cascade,
-  category_id uuid not null references public.menu_categories (id),
-  name text not null check (char_length(name) between 2 and 80),
-  description text not null default '' check (char_length(description) <= 300),
-  base_price integer not null check (base_price >= 0),              -- whole rupees
-  image_url text,
-  image_variants jsonb,                                             -- { "400": url, "900": url } from P3.3
-  diet public.diet_marker,
-  prep_offset_minutes integer not null default 0 check (prep_offset_minutes between 0 and 120),   -- P6.1
-  requires_acceptance boolean not null default false,                                             -- P5.5
-  archived_at timestamptz,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-create index catalog_items_brand_category_idx on public.catalog_items (brand_id, category_id);
-
-alter table public.menu_items                 -- becomes the per-store listing; its id stays the cart/order id
-  add column catalog_item_id uuid references public.catalog_items (id),
-  add column price_override integer check (price_override >= 0),
-  add column archived_at timestamptz;          -- added in P1.5 if not already present
-create index menu_items_catalog_item_id_idx on public.menu_items (catalog_item_id);
+alter table public.menu_items
+  add column template_item_id uuid references public.menu_items (id) on delete set null,   -- lineage
+  add column diet public.diet_marker,                                 -- 'VEG' | 'NON_VEG' | 'EGG'
+  add column archived_at timestamptz,
+  add column image_variants jsonb,                                    -- { "400": url, "900": url }
+  alter column image_url drop not null;                               -- a new item may have no photo yet
+create index menu_items_template_item_id_idx on public.menu_items (template_item_id);
 ```
 
-- **The API shape does not change.** `MenuItemDto` keeps its fields and gains `diet` and `imageSrcSet`. The
-  serializer flattens the data: `name`, `description` and the photo come from the catalog item, and
-  `price = coalesce(price_override, base_price)`. Stock, availability, popularity and sort order come from the store
-  listing. Carts and orders keep using `menu_items.id`, so nothing on the client or in order history changes.
-- **Expand/contract.**
-  1. Add the tables and columns, and backfill one category per distinct `menu_items.category` and one catalog item
-     per menu item.
-  2. Move every reader (menu service, `place_order`) to the catalog join.
-  3. Keep writing both copies through the admin API for one release.
-  4. A later contract migration drops `menu_items.name`, `description`, `category`, `image_url` and `price`.
-- **Branch overrides.** A chain decides per branch: availability, stock, price, sort order and popularity. Adding a
-  catalog item offers "List at: all branches / pick branches".
-- **Analytics** gain a cross-branch key (`catalog_item_id`) for free.
+- **The template is a store that is never public.** The brand points at one `stores` row marked `is_template`, which
+  can never become `ACTIVE`. Its menu and settings live in the same tables as any store's, so there are no template
+  tables, and the owner edits it with the same screens. Only the brand's owner reaches it; it has no members, and an
+  invite to it is refused.
+- **Copy at creation, push on demand.** A new store is created as a copy of the template's menu and
+  `store_settings`. A later template edit reaches only stores created after it, unless the owner pushes it to chosen
+  stores; a push overwrites the pushed fields in those copies and is audited (`template.push`, owner only).
+- **Lineage.** Each copied item keeps `template_item_id`, so analytics compare the same dish across stores after a
+  rename or a price change. `category` stays text on the item.
+- **The API shape does not change.** `MenuItemDto` keeps its fields and gains `diet` and `imageSrcSet`. Carts and
+  orders keep using `menu_items.id`. Money is paise in the database, rupees at the API (ADR-004 as amended).
+- **Today's café** becomes a brand with one store: its menu is both the template and the store's copy (the
+  migration's backfill).
+- **Differences from this section's earlier text** (live `catalog_items`, `menu_categories`, `price_override`,
+  `base_price`, `prep_offset_minutes`, `requires_acceptance`) are listed with their reasons in the
+  [P3 plan](P3_CATALOG_AND_MEDIA.md#where-p3-differs-from-the-roadmap).
 
 ### P3.2 Modifiers
 
@@ -2500,7 +2496,8 @@ interface VendorSplits {
   The port is the common shape of every finalist: a server-created order, a checkout session the client opens, status
   looked up by the server, signed webhooks, and refunds carrying our own refund id.
 
-- **Money units.** `utils/money.ts` converts rupees ↔ paise. The adapter alone converts paise to the provider's unit:
+- **Money units.** Every amount is paise, as stored (ADR-004 as amended); `utils/money.ts` converts to the API's
+  rupees. The adapter alone converts paise to the provider's unit:
   Cashfree and Paytm take decimal rupees, and Razorpay takes paise.
 - **HTTP.**
   - `fetch` with a 10 s timeout. Only idempotent reads (status, refund lookup) are retried, on 5xx or network
@@ -4586,10 +4583,10 @@ Each value gets the destination that the P0.4 policy gives it.
 
 | Value today                                                             | Where                                                       | Destination                                                                                                                  | Step |
 | ----------------------------------------------------------------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ---- |
-| `MAX_QUANTITY_PER_ITEM = 10`                                            | `server/src/schemas/order.schema.ts`                        | store setting `max_quantity_per_item`, served in `MenuResponse.rules`                                                        | P2.3 |
-| `MAX_LINE_QUANTITY = 10` (mirror)                                       | `client/src/features/cart/cartRules.ts`                     | read from `MenuResponse.rules`, with a fallback file                                                                         | P2.3 |
+| `MAX_QUANTITY_PER_ITEM = 10`                                            | `server/src/schemas/order.schema.ts`                        | store setting `max_quantity_per_item`, served in `MenuResponse.rules` (done, P2 PR 05)                                       | P2.3 |
+| `MAX_LINE_QUANTITY = 10` (mirror)                                       | `client/src/features/cart/cartRules.ts`                     | read from `MenuResponse.rules`, with a fallback file (done, P2 PR 05c)                                                       | P2.3 |
 | `MAX_ITEM_LINES = 30`                                                   | `server/src/schemas/order.schema.ts`                        | site setting `max_lines_per_order`; zod keeps a sanity bound                                                                 | P0.4 |
-| `LOW_STOCK_MAX = 5`                                                     | `client/src/features/cart/cartRules.ts`                     | store setting `low_stock_threshold`, via `rules`                                                                             | P2.3 |
+| `LOW_STOCK_MAX = 5`                                                     | `client/src/features/cart/cartRules.ts`                     | store setting `low_stock_threshold`, via `rules` (done, P2 PR 05c)                                                           | P2.3 |
 | `POLL_MS = 4000`                                                        | `client/src/features/orders/useOrder.ts`                    | site setting `order_poll_ms`, read through `/api/config.polling` (`pollAfterMs` deferred to P9.1)                            | P0.4 |
 | `pollMs = 8000` default                                                 | `client/src/features/orders/useOrders.ts`                   | `orders_poll_ms`, read through `/api/config.polling`                                                                         | P0.4 |
 | `STAFF_POLL_MS = 4000`                                                  | `client/src/pages/StaffDashboard.tsx`                       | `staff_board_poll_ms`, read through `/api/config.polling`                                                                    | P0.4 |
@@ -4619,7 +4616,6 @@ are proposals, and the bounds become check constraints. The full registry, with 
 | Key                                                                                     | Default               | Bounds                | Step        |
 | --------------------------------------------------------------------------------------- | --------------------- | --------------------- | ----------- |
 | `customer_order_history_limit` (exists)                                                 | 20                    | 1–200                 | –           |
-| `default_store_id`                                                                      | seeded                | –                     | P2.1        |
 | `max_lines_per_order`                                                                   | 30                    | 1–100                 | P0.4        |
 | `order_poll_ms` / `orders_poll_ms` / `staff_board_poll_ms`                              | 4000 / 8000 / 4000    | 2000–60000            | P0.4        |
 | `session_idle_days` → env `SESSION_IDLE_DAYS` (deployment config, not a site setting)   | 7                     | 1–90                  | P0.4        |
@@ -4713,7 +4709,7 @@ message is safe to show.
 
 ### A4 Endpoint inventory
 
-Everything new or changed, with the step that adds it. Legacy endpoints stay until the P2.7 contract release.
+Everything new or changed, with the step that adds it. Legacy endpoints stay until the plan's PR 16 (P2.7).
 
 | Area            | Endpoints                                                                                                                                                                                                                                                                                                                            | Step             |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------- |
@@ -4741,34 +4737,34 @@ Everything new or changed, with the step that adds it. Legacy endpoints stay unt
 
 Emitted with `emit_event` in the same transaction as the change (P1.2). The consumers are queue subscriptions.
 
-| Event                                                     | Emitted by                                  | Consumers                                                     |
-| --------------------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------- |
-| `order.created`                                           | `create_checkout`                           | analytics (checkout started)                                  |
-| `order.abandoned`                                         | `expire_holds`, `abandon_checkout`          | analytics                                                     |
-| `order.paid`                                              | `confirm_payment`                           | payments (vendor transfer or hold), analytics                 |
-| `order.awaiting_acceptance`                               | `confirm_payment`                           | notifications (staff)                                         |
-| `order.accepted` / `order.placed`                         | `accept_order` / `confirm_payment`          | notifications, ETA refresh                                    |
-| `order.rejected`                                          | `reject_order`, `expire_acceptance`         | refunds, notifications, analytics                             |
-| `order.preparing` / `order.ready`                         | the transition functions                    | notifications (ready), ETA refresh                            |
-| `order.sla_breached`                                      | `detect_sla_breaches`                       | notifications (customer and staff), analytics                 |
-| `order.collected`                                         | `collect_order`                             | payout release, analytics, recommendations, the rating prompt |
-| `order.expired`                                           | `expire_pickup_windows`                     | payout release, surplus lots, notifications, analytics        |
-| `order.cancelled`                                         | `cancel_order`                              | refunds, notifications, analytics                             |
-| `payment.webhook_received`                                | the webhook route                           | payments (per-type handler)                                   |
-| `payment.captured` / `payment.failed`                     | payment handlers                            | analytics                                                     |
-| `refund.requested` / `refund.processed` / `refund.failed` | `request_refund`, refund handlers           | payments (execute, retry), notifications, analytics, ledger   |
-| `payout.released` / `payout.reversed`                     | payout handlers                             | analytics, the ledger                                         |
-| `menu.changed`                                            | catalog, listing and stock functions        | cache invalidation fan-out, recommendations                   |
-| `stock.low`                                               | stock functions (at or below the threshold) | notifications (staff)                                         |
-| `store.paused` / `store.resumed`                          | pause functions, sweep                      | notifications (staff), analytics                              |
-| `media.uploaded` / `media.processed`                      | media endpoints, handler                    | media handler, cache invalidation                             |
-| `review.submitted`                                        | `submit_review`                             | rating aggregates, moderation                                 |
-| `recon.exception`                                         | the reconciler                              | notifications (admin), alarms                                 |
-| `tab.opened` / `tab.member_joined`                        | `open_tab` / `join_tab`                     | analytics                                                     |
-| `tab.bill_requested`                                      | the bill-request endpoint                   | notifications (staff)                                         |
-| `order.served`                                            | `serve_order`                               | analytics, the rating prompt                                  |
-| `bill.paid` / `tab.settled`                               | the bill payment functions                  | payouts (bills paid in the app), notifications, analytics     |
-| `tab.voided`                                              | `void_tab`                                  | notifications (host), analytics                               |
+| Event                                                     | Emitted by                                    | Consumers                                                     |
+| --------------------------------------------------------- | --------------------------------------------- | ------------------------------------------------------------- |
+| `order.created`                                           | `create_checkout`                             | analytics (checkout started)                                  |
+| `order.abandoned`                                         | `expire_holds`, `abandon_checkout`            | analytics                                                     |
+| `order.paid`                                              | `confirm_payment`                             | payments (vendor transfer or hold), analytics                 |
+| `order.awaiting_acceptance`                               | `confirm_payment`                             | notifications (staff)                                         |
+| `order.accepted` / `order.placed`                         | `accept_order` / `confirm_payment`            | notifications, ETA refresh                                    |
+| `order.rejected`                                          | `reject_order`, `expire_acceptance`           | refunds, notifications, analytics                             |
+| `order.preparing` / `order.ready`                         | the transition functions                      | notifications (ready), ETA refresh                            |
+| `order.sla_breached`                                      | `detect_sla_breaches`                         | notifications (customer and staff), analytics                 |
+| `order.collected`                                         | `collect_order`                               | payout release, analytics, recommendations, the rating prompt |
+| `order.expired`                                           | `expire_pickup_windows`                       | payout release, surplus lots, notifications, analytics        |
+| `order.cancelled`                                         | `cancel_order`                                | refunds, notifications, analytics                             |
+| `payment.webhook_received`                                | the webhook route                             | payments (per-type handler)                                   |
+| `payment.captured` / `payment.failed`                     | payment handlers                              | analytics                                                     |
+| `refund.requested` / `refund.processed` / `refund.failed` | `request_refund`, refund handlers             | payments (execute, retry), notifications, analytics, ledger   |
+| `payout.released` / `payout.reversed`                     | payout handlers                               | analytics, the ledger                                         |
+| `menu.changed`                                            | catalog, listing and stock functions          | cache invalidation fan-out, recommendations                   |
+| `stock.low`                                               | stock functions (at or below the threshold)   | notifications (staff)                                         |
+| `store.paused` / `store.resumed`                          | `pause_store`, `resume_store` (a sweep later) | notifications (staff), analytics                              |
+| `media.uploaded` / `media.processed`                      | media endpoints, handler                      | media handler, cache invalidation                             |
+| `review.submitted`                                        | `submit_review`                               | rating aggregates, moderation                                 |
+| `recon.exception`                                         | the reconciler                                | notifications (admin), alarms                                 |
+| `tab.opened` / `tab.member_joined`                        | `open_tab` / `join_tab`                       | analytics                                                     |
+| `tab.bill_requested`                                      | the bill-request endpoint                     | notifications (staff)                                         |
+| `order.served`                                            | `serve_order`                                 | analytics, the rating prompt                                  |
+| `bill.paid` / `tab.settled`                               | the bill payment functions                    | payouts (bills paid in the app), notifications, analytics     |
+| `tab.voided`                                              | `void_tab`                                    | notifications (host), analytics                               |
 
 ### A6 Glossary
 

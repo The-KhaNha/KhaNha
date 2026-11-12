@@ -3,6 +3,8 @@ export type Role = 'CUSTOMER' | 'STAFF' | 'ADMIN';
 export type OrderStatus = 'PLACED' | 'PREPARING' | 'READY' | 'COLLECTED' | 'CANCELLED';
 export type PaymentStatus = 'PENDING' | 'PAID';
 export type ActorType = 'USER' | 'WORKER' | 'RECONCILER' | 'WEBHOOK' | 'SCHEDULER' | 'SYSTEM';
+/** A role at one store (P2.2); the brand's owner is not a membership. */
+export type StoreRole = 'MANAGER' | 'STAFF';
 
 export interface User {
   id: string;
@@ -11,17 +13,73 @@ export interface User {
   phone: string | null;
   role: Role;
   createdAt: string; // ISO
+  /** The stores this account works at. */
+  memberships: { storeId: string; storeSlug: string; storeName: string; role: StoreRole }[];
+  /** The brands this account owns: OWNER of every store of each. */
+  ownedBrands: { id: string; name: string; slug: string }[];
 }
+
+/** What a customer sees of a store's hours. `isOpen` is true for OPEN and CLOSING_SOON. */
+export type OpenStateName = 'OPEN' | 'CLOSING_SOON' | 'CLOSED' | 'PAUSED' | 'UNAVAILABLE';
 
 export interface Store {
   id: string;
+  slug: string;
   name: string;
+  brand: { id: string; name: string; slug: string };
+  area: string | null;
+  address: string | null;
   tagline: string;
   description: string;
   imageUrl: string | null;
   isOpen: boolean;
+  openState: OpenStateName;
+  /** The next change of state: the closing time while open, the next opening while closed; null when unknown. */
+  nextChangeAt: string | null;
+  /** Ready to show: "Closes at 9:00 PM", "Opens tomorrow at 8:00 AM", "Closed for Diwali". */
+  openLabel: string | null;
   prepTimeMinMinutes: number;
   prepTimeMaxMinutes: number;
+}
+
+export type StoreSummary = Pick<
+  Store,
+  | 'id'
+  | 'slug'
+  | 'name'
+  | 'tagline'
+  | 'imageUrl'
+  | 'area'
+  | 'brand'
+  | 'isOpen'
+  | 'openState'
+  | 'nextChangeAt'
+  | 'openLabel'
+>;
+
+/** One weekly interval of GET /api/stores/:storeRef/hours; `HH:MM`, `closesAt` before `opensAt` runs past midnight. */
+export interface StoreHours {
+  /** ISO weekday: 1 = Monday ... 7 = Sunday. */
+  dayOfWeek: number;
+  opensAt: string;
+  closesAt: string;
+}
+
+export interface ScheduleException {
+  id: string;
+  startsOn: string;
+  endsOn: string;
+  kind: 'CLOSED' | 'SPECIAL_HOURS';
+  opensAt: string | null;
+  closesAt: string | null;
+  label: string;
+}
+
+/** GET /api/stores/:storeRef/hours: the week, and the exceptions from today (store time) on. */
+export interface StoreScheduleResponse {
+  timezone: string;
+  hours: StoreHours[];
+  exceptions: ScheduleException[];
 }
 
 export interface MenuItem {
@@ -46,8 +104,8 @@ export interface MenuCategory {
 
 export interface MenuResponse {
   /**
-   * Cart rules from the server. The cart still uses its own copies in features/cart/cartRules.ts until P2.3 makes them
-   * per store; optional because a menu persisted by an older build lacks it.
+   * The store's cart limits, handed to the cart by useMenu; optional because a menu persisted by an older build lacks
+   * it (the cart then keeps config/fallbacks.json `storeDefaults`).
    */
   rules?: { maxQuantityPerItem: number; lowStockThreshold: number };
   store: Store;
@@ -78,7 +136,7 @@ export interface Order {
   estimatedReadyAt: string;
   createdAt: string;
   updatedAt: string;
-  store: { id: string; name: string };
+  store: { id: string; name: string; slug: string };
   items: OrderItem[];
 }
 
@@ -94,7 +152,11 @@ export interface ApiErrorDetails {
   orderId?: string;
   orderNumber?: number;
   /** Shapes added since P1 carry a `kind`; the ones above predate it and are told apart by `code`. */
-  kind?: 'rateLimit';
+  kind?: 'rateLimit' | 'storeClosed' | 'storePaused';
+  /** STORE_CLOSED: when the store next opens, when known. */
+  nextChangeAt?: string;
+  /** STORE_PAUSED: when the pause ends, or null when it lasts until someone resumes. */
+  pausedUntil?: string | null;
   /** RATE_LIMITED: seconds until the window resets, the same number as the Retry-After header. */
   retryAfterSeconds?: number;
 }
@@ -103,10 +165,37 @@ export interface ApiErrorEnvelope {
   error: { code: string; message: string; details?: ApiErrorDetails };
 }
 
+/** A store's own limits (GET/PATCH /api/stores/:storeId/settings), edited by its manager or owner. */
+/** One person on a store's team (GET /api/stores/:storeId/members). */
+export interface Member {
+  id: string;
+  userId: string;
+  name: string;
+  email: string;
+  role: StoreRole;
+  joinedAt: string;
+}
+
+/** An open invite; one past `expiresAt` can no longer be accepted. */
+export interface Invite {
+  id: string;
+  email: string;
+  role: StoreRole;
+  expiresAt: string;
+  createdAt: string;
+}
+
+export interface StoreSettings {
+  maxQuantityPerItem: number;
+  lowStockThreshold: number;
+  staffOrderListLimit: number;
+  /** Minutes before closing at which the store stops taking orders; 0 = until it closes. */
+  lastOrderMinutesBeforeClose: number;
+}
+
 /** Site-wide limits edited on the admin dashboard. */
 export interface SiteSettings {
   customerOrderHistoryLimit: number;
-  staffOrderListLimit: number;
   /** Most lines one order may have. */
   maxLinesPerOrder: number;
   /** Poll intervals in ms: one order's page, the customer's order list, the staff board. */
@@ -121,6 +210,8 @@ export interface SiteSettings {
 }
 
 export interface CreateOrderInput {
+  /** The store the cart belongs to; without it the API picks the one active store. */
+  storeId?: string;
   /** `expectedUnitPrice`: the rupee price the cart shows; a different current price is 409 PRICE_CHANGED. */
   items: { menuItemId: string; quantity: number; expectedUnitPrice?: number }[];
   customerName: string;

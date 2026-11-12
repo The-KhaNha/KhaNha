@@ -15,7 +15,6 @@ const pollMs = (name: string) => integer(name, LIMITS.pollMs.min, LIMITS.pollMs.
 export const updateSettingsSchema = z
   .object({
     customerOrderHistoryLimit: limit('Customer order history limit', 200).optional(),
-    staffOrderListLimit: limit('Staff order list limit', 500).optional(),
     maxLinesPerOrder: limit('Items per order', 100).optional(),
     orderPollMs: pollMs('Order page refresh').optional(),
     ordersPollMs: pollMs('Order list refresh').optional(),
@@ -43,6 +42,13 @@ export const AUDIT_ENTITY_TYPES = [
   'profile',
   'menu_item',
   'feature_flag',
+  'brand',
+  'store',
+  'membership',
+  'store_settings',
+  'store_hours',
+  'schedule_exception',
+  'invite',
 ] as const;
 
 const timestamp = (name: string) =>

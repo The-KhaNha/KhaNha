@@ -1,16 +1,9 @@
-import { MAX_QUANTITY_PER_ITEM } from '../schemas/order.schema';
 import type { MenuCategoryDto, MenuItemDto, MenuResponse } from '../types/api';
-import { cached, PUBLIC_READ_TTL_MS } from '../utils/cache';
+import { cached, invalidate, PUBLIC_READ_TTL_MS } from '../utils/cache';
 import { logger } from '../utils/logger';
 import { supabaseAdmin } from '../utils/supabase';
-import { toMenuItemDto, toStoreDto } from '../utils/serializers';
-import { getStore } from './store.service';
-
-/**
- * Cart rules the client applies (per-item cap, the "only N left" threshold). Server constants for now; per store in
- * P2.3, when the client stops mirroring them (cartRules.ts).
- */
-const MENU_RULES = { maxQuantityPerItem: MAX_QUANTITY_PER_ITEM, lowStockThreshold: 5 } as const;
+import { toMenuItemDto, toStoreDto, type StoreWithBrand } from '../utils/serializers';
+import { getOpenFields } from './schedule.service';
 
 /**
  * Most items one menu response carries (docs/CONFIGURATION.md, platform constant). A campus café lists tens; the cap
@@ -19,16 +12,25 @@ const MENU_RULES = { maxQuantityPerItem: MAX_QUANTITY_PER_ITEM, lowStockThreshol
  */
 export const MENU_ITEMS_MAX = 500;
 
-/**
- * Full menu including unavailable items (the client greys them out). Cached for PUBLIC_READ_TTL_MS; order.service
- * drops the cache whenever stock changes through this API (an order placed or cancelled).
- */
-export function getMenu(): Promise<MenuResponse> {
-  return cached('menu', PUBLIC_READ_TTL_MS, loadMenu);
+/** The menu of one ACTIVE store (the caller resolved it through getActiveStore), cached under `menu:<storeId>`. */
+export async function getStoreMenu(store: StoreWithBrand): Promise<MenuResponse> {
+  return withOpenFields(
+    await cached(`menu:${store.id}`, PUBLIC_READ_TTL_MS, () => loadMenu(store)),
+    store,
+  );
 }
 
-async function loadMenu(): Promise<MenuResponse> {
-  const store = await getStore();
+/** The open state changes with the clock, not with the menu: computed on every read, never cached with the menu. */
+async function withOpenFields(menu: MenuResponse, store: StoreWithBrand): Promise<MenuResponse> {
+  return { ...menu, store: { ...menu.store, ...(await getOpenFields(store)) } };
+}
+
+/** Drops the store's cached menu: stock changed through this API (an order placed or cancelled). */
+export function invalidateMenus(storeId: string): void {
+  invalidate(`menu:${storeId}`);
+}
+
+async function loadMenu(store: StoreWithBrand): Promise<MenuResponse> {
   // id breaks sort_order ties (an import leaves every row at the default 0), so the cut is the same on every load.
   const { data: rows, count } = await supabaseAdmin
     .from('menu_items')
@@ -46,8 +48,13 @@ async function loadMenu(): Promise<MenuResponse> {
   const items = rows.map(toMenuItemDto);
 
   return {
-    rules: MENU_RULES,
-    store: toStoreDto(store),
+    // The cart rules the client applies: the store's own cap and "only N left" threshold, off the store row (its
+    // cache keys are dropped by updateStoreSettings with the menu's).
+    rules: {
+      maxQuantityPerItem: store.max_quantity_per_item,
+      lowStockThreshold: store.low_stock_threshold,
+    },
+    store: toStoreDto(store, await getOpenFields(store)),
     popular: items.filter((item) => item.isPopular),
     categories: groupByCategory(items),
   };

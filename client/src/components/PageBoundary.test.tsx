@@ -105,20 +105,20 @@ describe('PageBoundary', () => {
     function Crash({ message }: { message: string }): never {
       throw new TypeError(message);
     }
-    localStorage.setItem('fp_cache:v1:menu', '{"categories":null}');
+    localStorage.setItem('fp_cache:v2:menu', '{"categories":null}');
     const chunk = render(
       <PageBoundary>
         <Crash message="Failed to fetch dynamically imported module: /assets/page.js" />
       </PageBoundary>,
     );
-    expect(localStorage.getItem('fp_cache:v1:menu')).not.toBeNull();
+    expect(localStorage.getItem('fp_cache:v2:menu')).not.toBeNull();
     chunk.unmount();
     render(
       <PageBoundary>
         <Crash message="Cannot read properties of null (reading 'map')" />
       </PageBoundary>,
     );
-    expect(localStorage.getItem('fp_cache:v1:menu')).toBeNull();
+    expect(localStorage.getItem('fp_cache:v2:menu')).toBeNull();
     localStorage.clear();
   });
 

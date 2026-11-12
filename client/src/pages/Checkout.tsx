@@ -25,7 +25,14 @@ import {
   orderItems,
   problemLabel,
 } from '../features/cart/cartRules';
-import { selectLines, selectTotal, useCartStore, type CartLine } from '../features/cart/cartStore';
+import {
+  selectLimits,
+  selectLines,
+  selectStoreName,
+  selectTotal,
+  useCartStore,
+  type CartLine,
+} from '../features/cart/cartStore';
 import { useCheckoutDraftStore } from '../features/checkout/checkoutDraftStore';
 import { useMenu } from '../features/menu/useMenu';
 import { ApiError } from '../services/api';
@@ -48,11 +55,14 @@ interface Receipt {
 
 export function CheckoutPage() {
   const lines = useCartStore(selectLines);
+  const limits = useCartStore(selectLimits);
   const total = useCartStore(selectTotal);
   const clear = useCartStore((s) => s.clear);
   const fix = useCartStore((s) => s.fix);
   const setAvailability = useCartStore((s) => s.setAvailability);
   const syncPrices = useCartStore((s) => s.syncPrices);
+  const storeId = useCartStore((s) => s.storeId);
+  const storeName = useCartStore(selectStoreName);
   const user = useAuthStore(selectUser);
   const navigate = useNavigate();
   // Refreshes each line's stock limit from the live menu on arrival. Prices are left alone, except on the load a
@@ -100,9 +110,11 @@ export function CheckoutPage() {
   const shownTotal = receipt?.total ?? total;
 
   // Lines the shop can't fulfil as they stand: flagged by the menu refresh or by the server's refusal.
-  const flagged = paid ? [] : lines.filter((line) => lineProblem(line) !== null);
+  const flagged = paid ? [] : lines.filter((line) => lineProblem(line, limits) !== null);
   const blocked = flagged.length > 0;
-  const payDisabled = paid || blocked || repricing;
+  // A paused store takes no orders: say why before Pay, not after. Opening hours are left to the server's answer.
+  const paused = !paid && menu?.store.openState === 'PAUSED' ? menu.store : null;
+  const payDisabled = paid || blocked || repricing || paused !== null;
   // An error about one specific line; anything else gets the plain retry block.
   const itemError = error && isItemErrorCode(error.code) ? error : null;
 
@@ -140,6 +152,7 @@ export function CheckoutPage() {
         // The price on screen goes with each line (orderItems): a price moved since it was added is refused
         // (PRICE_CHANGED) instead of charged, and the cart reprices below.
         items: orderItems(lines),
+        ...(storeId ? { storeId } : {}),
         customerName: name.trim(),
         ...(trimmedPhone ? { customerPhone: trimmedPhone } : {}),
         ...(trimmedNote ? { note: trimmedNote } : {}),
@@ -163,6 +176,8 @@ export function CheckoutPage() {
       // The key already placed an order for a different cart (a Pay whose answer was lost, then the cart changed):
       // that order stands, and the next Pay is a new attempt with a new key for what is in the cart now.
       if (apiError.code === 'IDEMPOTENCY_KEY_REUSED') draft.dropKey();
+      // Closed or paused since the menu was read: the cart stays; the refreshed menu shows the state.
+      if (apiError.code === 'STORE_CLOSED' || apiError.code === 'STORE_PAUSED') reloadMenu();
       if (apiError.code === 'PRICE_CHANGED') {
         repriceOnLoad.current = true;
         setRepricing(true);
@@ -205,7 +220,9 @@ export function CheckoutPage() {
           <ErrorState
             compact
             className="mb-4"
-            title={itemError ? itemErrorMessage(itemError, lines) : describeProblems(flagged)}
+            title={
+              itemError ? itemErrorMessage(itemError, lines) : describeProblems(flagged, limits)
+            }
             message={blocked ? "We've highlighted it below." : 'Go back to your cart to change it.'}
             actions={
               <>
@@ -224,10 +241,12 @@ export function CheckoutPage() {
       )}
 
       <Card padding="lg">
-        <h2 className="eyebrow text-muted">Your order</h2>
+        <h2 className="eyebrow wrap-anywhere text-muted">
+          Your order{storeName ? ` from ${storeName}` : ''}
+        </h2>
         <ul className="mt-3 space-y-2.5 text-body font-medium">
           {shownLines.map((line) => {
-            const problem = paid ? null : lineProblem(line);
+            const problem = paid ? null : lineProblem(line, limits);
             return (
               <li
                 key={line.menuItemId}
@@ -299,6 +318,12 @@ export function CheckoutPage() {
           error={errors.note}
         />
       </Card>
+
+      {paused && (
+        <p role="status" className="mt-4 rounded-2xl bg-gold-50 px-4 py-3 text-sm text-gold-700">
+          <b>{paused.name} isn't taking orders right now.</b> {paused.openLabel}
+        </p>
+      )}
 
       {error && !itemError && error.code === 'IDEMPOTENCY_KEY_REUSED' && (
         <div ref={errorRef} tabIndex={-1} className="mt-4 focus:outline-none">
@@ -381,7 +406,8 @@ export function CheckoutPage() {
           >
             <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={2.5} aria-hidden />
             <span>
-              {describeProblems(flagged)} Fix {flagged.length === 1 ? 'it' : 'them'} above to pay.
+              {describeProblems(flagged, limits)} Fix {flagged.length === 1 ? 'it' : 'them'} above
+              to pay.
             </span>
           </p>
         ) : (

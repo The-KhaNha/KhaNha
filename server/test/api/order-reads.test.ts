@@ -3,7 +3,7 @@ import request from 'supertest';
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import { env } from '../../src/utils/env';
 import { supabaseAdmin } from '../../src/utils/supabase';
-import { createTestUser, deleteTestUser, type TestUser } from '../setup/helpers';
+import { createTestUser, deleteTestUser, type TestUser, oldestStoreId } from '../setup/helpers';
 import { resolveTestTarget } from '../setup/target';
 
 // createOrder's reads before place_order (the key's earlier order, the store, the customer's name, the items' prices)
@@ -38,6 +38,7 @@ beforeAll(async () => {
   const { data: item } = await supabaseAdmin
     .from('menu_items')
     .select('id')
+    .eq('store_id', await oldestStoreId())
     .is('stock_quantity', null)
     .eq('is_available', true)
     .limit(1)
@@ -60,7 +61,11 @@ it('placing an order reads the key, store, name and prices together, not one aft
   const res = await request(app)
     .post('/api/orders')
     .set('Authorization', `Bearer ${customer.token}`)
-    .send({ items: [{ menuItemId, quantity: 1 }], idempotencyKey: randomUUID() });
+    .send({
+      storeId: await oldestStoreId(),
+      items: [{ menuItemId, quantity: 1 }],
+      idempotencyKey: randomUUID(),
+    });
   counting = false;
 
   expect(res.status).toBe(201);

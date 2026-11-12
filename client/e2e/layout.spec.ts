@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import budget from '../perf-budget.json' with { type: 'json' };
-import type { OrderStatus, Role } from '../src/types/api';
+import type { OrderStatus, Role, User } from '../src/types/api';
 import { mockApi, seedCart, signIn, store } from './fixtures';
 
 // Every route fits a 320px screen and 200% text with 44px controls, and loading or a late web font moves nothing.
@@ -133,9 +133,15 @@ async function textCutOff(page: Page): Promise<string[]> {
   });
 }
 
-const LAYOUT_ROUTES: { path: string; role?: Role; status?: OrderStatus }[] = [
-  { path: '/' },
-  { path: '/menu' },
+const LAYOUT_ROUTES: {
+  path: string;
+  role?: Role;
+  status?: OrderStatus;
+  account?: Partial<User>;
+}[] = [
+  // The store's page: with the fixtures' one store, `/` itself redirects here.
+  { path: '/s/cafe' },
+  { path: '/s/cafe/menu' },
   { path: '/cart' },
   { path: '/login' },
   { path: '/register' },
@@ -148,7 +154,20 @@ const LAYOUT_ROUTES: { path: string; role?: Role; status?: OrderStatus }[] = [
     role: 'CUSTOMER' as const,
     status,
   })),
-  { path: '/staff', role: 'STAFF' },
+  // The board itself: with the fixtures' one membership, `/staff` redirects here.
+  { path: '/staff/cafe', role: 'STAFF' },
+  // An account on no store's team: the switcher's empty state.
+  { path: '/staff', role: 'CUSTOMER' },
+  // The hours editor of a manager, with a day that has hours (its Add and Copy row).
+  {
+    path: '/manage/cafe/hours',
+    role: 'CUSTOMER',
+    account: {
+      memberships: [
+        { storeId: store.id, storeSlug: store.slug, storeName: store.name, role: 'MANAGER' },
+      ],
+    },
+  },
 ];
 
 /**
@@ -192,11 +211,11 @@ async function fitsScreen(page: Page, when: string): Promise<void> {
   ).toBeLessThanOrEqual(page.viewportSize()?.width ?? 0);
 }
 
-for (const { path, role, status } of LAYOUT_ROUTES) {
+for (const { path, role, status, account } of LAYOUT_ROUTES) {
   test(`${path}${role ? ` (${role}${status ? `, ${status}` : ''})` : ''}: every control is at least 44px, and it reflows at 320px and at 200% text`, async ({
     page,
   }) => {
-    if (role) await signIn(page, role, status);
+    if (role) await signIn(page, role, status, account);
     await seedCart(page);
     await page.goto(path);
     await expect(page).toHaveURL(new RegExp(`${path}$`));
@@ -226,10 +245,10 @@ for (const { name, width, height } of [
   { name: 'a phone on its side', width: 640, height: 360 },
   { name: 'a narrow landscape window', width: 500, height: 300 },
 ]) {
-  test(`/menu on ${name} at 200% text: an item can still be added`, async ({ page }) => {
+  test(`/s/cafe/menu on ${name} at 200% text: an item can still be added`, async ({ page }) => {
     await seedCart(page);
     await page.setViewportSize({ width, height });
-    await page.goto('/menu');
+    await page.goto('/s/cafe/menu');
     await expect(page.getByRole('heading', { name: store.name })).toBeVisible();
     await page.evaluate(() => {
       document.documentElement.style.fontSize = '200%';
@@ -292,10 +311,10 @@ test('a phone on its side with small text keeps 44px bottom nav tabs', async ({ 
 // are metric-matched, so the swap must not move anything (the CLS budget in perf-budget.json, CLAUDE.md §2b). Chromium only: WebKit has no
 // layout-shift entries.
 for (const { path, role } of [
-  { path: '/' },
-  { path: '/menu' },
+  { path: '/s/cafe' },
+  { path: '/s/cafe/menu' },
   { path: '/orders/o1', role: 'CUSTOMER' as const },
-  { path: '/staff', role: 'STAFF' as const },
+  { path: '/staff/cafe', role: 'STAFF' as const },
 ]) {
   test(`${path}: a late web font does not shift the layout`, async ({ page, browserName }) => {
     test.skip(browserName !== 'chromium', 'layout-shift entries are Chromium-only');
@@ -400,14 +419,14 @@ for (const { path, role, width } of [
   { path: '/login', width: 360 },
   { path: '/register', width: 360 },
   // Whether the header's clock cluster fits beside the wordmark depends on the width: check the phone range.
-  ...[360, 390, 412].map((width) => ({ path: '/staff', role: 'STAFF' as const, width })),
+  ...[360, 390, 412].map((width) => ({ path: '/staff/cafe', role: 'STAFF' as const, width })),
 ]) {
   test(`${path} at ${width}px: loading the page moves nothing`, async ({ page, browserName }) => {
     test.skip(browserName !== 'chromium', 'layout-shift entries are Chromium-only');
     await page.setViewportSize({ width, height: 640 });
     if (role) {
       await signIn(page, role);
-      await page.route('**/api/orders**', async (route) => {
+      await page.route(/\/api\/(stores\/s1\/)?orders/, async (route) => {
         await new Promise((resolve) => setTimeout(resolve, 800));
         await route.fallback();
       });

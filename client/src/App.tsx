@@ -6,7 +6,9 @@ import { PageBoundary } from './components/PageBoundary';
 import { TopBar } from './components/TopBar';
 import { useAuthStore } from './features/auth/authStore';
 import { RequireAuth } from './features/auth/RequireAuth';
+import { RequireMembership } from './features/auth/RequireMembership';
 import { RequireRole } from './features/auth/RequireRole';
+import { MenuRedirect } from './features/stores/MenuRedirect';
 import { CartBar } from './features/cart/CartBar';
 import { selectCount, useCartStore } from './features/cart/cartStore';
 import { OutdatedBanner } from './features/version/OutdatedBanner';
@@ -16,6 +18,7 @@ import { setSamplePercent } from './lib/errorReporter';
 import { useConfig } from './features/config/useConfig';
 import { CartPage } from './pages/Cart';
 import { HomePage } from './pages/Home';
+import { StoreListPage } from './pages/StoreList';
 import { MenuPage } from './pages/Menu';
 import { NotFoundPage } from './pages/NotFound';
 import { OrderPage } from './pages/Order';
@@ -34,8 +37,16 @@ const RegisterPage = lazy(() =>
   import('./pages/Register').then((m) => ({ default: m.RegisterPage })),
 );
 const AdminPage = lazy(() => import('./pages/Admin').then((m) => ({ default: m.AdminPage })));
+const ManagePage = lazy(() => import('./pages/Manage').then((m) => ({ default: m.ManagePage })));
+const JoinPage = lazy(() => import('./pages/Join').then((m) => ({ default: m.JoinPage })));
+const ManageStorePage = lazy(() =>
+  import('./pages/ManageStore').then((m) => ({ default: m.ManageStorePage })),
+);
 const StaffDashboardPage = lazy(() =>
   import('./pages/StaffDashboard').then((m) => ({ default: m.StaffDashboardPage })),
+);
+const StaffStoresPage = lazy(() =>
+  import('./pages/StaffDashboard').then((m) => ({ default: m.StaffStoresPage })),
 );
 
 const WIDTH_CLASS = { default: 'max-w-md md:max-w-lg', wide: 'max-w-md md:max-w-2xl' } as const;
@@ -73,8 +84,10 @@ function AppShell() {
         </p>
         <PageBoundary key={pathname}>
           <Routes>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/menu" element={<MenuPage />} />
+            <Route path="/" element={<StoreListPage />} />
+            <Route path="/s/:storeSlug" element={<HomePage />} />
+            <Route path="/s/:storeSlug/menu" element={<MenuPage />} />
+            <Route path="/menu" element={<MenuRedirect />} />
             <Route path="/cart" element={<CartPage />} />
             <Route
               path="/checkout"
@@ -111,12 +124,37 @@ function AppShell() {
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
+            <Route path="/join" element={<JoinPage />} />
             <Route
               path="/staff"
               element={
-                <RequireRole role="STAFF">
+                <RequireMembership>
+                  <StaffStoresPage />
+                </RequireMembership>
+              }
+            />
+            <Route
+              path="/staff/:storeSlug"
+              element={
+                <RequireMembership>
                   <StaffDashboardPage />
-                </RequireRole>
+                </RequireMembership>
+              }
+            />
+            <Route
+              path="/manage"
+              element={
+                <RequireAuth>
+                  <ManagePage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/manage/:storeSlug/*"
+              element={
+                <RequireAuth>
+                  <ManageStorePage />
+                </RequireAuth>
               }
             />
             <Route

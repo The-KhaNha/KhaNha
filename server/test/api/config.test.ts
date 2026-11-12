@@ -18,11 +18,11 @@ beforeAll(() => resetDemoData());
 afterAll(() => resetDemoData());
 
 describe('GET /api/config', () => {
-  it('equals the client fallbacks (minus serverVersion and the validation bounds)', async () => {
+  it('equals the client fallbacks (minus serverVersion, the validation bounds and the store defaults)', async () => {
     const res = await api().get('/api/config');
     expect(res.status).toBe(200);
     const { serverVersion, ...config } = res.body as Record<string, unknown>;
-    const { validation: _validation, ...defaults } = fallbacks;
+    const { validation: _validation, storeDefaults: _storeDefaults, ...defaults } = fallbacks;
     expect(serverVersion).toMatch(/^\d+\.\d+\.\d+/);
     expect(config).toEqual(defaults);
   });
@@ -185,7 +185,10 @@ describe('GET /api/config features', () => {
       const res = await api().get('/api/config');
       expect(res.body.features[bad]).toBe(false);
       expect(Object.keys(res.body).sort()).toEqual(
-        [...Object.keys(fallbacks).filter((k) => k !== 'validation'), 'serverVersion'].sort(),
+        [
+          ...Object.keys(fallbacks).filter((k) => k !== 'validation' && k !== 'storeDefaults'),
+          'serverVersion',
+        ].sort(),
       );
     } finally {
       await supabaseAdmin.from('feature_flags').delete().eq('key', bad).throwOnError();

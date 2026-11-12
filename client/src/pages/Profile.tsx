@@ -14,6 +14,7 @@ import { Button, ButtonLink } from '../components/Button';
 import { Card } from '../components/Card';
 import { EmptyState } from '../components/EmptyState';
 import { selectUser, useAuthStore } from '../features/auth/authStore';
+import { worksAStore } from '../features/auth/roles';
 import { APP_COMMIT, APP_VERSION } from '../lib/appVersion';
 import { cn } from '../lib/cn';
 import { initialOf } from '../lib/format';
@@ -91,7 +92,7 @@ export function ProfilePage() {
           icon={<ReceiptText className="h-5 w-5" aria-hidden />}
           label="Order history"
         />
-        {user.role === 'STAFF' && (
+        {worksAStore(user) && (
           <ProfileRow
             to="/staff"
             icon={<LayoutDashboard className="h-5 w-5" aria-hidden />}

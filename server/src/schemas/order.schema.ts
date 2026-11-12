@@ -2,9 +2,8 @@ import { z } from 'zod';
 import { ORDER_STATUSES } from '../types/enums';
 import { optionalField, phoneField, typedText } from './common';
 import { LIMITS } from './limits';
+import { STORE_SETTING_BOUNDS } from './storeSettings.schema';
 
-/** Most of one item in a single order, checked after duplicate lines are merged. */
-export const MAX_QUANTITY_PER_ITEM = 10;
 /**
  * A sanity bound only. The real limit is the site setting max_lines_per_order (1-100), enforced by createOrder,
  * so an admin can change it without a deploy.
@@ -16,7 +15,12 @@ const orderItemInput = z.object({
   quantity: z
     .number()
     .int('Quantity must be a whole number.')
-    .min(1, 'Quantity must be at least 1.'),
+    .min(1, 'Quantity must be at least 1.')
+    // A sanity bound only (the largest a store may set); the store's own cap is enforced by createOrder.
+    .max(
+      STORE_SETTING_BOUNDS.maxQuantityPerItem.max,
+      `Quantity must be at most ${STORE_SETTING_BOUNDS.maxQuantityPerItem.max}.`,
+    ),
   // The whole-rupee price the customer was shown (a cart keeps the price it was added at). Never charged: a price that
   // differs from the menu's refuses the order (PRICE_CHANGED). Optional, so the deployed client that sends none keeps
   // working. int() also bounds it to a safe integer.
@@ -72,6 +76,8 @@ export const createOrderSchema = z
     // server answers a repeat with the order it already placed (place_order). Optional, so the deployed client
     // that sends none keeps working.
     idempotencyKey: z.string().uuid('idempotencyKey must be a UUID.').optional(),
+    // The store the order is for: required (400 without), every order belongs to one store.
+    storeId: z.string('storeId is required.').uuid('storeId must be a UUID.'),
   })
   // Lines are counted as sent, before duplicates merge (docs/API.md): the lines limit applies to lineCount.
   .transform((input) => ({

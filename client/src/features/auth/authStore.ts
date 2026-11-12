@@ -28,6 +28,8 @@ interface AuthState {
   hydrate: () => Promise<void>;
   /** Drops the session locally (used by the API layer on 401). */
   clearSession: () => void;
+  /** Records a membership the API just granted (an accepted invite), so the guards see it without a profile reload. */
+  addMembership: (membership: User['memberships'][number]) => void;
 }
 
 let hydrating: Promise<void> | null = null;
@@ -75,6 +77,13 @@ export const useAuthStore = create<AuthState>()(
         set({ user: null, token: null });
         clearActivity();
         void signOut();
+      },
+
+      addMembership(membership) {
+        const user = get().user;
+        if (!user) return;
+        const others = (user.memberships ?? []).filter((m) => m.storeId !== membership.storeId);
+        set({ user: { ...user, memberships: [...others, membership] } });
       },
 
       hydrate() {

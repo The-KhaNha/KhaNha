@@ -23,9 +23,12 @@ The user must always see what you are thinking and what background work is doing
 ## 2. Production context
 
 food-pickup is a **live production app**: campus-café pickup ordering. Customers browse the menu, order and track
-pickup; staff move orders through PLACED → PREPARING → READY → COLLECTED (or CANCELLED). Roles: CUSTOMER, STAFF (the
-restaurant's order board, `/staff`), ADMIN (site-wide operator, `/admin` site settings; no staff powers). Site-wide
-limits live in the one-row `site_settings` table, edited by admins.
+pickup; staff move orders through PLACED → PREPARING → READY → COLLECTED (or CANCELLED). Profile roles: CUSTOMER and
+ADMIN (site-wide operator, `/admin` site settings; no staff powers). At a store, a person is its brand's OWNER
+(`brands.owner_id`), or a MANAGER or STAFF member (`store_memberships`; the board is `/staff`, `/manage` for owners and
+managers); what each may
+do is the capability map in `server/src/domain/permissions.ts` (`docs/PERMISSIONS.md`). Site-wide limits live in
+the one-row `site_settings` table, edited by admins.
 
 - Real users, real concurrency. Stock races are settled inside the `place_order` transaction, never in app code.
 - Security and accessibility are requirements, not polish.
@@ -241,8 +244,9 @@ Read. Run `graphify update .` after modifying code. Details: `.claude/rules/work
 Feature branches → PR into `dev` (staging) → a release PR into `main` (production, merged by the user) → a
 back-merge into `dev`. A phase may have its own `feat/P<n>` branch that its PRs target. Every PR stays within the
 size limit and one theme; when a branch reaches the limit or its theme is done, verify, commit, push, open the PR
-and **stop** until the user says it is merged. CodeRabbit's hourly review budget, shared by every PR you open, paces
-when PRs are opened, marked ready and re-reviewed. A change to source records its version bump (`pnpm run change`) before
+and **stop** until the user says it is merged. P2 is the exception: the agent merges each P2 PR into `feat/P2`
+itself and goes on to the next without waiting for the user (workflow.md §21).
+CodeRabbit's hourly review budget, shared by every PR you open, paces when PRs are opened, marked ready and re-reviewed. A change to source records its version bump (`pnpm run change`) before
 it is finished; docs, CI and tooling changes are labelled `no-release`. Never merge into `main` and never tag. The
 branch model, phase branches, the PR-size numbers, the CodeRabbit budget, bump levels and the release process:
 `.claude/rules/workflow.md` §21.

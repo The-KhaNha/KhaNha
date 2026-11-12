@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useParams } from 'react-router-dom';
 import { Clock, UtensilsCrossed } from 'lucide-react';
 import type { MenuItem } from '../types/api';
 import { EmptyState } from '../components/EmptyState';
@@ -9,8 +10,10 @@ import { OpenPill } from '../components/OpenPill';
 import { PopularRail, PopularRailSkeleton } from '../components/PopularRail';
 import { Skeleton } from '../components/Skeleton';
 import { CategoryChips, type MenuSection } from '../features/menu/CategoryChips';
+import { AddToCartProvider } from '../features/cart/AddToCart';
 import { ItemDetailSheet } from '../features/menu/ItemDetailSheet';
-import { useMenu } from '../features/menu/useMenu';
+import { useStoreMenu } from '../features/stores/useStoreMenu';
+import { NotFoundPage } from './NotFound';
 import { formatPrepRange } from '../lib/format';
 import { LCP_IMAGE_PROPS, photoSrcSet } from '../lib/photo';
 import { useImagePainted } from '../lib/useImagePainted';
@@ -33,7 +36,8 @@ function slugify(value: string): string {
 }
 
 export function MenuPage() {
-  const { menu, isLoading, error, retry } = useMenu();
+  const { storeSlug = '' } = useParams();
+  const { menu, isLoading, error, retry } = useStoreMenu(storeSlug);
   const { ref: coverRef, painted: coverPainted } = useImagePainted(COVER_MAX_WAIT_MS);
   const [selected, setSelected] = useState<MenuItem | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -83,6 +87,8 @@ export function MenuPage() {
 
   if (isLoading) return <MenuSkeleton />;
 
+  // No such store: a retry cannot fix it, so the 404 page, as on the store's own page.
+  if (error?.status === 404 && !menu) return <NotFoundPage />;
   if (error && !menu) {
     return (
       <ErrorState
@@ -99,7 +105,7 @@ export function MenuPage() {
 
   return (
     // The storefront header paints at once (it holds the page's largest paint); only the lists below fade in.
-    <div>
+    <AddToCartProvider store={store} rules={menu.rules}>
       {/* The saved menu stays usable when a refresh fails; say so instead of hiding it (checkout re-checks stock). */}
       {error && (
         <ErrorState
@@ -133,7 +139,7 @@ export function MenuPage() {
             className="absolute inset-x-0 bottom-0 h-[72%] rounded-b-card store-scrim"
           />
           <div className="relative flex flex-wrap items-start justify-between gap-2 p-3">
-            <OpenPill isOpen={store.isOpen} />
+            <OpenPill state={store.openState} label={store.openLabel} />
             <span className="inline-flex h-9 items-center gap-1.5 rounded-full bg-surface/92 px-3 text-caption font-semibold text-ink shadow-sm backdrop-blur-md">
               <Clock className="h-4 w-4 text-brand-600" strokeWidth={2.5} aria-hidden />
               {formatPrepRange(store.prepTimeMinMinutes, store.prepTimeMaxMinutes)}
@@ -202,7 +208,7 @@ export function MenuPage() {
       </FoodPhotoGate>
 
       <ItemDetailSheet item={selected} onClose={closeSheet} />
-    </div>
+    </AddToCartProvider>
   );
 }
 

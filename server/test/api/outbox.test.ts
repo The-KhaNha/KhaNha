@@ -20,7 +20,14 @@ beforeAll(async () => {
       { event_type: 'outboxtest.*', queue_name: FAMILY },
     ])
     .throwOnError();
-  const { data } = await supabaseAdmin.from('stores').select('id').limit(1).single().throwOnError();
+  const { data } = await supabaseAdmin
+    .from('stores')
+    .select('id')
+    .order('created_at')
+    .order('id')
+    .limit(1)
+    .single()
+    .throwOnError();
   storeId = data.id;
 });
 

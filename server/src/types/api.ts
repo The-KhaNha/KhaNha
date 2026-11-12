@@ -1,5 +1,6 @@
 // Response shapes shared with the client. Keep these in sync with the API contract.
-import type { ActorType, OrderStatus, PaymentStatus, Role } from './enums';
+import type { OpenStateName } from '../domain/schedule';
+import type { ActorType, OrderStatus, PaymentStatus, Role, StoreRole } from './enums';
 
 export interface UserDto {
   id: string;
@@ -8,17 +9,71 @@ export interface UserDto {
   phone: string | null;
   role: Role;
   createdAt: string;
+  /** The stores this account works at (P2.2); the brand's owner has no rows here. */
+  memberships: { storeId: string; storeSlug: string; storeName: string; role: StoreRole }[];
+  /** The brands this account owns: OWNER of every store of each (ADR-001). */
+  ownedBrands: { id: string; name: string; slug: string }[];
 }
 
 export interface StoreDto {
   id: string;
+  slug: string;
   name: string;
+  brand: { id: string; name: string; slug: string };
+  area: string | null;
+  address: string | null;
   tagline: string;
   description: string;
   imageUrl: string | null;
   isOpen: boolean;
+  openState: OpenStateName;
+  /** The next change of state: the closing time while open, the next opening while closed; null when unknown. */
+  nextChangeAt: string | null;
+  /** Ready to show: "Closes at 9:00 PM", "Opens tomorrow at 8:00 AM", "Closed for Diwali". */
+  openLabel: string | null;
   prepTimeMinMinutes: number;
   prepTimeMaxMinutes: number;
+}
+
+/** One row of GET /api/stores: what a store picker shows. */
+export type StoreSummaryDto = Pick<
+  StoreDto,
+  | 'id'
+  | 'slug'
+  | 'name'
+  | 'tagline'
+  | 'imageUrl'
+  | 'area'
+  | 'brand'
+  | 'isOpen'
+  | 'openState'
+  | 'nextChangeAt'
+  | 'openLabel'
+>;
+
+/** One weekly interval of GET /api/stores/:storeRef/hours; `HH:MM`, `closesAt` before `opensAt` runs past midnight. */
+export interface StoreHoursDto {
+  /** ISO weekday: 1 = Monday ... 7 = Sunday. */
+  dayOfWeek: number;
+  opensAt: string;
+  closesAt: string;
+}
+
+export interface ScheduleExceptionDto {
+  id: string;
+  startsOn: string;
+  endsOn: string;
+  kind: 'CLOSED' | 'SPECIAL_HOURS';
+  opensAt: string | null;
+  closesAt: string | null;
+  label: string;
+}
+
+/** GET /api/stores/:storeRef/hours: the week, and the exceptions from today (store time) on. */
+export interface StoreScheduleResponse {
+  timezone: string;
+  hours: StoreHoursDto[];
+  exceptions: ScheduleExceptionDto[];
 }
 
 export interface MenuItemDto {
@@ -49,10 +104,38 @@ export interface MenuResponse {
   categories: MenuCategoryDto[];
 }
 
+/** A store's own limits (GET/PATCH /api/stores/:storeId/settings), edited by its manager or owner. */
+export interface StoreSettingsDto {
+  maxQuantityPerItem: number;
+  lowStockThreshold: number;
+  staffOrderListLimit: number;
+  /** Minutes before closing at which the store stops taking orders; 0 = until it closes. */
+  lastOrderMinutesBeforeClose: number;
+}
+
+/** One person on a store's team (GET /api/stores/:storeId/members). The brand's owner is not a member. */
+export interface MemberDto {
+  /** The membership's id, which DELETE /api/stores/:storeId/members/:membershipId takes. */
+  id: string;
+  userId: string;
+  name: string;
+  email: string;
+  role: StoreRole;
+  joinedAt: string;
+}
+
+/** An open invite: not accepted, not revoked. One past `expiresAt` can no longer be accepted. */
+export interface InviteDto {
+  id: string;
+  email: string;
+  role: StoreRole;
+  expiresAt: string;
+  createdAt: string;
+}
+
 /** Site-wide limits edited on the admin dashboard (the site_settings row). */
 export interface SiteSettingsDto {
   customerOrderHistoryLimit: number;
-  staffOrderListLimit: number;
   /** Most lines one order may have (enforced by createOrder). */
   maxLinesPerOrder: number;
   /** Client poll intervals in ms: one order's page, the customer's order list, the staff board. */
@@ -89,8 +172,8 @@ export interface OrderDto {
   estimatedReadyAt: string;
   createdAt: string;
   updatedAt: string;
-  /** The store's name when the order was placed. */
-  store: { id: string; name: string };
+  /** The store's name when the order was placed; its slug is the live one, for a link to the store. */
+  store: { id: string; name: string; slug: string };
   items: OrderItemDto[];
 }
 

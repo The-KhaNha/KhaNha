@@ -71,7 +71,7 @@ decision.
 
 ### What counts as a major change
 
-- Any change under `server/src/{routes,controllers,services,schemas,middleware,jobs}/`, `server/src/worker.ts`,
+- Any change under `server/src/{routes,controllers,services,schemas,middleware,jobs,domain}/`, `server/src/worker.ts`,
   `server/supabase/migrations/`, `client/src/{pages,services,components}/`, `client/src/App.tsx`, or any
   `package.json` or `pnpm-workspace.yaml` (overrides and allowed builds live there); or
 - 5 or more source files; or
@@ -176,7 +176,7 @@ relationships.
 ## 21. Branches, PR size, versions and releases
 
 **Branches.** Feature branches → PR into `dev` (`ci-ok` green before merging, enforced by the `ci-ok required`
-ruleset on `main`, `dev` and each listed `feat/P<n>`, ADR-011; `dev` deploys staging) → a release PR into `main`
+ruleset on `main`, `dev` and each `feat/P<n>`, ADR-011; `dev` deploys staging) → a release PR into `main`
 (production, merged by the user) → a back-merge PR into `dev`. Hotfixes branch off `main` as `hotfix/*`, carry their
 own intent, get their own release run and are back-merged the same way. Migrations are immutable once merged into
 `dev`. Agents that compare against "the base" use the PR's base branch: `origin/dev` for features, `origin/main` for
@@ -186,9 +186,10 @@ hotfixes, `origin/feat/P<n>` for a phase's PRs.
 builds its PRs in order). Its PRs come from `feat/p<n>-<NN>-<slug>` branches (git cannot hold
 `feat/P1` and `feat/P1/…` side by side) and go into `feat/P<n>`, with the same size limit, CI (`ci.yml` and `security.yml`
 match `feat/**` for PRs; `ci.yml` also runs on pushes to `feat/P<n>`) and CodeRabbit review (`.coderabbit.yaml`
-matches `^feat/`). When a phase branch is cut, add it by its exact name to the `ci-ok required` ruleset (Settings →
-Rules); a `feat/*` pattern would also catch the work branches and refuse their pushes. Migrations are immutable once
-merged into the phase branch. When the phase is done, `feat/P<n>` goes into `dev` as one PR, merged by the user.
+matches `^feat/`). The `ci-ok required` ruleset covers every phase branch through the patterns `feat/P[0-9]` and
+`feat/P[0-9][0-9]` (set 11 November 2026), which match `feat/P2` but never a work branch such as
+`feat/p2-01-brands-stores` (a `feat/*` pattern would catch the work branches and refuse their pushes). Migrations
+are immutable once merged into the phase branch. When the phase is done, `feat/P<n>` goes into `dev` as one PR, merged by the user.
 
 **PR size (STRICTLY ENFORCED).** Keep every PR reviewable: at most **38 changed files or 750 changed lines** against
 its base (`node .claude/hooks/major-change-gate.js --status` prints both; `pnpm-lock.yaml`,
@@ -200,6 +201,9 @@ reviewed in its own PRs.
   `/post-change` for a major change), commit, push, open the PR into the base, and tell the user it is ready.
 - Then **stop**: start no other work, and do not poll CI or the PR. The user says when it is merged (or what to fix);
   only then branch fresh off the updated base for the next step.
+- **Exception, P2 only** (the user, 11 November 2026; P2 plan D7): the agent merges each P2 PR into `feat/P2` itself
+  once `ci-ok` is green and CodeRabbit is clear, then goes on to the next PR. The phase PR `feat/P2` → `dev` is still
+  the user's.
 - `.claude/hooks/major-change-gate.js` reminds once per branch when it passes the limit (`--status` prints the size).
 
 **CodeRabbit budget.** The repository is public, so CodeRabbit reviews it on the free open-source plan: **1–10 PR
@@ -220,6 +224,9 @@ is a signal only: the ruleset requires `ci-ok`, not reviews, and the user still 
 CodeRabbit's Advanced plan, so no limit is set on it; `security_risk_instructions` are in place for when the plan
 changes.
 
+- **Until 17 November 2026 the repository is on CodeRabbit Pro** (a one-week trial): no hourly review limit, so open
+  each PR as soon as it is ready and skip the draft-and-ready pacing below. From 18 November the free-plan limits
+  above apply again.
 - Open a PR once, complete (the flow above). With several ready at once, open the first, open the rest as drafts
   (`gh pr create --draft`), and mark the next one ready (`gh pr ready <n>`) only when a review is free again: a posted
   review does not free one, time does. `@coderabbitai rate limit` on an open PR says when, without spending a review.

@@ -6,7 +6,6 @@ import {
   currentUser,
   enforceSessionIdle,
   requireAdmin,
-  requireStaff,
   SESSION_TOUCH_EVERY_MS,
 } from '../../src/middleware/auth';
 import type { AuthUser } from '../../src/types/auth';
@@ -16,9 +15,10 @@ function reqWith(user?: AuthUser): { user?: AuthUser } {
   return { user };
 }
 
-const staff: AuthUser = { id: 'u-staff', role: 'STAFF' };
-const admin: AuthUser = { id: 'u-admin', role: 'ADMIN' };
-const customer: AuthUser = { id: 'u-customer', role: 'CUSTOMER' };
+const none = { memberships: [], ownedBrandIds: [] };
+const staff: AuthUser = { id: 'u-staff', role: 'STAFF', ...none };
+const admin: AuthUser = { id: 'u-admin', role: 'ADMIN', ...none };
+const customer: AuthUser = { id: 'u-customer', role: 'CUSTOMER', ...none };
 
 describe('currentUser', () => {
   it('returns req.user when requireAuth has set it', () => {
@@ -51,30 +51,6 @@ describe('requireAdmin', () => {
   it('throws 403 FORBIDDEN for a customer', () => {
     const next = vi.fn();
     expect(() => requireAdmin(reqWith(customer) as never, {} as never, next)).toThrowError(
-      expect.objectContaining({ status: 403, code: 'FORBIDDEN' }),
-    );
-    expect(next).not.toHaveBeenCalled();
-  });
-});
-
-describe('requireStaff', () => {
-  it('calls next() for STAFF', () => {
-    const next = vi.fn();
-    requireStaff(reqWith(staff) as never, {} as never, next);
-    expect(next).toHaveBeenCalledTimes(1);
-  });
-
-  it('throws 403 FORBIDDEN for an ADMIN (no staff powers)', () => {
-    const next = vi.fn();
-    expect(() => requireStaff(reqWith(admin) as never, {} as never, next)).toThrowError(
-      expect.objectContaining({ status: 403, code: 'FORBIDDEN' }),
-    );
-    expect(next).not.toHaveBeenCalled();
-  });
-
-  it('throws 403 FORBIDDEN for a customer', () => {
-    const next = vi.fn();
-    expect(() => requireStaff(reqWith(customer) as never, {} as never, next)).toThrowError(
       expect.objectContaining({ status: 403, code: 'FORBIDDEN' }),
     );
     expect(next).not.toHaveBeenCalled();

@@ -39,7 +39,11 @@ const SHELL_BY_ROUTE: { pattern: string; config: ShellConfig }[] = [
     config: { ...column, title: APP_TITLE, topBar: { tone: 'brand' }, cartBar: true },
   },
   {
-    pattern: '/menu',
+    pattern: '/s/:storeSlug',
+    config: { ...column, title: APP_TITLE, topBar: { tone: 'brand' }, cartBar: true },
+  },
+  {
+    pattern: '/s/:storeSlug/menu',
     config: {
       ...column,
       title: 'Menu',
@@ -47,6 +51,11 @@ const SHELL_BY_ROUTE: { pattern: string; config: ShellConfig }[] = [
       cartBar: true,
       width: 'wide',
     },
+  },
+  // Only a redirect (MenuRedirect); it keeps the menu shell while the store list loads.
+  {
+    pattern: '/menu',
+    config: { ...column, title: 'Menu', topBar: { title: 'Menu', backTo: '/' }, width: 'wide' },
   },
   {
     pattern: '/cart',
@@ -95,9 +104,22 @@ const SHELL_BY_ROUTE: { pattern: string; config: ShellConfig }[] = [
       bottomNav: false,
     },
   },
+  // The management area: the owner's and managers' pages, with no customer tabs or cart.
+  ...['/manage', '/manage/:storeSlug/*'].map((pattern) => ({
+    pattern,
+    config: {
+      ...column,
+      title: 'Manage store',
+      topBar: { title: 'Manage', backTo: '/profile' },
+      cartButton: false,
+      bottomNav: false,
+    },
+  })),
   { pattern: '/login', config: { ...fullScreen, title: 'Sign in' } },
   { pattern: '/register', config: { ...fullScreen, title: 'Create your account' } },
+  { pattern: '/join', config: { ...fullScreen, title: 'Join the team' } },
   { pattern: '/staff', config: { ...fullScreen, title: 'Staff board' } },
+  { pattern: '/staff/:storeSlug', config: { ...fullScreen, title: 'Staff board' } },
 ];
 
 const NOT_FOUND_SHELL: ShellConfig = {

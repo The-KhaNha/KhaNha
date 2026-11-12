@@ -12,8 +12,9 @@ import { IconButton } from '../../components/IconButton';
 import { cn } from '../../lib/cn';
 import { useFocusTrap } from '../../lib/useFocusTrap';
 import { useReducedMotion } from '../../lib/useReducedMotion';
+import { useAddToCart } from '../cart/useAddToCart';
 import { availableQuantity, lineLimit } from '../cart/cartRules';
-import { selectQuantityOf, useCartStore } from '../cart/cartStore';
+import { selectLimits, selectQuantityOf, useCartStore } from '../cart/cartStore';
 
 interface ItemDetailSheetProps {
   item: MenuItem | null;
@@ -34,8 +35,9 @@ const CLOSE_FALLBACK_MS = 400;
  * The local count can only go as high as what is left after what the cart already holds.
  */
 export function ItemDetailSheet({ item, onClose }: ItemDetailSheetProps) {
-  const add = useCartStore((s) => s.add);
+  const addToCart = useAddToCart();
   const inCart = useCartStore(selectQuantityOf(item?.id ?? ''));
+  const limits = useCartStore(selectLimits);
   const reducedMotion = useReducedMotion();
   const [quantity, setQuantity] = useState(1);
   const [phase, setPhase] = useState<Phase>('open');
@@ -82,7 +84,7 @@ export function ItemDetailSheet({ item, onClose }: ItemDetailSheetProps) {
   const unavailable = !item.isAvailable;
   const maxQuantity = availableQuantity(item);
   // How many more can still go in the cart: the stock (or per-order cap) minus what is already there.
-  const room = Math.max(0, lineLimit(maxQuantity) - inCart);
+  const room = Math.max(0, lineLimit(maxQuantity, limits) - inCart);
   const canAdd = !unavailable && room > 0;
   // The stepper's note explains the limit; while it shows, the "Only N left" chip would only repeat it.
   const showNote = canAdd ? quantity >= room : !unavailable;
@@ -92,7 +94,8 @@ export function ItemDetailSheet({ item, onClose }: ItemDetailSheetProps) {
 
   function handleAdd() {
     if (!item || phase !== 'open' || !canAdd) return;
-    add(item, Math.min(quantity, room));
+    // Asked first (another store's cart): the replace sheet takes over, so this one just closes.
+    if (!addToCart(item, Math.min(quantity, room))) return requestClose();
     setPhase('added');
     holdTimer.current = window.setTimeout(requestClose, ADDED_HOLD_MS);
   }

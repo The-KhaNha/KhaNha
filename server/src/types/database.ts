@@ -73,6 +73,50 @@ export type Database = {
         };
         Relationships: [];
       };
+      brands: {
+        Row: {
+          created_at: string;
+          description: string;
+          id: string;
+          logo_url: string | null;
+          name: string;
+          owner_id: string | null;
+          slug: string;
+          status: Database['public']['Enums']['store_status'];
+          updated_at: string;
+        };
+        Insert: {
+          created_at?: string;
+          description?: string;
+          id?: string;
+          logo_url?: string | null;
+          name: string;
+          owner_id?: string | null;
+          slug: string;
+          status?: Database['public']['Enums']['store_status'];
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          description?: string;
+          id?: string;
+          logo_url?: string | null;
+          name?: string;
+          owner_id?: string | null;
+          slug?: string;
+          status?: Database['public']['Enums']['store_status'];
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'brands_owner_id_fkey';
+            columns: ['owner_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       domain_events: {
         Row: {
           actor: Json | null;
@@ -450,7 +494,6 @@ export type Database = {
           order_poll_ms: number;
           orders_poll_ms: number;
           staff_board_poll_ms: number;
-          staff_order_list_limit: number;
           updated_at: string;
           updated_by: string | null;
         };
@@ -463,7 +506,6 @@ export type Database = {
           order_poll_ms?: number;
           orders_poll_ms?: number;
           staff_board_poll_ms?: number;
-          staff_order_list_limit?: number;
           updated_at?: string;
           updated_by?: string | null;
         };
@@ -476,7 +518,6 @@ export type Database = {
           order_poll_ms?: number;
           orders_poll_ms?: number;
           staff_board_poll_ms?: number;
-          staff_order_list_limit?: number;
           updated_at?: string;
           updated_by?: string | null;
         };
@@ -490,44 +531,326 @@ export type Database = {
           },
         ];
       };
+      store_hours: {
+        Row: {
+          closes_at: string;
+          created_at: string;
+          day_of_week: number;
+          id: string;
+          opens_at: string;
+          store_id: string;
+        };
+        Insert: {
+          closes_at: string;
+          created_at?: string;
+          day_of_week: number;
+          id?: string;
+          opens_at: string;
+          store_id: string;
+        };
+        Update: {
+          closes_at?: string;
+          created_at?: string;
+          day_of_week?: number;
+          id?: string;
+          opens_at?: string;
+          store_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'store_hours_store_id_fkey';
+            columns: ['store_id'];
+            isOneToOne: false;
+            referencedRelation: 'stores';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      store_invites: {
+        Row: {
+          accepted_at: string | null;
+          accepted_by: string | null;
+          created_at: string;
+          created_by: string | null;
+          email: string;
+          expires_at: string;
+          id: string;
+          revoked_at: string | null;
+          role: Database['public']['Enums']['store_role'];
+          store_id: string;
+          token_hash: string;
+        };
+        Insert: {
+          accepted_at?: string | null;
+          accepted_by?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+          email: string;
+          expires_at: string;
+          id?: string;
+          revoked_at?: string | null;
+          role: Database['public']['Enums']['store_role'];
+          store_id: string;
+          token_hash: string;
+        };
+        Update: {
+          accepted_at?: string | null;
+          accepted_by?: string | null;
+          created_at?: string;
+          created_by?: string | null;
+          email?: string;
+          expires_at?: string;
+          id?: string;
+          revoked_at?: string | null;
+          role?: Database['public']['Enums']['store_role'];
+          store_id?: string;
+          token_hash?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'store_invites_accepted_by_fkey';
+            columns: ['accepted_by'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'store_invites_created_by_fkey';
+            columns: ['created_by'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'store_invites_store_id_fkey';
+            columns: ['store_id'];
+            isOneToOne: false;
+            referencedRelation: 'stores';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      store_memberships: {
+        Row: {
+          created_at: string;
+          created_by: string | null;
+          id: string;
+          role: Database['public']['Enums']['store_role'];
+          store_id: string;
+          user_id: string;
+        };
+        Insert: {
+          created_at?: string;
+          created_by?: string | null;
+          id?: string;
+          role: Database['public']['Enums']['store_role'];
+          store_id: string;
+          user_id: string;
+        };
+        Update: {
+          created_at?: string;
+          created_by?: string | null;
+          id?: string;
+          role?: Database['public']['Enums']['store_role'];
+          store_id?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'store_memberships_created_by_fkey';
+            columns: ['created_by'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'store_memberships_store_id_fkey';
+            columns: ['store_id'];
+            isOneToOne: false;
+            referencedRelation: 'stores';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'store_memberships_user_id_fkey';
+            columns: ['user_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      store_schedule_exceptions: {
+        Row: {
+          closes_at: string | null;
+          created_at: string;
+          ends_on: string;
+          id: string;
+          kind: Database['public']['Enums']['schedule_exception_kind'];
+          label: string;
+          opens_at: string | null;
+          starts_on: string;
+          store_id: string;
+        };
+        Insert: {
+          closes_at?: string | null;
+          created_at?: string;
+          ends_on: string;
+          id?: string;
+          kind: Database['public']['Enums']['schedule_exception_kind'];
+          label: string;
+          opens_at?: string | null;
+          starts_on: string;
+          store_id: string;
+        };
+        Update: {
+          closes_at?: string | null;
+          created_at?: string;
+          ends_on?: string;
+          id?: string;
+          kind?: Database['public']['Enums']['schedule_exception_kind'];
+          label?: string;
+          opens_at?: string | null;
+          starts_on?: string;
+          store_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'store_schedule_exceptions_store_id_fkey';
+            columns: ['store_id'];
+            isOneToOne: false;
+            referencedRelation: 'stores';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       stores: {
         Row: {
+          accepting_orders: boolean;
+          address_line: string | null;
+          area: string | null;
+          brand_id: string;
+          contact_phone: string | null;
+          created_at: string;
           description: string;
           id: string;
           image_url: string | null;
           is_open: boolean;
+          last_order_minutes_before_close: number;
+          low_stock_threshold: number;
+          max_quantity_per_item: number;
           name: string;
+          pause_reason: string | null;
+          paused_by: string | null;
+          paused_until: string | null;
           prep_time_max_minutes: number;
           prep_time_min_minutes: number;
+          slug: string;
+          staff_order_list_limit: number;
+          status: Database['public']['Enums']['store_status'];
           tagline: string;
+          timezone: string;
+          updated_at: string;
         };
         Insert: {
+          accepting_orders?: boolean;
+          address_line?: string | null;
+          area?: string | null;
+          brand_id: string;
+          contact_phone?: string | null;
+          created_at?: string;
           description: string;
           id?: string;
           image_url?: string | null;
           is_open?: boolean;
+          last_order_minutes_before_close?: number;
+          low_stock_threshold?: number;
+          max_quantity_per_item?: number;
           name: string;
+          pause_reason?: string | null;
+          paused_by?: string | null;
+          paused_until?: string | null;
           prep_time_max_minutes?: number;
           prep_time_min_minutes?: number;
+          slug: string;
+          staff_order_list_limit?: number;
+          status?: Database['public']['Enums']['store_status'];
           tagline: string;
+          timezone?: string;
+          updated_at?: string;
         };
         Update: {
+          accepting_orders?: boolean;
+          address_line?: string | null;
+          area?: string | null;
+          brand_id?: string;
+          contact_phone?: string | null;
+          created_at?: string;
           description?: string;
           id?: string;
           image_url?: string | null;
           is_open?: boolean;
+          last_order_minutes_before_close?: number;
+          low_stock_threshold?: number;
+          max_quantity_per_item?: number;
           name?: string;
+          pause_reason?: string | null;
+          paused_by?: string | null;
+          paused_until?: string | null;
           prep_time_max_minutes?: number;
           prep_time_min_minutes?: number;
+          slug?: string;
+          staff_order_list_limit?: number;
+          status?: Database['public']['Enums']['store_status'];
           tagline?: string;
+          timezone?: string;
+          updated_at?: string;
         };
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: 'stores_brand_id_fkey';
+            columns: ['brand_id'];
+            isOneToOne: false;
+            referencedRelation: 'brands';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'stores_paused_by_fkey';
+            columns: ['paused_by'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
       };
     };
     Views: {
       [_ in never]: never;
     };
     Functions: {
+      accept_store_invite: {
+        Args: {
+          p_actor?: Json;
+          p_email: string;
+          p_now?: string;
+          p_request_id?: string;
+          p_token_hash: string;
+          p_user_id: string;
+        };
+        Returns: {
+          created_at: string;
+          created_by: string | null;
+          id: string;
+          role: Database['public']['Enums']['store_role'];
+          store_id: string;
+          user_id: string;
+        };
+        SetofOptions: {
+          from: '*';
+          to: 'store_memberships';
+          isOneToOne: true;
+          isSetofReturn: false;
+        };
+      };
       emit_event: {
         Args: {
           p_actor: Json;
@@ -539,6 +862,17 @@ export type Database = {
           p_type: string;
         };
         Returns: string;
+      };
+      pause_store: {
+        Args: {
+          p_actor?: Json;
+          p_now?: string;
+          p_reason?: string;
+          p_request_id?: string;
+          p_store_id: string;
+          p_until?: string;
+        };
+        Returns: boolean;
       };
       place_order: {
         Args: {
@@ -605,6 +939,24 @@ export type Database = {
         Returns: undefined;
       };
       reset_demo_orders: { Args: never; Returns: undefined };
+      resume_store: {
+        Args: {
+          p_actor?: Json;
+          p_now?: string;
+          p_request_id?: string;
+          p_store_id: string;
+        };
+        Returns: boolean;
+      };
+      set_store_hours: {
+        Args: {
+          p_actor?: Json;
+          p_hours: Json;
+          p_request_id?: string;
+          p_store_id: string;
+        };
+        Returns: boolean;
+      };
       touch_session: {
         Args: {
           p_idle: string;
@@ -629,6 +981,9 @@ export type Database = {
       actor_type: 'USER' | 'WORKER' | 'RECONCILER' | 'WEBHOOK' | 'SCHEDULER' | 'SYSTEM';
       order_status: 'PLACED' | 'PREPARING' | 'READY' | 'COLLECTED' | 'CANCELLED';
       payment_status: 'PENDING' | 'PAID';
+      schedule_exception_kind: 'CLOSED' | 'SPECIAL_HOURS';
+      store_role: 'MANAGER' | 'STAFF';
+      store_status: 'DRAFT' | 'ACTIVE' | 'SUSPENDED' | 'ARCHIVED';
       user_role: 'CUSTOMER' | 'STAFF' | 'ADMIN';
     };
     CompositeTypes: {
@@ -757,6 +1112,9 @@ export const Constants = {
       actor_type: ['USER', 'WORKER', 'RECONCILER', 'WEBHOOK', 'SCHEDULER', 'SYSTEM'],
       order_status: ['PLACED', 'PREPARING', 'READY', 'COLLECTED', 'CANCELLED'],
       payment_status: ['PENDING', 'PAID'],
+      schedule_exception_kind: ['CLOSED', 'SPECIAL_HOURS'],
+      store_role: ['MANAGER', 'STAFF'],
+      store_status: ['DRAFT', 'ACTIVE', 'SUSPENDED', 'ARCHIVED'],
       user_role: ['CUSTOMER', 'STAFF', 'ADMIN'],
     },
   },

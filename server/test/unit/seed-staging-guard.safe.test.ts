@@ -1,4 +1,4 @@
-// scripts/seed.ts refuses to seed staging unless all three SEED_*_PASSWORD env vars are set, checked before
+// scripts/seed.ts refuses to seed staging unless all four SEED_*_PASSWORD env vars are set, checked before
 // anything is wiped. Verified in an isolated child process with a fake, unreachable SUPABASE_URL: the guard must
 // fire from the missing env vars alone, never from a real network call, so this never touches any real project
 // (local or staging).
@@ -12,6 +12,7 @@ function runSeed(env: Record<string, string>): { status: number; output: string 
   delete childEnv.SEED_STAFF_PASSWORD;
   delete childEnv.SEED_ADMIN_PASSWORD;
   delete childEnv.SEED_CUSTOMER_PASSWORD;
+  delete childEnv.SEED_OWNER_PASSWORD;
   childEnv.LOG_LEVEL = 'info'; // the test runner sets LOG_LEVEL=silent; the guard's failure is logged at error
   Object.assign(childEnv, env);
 
@@ -41,11 +42,12 @@ describe('scripts/seed.ts staging guard', () => {
     expect(output).toContain('SEED_STAFF_PASSWORD');
     expect(output).toContain('SEED_ADMIN_PASSWORD');
     expect(output).toContain('SEED_CUSTOMER_PASSWORD');
+    expect(output).toContain('SEED_OWNER_PASSWORD');
     // A real DB attempt against an unreachable host would surface a fetch/network error instead.
     expect(output).not.toMatch(/ENOTFOUND|ECONNREFUSED|fetch failed/);
   });
 
-  it('proceeds past the guard once all three are set (fails later, on the unreachable host, not on the guard)', () => {
+  it('proceeds past the guard once all four are set (fails later, on the unreachable host, not on the guard)', () => {
     const { status, output } = runSeed({
       APP_ENV: 'staging',
       SUPABASE_URL: 'https://fake-project.supabase.co',
@@ -53,6 +55,7 @@ describe('scripts/seed.ts staging guard', () => {
       SEED_STAFF_PASSWORD: 'staffpassword12',
       SEED_ADMIN_PASSWORD: 'adminpassword12',
       SEED_CUSTOMER_PASSWORD: 'customerpassword12',
+      SEED_OWNER_PASSWORD: 'ownerpassword1234',
     });
 
     expect(status).not.toBe(0);

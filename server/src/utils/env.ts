@@ -47,6 +47,7 @@ const envSchema = z
     RATE_LIMIT_WRITE_MAX: z.coerce.number().int().min(0).default(30),
     RATE_LIMIT_REGISTER_MAX: z.coerce.number().int().min(0).default(10),
     RATE_LIMIT_CLIENT_ERRORS_MAX: z.coerce.number().int().min(0).default(30),
+    RATE_LIMIT_INVITE_ACCEPT_MAX: z.coerce.number().int().min(0).default(10),
     CLIENT_ORIGIN: z
       .string()
       .url('CLIENT_ORIGIN must be a URL such as http://localhost:5173.')
@@ -64,10 +65,11 @@ const envSchema = z
       )
       .optional(),
     // The demo accounts' passwords on staging (local uses the ones published in README.md). Only scripts/seed.ts
-    // reads them, and it refuses to seed staging without all three; the API server never needs them.
+    // reads them, and it refuses to seed staging without all four; the API server never needs them.
     SEED_STAFF_PASSWORD: seedPassword('SEED_STAFF_PASSWORD'),
     SEED_ADMIN_PASSWORD: seedPassword('SEED_ADMIN_PASSWORD'),
     SEED_CUSTOMER_PASSWORD: seedPassword('SEED_CUSTOMER_PASSWORD'),
+    SEED_OWNER_PASSWORD: seedPassword('SEED_OWNER_PASSWORD'),
   })
   .transform((env) => ({
     ...env,

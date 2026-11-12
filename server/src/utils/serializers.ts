@@ -1,13 +1,18 @@
 import type { QueryData } from '@supabase/supabase-js';
 import type { Tables } from '../types/database';
+import type { StoreRole } from '../types/enums';
 import type {
   AuditEntryDto,
   FeatureFlagDto,
+  InviteDto,
+  MemberDto,
   MenuItemDto,
   OrderDto,
   OrderItemDto,
   SiteSettingsDto,
   StoreDto,
+  StoreSettingsDto,
+  StoreSummaryDto,
   UserDto,
 } from '../types/api';
 import { paiseToRupees } from './money';
@@ -16,7 +21,7 @@ import { supabaseAdmin } from './supabase';
 /**
  * Every order endpoint returns the order with its lines and a minimal store reference.
  * The store's name and each line's photo are snapshots taken when the order was placed (place_order), so a later menu
- * or store edit never rewrites a past order, and the read needs no join beyond its own lines.
+ * or store edit never rewrites a past order. The store join brings its live slug, and its brand for the access check.
  * Amounts are read in paise and sent in rupees (utils/money.ts).
  * Callers add their filters; lines always come back in cart order.
  */
@@ -25,7 +30,8 @@ export function selectOrders() {
     .from('orders')
     .select(
       `id, order_number, status, payment_status, total_paise, customer_name, customer_phone, note,
-       estimated_ready_at, created_at, updated_at, store_id, store_name,
+       estimated_ready_at, created_at, updated_at, user_id, store_id, store_name,
+       store:stores!inner (slug, brand_id),
        order_items (id, line_number, menu_item_id, name, unit_price_paise, quantity, line_total_paise, image_url)`,
     )
     .order('line_number', { referencedTable: 'order_items' });
@@ -38,7 +44,13 @@ type OrderItemRow = OrderWithDetails['order_items'][number];
 /** Postgres returns timestamps as "2026-09-25 10:00:00.123+00"-style strings; the API always sends ISO 8601. */
 const toIso = (timestamp: string): string => new Date(timestamp).toISOString();
 
-export function toUserDto(profile: Tables<'profiles'>): UserDto {
+/** A profile with its store memberships and owned brands embedded (auth.service.getProfile). */
+export type ProfileWithStanding = Tables<'profiles'> & {
+  memberships: { role: StoreRole; store: { id: string; slug: string; name: string } }[];
+  brands: { id: string; name: string; slug: string }[];
+};
+
+export function toUserDto(profile: ProfileWithStanding): UserDto {
   return {
     id: profile.id,
     name: profile.name,
@@ -46,13 +58,64 @@ export function toUserDto(profile: Tables<'profiles'>): UserDto {
     phone: profile.phone,
     role: profile.role,
     createdAt: toIso(profile.created_at),
+    memberships: profile.memberships.map(({ role, store }) => ({
+      storeId: store.id,
+      storeSlug: store.slug,
+      storeName: store.name,
+      role,
+    })),
+    ownedBrands: profile.brands.map(({ id, name, slug }) => ({ id, name, slug })),
+  };
+}
+
+/** A store's own limits: columns of its `stores` row (storeSettings.service). */
+export type StoreSettings = Pick<
+  Tables<'stores'>,
+  | 'max_quantity_per_item'
+  | 'low_stock_threshold'
+  | 'staff_order_list_limit'
+  | 'last_order_minutes_before_close'
+>;
+
+export function toStoreSettingsDto(settings: StoreSettings): StoreSettingsDto {
+  return {
+    maxQuantityPerItem: settings.max_quantity_per_item,
+    lowStockThreshold: settings.low_stock_threshold,
+    staffOrderListLimit: settings.staff_order_list_limit,
+    lastOrderMinutesBeforeClose: settings.last_order_minutes_before_close,
+  };
+}
+
+type MemberRow = Pick<Tables<'store_memberships'>, 'id' | 'role' | 'created_at'> & {
+  user: Pick<Tables<'profiles'>, 'id' | 'name' | 'email'>;
+};
+
+export function toMemberDto(member: MemberRow): MemberDto {
+  return {
+    id: member.id,
+    userId: member.user.id,
+    name: member.user.name,
+    email: member.user.email,
+    role: member.role,
+    joinedAt: toIso(member.created_at),
+  };
+}
+
+export function toInviteDto(
+  invite: Pick<Tables<'store_invites'>, 'id' | 'email' | 'role' | 'expires_at' | 'created_at'>,
+): InviteDto {
+  return {
+    id: invite.id,
+    email: invite.email,
+    role: invite.role,
+    expiresAt: toIso(invite.expires_at),
+    createdAt: toIso(invite.created_at),
   };
 }
 
 export function toSiteSettingsDto(settings: Tables<'site_settings'>): SiteSettingsDto {
   return {
     customerOrderHistoryLimit: settings.customer_order_history_limit,
-    staffOrderListLimit: settings.staff_order_list_limit,
     maxLinesPerOrder: settings.max_lines_per_order,
     orderPollMs: settings.order_poll_ms,
     ordersPollMs: settings.orders_poll_ms,
@@ -63,16 +126,41 @@ export function toSiteSettingsDto(settings: Tables<'site_settings'>): SiteSettin
   };
 }
 
-export function toStoreDto(store: Tables<'stores'>): StoreDto {
+/** A store with its brand's identity, which is all the public DTO shows of the brand. */
+export type StoreWithBrand = Tables<'stores'> & {
+  brand: Pick<Tables<'brands'>, 'id' | 'name' | 'slug'>;
+};
+
+/** The open-state fields of a store DTO (services/schedule.service.ts computes them). */
+export type OpenFields = Pick<StoreDto, 'isOpen' | 'openState' | 'nextChangeAt' | 'openLabel'>;
+
+export function toStoreDto(store: StoreWithBrand, open: OpenFields): StoreDto {
   return {
     id: store.id,
+    slug: store.slug,
     name: store.name,
+    brand: store.brand,
+    area: store.area,
+    address: store.address_line,
     tagline: store.tagline,
     description: store.description,
     imageUrl: store.image_url,
-    isOpen: store.is_open,
+    ...open,
     prepTimeMinMinutes: store.prep_time_min_minutes,
     prepTimeMaxMinutes: store.prep_time_max_minutes,
+  };
+}
+
+export function toStoreSummaryDto(store: StoreWithBrand, open: OpenFields): StoreSummaryDto {
+  return {
+    id: store.id,
+    slug: store.slug,
+    name: store.name,
+    tagline: store.tagline,
+    imageUrl: store.image_url,
+    area: store.area,
+    brand: store.brand,
+    ...open,
   };
 }
 
@@ -123,7 +211,7 @@ export function toOrderDto(order: OrderWithDetails): OrderDto {
     estimatedReadyAt: toIso(order.estimated_ready_at),
     createdAt: toIso(order.created_at),
     updatedAt: toIso(order.updated_at),
-    store: { id: order.store_id, name: order.store_name },
+    store: { id: order.store_id, name: order.store_name, slug: order.store.slug },
     items: order.order_items.map(toOrderItemDto),
   };
 }
