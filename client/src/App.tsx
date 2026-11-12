@@ -7,6 +7,7 @@ import { TopBar } from './components/TopBar';
 import { useAuthStore } from './features/auth/authStore';
 import { RequireAuth } from './features/auth/RequireAuth';
 import { RequireRole } from './features/auth/RequireRole';
+import { MenuRedirect } from './features/stores/MenuRedirect';
 import { CartBar } from './features/cart/CartBar';
 import { selectCount, useCartStore } from './features/cart/cartStore';
 import { OutdatedBanner } from './features/version/OutdatedBanner';
@@ -16,6 +17,7 @@ import { setSamplePercent } from './lib/errorReporter';
 import { useConfig } from './features/config/useConfig';
 import { CartPage } from './pages/Cart';
 import { HomePage } from './pages/Home';
+import { StoreListPage } from './pages/StoreList';
 import { MenuPage } from './pages/Menu';
 import { NotFoundPage } from './pages/NotFound';
 import { OrderPage } from './pages/Order';
@@ -73,8 +75,10 @@ function AppShell() {
         </p>
         <PageBoundary key={pathname}>
           <Routes>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/menu" element={<MenuPage />} />
+            <Route path="/" element={<StoreListPage />} />
+            <Route path="/s/:storeSlug" element={<HomePage />} />
+            <Route path="/s/:storeSlug/menu" element={<MenuPage />} />
+            <Route path="/menu" element={<MenuRedirect />} />
             <Route path="/cart" element={<CartPage />} />
             <Route
               path="/checkout"

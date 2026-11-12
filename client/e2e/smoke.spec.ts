@@ -1,6 +1,14 @@
 import { expect, test } from '@playwright/test';
 import type { Role } from '../src/types/api';
-import { mockApi, noHorizontalOverflow, signIn, store, watchConsole } from './fixtures';
+import {
+  menu,
+  mockApi,
+  noHorizontalOverflow,
+  signIn,
+  store,
+  summary,
+  watchConsole,
+} from './fixtures';
 
 // The core path on a 360px-class phone (Safari's engine weekly, Chromium on every PR), every API call mocked. The
 // rest of the e2e suite: layout.spec.ts (fit, tap targets, layout shift), forms.spec.ts (submit and checkout) and
@@ -18,9 +26,29 @@ test('home renders the one-line pitch with nothing spilling off a small screen',
   expect(problems).toEqual([]);
 });
 
+test('with two stores: open the list, pick one, see its menu', async ({ page }) => {
+  const problems = watchConsole(page);
+  const other = { ...store, id: 's2', slug: 'bistro', name: 'Night Bistro', area: 'South Gate' };
+  await page.route('**/api/stores', (route) =>
+    route.fulfill({ json: { stores: [summary(store), summary(other)] } }),
+  );
+  await page.route('**/api/stores/bistro', (route) => route.fulfill({ json: { store: other } }));
+  await page.route('**/api/stores/bistro/menu', (route) =>
+    route.fulfill({ json: { ...menu, store: other } }),
+  );
+  await page.goto('/');
+  await expect(page.getByRole('link', { name: /Campus Cafe/ })).toBeVisible();
+  await noHorizontalOverflow(page);
+  await page.getByRole('link', { name: /Night Bistro/ }).click();
+  await expect(page).toHaveURL(/\/s\/bistro$/);
+  await page.getByRole('link', { name: /View Menu/ }).click();
+  await expect(page.getByRole('heading', { name: 'Night Bistro' })).toBeVisible();
+  expect(problems).toEqual([]);
+});
+
 test('menu → add to cart → cart works on WebKit', async ({ page }) => {
   const problems = watchConsole(page);
-  await page.goto('/menu');
+  await page.goto('/s/cafe/menu');
   await expect(page.getByRole('heading', { name: store.name })).toBeVisible();
   await noHorizontalOverflow(page);
 
@@ -108,7 +136,7 @@ test('follows the device colour scheme', async ({ browser }) => {
     const context = await browser.newContext({ colorScheme: scheme });
     const page = await context.newPage();
     await mockApi(page);
-    await page.goto('/menu');
+    await page.goto('/s/cafe/menu');
     await expect(page.getByRole('heading', { name: 'Campus Cafe' })).toBeVisible();
     expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor), scheme).toBe(
       background,

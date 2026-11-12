@@ -39,7 +39,11 @@ const SHELL_BY_ROUTE: { pattern: string; config: ShellConfig }[] = [
     config: { ...column, title: APP_TITLE, topBar: { tone: 'brand' }, cartBar: true },
   },
   {
-    pattern: '/menu',
+    pattern: '/s/:storeSlug',
+    config: { ...column, title: APP_TITLE, topBar: { tone: 'brand' }, cartBar: true },
+  },
+  {
+    pattern: '/s/:storeSlug/menu',
     config: {
       ...column,
       title: 'Menu',
@@ -47,6 +51,11 @@ const SHELL_BY_ROUTE: { pattern: string; config: ShellConfig }[] = [
       cartBar: true,
       width: 'wide',
     },
+  },
+  // Only a redirect (MenuRedirect); it keeps the menu shell while the store list loads.
+  {
+    pattern: '/menu',
+    config: { ...column, title: 'Menu', topBar: { title: 'Menu', backTo: '/' }, width: 'wide' },
   },
   {
     pattern: '/cart',

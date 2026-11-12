@@ -37,8 +37,8 @@ const state = vi.hoisted(() => ({
   error: null as null | { message: string; isUnreachable: boolean },
   retry: () => {},
 }));
-vi.mock('../features/menu/useMenu', () => ({
-  useMenu: () => ({ menu, isLoading: false, error: state.error, retry: state.retry }),
+vi.mock('../features/stores/useStoreMenu', () => ({
+  useStoreMenu: () => ({ menu, isLoading: false, error: state.error, retry: state.retry }),
 }));
 const { MenuPage } = await import('./Menu');
 
