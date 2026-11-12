@@ -149,7 +149,8 @@ const LAYOUT_ROUTES: { path: string; role?: Role; status?: OrderStatus }[] = [
     role: 'CUSTOMER' as const,
     status,
   })),
-  { path: '/staff', role: 'STAFF' },
+  // The board itself: with the fixtures' one membership, `/staff` redirects here.
+  { path: '/staff/cafe', role: 'STAFF' },
 ];
 
 /**
@@ -296,7 +297,7 @@ for (const { path, role } of [
   { path: '/s/cafe' },
   { path: '/s/cafe/menu' },
   { path: '/orders/o1', role: 'CUSTOMER' as const },
-  { path: '/staff', role: 'STAFF' as const },
+  { path: '/staff/cafe', role: 'STAFF' as const },
 ]) {
   test(`${path}: a late web font does not shift the layout`, async ({ page, browserName }) => {
     test.skip(browserName !== 'chromium', 'layout-shift entries are Chromium-only');
@@ -401,7 +402,7 @@ for (const { path, role, width } of [
   { path: '/login', width: 360 },
   { path: '/register', width: 360 },
   // Whether the header's clock cluster fits beside the wordmark depends on the width: check the phone range.
-  ...[360, 390, 412].map((width) => ({ path: '/staff', role: 'STAFF' as const, width })),
+  ...[360, 390, 412].map((width) => ({ path: '/staff/cafe', role: 'STAFF' as const, width })),
 ]) {
   test(`${path} at ${width}px: loading the page moves nothing`, async ({ page, browserName }) => {
     test.skip(browserName !== 'chromium', 'layout-shift entries are Chromium-only');
