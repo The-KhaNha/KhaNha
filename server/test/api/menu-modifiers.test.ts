@@ -5,6 +5,7 @@
 import { randomUUID } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { TablesInsert } from '../../src/types/database';
 import { invalidate } from '../../src/utils/cache';
 import { supabaseAdmin } from '../../src/utils/supabase';
 import { api } from '../setup/api';
@@ -27,13 +28,7 @@ async function setFlag(enabled: boolean, stores: string[] = []) {
   invalidate('feature_flags');
 }
 
-interface OptionRow {
-  name: string;
-  price_delta_paise: number;
-  is_default?: boolean;
-  is_available?: boolean;
-  archived_at?: string;
-}
+type OptionRow = Omit<TablesInsert<'modifier_options'>, 'group_id'>;
 
 async function group(
   name: string,
