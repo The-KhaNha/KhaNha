@@ -442,7 +442,7 @@ most `TEMPLATE_PUSH_COPIES_MAX` (5000) copies.
 
 ### PR 07b — Client: open a branch, its profile, publish (P3.1, D6)
 
-- [ ] Merged
+- [x] Merged (07b-1 #86, 88344a9; 07b-2a #87, e649b36; 07b-2b #88, 8360bb0; 07c #89, 7899060)
 
 Depends on PR 05 too: the checklist links to the menu screen. `/before-write`: reuse-scout (the `/manage` shell and store picker from P2 PR 14a, the Settings form from PR 15,
 `Input`, `Button`, `Skeleton`, `EmptyState`, `ErrorState`).
@@ -478,7 +478,7 @@ the item editor). Its preview reads each chosen branch's list fresh and finds th
 
 ### PR 08 — Media: the port, local storage, the uploads API (P3.3)
 
-- [ ] Merged
+- [x] Merged (#90, 823ac2b)
 
 `/before-write`: schema-guard, NEW TABLE (`media_uploads`); reuse-scout, NO MATCH (`integrations/` is new). Skill:
 `agent-skills:security-and-hardening` (the PR accepts files).
@@ -539,6 +539,13 @@ Docs: `docs/DEPLOYMENT.md` (MinIO, the variables, the web image's new variable),
 CLAUDE.md §9 (the upload host is the one new runtime host), `docs/TESTING.md`. Intent: `--server minor --client
 patch`.
 
+As built: **RustFS** (`rustfs/rustfs:1.0.4`) instead of MinIO, which no longer publishes images (Docker Hub and quay
+refuse the pull); it passed the same checks (the POST policy's size, key and type; `If-None-Match` write-once; no
+anonymous read; bucket CORS). The policy pins the exact declared size, not only a maximum. Without `MEDIA_BUCKET` the
+`s3` store answers 503 and the API still starts (staging has no bucket until P8). `pnpm run media:bucket` makes the
+local bucket and its CORS rule (refused on production). nginx's `/media/` upstream is the web image's required
+`MEDIA_UPSTREAM` (the API in compose by default); the bucket is private, so serving variants publicly is PR 10's.
+
 ### PR 10 — Media: the image pipeline in the worker (P3.3)
 
 - [ ] Merged
@@ -553,7 +560,8 @@ Server:
 - `src/jobs/media.ts`, added to `worker.ts`'s handler list: first read the upload row; `PROCESSED` means
   acknowledge and return, so a redelivered message after a completed run never reads the store. Otherwise read the
   original (a missing original for an upload that is not `PROCESSED` is a `PermanentError` that marks it `FAILED`);
-  `sharp` checks the real type from the bytes (anything but JPEG, PNG or WebP, or larger than 6000×6000, is a
+  the original is untrusted even after `complete` (its presigned form stays valid for five minutes and can replace
+  the bytes at the same size), so `sharp` checks the real type from the bytes (anything but JPEG, PNG or WebP, or larger than 6000×6000, is a
   `PermanentError` that marks the upload `FAILED`); auto-rotate, strip metadata, write 400w and 900w WebP under
   `stores/<storeId>/<sha256 prefix>-<width>.webp` with `public, max-age=31536000, immutable`; mark the upload
   `PROCESSED` with its variants; delete the original last. A crash before the mark reruns the whole handler and

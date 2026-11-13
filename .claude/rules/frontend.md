@@ -118,7 +118,8 @@ Mandates:
 - Images live in `client/public/images/` and reach the UI through the database `image_url` and `FoodPhoto`. A new
   photo goes through `python3 client/scripts/optimize-images.py` (compression + the 400px thumbnail, §2c).
 - Every `<img>` has `alt`, explicit dimensions or an aspect box, and `loading="lazy"` below the fold.
-- Runtime hosts allowed: Google Fonts and the Supabase project. Nothing else.
+- Runtime hosts allowed: Google Fonts, the Supabase project, and the media bucket the browser posts photo uploads to
+  (`MEDIA_UPLOAD_ORIGIN`, the CSP's `connect-src`; photos themselves load from `/media` on the app's origin). Nothing else.
 - Restaurant uploads (P3.3) go to S3 behind CloudFront (`docs/adr/006-media-s3-cloudfront.md`) and are never
   committed; `MEDIA_STORAGE=local` is a development-only fallback, refused in production.
 

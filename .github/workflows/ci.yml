@@ -127,6 +127,13 @@ jobs:
       - run: pnpm install --frozen-lockfile
       # Only the services the API and tests use: Postgres, GoTrue, PostgREST and Kong.
       - run: pnpm run db:start:ci
+      # The S3 store's suite (test/api/media-s3.test.ts) runs against RustFS, as compose's `media` service does locally.
+      - name: Start the media bucket server
+        run: |
+          docker run -d --name media -p 9000:9000 -e RUSTFS_ACCESS_KEY=rustfsadmin -e RUSTFS_SECRET_KEY=rustfsadmin \
+            rustfs/rustfs:1.0.4
+          for _ in $(seq 1 30); do curl -fs -o /dev/null http://127.0.0.1:9000/health && exit 0; sleep 1; done
+          echo "RustFS did not start"; docker logs media; exit 1
       # server/.env.example holds the local CLI's default keys and URL, so the test-target guard sees APP_ENV=local.
       - run: cp .env.example .env
       - run: pnpm run seed
@@ -266,7 +273,8 @@ jobs:
         run: |
           docker run -d --name api -p 8000:8000 -e APP_ENV=local -e SUPABASE_URL=http://127.0.0.1:1 \
             -e SUPABASE_SECRET_KEY=sb_secret_ci fp-api:ci
-          docker run -d --name web -p 8080:8080 -e API_UPSTREAM=http://127.0.0.1:1 \
+          docker run -d --name web -p 8080:8080 -e API_UPSTREAM=http://127.0.0.1:1 -e MEDIA_UPSTREAM=http://127.0.0.1:1 \
+            -e MEDIA_UPLOAD_ORIGIN=https://media.ci.example \
             -e SUPABASE_URL=https://ci.supabase.co -e SUPABASE_PUBLISHABLE_KEY=sb_publishable_ci fp-web:ci
           for url in localhost:8000/api/health localhost:8080/healthz localhost:8080/runtime-env.js; do
             for _ in $(seq 1 20); do curl -fs -o /dev/null "$url" && break; sleep 1; done
@@ -282,6 +290,11 @@ jobs:
             --data-binary @"$RUNNER_TEMP/big.json" localhost:8080/api/orders)
           [ "$code" = 413 ] && grep -q '"PAYLOAD_TOO_LARGE"' "$RUNNER_TEMP/413.json" \
             || { echo "nginx body limit: got $code"; cat "$RUNNER_TEMP/413.json"; exit 1; }
+          # The CSP lets the browser post uploads to the bucket, and photos still load only from this origin.
+          csp=$(curl -fsSI localhost:8080/healthz | grep -i '^content-security-policy')
+          echo "$csp" | grep -q "connect-src 'self' https://ci.supabase.co https://media.ci.example;" \
+            || { echo "CSP connect-src lacks the upload origin: $csp"; exit 1; }
+          echo "$csp" | grep -q "img-src 'self' data:;" || { echo "CSP img-src changed: $csp"; exit 1; }
           # Both images send the browser-hardening headers (server/src/middleware/securityHeaders.ts, client/nginx/).
           for url in localhost:8000/api/health localhost:8080/healthz; do
             curl -fsSI "$url" | grep -qi '^x-frame-options: DENY' || { echo "$url: no X-Frame-Options"; exit 1; }
