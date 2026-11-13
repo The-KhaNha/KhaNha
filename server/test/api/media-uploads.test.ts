@@ -1,7 +1,7 @@
 // Local only: photo uploads (P3.3) in local mode. An upload is started with a declared type and size, its bytes go to
 // the PUT route (exactly that size, that type, starting the way that type does), and `complete` marks it UPLOADED with
-// one media.uploaded; a repeat changes nothing. Another store's upload is 404; staff cannot upload. In S3 mode (until
-// PR 09) the local route is 404 and starting an upload is 503.
+// one media.uploaded; a repeat changes nothing. Another store's upload is 404; staff cannot upload. In S3 mode the
+// local route and /media are 404 and an upload is a presigned form for the bucket (media-s3.test.ts).
 import { randomUUID } from 'node:crypto';
 import { request } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -295,8 +295,8 @@ describe('an upload, start to finish', () => {
   });
 });
 
-describe('S3 mode (until PR 09 there is no S3 store)', () => {
-  it('the local file route and /media are not there, and starting an upload is 503', async () => {
+describe('S3 mode', () => {
+  it('the local file route and /media are not there, and an upload is a form for the bucket', async () => {
     const { uploadId } = (await start({ contentType: 'image/png', byteSize: 10 })).body;
     env.MEDIA_STORAGE = 's3';
     try {
@@ -304,9 +304,13 @@ describe('S3 mode (until PR 09 there is no S3 store)', () => {
       expect((await api().get(`/media/stores/${storeId}/uploads/${uploadId}.png`)).status).toBe(
         404,
       );
+      // Presigning needs no round trip, so this holds whether or not the bucket is running.
       const res = await start({ contentType: 'image/png', byteSize: 10 });
-      expect(res.status).toBe(503);
-      expect(res.body.error.code).toBe('UPSTREAM_UNAVAILABLE');
+      expect(res.status).toBe(201);
+      expect(res.body.upload).toMatchObject({
+        method: 'POST',
+        fields: { 'Content-Type': 'image/png' },
+      });
     } finally {
       env.MEDIA_STORAGE = 'local';
     }

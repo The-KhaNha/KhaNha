@@ -30,6 +30,11 @@ export default defineConfig({
       // Photos go to a throwaway folder, never the developer's own .media.
       MEDIA_STORAGE: 'local',
       MEDIA_LOCAL_DIR: join(tmpdir(), 'khanha-test-media'),
+      // The S3 store's suite (media-s3.test.ts) runs against RustFS: compose's `media` service locally, a container in CI.
+      MEDIA_BUCKET: 'khanha-test',
+      MEDIA_S3_ENDPOINT: process.env.MEDIA_S3_ENDPOINT ?? 'http://127.0.0.1:9000',
+      AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID ?? 'rustfsadmin',
+      AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY ?? 'rustfsadmin',
     },
     // Suites share one database; running files one at a time keeps their data from colliding.
     fileParallelism: false,

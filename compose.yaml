@@ -32,6 +32,11 @@ services:
       - '${WEB_PORT:-8080}:8080'
     environment:
       API_UPSTREAM: http://api:8000
+      # /media/<key>: the API's folder by default (MEDIA_STORAGE=local); http://media:9000 for the bucket, whose
+      # objects stay private until P3 PR 10 serves the variants.
+      MEDIA_UPSTREAM: ${WEB_MEDIA_UPSTREAM:-http://api:8000}
+      # The browser's view of the bucket it posts uploads to (CSP connect-src); empty with local storage.
+      MEDIA_UPLOAD_ORIGIN: ${MEDIA_UPLOAD_ORIGIN:-}
       # The browser's view of Supabase, not the container's.
       SUPABASE_URL: ${BROWSER_SUPABASE_URL:-http://127.0.0.1:54321}
       # The local key is VITE_SUPABASE_PUBLISHABLE_KEY in client/.env.development; the web container refuses to start
@@ -58,6 +63,21 @@ services:
       start_period: 10s
       retries: 3
 
+  # S3-compatible media store (P3.3) for trying the s3 store locally; the tests use it too. MinIO no longer publishes
+  # images, so this is RustFS. Start it with `docker compose up -d media`, then `pnpm run media:bucket` in server/
+  # (docs/DEPLOYMENT.md "Media storage").
+  media:
+    image: rustfs/rustfs:1.0.4
+    ports:
+      - '9000:9000'
+    environment:
+      RUSTFS_ACCESS_KEY: rustfsadmin
+      RUSTFS_SECRET_KEY: rustfsadmin
+    volumes:
+      - media-data:/data
+
   # Later phases add these (scheduled jobs are pg_cron, so they need no container):
   # reconciler:  # payment reconciliation (P5.10)
-  # minio:       # S3-compatible media store for local development (P3.3)
+
+volumes:
+  media-data:

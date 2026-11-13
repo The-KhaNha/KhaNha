@@ -94,7 +94,7 @@ affects; config comes from `GET /api/config`. Details: `.claude/rules/frontend.m
 ## 9. Icons and assets
 
 Icons from `lucide-react`, food photos through `FoodPhoto` and `optimize-images.py`, runtime hosts limited to Google
-Fonts and the Supabase project, uploads never committed. Details: `.claude/rules/frontend.md` §9.
+Fonts, the Supabase project and the media bucket's upload origin, uploads never committed. Details: `.claude/rules/frontend.md` §9.
 
 ## 10. Backend engineering
 

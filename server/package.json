@@ -16,6 +16,7 @@
     "start:worker": "node dist/src/worker.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "seed": "tsx scripts/seed.ts",
+    "media:bucket": "tsx scripts/media-bucket.ts",
     "db:start": "supabase start",
     "db:start:ci": "supabase start -x studio,storage-api,imgproxy,mailpit,realtime,edge-runtime,logflare,vector,supavisor,postgres-meta",
     "db:stop": "supabase stop",
@@ -31,6 +32,8 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1163.0",
+    "@aws-sdk/s3-presigned-post": "^3.1163.0",
     "@supabase/server": "^1.8.0",
     "@supabase/supabase-js": "^2.117.2",
     "cors": "^2.8.5",

@@ -442,7 +442,7 @@ most `TEMPLATE_PUSH_COPIES_MAX` (5000) copies.
 
 ### PR 07b — Client: open a branch, its profile, publish (P3.1, D6)
 
-- [ ] Merged
+- [x] Merged (07b-1 #86, 88344a9; 07b-2a #87, e649b36; 07b-2b #88, 8360bb0; 07c #89, 7899060)
 
 Depends on PR 05 too: the checklist links to the menu screen. `/before-write`: reuse-scout (the `/manage` shell and store picker from P2 PR 14a, the Settings form from PR 15,
 `Input`, `Button`, `Skeleton`, `EmptyState`, `ErrorState`).
@@ -478,7 +478,7 @@ the item editor). Its preview reads each chosen branch's list fresh and finds th
 
 ### PR 08 — Media: the port, local storage, the uploads API (P3.3)
 
-- [ ] Merged
+- [x] Merged (#90, 823ac2b)
 
 `/before-write`: schema-guard, NEW TABLE (`media_uploads`); reuse-scout, NO MATCH (`integrations/` is new). Skill:
 `agent-skills:security-and-hardening` (the PR accepts files).
@@ -538,6 +538,13 @@ against both stores.
 Docs: `docs/DEPLOYMENT.md` (MinIO, the variables, the web image's new variable), `.claude/rules/frontend.md` §9 and
 CLAUDE.md §9 (the upload host is the one new runtime host), `docs/TESTING.md`. Intent: `--server minor --client
 patch`.
+
+As built: **RustFS** (`rustfs/rustfs:1.0.4`) instead of MinIO, which no longer publishes images (Docker Hub and quay
+refuse the pull); it passed the same checks (the POST policy's size, key and type; `If-None-Match` write-once; no
+anonymous read; bucket CORS). The policy pins the exact declared size, not only a maximum. Without `MEDIA_BUCKET` the
+`s3` store answers 503 and the API still starts (staging has no bucket until P8). `pnpm run media:bucket` makes the
+local bucket and its CORS rule (refused on production). nginx's `/media/` upstream is the web image's required
+`MEDIA_UPSTREAM` (the API in compose by default); the bucket is private, so serving variants publicly is PR 10's.
 
 ### PR 10 — Media: the image pipeline in the worker (P3.3)
 

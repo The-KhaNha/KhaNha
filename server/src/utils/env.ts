@@ -69,6 +69,14 @@ const envSchema = z
     MEDIA_STORAGE: z.enum(['s3', 'local'], 'MEDIA_STORAGE must be s3 or local.').optional(),
     /** The folder `local` media lives in (created on first write). */
     MEDIA_LOCAL_DIR: z.string().min(1).default('.media'),
+    /** The `s3` store's bucket. Unset: every media call is a 503 (the API still starts). */
+    MEDIA_BUCKET: z.string().min(1).optional(),
+    /** The bucket's region; ignored by RustFS. */
+    AWS_REGION: z.string().min(1).default('ap-south-1'),
+    /** An S3-compatible server instead of AWS (RustFS in compose and CI). Unset on AWS. */
+    MEDIA_S3_ENDPOINT: z.string().url('MEDIA_S3_ENDPOINT must be a URL.').optional(),
+    /** The browser's view of MEDIA_S3_ENDPOINT when it differs from the API's (compose). */
+    MEDIA_UPLOAD_ORIGIN: z.string().url('MEDIA_UPLOAD_ORIGIN must be a URL.').optional(),
     CLIENT_ORIGIN: z
       .string()
       .url('CLIENT_ORIGIN must be a URL such as http://localhost:5173.')

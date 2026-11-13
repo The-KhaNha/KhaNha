@@ -104,7 +104,7 @@ export async function putLocalFile(
 
 /**
  * Marks the upload UPLOADED (complete_media_upload, which emits media.uploaded) once its bytes are in storage at the
- * declared size. A second call changes nothing and emits nothing. Answers the upload as it now stands.
+ * declared size and they start the way the declared type does. A second call changes nothing and emits nothing. Answers the upload as it now stands.
  */
 export async function completeUpload(
   storeId: string,
@@ -126,6 +126,13 @@ export async function completeUpload(
         'The photo is not the size declared when the upload started.',
         'sizeMismatch',
       );
+    }
+    // A bucket upload never passed through the API: the presigned form pins the type header and the size, not the
+    // bytes, so the photo is checked here, as the local PUT checks it before writing.
+    const bytes = await store.read(row.original_key);
+    if (!bytes || !looksLike(row.content_type, bytes)) {
+      await store.remove(row.original_key);
+      throw uploadInvalid('That file is not a JPEG, PNG or WebP photo.', 'content');
     }
   }
   try {

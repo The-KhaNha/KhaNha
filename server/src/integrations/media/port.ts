@@ -1,4 +1,4 @@
-/** How the client sends an upload's bytes: straight to storage (S3, PR 09) or to the API's own route (local). */
+/** How the client sends an upload's bytes: straight to the bucket (S3) or to the API's own route (local). */
 export interface UploadTarget {
   method: 'PUT' | 'POST';
   url: string;
@@ -14,7 +14,7 @@ export interface UploadTarget {
  */
 export interface MediaStore {
   readonly kind: 's3' | 'local';
-  /** Where and how the client sends `key`'s bytes: at most `maxBytes`, as `contentType`. */
+  /** Where and how the client sends `key`'s bytes: `maxBytes` of them (the declared size), as `contentType`. */
   createUpload(
     key: string,
     contentType: string,
