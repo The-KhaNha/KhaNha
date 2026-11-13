@@ -506,6 +506,13 @@ Docs: `docs/API.md`, `docs/SCHEMA.md`, `docs/DEPLOYMENT.md` and `server/.env.exa
 `docs/BACKEND_STRUCTURE.md` (`integrations/`), `docs/CONFIGURATION.md`, `.claude/hooks/major-change-gate.js` and
 CLAUDE.md §17 (`server/src/integrations/` is a major-change path). Intent: `--server minor`.
 
+As built: `MEDIA_STORAGE` defaults to `local` when `APP_ENV` is local and `s3` elsewhere (not `s3` everywhere: the S3
+store arrives in PR 09, so a developer and the test suite would have no store at all); until PR 09 the `s3` store is a
+placeholder that answers 503 to an upload. The major-change path list lives in `.claude/rules/workflow.md` §17, not
+CLAUDE.md. `complete` is a SQL function (`complete_media_upload`: the transition and `media.uploaded` in one
+transaction). The local PUT also checks the magic bytes, and the route is matched in `app.ts` to lift the 100 KB JSON
+limit for it alone. `MEDIA_UPLOAD` is its own constant (not in `LIMITS`, which the client mirrors).
+
 ### PR 09 — Media: S3 and MinIO (P3.3)
 
 - [ ] Merged

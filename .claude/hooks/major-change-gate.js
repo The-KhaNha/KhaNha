@@ -31,7 +31,7 @@ const PR_UNCOUNTED = /(^|\/)pnpm-lock\.yaml$|^server\/src\/types\/database\.ts$|
 
 // Keep in sync with .claude/rules/workflow.md "What counts as a major change".
 const MAJOR_PATHS = [
-  /^server\/src\/(routes|controllers|services|schemas|middleware|jobs|domain)\//,
+  /^server\/src\/(routes|controllers|services|schemas|middleware|jobs|domain|integrations)\//,
   /^server\/src\/worker\.ts$/,
   /^server\/supabase\/migrations\//,
   /^client\/src\/(pages|services|components)\//,
