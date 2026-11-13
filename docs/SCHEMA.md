@@ -55,6 +55,7 @@ a new file (see [DEPLOYMENT.md](DEPLOYMENT.md#schema-changes)).
 | `20261113085219_adjust_stock.sql`                  | adds `stock_reason`, `stock_movements` (RLS, revoked), `stores.staff_can_edit_stock` (also watched by `stores_settings_audit`) and `adjust_stock()` (`service_role` only): stock by hand, with its trail                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `20261113140540_push_template_items.sql`           | `push_template_items()` (`service_role` only): the template push                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `20261113142425_store_readiness.sql`               | `store_publish_missing()` (`service_role` only), the go-live checklist; `set_store_status` (same signature) reads it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `20261113151317_media_uploads.sql`                 | adds `media_upload_status`, `media_uploads` (RLS, revoked) and `complete_media_upload()` (`service_role` only): photo uploads (P3.3)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 
 ## Enums
 
@@ -335,6 +336,21 @@ order's lines record what they reserved. RLS enabled, no policies, revoked from 
 | `actor_id`           | uuid         | yes  |                     | references `profiles (id)` on delete set null; who made it            |
 | `created_at`         | timestamptz  | no   | `clock_timestamp()` | when the row is written (it may wait on the item lock)                |
 
+### media_uploads
+
+One row per photo a store's manager or owner uploads (P3.3). The API makes the row and the storage key
+(`original_key`, `stores/<store id>/uploads/<upload id>.<jpg|png|webp>`, unique), never the client. `status` is
+`PENDING` (started), `UPLOADED` (the bytes are in storage at the declared size), then `PROCESSED` or `FAILED` (the image
+pipeline, P3 PR 10, fills `variants` or `failure` and `processed_at`). `content_type` is `image/jpeg`, `image/png` or
+`image/webp`, `byte_size` 1 to 8 MB (CHECK constraints, mirrored by `MEDIA_UPLOAD`). `created_by` →
+`profiles` on delete set null. Indexes `(status, created_at)` and `(store_id, created_at desc)`. RLS on, revoked from
+`anon` and `authenticated`; read and written only by `media.service.ts` (`TABLE_OWNERS`).
+
+`complete_media_upload(p_store_id, p_upload_id, p_actor, p_request_id) returns boolean` (plpgsql, invoker,
+`service_role` only) moves one of the store's uploads from `PENDING` to `UPLOADED` under its row lock and emits
+`media.uploaded` (`{ key, contentType, byteSize }`); another store's or an unknown one is `NOT_FOUND`; one already past
+`PENDING` changes nothing, emits nothing and returns false.
+
 ### orders
 
 | Column               | Type             | Null | Default             | Constraints                                                                                |
@@ -576,6 +592,7 @@ object (SQLSTATE `P0001`). How the API maps them is in [API.md](API.md#database-
 | `push_template_items(...)`    | plpgsql  | invoker  | integer             | `brand.service.pushTemplate`                                                                                  | `service_role`       |
 | `set_store_status(...)`       | plpgsql  | invoker  | `text[]`            | `store.service.setStoreStatus`                                                                                | `service_role`       |
 | `store_publish_missing(uuid)` | sql      | invoker  | `text[]`            | `store.service.getManagedStore`, `set_store_status`                                                           | `service_role`       |
+| `complete_media_upload(...)`  | plpgsql  | invoker  | boolean             | `media.service.completeUpload`                                                                                | `service_role`       |
 | `stores_emit_changed()`       | plpgsql  | invoker  | trigger             | `stores_changed`                                                                                              | nobody               |
 | `pause_store(...)`            | plpgsql  | invoker  | boolean             | `storePause.service.pauseStore`                                                                               | `service_role`       |
 | `resume_store(...)`           | plpgsql  | invoker  | boolean             | `storePause.service.resumeStore`                                                                              | `service_role`       |

@@ -57,3 +57,15 @@ export const MANAGED_ITEMS_MAX = 1000;
  * transaction with an audit row per copy, so a whole menu to every branch is split into a few pushes.
  */
 export const TEMPLATE_PUSH_COPIES_MAX = 5000;
+
+/**
+ * Photo uploads (P3.3, docs/CONFIGURATION.md, platform constant): what a manager may upload. The media_uploads CHECK
+ * constraints hold the same bounds.
+ */
+export const MEDIA_UPLOAD = {
+  maxBytes: 8 * 1024 * 1024,
+  /** Content type → the file extension its key gets. */
+  types: { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' },
+} as const;
+
+export type MediaContentType = keyof typeof MEDIA_UPLOAD.types;

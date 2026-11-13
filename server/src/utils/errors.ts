@@ -17,6 +17,7 @@ export type ErrorCode =
   | 'PRICE_CHANGED'
   | 'SLUG_TAKEN'
   | 'STORE_NOT_READY'
+  | 'UPLOAD_INVALID'
   | 'CLIENT_OUTDATED'
   | 'RATE_LIMITED'
   | 'UPSTREAM_UNAVAILABLE'
@@ -71,6 +72,12 @@ export interface StoreNotReadyDetails {
   missing: string[];
 }
 
+/** Why a photo upload was refused (P3.3), so the client can say which rule it broke. */
+export interface UploadInvalidDetails {
+  kind: 'uploadInvalid';
+  reason: 'type' | 'sizeMismatch' | 'content' | 'notUploaded' | 'state';
+}
+
 export type ErrorDetails =
   | ItemErrorDetails
   | ReplayedOrderDetails
@@ -78,7 +85,8 @@ export type ErrorDetails =
   | RateLimitDetails
   | StoreClosedDetails
   | StorePausedDetails
-  | StoreNotReadyDetails;
+  | StoreNotReadyDetails
+  | UploadInvalidDetails;
 
 /**
  * A dependency (Supabase's database or Auth, later the payment provider) failed or could not be reached. The error
@@ -245,6 +253,10 @@ export const storeNotReady = (missing: string[]): AppError =>
     'Add an address, weekly hours and at least one available item before publishing.',
     { kind: 'storeNotReady', missing },
   );
+
+/** A photo upload refused: a type, size or content the API does not take, or a step out of order. */
+export const uploadInvalid = (message: string, reason: UploadInvalidDetails['reason']): AppError =>
+  new AppError(400, 'UPLOAD_INVALID', message, { kind: 'uploadInvalid', reason });
 
 /** The email already works at the store, or already has an open invite there (P2.2). */
 export const membershipExists = (): AppError =>

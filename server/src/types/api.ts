@@ -306,3 +306,17 @@ export interface FeatureFlagDto {
   /** The admin who last changed it; null for a migration or a deleted account. */
   updatedBy: string | null;
 }
+
+/** One photo upload (P3.3): its progress and, once the pipeline has run, its variants. */
+export interface MediaUploadDto {
+  id: string;
+  status: 'PENDING' | 'UPLOADED' | 'PROCESSED' | 'FAILED';
+  contentType: string;
+  byteSize: number;
+  /** Where the original is served from (a path on this API in local mode, the CDN in production). */
+  url: string;
+  /** The resized copies, once PROCESSED (PR 10); null before. */
+  variants: unknown;
+  failure: string | null;
+  createdAt: string;
+}

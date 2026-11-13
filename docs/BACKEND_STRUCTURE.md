@@ -29,6 +29,8 @@ server/
 │   ├── routes/               route tables: index.ts + one *.routes.ts per resource
 │   ├── controllers/          thin handlers: read req → call a service → serialize → res.json
 │   ├── services/             business logic and every database call
+│   ├── integrations/         ports to outside services, one folder each: media/ (port.ts, the MediaStore; local.ts, a
+│   │                         folder for development; index.ts picks one from MEDIA_STORAGE; S3 arrives in P3 PR 09)
 │   ├── jobs/                 the job runner (runner.ts) and one handler per queue (notify.ts); JOBS.md
 │   ├── schemas/              zod request schemas
 │   ├── domain/               pure rules with no I/O: permissions.ts (the capability matrix, `can`, `accessFor`)
