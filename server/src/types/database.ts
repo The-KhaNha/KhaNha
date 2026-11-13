@@ -265,6 +265,63 @@ export type Database = {
           },
         ];
       };
+      media_uploads: {
+        Row: {
+          byte_size: number;
+          content_type: string;
+          created_at: string;
+          created_by: string | null;
+          failure: string | null;
+          id: string;
+          original_key: string;
+          processed_at: string | null;
+          status: Database['public']['Enums']['media_upload_status'];
+          store_id: string;
+          variants: Json | null;
+        };
+        Insert: {
+          byte_size: number;
+          content_type: string;
+          created_at?: string;
+          created_by?: string | null;
+          failure?: string | null;
+          id?: string;
+          original_key: string;
+          processed_at?: string | null;
+          status?: Database['public']['Enums']['media_upload_status'];
+          store_id: string;
+          variants?: Json | null;
+        };
+        Update: {
+          byte_size?: number;
+          content_type?: string;
+          created_at?: string;
+          created_by?: string | null;
+          failure?: string | null;
+          id?: string;
+          original_key?: string;
+          processed_at?: string | null;
+          status?: Database['public']['Enums']['media_upload_status'];
+          store_id?: string;
+          variants?: Json | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'media_uploads_created_by_fkey';
+            columns: ['created_by'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'media_uploads_store_id_fkey';
+            columns: ['store_id'];
+            isOneToOne: false;
+            referencedRelation: 'stores';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       menu_items: {
         Row: {
           archived_at: string | null;
@@ -954,6 +1011,15 @@ export type Database = {
         };
         Returns: number;
       };
+      complete_media_upload: {
+        Args: {
+          p_actor?: Json;
+          p_request_id?: string;
+          p_store_id: string;
+          p_upload_id: string;
+        };
+        Returns: boolean;
+      };
       create_store_from_template: {
         Args: {
           p_actor?: Json;
@@ -1141,6 +1207,7 @@ export type Database = {
     Enums: {
       actor_type: 'USER' | 'WORKER' | 'RECONCILER' | 'WEBHOOK' | 'SCHEDULER' | 'SYSTEM';
       diet_marker: 'VEG' | 'NON_VEG' | 'EGG';
+      media_upload_status: 'PENDING' | 'UPLOADED' | 'PROCESSED' | 'FAILED';
       order_status: 'PLACED' | 'PREPARING' | 'READY' | 'COLLECTED' | 'CANCELLED';
       payment_status: 'PENDING' | 'PAID';
       schedule_exception_kind: 'CLOSED' | 'SPECIAL_HOURS';
@@ -1274,6 +1341,7 @@ export const Constants = {
     Enums: {
       actor_type: ['USER', 'WORKER', 'RECONCILER', 'WEBHOOK', 'SCHEDULER', 'SYSTEM'],
       diet_marker: ['VEG', 'NON_VEG', 'EGG'],
+      media_upload_status: ['PENDING', 'UPLOADED', 'PROCESSED', 'FAILED'],
       order_status: ['PLACED', 'PREPARING', 'READY', 'COLLECTED', 'CANCELLED'],
       payment_status: ['PENDING', 'PAID'],
       schedule_exception_kind: ['CLOSED', 'SPECIAL_HOURS'],

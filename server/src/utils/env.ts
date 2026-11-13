@@ -4,6 +4,18 @@ import { z } from 'zod';
 const seedPassword = (name: string) =>
   z.string().min(12, `${name} must be at least 12 characters.`).optional();
 
+/**
+ * The media store for an environment: the setting, or `local` on a developer's machine and `s3` elsewhere. null:
+ * refused (`local` in production, where photos must outlive the container).
+ */
+export function resolveMediaStorage(
+  appEnv: 'local' | 'staging' | 'production',
+  setting: 's3' | 'local' | undefined,
+): 's3' | 'local' | null {
+  const storage = setting ?? (appEnv === 'local' ? 'local' : 's3');
+  return appEnv === 'production' && storage === 'local' ? null : storage;
+}
+
 const envSchema = z
   .object({
     /** Which Supabase project this process talks to. `pnpm run seed` refuses to wipe `production`. */
@@ -48,6 +60,15 @@ const envSchema = z
     RATE_LIMIT_REGISTER_MAX: z.coerce.number().int().min(0).default(10),
     RATE_LIMIT_CLIENT_ERRORS_MAX: z.coerce.number().int().min(0).default(30),
     RATE_LIMIT_INVITE_ACCEPT_MAX: z.coerce.number().int().min(0).default(10),
+    /** Photo uploads started per signed-in account per window (P3.3). */
+    RATE_LIMIT_UPLOAD_MAX: z.coerce.number().int().min(0).default(20),
+    /**
+     * Where uploaded photos live (P3.3): `s3` (S3 behind CloudFront, ADR-006) or `local`, a folder on this machine for
+     * development. Unset: `local` when APP_ENV is local, else `s3`. `local` is refused in production.
+     */
+    MEDIA_STORAGE: z.enum(['s3', 'local'], 'MEDIA_STORAGE must be s3 or local.').optional(),
+    /** The folder `local` media lives in (created on first write). */
+    MEDIA_LOCAL_DIR: z.string().min(1).default('.media'),
     CLIENT_ORIGIN: z
       .string()
       .url('CLIENT_ORIGIN must be a URL such as http://localhost:5173.')
@@ -71,9 +92,18 @@ const envSchema = z
     SEED_CUSTOMER_PASSWORD: seedPassword('SEED_CUSTOMER_PASSWORD'),
     SEED_OWNER_PASSWORD: seedPassword('SEED_OWNER_PASSWORD'),
   })
+  .superRefine((env, ctx) => {
+    if (resolveMediaStorage(env.APP_ENV, env.MEDIA_STORAGE) === null)
+      ctx.addIssue({
+        code: 'custom',
+        path: ['MEDIA_STORAGE'],
+        message: 'MEDIA_STORAGE=local is for development: production stores photos in S3.',
+      });
+  })
   .transform((env) => ({
     ...env,
     LOG_LEVEL: env.LOG_LEVEL ?? (env.APP_ENV === 'local' ? 'debug' : 'info'),
+    MEDIA_STORAGE: resolveMediaStorage(env.APP_ENV, env.MEDIA_STORAGE) ?? 's3',
   }));
 
 type Env = z.infer<typeof envSchema>;
