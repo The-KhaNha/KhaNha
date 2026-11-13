@@ -16,7 +16,8 @@ const reloadStores = vi.hoisted(() => vi.fn());
 vi.mock('../features/auth/authStore', () => ({
   useAuthStore: (select: (s: typeof state) => unknown) => select(state),
 }));
-vi.mock('../features/stores/useStores', () => ({ useStores: () => ({ retry: reloadStores }) }));
+// The shell owns the store list; the hours page must not open a second copy of it (onChanged reloads it).
+vi.mock('../features/stores/useStores', () => ({ useStores: reloadStores }));
 
 const { ManageHoursPage } = await import('./ManageHours');
 const { ApiError } = await import('../services/api');
@@ -75,7 +76,7 @@ describe('ManageHoursPage', () => {
       { dayOfWeek: 1, opensAt: '09:00', closesAt: '18:00' },
       { dayOfWeek: 2, opensAt: '09:00', closesAt: '17:00' },
     ]);
-    expect(reloadStores).toHaveBeenCalled();
+    expect(reloadStores).not.toHaveBeenCalled();
     expect(api.fetchStoreHours).toHaveBeenCalledTimes(2);
   });
 
