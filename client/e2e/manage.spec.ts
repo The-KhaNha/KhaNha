@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { menu, mockApi, noHorizontalOverflow, signIn, store, summary } from './fixtures';
+import { managed, menu, mockApi, noHorizontalOverflow, signIn, store, summary } from './fixtures';
 
 test('a manager closes today and the store list says so', async ({ page }) => {
   await mockApi(page);
@@ -17,7 +17,7 @@ test('a manager closes today and the store list says so', async ({ page }) => {
   let exceptions: unknown[] = [];
   const posted: unknown[] = [];
   // Registered after mockApi, so these win: the store answers as closed once the exception exists.
-  await page.route('**/api/stores/s1/hours', (route) =>
+  await page.route('**/api/stores/s1/manage/hours', (route) =>
     route.fulfill({ json: { timezone: 'Asia/Kolkata', hours: [], exceptions } }),
   );
   await page.route('**/api/stores/s1/schedule-exceptions', (route) => {
@@ -123,4 +123,56 @@ test('staff marks an item sold out on the Stock view and the menu shows it', asy
 
   await page.goto('/s/cafe/menu');
   await expect(page.getByText('Sold out').first()).toBeVisible();
+});
+
+test("the owner opens a branch from the brand's template and lands on its draft", async ({
+  page,
+}) => {
+  await mockApi(page);
+  await signIn(page, 'CUSTOMER', 'PLACED', { ownedBrands: [store.brand] });
+  const branch = managed(store, {
+    id: 's9',
+    slug: 'north-gate',
+    name: 'North Gate',
+    status: 'DRAFT',
+  });
+  let opened = false;
+  await page.route('**/api/brands/mine', (route) =>
+    route.fulfill({
+      json: {
+        brands: [
+          {
+            ...store.brand,
+            template: managed(store, {
+              id: 't1',
+              slug: 'cafe-template',
+              status: 'DRAFT',
+              isTemplate: true,
+            }),
+            stores: [managed(store), ...(opened ? [branch] : [])],
+          },
+        ],
+      },
+    }),
+  );
+  await page.route('**/api/brands/b1/stores', (route) => {
+    expect(route.request().postDataJSON()).toMatchObject({ name: 'North Gate' });
+    opened = true;
+    return route.fulfill({ status: 201, json: { store: branch } });
+  });
+  await page.route('**/api/stores/s9/manage', (route) =>
+    route.fulfill({ json: { store: branch, brand: store.brand, missing: ['address', 'hours'] } }),
+  );
+  await page.route('**/api/stores/s9/manage/hours', (route) =>
+    route.fulfill({ json: { timezone: 'Asia/Kolkata', hours: [], exceptions: [] } }),
+  );
+
+  await page.goto('/manage');
+  await expect(page.getByRole('link', { name: /Brand template/ })).toBeVisible();
+  await noHorizontalOverflow(page);
+  await page.getByRole('button', { name: 'Open a branch' }).click();
+  await page.getByLabel('Branch name').fill('North Gate');
+  await page.getByRole('button', { name: 'Open the branch' }).click();
+  await expect(page).toHaveURL(/\/manage\/north-gate/);
+  await expect(page.getByRole('heading', { name: 'North Gate' })).toBeVisible();
 });

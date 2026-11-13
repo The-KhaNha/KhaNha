@@ -82,6 +82,16 @@ export interface ManagedStore {
   createdAt: string;
 }
 
+/** What a branch still lacks before it can be published; empty: ready. */
+export type PublishMissing = 'address' | 'hours' | 'menu';
+
+/** GET /api/stores/:storeId/manage: the store at any status, its brand and its go-live checklist. */
+export interface ManageStoreResponse {
+  store: ManagedStore;
+  brand: { id: string; name: string; slug: string };
+  missing: PublishMissing[];
+}
+
 /** One brand of GET /api/brands/mine: its branches (every status) and its template. */
 export interface MyBrand {
   id: string;

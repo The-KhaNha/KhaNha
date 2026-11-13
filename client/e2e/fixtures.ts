@@ -1,6 +1,7 @@
 import { expect, type Page } from '@playwright/test';
 import fallbacks from '../src/config/fallbacks.json' with { type: 'json' };
 import type {
+  ManagedStore,
   Config,
   MenuItem,
   MenuResponse,
@@ -86,6 +87,23 @@ export const summary = ({ id, slug, name, tagline, imageUrl, area, brand, ...ope
   openLabel: open.openLabel,
 });
 
+/** A store as GET /stores/:storeId/manage answers it (any status). */
+export const managed = (s: Store, over: Partial<ManagedStore> = {}): ManagedStore => ({
+  id: s.id,
+  slug: s.slug,
+  name: s.name,
+  status: 'ACTIVE',
+  isTemplate: false,
+  area: s.area,
+  address: s.address,
+  contactPhone: null,
+  tagline: s.tagline,
+  description: s.description,
+  imageUrl: s.imageUrl,
+  createdAt: '2026-11-01T00:00:00Z',
+  ...over,
+});
+
 export async function mockApi(page: Page): Promise<void> {
   await page.route('**/api/**', (route) => {
     const path = new URL(route.request().url()).pathname;
@@ -115,7 +133,10 @@ export async function mockApi(page: Page): Promise<void> {
           staffCanEditStock: true,
         },
       });
-    if (path === '/api/stores/s1/hours')
+    // The manage screen reads its own store and hours at any status (GET /manage, /manage/hours).
+    if (path === '/api/stores/s1/manage')
+      return json({ store: managed(store), brand: store.brand, missing: [] });
+    if (path === '/api/stores/s1/hours' || path === '/api/stores/s1/manage/hours')
       return json({
         timezone: 'Asia/Kolkata',
         hours: [{ dayOfWeek: 1, opensAt: '09:00', closesAt: '17:00' }],

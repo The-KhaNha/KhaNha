@@ -468,6 +468,9 @@ serve only `ACTIVE` stores, so a `DRAFT` branch could not be managed at all. `GE
 `GET /stores/:storeId/manage/hours` (`hours.edit`, uncached). `store_publish_missing` is the one checklist: the
 manage screen reads it and `set_store_status` (redefined, same signature) publishes only when it is empty. 07b-2
 (client): this section's screens on those reads. 07c (client): PR 07's push sheet, once the template is reachable.
+07b-2 split again for size: 07b-2a the picker (template first, branches at every status, "Open a branch", which
+lands on the new branch's page) and the store shell on the manage reads (the hours editor too); 07b-2b the Profile
+tab and the Go live card.
 
 ### PR 08 — Media: the port, local storage, the uploads API (P3.3)
 

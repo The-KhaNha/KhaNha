@@ -16,13 +16,12 @@ import {
   type Week,
 } from '../features/manage/hoursRules';
 import { canEditHours } from '../features/manage/manageRules';
-import { useStores } from '../features/stores/useStores';
 import { useResource } from '../lib/useResource';
 import { ApiError } from '../services/api';
+import { fetchManagedHours } from '../services/manageStores';
 import {
   createScheduleException,
   deleteScheduleException,
-  fetchStoreHours,
   saveStoreHours,
 } from '../services/stores';
 import type { StoreSummary } from '../types/api';
@@ -32,7 +31,7 @@ const messageOf = (err: unknown) =>
 
 interface ManageHoursPageProps {
   store: Pick<StoreSummary, 'id' | 'brand'>;
-  /** Reloads the store the shell shows (its open state changes with the hours). */
+  /** Reloads the store the shell shows and the public store list (the open state changes with the hours). */
   onChanged: () => void;
 }
 
@@ -41,11 +40,10 @@ export function ManageHoursPage({ store, onChanged }: ManageHoursPageProps) {
   const user = useAuthStore((s) => s.user);
   const allowed = !!user && canEditHours(user, store);
   // Not persisted: only an editor reads it, and a stale week must never be what someone edits.
-  const { data, isLoading, error, reload } = useResource(() => fetchStoreHours(store.id), {
+  const { data, isLoading, error, reload } = useResource(() => fetchManagedHours(store.id), {
     key: `manage:hours:${store.id}`,
     enabled: allowed,
   });
-  const { retry: reloadStores } = useStores();
   const [week, setWeek] = useState<Week | null>(null);
   const [busy, setBusy] = useState(false);
   const [weekError, setWeekError] = useState<string | null>(null);
@@ -86,11 +84,11 @@ export function ManageHoursPage({ store, onChanged }: ManageHoursPageProps) {
       </div>
     );
 
-  // Every change reloads the hours, the store and the store list (CLAUDE.md §8).
+  // Every change reloads the hours, and through the shell the store and the store list (CLAUDE.md §8). The shell owns
+  // the list resource: one here too would fetch the same list twice.
   const reloadAll = () => {
     reload();
     onChanged();
-    reloadStores();
   };
   const mutate = async (write: () => Promise<unknown>): Promise<string | null> => {
     setBusy(true);
