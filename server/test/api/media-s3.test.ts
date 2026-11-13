@@ -6,7 +6,8 @@ import { randomUUID } from 'node:crypto';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { S3Client, S3ServiceException } from '@aws-sdk/client-s3';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { localMediaStore } from '../../src/integrations/media/local';
 import type { MediaStore, UploadTarget } from '../../src/integrations/media/port';
 import {
@@ -15,6 +16,7 @@ import {
   type S3MediaConfig,
 } from '../../src/integrations/media/s3';
 import { env } from '../../src/utils/env';
+import { IntegrationError } from '../../src/utils/errors';
 import { supabaseAdmin } from '../../src/utils/supabase';
 import { api } from '../setup/api';
 import { createStoreMember, deleteTestStores, type TestUser } from '../setup/helpers';
@@ -238,5 +240,35 @@ describe.each(stores)('the %s store keeps the MediaStore contract', (_kind, enab
     expect(await store.size(key)).toBeNull();
     await expect(store.size('../../etc/passwd')).rejects.toThrow('Not a media key');
     expect(store.publicPath(key)).toBe(`/media/${key}`);
+  });
+});
+
+describe("the S3 store's write answers", () => {
+  const answer = (httpStatusCode: number) =>
+    vi.spyOn(S3Client.prototype, 'send').mockRejectedValueOnce(
+      new S3ServiceException({
+        name: 'Conflict',
+        $fault: 'client',
+        $metadata: { httpStatusCode },
+      }),
+    );
+  const key = `stores/${randomUUID()}/variants/${randomUUID()}.webp`;
+
+  it('412: the key already holds bytes (EEXIST)', async () => {
+    answer(412);
+    await expect(
+      s3MediaStore(config).write(key, Buffer.from('x'), 'image/webp'),
+    ).rejects.toMatchObject({
+      code: 'EEXIST',
+    });
+  });
+
+  it('409: a conflicting write was in flight: retryable, never taken as stored', async () => {
+    answer(409);
+    const err = await s3MediaStore(config)
+      .write(key, Buffer.from('x'), 'image/webp')
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(IntegrationError);
+    expect(err).toMatchObject({ retryable: true });
   });
 });

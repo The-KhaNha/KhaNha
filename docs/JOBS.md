@@ -78,7 +78,7 @@ deleted last; a redelivery of a finished upload removes it again (idempotent, no
 between the mark and the removal leaves nothing behind. A photo that can never be processed (not an image, too large,
 the original missing) is marked `FAILED` with a short reason the manager sees (the decoder's own message is logged
 only), its original is removed (`media.failed`), and the job ends normally: nothing is dead-lettered. A store failure
-that may pass (a 5xx, no answer) is retried; one that will not (a denied role) dead-letters and leaves the upload
+that may pass (a 5xx, a 409 conflict, no answer) is retried; one that will not (a denied role) dead-letters and leaves the upload
 `UPLOADED` for the sweep. Variants are content-addressed, so two uploads of the same photo share them: whatever
 removes a variant first checks that nothing still points at it (the sweep, PR 10b).
 `sharp` runs with its cache off and one thread, one photo at a time: the production host has 1 GB. The test drives a

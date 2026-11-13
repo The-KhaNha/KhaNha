@@ -50,8 +50,11 @@ export function s3MediaStore(config: S3MediaConfig): MediaStore {
   // without someone fixing it.
   const failed = (operation: string) => (err: unknown) => {
     const code = status(err);
+    // 409: a conflicting operation on the key was in flight (a conditional write after a delete); AWS says retry.
     const retryable =
-      code === undefined ? (err as Error).name !== 'CredentialsProviderError' : code >= 500;
+      code === undefined
+        ? (err as Error).name !== 'CredentialsProviderError'
+        : code >= 500 || code === 409;
     throw new IntegrationError('s3', operation, retryable, { cause: err });
   };
 
@@ -110,8 +113,8 @@ export function s3MediaStore(config: S3MediaConfig): MediaStore {
           }),
         );
       } catch (err) {
-        // 412: the key holds bytes; 409: another write of it is in flight. Either way it is not this write's.
-        if (status(err) === 412 || status(err) === 409)
+        // 412: the key holds bytes. (A 409 is a conflicting write in flight: retried below, never taken as stored.)
+        if (status(err) === 412)
           throw Object.assign(new Error(`Already stored: ${key}`), { code: 'EEXIST' });
         failed('write')(err);
       }
