@@ -59,7 +59,7 @@ by itself emits nothing either: it is derived, and a sweep comes with the first 
 `menu.changed` (`aggregateId` and `storeId`: the store; payload `{ itemIds }`) is emitted by the `menu_items_emit_changed`
 statement triggers ([SCHEMA.md](SCHEMA.md#triggers)) in the transaction of any write that changed what a menu shows:
 an insert, or an update of anything but `stock_quantity` and `template_item_id`. One statement is one event per store,
-so a copy or a bulk edit is one event, and a stock move (every order) is none. The actor and request id come from
+so a copy or a bulk edit is one event, and a stock move by an order is none; a stock change by hand (`adjust_stock`) emits its own one. The actor and request id come from
 `app.actor` or the Data API's `x-actor` and `x-request-id` headers. Nothing subscribes to it yet (P7.7).
 
 ## Queues and subscriptions

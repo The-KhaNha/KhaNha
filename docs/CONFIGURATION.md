@@ -8,7 +8,7 @@ hard-coded in two places. Add a row here in the same change that adds a setting 
 | Tier              | Where                                                | Changed by                                                        | Takes effect                                                             |
 | ----------------- | ---------------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------ |
 | Site setting      | the one `site_settings` row                          | an admin, `PATCH /api/admin/settings` (the `/admin` page)         | the next request on this API instance; others within the 10 s read cache |
-| Store setting     | four columns of the `stores` row                     | a store's manager or owner, `PATCH /api/stores/:storeId/settings` | the next request on this instance; others within the 10 s read cache     |
+| Store setting     | columns of the `stores` row                          | a store's manager or owner, `PATCH /api/stores/:storeId/settings` | the next request on this instance; others within the 10 s read cache     |
 | Deployment (env)  | `server/.env`, the host, the web image's runtime env | whoever deploys                                                   | the next process start ([DEPLOYMENT.md](DEPLOYMENT.md))                  |
 | Feature flag      | a `feature_flags` row                                | an admin, `PATCH /api/admin/flags/:key`                           | the next request on this API instance; others within the 10 s read cache |
 | Platform constant | code, with a parity test where both sides need it    | a code change and a release                                       | the next release                                                         |
@@ -41,12 +41,13 @@ menus). Bounds are the check constraints, `STORE_SETTING_BOUNDS` and `updateStor
 `test/api/store-settings.test.ts`. A new store takes the defaults; the migration copied each existing store's
 `staff_order_list_limit` from the site setting once; P2 PR 16 then dropped the site-setting column.
 
-| Key (API)                     | Column                            | Default | Bounds | Read by                                                                  |
-| ----------------------------- | --------------------------------- | ------- | ------ | ------------------------------------------------------------------------ |
-| `maxQuantityPerItem`          | `max_quantity_per_item`           | 10      | 1–50   | `createOrder` (a line's merged quantity), `MenuResponse.rules`, the cart |
-| `lowStockThreshold`           | `low_stock_threshold`             | 5       | 0–50   | `MenuResponse.rules` (the "only N left" pill)                            |
-| `staffOrderListLimit`         | `staff_order_list_limit`          | 100     | 1–500  | the store's board: finished orders kept (active ones always show)        |
-| `lastOrderMinutesBeforeClose` | `last_order_minutes_before_close` | 0       | 0–240  | stored only; enforced by P2 PR 06                                        |
+| Key (API)                     | Column                            | Default | Bounds  | Read by                                                                  |
+| ----------------------------- | --------------------------------- | ------- | ------- | ------------------------------------------------------------------------ |
+| `maxQuantityPerItem`          | `max_quantity_per_item`           | 10      | 1–50    | `createOrder` (a line's merged quantity), `MenuResponse.rules`, the cart |
+| `lowStockThreshold`           | `low_stock_threshold`             | 5       | 0–50    | `MenuResponse.rules` (the "only N left" pill)                            |
+| `staffOrderListLimit`         | `staff_order_list_limit`          | 100     | 1–500   | the store's board: finished orders kept (active ones always show)        |
+| `lastOrderMinutesBeforeClose` | `last_order_minutes_before_close` | 0       | 0–240   | stored only; enforced by P2 PR 06                                        |
+| `staffCanEditStock`           | `staff_can_edit_stock`            | true    | boolean | `requireStore('stock.update')`: whether STAFF may change stock           |
 
 The client reads the first two from the menu's `rules`; with no menu loaded it uses `storeDefaults` in
 `client/src/config/fallbacks.json`, which `limits-parity.safe.test.ts` pins to the column defaults.

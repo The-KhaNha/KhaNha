@@ -20,6 +20,8 @@ const MATRIX = {
   'team.manageStaff': ['MANAGER', 'OWNER', 'ADMIN'],
   'team.manageManagers': ['OWNER', 'ADMIN'],
   'audit.store': ['MANAGER', 'OWNER', 'ADMIN'],
+  // STAFF only while the store lets staff edit stock (stores.staff_can_edit_stock): see can().
+  'stock.update': ['STAFF', 'MANAGER', 'OWNER'],
 } as const satisfies Record<string, readonly StoreAccess[]>;
 
 export type Capability = keyof typeof MATRIX;
@@ -38,7 +40,18 @@ export function canAtTemplate(access: StoreAccess | null, capability: Capability
   return access === 'OWNER' && TEMPLATE_CAPABILITIES.includes(capability);
 }
 
-export function can(access: StoreAccess | null, capability: Capability): boolean {
+/** The store settings a cell depends on; a caller that does not pass them gets the stricter answer. */
+export interface StoreRules {
+  staffCanEditStock?: boolean;
+}
+
+export function can(
+  access: StoreAccess | null,
+  capability: Capability,
+  rules: StoreRules = {},
+): boolean {
+  if (access === 'STAFF' && capability === 'stock.update' && rules.staffCanEditStock !== true)
+    return false;
   return access !== null && (MATRIX[capability] as readonly StoreAccess[]).includes(access);
 }
 
@@ -49,7 +62,7 @@ export function can(access: StoreAccess | null, capability: Capability): boolean
  */
 export function accessFor(
   user: Pick<AuthUser, 'role' | 'memberships' | 'ownedBrandIds'>,
-  store: { id: string; brandId: string },
+  store: { id: string; brandId: string } & StoreRules,
   capability: Capability,
 ): StoreAccess | null {
   const standings: StoreAccess[] = [];
@@ -57,5 +70,5 @@ export function accessFor(
   const membership = user.memberships.find((m) => m.storeId === store.id);
   if (membership) standings.push(membership.role);
   if (user.role === 'ADMIN') standings.push('ADMIN');
-  return standings.find((access) => can(access, capability)) ?? standings[0] ?? null;
+  return standings.find((access) => can(access, capability, store)) ?? standings[0] ?? null;
 }

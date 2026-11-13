@@ -95,6 +95,7 @@ describe('GET and PATCH /api/stores/:storeId/settings', () => {
       lowStockThreshold: 5,
       staffOrderListLimit: 100,
       lastOrderMinutesBeforeClose: 0,
+      staffCanEditStock: true,
     });
   });
 

@@ -1,6 +1,7 @@
 import type { StoreSettings } from '../../types/api';
 
-export type StoreSettingKey = keyof StoreSettings;
+/** The numeric settings this form edits; the staff-stock switch lives with the stock screen (P3 PR 06). */
+export type StoreSettingKey = Exclude<keyof StoreSettings, 'staffCanEditStock'>;
 
 /**
  * The four store settings, in display order. Bounds are not copied here: the API validates them (docs/API.md) and its
@@ -39,8 +40,8 @@ export const validateStoreSetting = (raw: string): string | null =>
 export function changedStoreSettings(
   saved: StoreSettings,
   draft: StoreSettingsDraft,
-): Partial<StoreSettings> {
-  const changes: Partial<StoreSettings> = {};
+): Partial<Pick<StoreSettings, StoreSettingKey>> {
+  const changes: Partial<Pick<StoreSettings, StoreSettingKey>> = {};
   for (const k of STORE_SETTING_KEYS)
     if (Number(draft[k]) !== saved[k]) changes[k] = Number(draft[k]);
   return changes;
