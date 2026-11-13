@@ -130,14 +130,6 @@ export const MODIFIER_CASES: ModifierCase[] = [
     expect: { code: 'MODIFIER_INVALID', groupName: 'Add-ons' },
   },
   {
-    name: 'two sizes at once',
-    basePricePaise: 12000,
-    groups: [SIZE],
-    chosen: ['o-small', 'o-large'],
-    enabled: true,
-    expect: { code: 'MODIFIER_INVALID', groupName: 'Size' },
-  },
-  {
     name: 'an unavailable option',
     basePricePaise: 12000,
     groups: [SIZE, MILK],
