@@ -77,6 +77,8 @@ The API has no sign-in or sign-out route. The browser signs in and out with supa
 | DELETE | `/stores/:storeId/schedule-exceptions/:exceptionId` | user + `hours.edit`        | path: `exceptionId`                                                        | 204                                                           |
 | GET    | `/brands/mine`                                      | user                       | none                                                                       | 200 `{ brands: MyBrandDto[] }`                                |
 | POST   | `/brands/:brandId/stores`                           | user, owner of the brand   | body: [`createStoreSchema`](#post-brandsbrandidstores)                     | 201 `{ store: ManagedStoreDto }`                              |
+| GET    | `/stores/:storeId/manage`                           | user + `store.profile`     | none                                                                       | 200 `ManageStoreResponseDto`                                  |
+| GET    | `/stores/:storeId/manage/hours`                     | user + `hours.edit`        | none                                                                       | 200 `StoreScheduleResponse`                                   |
 | PATCH  | `/stores/:storeId/profile`                          | user + `store.profile`     | body: [`updateStoreProfileSchema`](#patch-storesstoreidprofile)            | 200 `{ store: ManagedStoreDto }`                              |
 | POST   | `/stores/:storeId/publish`                          | user + `store.publish`     | none                                                                       | 200 `{ store: ManagedStoreDto }`                              |
 | POST   | `/stores/:storeId/unpublish`                        | user + `store.publish`     | none                                                                       | 200 `{ store: ManagedStoreDto }`                              |
@@ -570,6 +572,20 @@ end), `area?` (at most 60) and `addressLine?` (at most 200); a blank `area` or `
 makes no slug is 400 `VALIDATION_ERROR` (`field` `slug`). A slug another store uses is 409 `SLUG_TAKEN` with `details`
 `{ field: 'slug' }`; nothing is left behind. Answers 201 `{ store: ManagedStoreDto }`: a `DRAFT` copy of the brand's
 template (menu, settings, tagline, description, photo; no hours), emitting `store.created`. Limits: [`LIMITS.store`](CONFIGURATION.md#platform-constants).
+
+### GET /stores/:storeId/manage, /stores/:storeId/manage/hours
+
+The manage screen's own reads, uncached and at any status: the public `GET /stores/:storeRef` and `/hours` serve only
+`ACTIVE` stores, so a `DRAFT` branch (or the template) could not be managed through them.
+
+- `GET /stores/:storeId/manage`: `requireAuth` → `requireStore('store.profile')` → `store.controller.getManagedStore`
+  → `store.service.getManagedStore`. Answers `{ store: ManagedStoreDto, brand: { id, name, slug }, missing }`;
+  `missing` lists what the store lacks before it can be published (`'address' | 'hours' | 'menu'`, empty when ready),
+  from `store_publish_missing`, the same check `POST /publish` applies ([SCHEMA.md](SCHEMA.md#stores)). The owner
+  reads the template too (`store.profile` is a template capability); STAFF get 403.
+- `GET /stores/:storeId/manage/hours`: `requireStore('hours.edit')` → `store.controller.getManagedHours`. The
+  `StoreScheduleResponse` of the public hours route, read uncached (`getStoreSchedule(store, fresh)`); the template has
+  no hours capability (404).
 
 ### PATCH /stores/:storeId/profile
 
