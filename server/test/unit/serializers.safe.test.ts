@@ -130,12 +130,23 @@ describe('toUserDto', () => {
   it('maps the embedded memberships and owned brands', () => {
     const dto = toUserDto(
       profile({
-        memberships: [{ role: 'MANAGER', store: { id: 's-1', slug: 'north', name: 'North' } }],
+        memberships: [
+          {
+            role: 'MANAGER',
+            store: { id: 's-1', slug: 'north', name: 'North', staff_can_edit_stock: false },
+          },
+        ],
         brands: [{ id: 'b-1', name: 'Brew', slug: 'brew' }],
       }),
     );
     expect(dto.memberships).toEqual([
-      { storeId: 's-1', storeSlug: 'north', storeName: 'North', role: 'MANAGER' },
+      {
+        storeId: 's-1',
+        storeSlug: 'north',
+        storeName: 'North',
+        role: 'MANAGER',
+        staffCanEditStock: false,
+      },
     ]);
     expect(dto.ownedBrands).toEqual([{ id: 'b-1', name: 'Brew', slug: 'brew' }]);
   });

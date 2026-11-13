@@ -27,7 +27,7 @@ export async function getProfile(id: string): Promise<ProfileWithStanding> {
   const { data: profile } = await supabaseAdmin
     .from('profiles')
     .select(
-      '*, memberships:store_memberships!store_memberships_user_id_fkey(role, store:stores!inner(id, slug, name)), brands!brands_owner_id_fkey(id, name, slug)',
+      '*, memberships:store_memberships!store_memberships_user_id_fkey(role, store:stores!inner(id, slug, name, staff_can_edit_stock)), brands!brands_owner_id_fkey(id, name, slug)',
     )
     .eq('id', id)
     .maybeSingle()

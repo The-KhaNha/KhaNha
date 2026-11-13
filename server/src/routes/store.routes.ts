@@ -190,6 +190,7 @@ storesRouter.patch(
   validate(adjustStockSchema),
   stock.adjustStock,
 );
+storesRouter.get('/:storeId/stock', requireAuth, requireStore('stock.update'), stock.listStock);
 storesRouter.get(
   '/:storeId/stock-movements',
   requireAuth,

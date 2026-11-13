@@ -70,6 +70,7 @@ The API has no sign-in or sign-out route. The browser signs in and out with supa
 | POST   | `/stores/:storeId/menu-items/bulk`                  | user + `menu.edit`         | body: [`bulkAvailabilitySchema`](#post-storesstoreidmenu-itemsbulk)        | 200 `{ updated: number }`                                     |
 | PUT    | `/stores/:storeId/menu-items/order`                 | user + `menu.edit`         | body: [`reorderMenuSchema`](#put-storesstoreidmenu-itemsorder)             | 204                                                           |
 | PATCH  | `/stores/:storeId/menu-items/:itemId/stock`         | user + `stock.update`      | body: [`adjustStockSchema`](#patch-storesstoreidmenu-itemsitemidstock)     | 200 `{ stockQuantity }`                                       |
+| GET    | `/stores/:storeId/stock`                            | user + `stock.update`      | none                                                                       | 200 `{ items: ManagedMenuItemDto[], lowStockThreshold }`      |
 | GET    | `/stores/:storeId/stock-movements`                  | user + `stock.update`      | query `itemId?`                                                            | 200 `{ movements: StockMovementDto[] }`                       |
 | PUT    | `/stores/:storeId/hours`                            | user + `hours.edit`        | body: [`setStoreHoursSchema`](#put-storesstoreidhours)                     | 200 `StoreScheduleResponse`                                   |
 | POST   | `/stores/:storeId/schedule-exceptions`              | user + `hours.edit`        | body: [`createExceptionSchema`](#post-storesstoreidschedule-exceptions)    | 201 `{ exception: ScheduleExceptionDto }`                     |
@@ -487,6 +488,14 @@ one `stock_movements` row (who, when, the delta, the stock after, the reason) an
 the store's cached menu; a change that leaves the stock as it was writes neither. Stock is not in the audit log: the
 movements are its trail.
 
+### GET /stores/:storeId/stock
+
+Code: `requireAuth` → `requireStore('stock.update')` → `stock.controller.listStock` (`menu.service.listManagedItems`
+and the store row). The store's live (unarchived) items in menu order, as `ManagedMenuItemDto`, and its
+`lowStockThreshold`: the stock screen's one read, for `/manage` and the staff board alike. Never cached (stock is
+always the server's word), and a draft branch's stock is readable too (the public menu serves only `ACTIVE` stores).
+Staff get 403 here while the store's `staffCanEditStock` is off.
+
 ### GET /stores/:storeId/stock-movements
 
 Code: `requireAuth` → `requireStore('stock.update')` → `validate(stockMovementsQuerySchema, 'query')` →
@@ -775,18 +784,18 @@ nothing changes for clients. A new money field carries paise and says so in its 
 
 `UserDto`
 
-| Field         | Type                                                              |
-| ------------- | ----------------------------------------------------------------- |
-| `id`          | string (uuid)                                                     |
-| `name`        | string                                                            |
-| `email`       | string                                                            |
-| `phone`       | string \| null                                                    |
-| `role`        | `'CUSTOMER'` \| `'STAFF'` \| `'ADMIN'`                            |
-| `createdAt`   | string (ISO 8601)                                                 |
-| `memberships` | `{ storeId, storeSlug, storeName, role: 'MANAGER' \| 'STAFF' }[]` |
-| `ownedBrands` | `{ id, name, slug }[]`                                            |
+| Field         | Type                                                                                          |
+| ------------- | --------------------------------------------------------------------------------------------- |
+| `id`          | string (uuid)                                                                                 |
+| `name`        | string                                                                                        |
+| `email`       | string                                                                                        |
+| `phone`       | string \| null                                                                                |
+| `role`        | `'CUSTOMER'` \| `'STAFF'` \| `'ADMIN'`                                                        |
+| `createdAt`   | string (ISO 8601)                                                                             |
+| `memberships` | `{ storeId, storeSlug, storeName, role: 'MANAGER' \| 'STAFF', staffCanEditStock: boolean }[]` |
+| `ownedBrands` | `{ id, name, slug }[]`                                                                        |
 
-`memberships` are the stores the account works at; `ownedBrands` are the brands it owns (OWNER of every store of each, no membership row). Each is `[]` only when the account has no corresponding membership or owned brand (a CUSTOMER profile can have either), and both are returned by `GET /auth/me` and `POST /auth/register`. See [PERMISSIONS.md](PERMISSIONS.md#store-roles).
+`memberships` are the stores the account works at; `ownedBrands` are the brands it owns (OWNER of every store of each, no membership row). Each is `[]` only when the account has no corresponding membership or owned brand (a CUSTOMER profile can have either), and both are returned by `GET /auth/me` and `POST /auth/register`. A membership's `staffCanEditStock` is the store's setting, so the staff board knows whether to offer its Stock view (the settings route itself is `settings.edit`); the server checks it again on every stock request. See [PERMISSIONS.md](PERMISSIONS.md#store-roles).
 
 `ADMIN` is the site-wide developer/operator role (the `/admin` dashboard), not a restaurant role — see
 [PERMISSIONS.md](PERMISSIONS.md#roles).
