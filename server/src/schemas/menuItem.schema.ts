@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { typedText, visibleLength } from './common';
-import { LIMITS, MANAGED_ITEMS_MAX } from './limits';
+import { LIMITS, MANAGED_ITEMS_MAX, STORE_LIST_MAX, TEMPLATE_PUSH_COPIES_MAX } from './limits';
 
 const { nameMin, nameMax, descriptionMax, categoryMax, priceMin, priceMax, stockMax } =
   LIMITS.menuItem;
@@ -88,3 +88,33 @@ export const reorderMenuSchema = z.strictObject({ itemIds });
 
 export type BulkAvailabilityInput = z.infer<typeof bulkAvailabilitySchema>;
 export type ReorderMenuInput = z.infer<typeof reorderMenuSchema>;
+
+/** What a template push may overwrite (P3.1, D2); stock, availability, order and popularity are never pushed. */
+export const TEMPLATE_PUSH_FIELDS = [
+  'name',
+  'description',
+  'price',
+  'category',
+  'diet',
+  'photo',
+] as const;
+
+/** POST /brands/:brandId/template/push: chosen template items, to chosen branches, chosen fields only. */
+export const pushTemplateSchema = z
+  .strictObject({
+    itemIds,
+    storeIds: z
+      .array(z.uuid('Each store id must be a UUID.'), 'storeIds must be a list of store ids.')
+      .min(1, 'Choose at least one store.')
+      .max(STORE_LIST_MAX, `Choose at most ${STORE_LIST_MAX} stores.`),
+    fields: z
+      .array(z.enum(TEMPLATE_PUSH_FIELDS, 'Unknown field.'), 'fields must be a list.')
+      .min(1, 'Choose at least one field.')
+      .max(TEMPLATE_PUSH_FIELDS.length),
+  })
+  .refine((input) => input.itemIds.length * input.storeIds.length <= TEMPLATE_PUSH_COPIES_MAX, {
+    message: `One push may reach at most ${TEMPLATE_PUSH_COPIES_MAX} copies (items × stores): push fewer at a time.`,
+    path: ['itemIds'],
+  });
+
+export type PushTemplateInput = z.infer<typeof pushTemplateSchema>;

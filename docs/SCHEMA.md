@@ -53,6 +53,7 @@ a new file (see [DEPLOYMENT.md](DEPLOYMENT.md#schema-changes)).
 | `20261112163716_menu_item_lifecycle.sql`           | adds the `diet_marker` enum, `menu_items.diet` and `image_variants`; `menu_items.image_url` and `order_items.image_url` become nullable; the menu item bounds as check constraints; `menu_items_archived_unavailable` (an archived item is switched off, so `place_order` refuses it as `ITEM_UNAVAILABLE`); `menu_items_audit` also fires on insert and watches `description`, `diet`, `archived_at`, `is_popular` and `sort_order`; `menu_items_emit_changed()` and its two statement triggers emit `menu.changed`; `ensure_brand_template` and `create_store_from_template` (same signatures) also copy `diet` and `image_variants` |
 | `20261112183242_reorder_menu.sql`                  | adds `lock_store_menu()`, `reorder_menu()` and `set_menu_availability()` (`service_role` only): the menu editor's quick edits                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `20261113085219_adjust_stock.sql`                  | adds `stock_reason`, `stock_movements` (RLS, revoked), `stores.staff_can_edit_stock` (also watched by `stores_settings_audit`) and `adjust_stock()` (`service_role` only): stock by hand, with its trail                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `20261113140540_push_template_items.sql`           | `push_template_items()` (`service_role` only): the template push                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 ## Enums
 
@@ -247,6 +248,18 @@ existing brand; the seed runs it after a brand's first store.
 photo, copies the template's unarchived items with `template_item_id` set, and emits `store.created`
 (`{ brandId, templateStoreId }`). A taken slug fails the whole call (`23505`), leaving nothing behind. The seed opens
 each brand's later branches with it.
+
+`push_template_items(p_brand_id, p_template_item_ids uuid[], p_store_ids uuid[], p_fields text[], p_actor, p_request_id)
+returns integer` (same kind) is the template push (P3.1, D2). Every item must be a live item of the brand's template and
+every store one of its live branches (`DRAFT` or `ACTIVE`; never the template), or it raises `NOT_FOUND` and nothing changes; fields are a
+subset of `name`, `description`, `price`, `category`, `diet` and `photo` (`image_url` and `image_variants`), else
+`VALIDATION_ERROR`. A branch's live copy, found by `template_item_id` (a renamed copy still matches), gets the chosen
+fields; a branch with no live copy gets a whole new one at the end of its menu, untracked. Stock, availability, sort
+order and popularity of an existing copy are never touched, and a copy that already matches in every chosen field is
+not written. The template is read from `brands.template_store_id`, and its chosen items are locked (`for update`): a
+second push of the same items waits, then sees the copies made here (no duplicates), and an archive of one waits too. The update and the insert are one statement each, so
+`menu_items_emit_changed` emits one `menu.changed` per changed store and every audit row carries the push's request
+id. Returns the copies changed or created (0 for a push that changed nothing, which leaves no event and no audit row).
 
 The store settings are edited through `PATCH /api/stores/:storeId/settings` ([API.md](API.md#patch-storesstoreidsettings)); their bounds are
 the check constraints (`stores_<column>_check`), mirrored by `STORE_SETTING_BOUNDS`. A new store takes the constant defaults
@@ -557,6 +570,7 @@ object (SQLSTATE `P0001`). How the API maps them is in [API.md](API.md#database-
 | `reorder_menu(...)`          | plpgsql  | invoker  | void                | `menu.service.reorderMenu`                                                                                    | `service_role`       |
 | `set_menu_availability(...)` | plpgsql  | invoker  | integer             | `menu.service.setAvailability`                                                                                | `service_role`       |
 | `adjust_stock(...)`          | plpgsql  | invoker  | integer             | `stock.service.adjustStock`                                                                                   | `service_role`       |
+| `push_template_items(...)`   | plpgsql  | invoker  | integer             | `brand.service.pushTemplate`                                                                                  | `service_role`       |
 | `set_store_status(...)`      | plpgsql  | invoker  | `text[]`            | `store.service.setStoreStatus`                                                                                | `service_role`       |
 | `stores_emit_changed()`      | plpgsql  | invoker  | trigger             | `stores_changed`                                                                                              | nobody               |
 | `pause_store(...)`           | plpgsql  | invoker  | boolean             | `storePause.service.pauseStore`                                                                               | `service_role`       |

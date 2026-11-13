@@ -76,6 +76,7 @@ The API has no sign-in or sign-out route. The browser signs in and out with supa
 | POST   | `/stores/:storeId/schedule-exceptions`              | user + `hours.edit`        | body: [`createExceptionSchema`](#post-storesstoreidschedule-exceptions)    | 201 `{ exception: ScheduleExceptionDto }`                     |
 | DELETE | `/stores/:storeId/schedule-exceptions/:exceptionId` | user + `hours.edit`        | path: `exceptionId`                                                        | 204                                                           |
 | GET    | `/brands/mine`                                      | user                       | none                                                                       | 200 `{ brands: MyBrandDto[] }`                                |
+| POST   | `/brands/:brandId/template/push`                    | user, owner of the brand   | body: [`pushTemplateSchema`](#post-brandsbrandidtemplatepush)              | 200 `{ updated: number }`                                     |
 | POST   | `/brands/:brandId/stores`                           | user, owner of the brand   | body: [`createStoreSchema`](#post-brandsbrandidstores)                     | 201 `{ store: ManagedStoreDto }`                              |
 | PATCH  | `/stores/:storeId/profile`                          | user + `store.profile`     | body: [`updateStoreProfileSchema`](#patch-storesstoreidprofile)            | 200 `{ store: ManagedStoreDto }`                              |
 | POST   | `/stores/:storeId/publish`                          | user + `store.publish`     | none                                                                       | 200 `{ store: ManagedStoreDto }`                              |
@@ -570,6 +571,21 @@ end), `area?` (at most 60) and `addressLine?` (at most 200); a blank `area` or `
 makes no slug is 400 `VALIDATION_ERROR` (`field` `slug`). A slug another store uses is 409 `SLUG_TAKEN` with `details`
 `{ field: 'slug' }`; nothing is left behind. Answers 201 `{ store: ManagedStoreDto }`: a `DRAFT` copy of the brand's
 template (menu, settings, tagline, description, photo; no hours), emitting `store.created`. Limits: [`LIMITS.store`](CONFIGURATION.md#platform-constants).
+
+### POST /brands/:brandId/template/push
+
+Code: `requireAuth` → `writeLimiter` → `validate(pushTemplateSchema)` → `brand.controller.pushTemplate` →
+`brand.service.pushTemplate` → `push_template_items` RPC ([SCHEMA.md](SCHEMA.md#stores)). Only the brand's owner may
+push: anyone else, a manager of a branch or an admin included, and a malformed or unknown id get 404 `NOT_FOUND`
+"Brand not found.".
+
+Body (unknown fields are 400): `itemIds` (1–1000 template item ids), `storeIds` (1–200 branch ids), `fields` (1–6 of
+`name`, `description`, `price`, `category`, `diet`, `photo`); items × stores at most `TEMPLATE_PUSH_COPIES_MAX` (5000), else 400 on `itemIds`. Each chosen branch's copy of each chosen item, found by
+lineage, gets the chosen fields from the template; a branch without a live copy gets a new one. Stock, availability,
+order and popularity are never pushed. An item that is not a live item of the brand's template, or a store that is not
+one of its live branches (another brand's, the template, a `SUSPENDED` or `ARCHIVED` one), is 404 `NOT_FOUND` "An item or a store is not part of this
+brand." and nothing changes anywhere. Answers `{ updated }`, the copies changed or created (a copy that already matched is not written: a repeat answers 0 and leaves no event); drops each store's cached
+menu. One `menu.changed` per changed store; the audit rows share the request id.
 
 ### PATCH /stores/:storeId/profile
 

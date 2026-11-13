@@ -51,3 +51,9 @@ export const HOURS_LIMITS = { intervalsPerDay: 6, upcomingExceptions: 50 } as co
  * (1000) would cut it silently anyway.
  */
 export const MANAGED_ITEMS_MAX = 1000;
+
+/**
+ * Most copies one template push may touch, items × stores (docs/CONFIGURATION.md, platform constant): one push is one
+ * transaction with an audit row per copy, so a whole menu to every branch is split into a few pushes.
+ */
+export const TEMPLATE_PUSH_COPIES_MAX = 5000;

@@ -1019,6 +1019,17 @@ export type Database = {
         Returns: number;
       };
       purge_session_activity: { Args: never; Returns: number };
+      push_template_items: {
+        Args: {
+          p_actor?: Json;
+          p_brand_id: string;
+          p_fields: string[];
+          p_request_id?: string;
+          p_store_ids: string[];
+          p_template_item_ids: string[];
+        };
+        Returns: number;
+      };
       queue_dead_letter: {
         Args: {
           p_attempts: number;
