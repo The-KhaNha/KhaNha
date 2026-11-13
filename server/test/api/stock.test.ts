@@ -11,6 +11,7 @@ import {
   createStoreMember,
   createTestUser,
   deleteTestStores,
+  localSql,
   testAuthMatrix,
   testStoreIsolation,
   type TestUser,
@@ -342,6 +343,13 @@ describe('each change and its trail', () => {
     });
     expect(await stockNow()).toBe(max);
     await writeStock(3);
+  });
+
+  it('a movement is timestamped when it is written, not when its transaction began (it may wait on the row lock)', () => {
+    const [column] = localSql<{ column_default: string }>(
+      "select column_default from information_schema.columns where table_name = 'stock_movements' and column_name = 'created_at'",
+    );
+    expect(column?.column_default).toBe('clock_timestamp()');
   });
 
   it('the movements list is newest first, filters by item and names who made each', async () => {

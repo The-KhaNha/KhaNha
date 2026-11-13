@@ -12,7 +12,9 @@ create table public.stock_movements (
   resulting_quantity integer,
   reason public.stock_reason not null,
   actor_id uuid references public.profiles (id) on delete set null,
-  created_at timestamptz not null default now()
+  -- When the row is written, not when the transaction began: a change that waited on the item lock sorts after the
+  -- one it waited for.
+  created_at timestamptz not null default clock_timestamp()
 );
 create index stock_movements_item_time_idx on public.stock_movements (menu_item_id, created_at desc);
 create index stock_movements_store_time_idx on public.stock_movements (store_id, created_at desc);

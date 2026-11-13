@@ -308,16 +308,16 @@ Any other change goes through `adjust_stock` (below), which writes a `stock_move
 Every stock change made by hand (P3.4, P3.5), written only by `adjust_stock`. Sales and cancels are not here: an
 order's lines record what they reserved. RLS enabled, no policies, revoked from `anon` and `authenticated`.
 
-| Column               | Type         | Null | Default  | Notes                                                                 |
-| -------------------- | ------------ | ---- | -------- | --------------------------------------------------------------------- |
-| `id`                 | bigint       | no   | identity | primary key                                                           |
-| `store_id`           | uuid         | no   |          | references `stores (id)`                                              |
-| `menu_item_id`       | uuid         | no   |          | references `menu_items (id)`                                          |
-| `delta`              | integer      | yes  |          | units added (negative: removed); `null` when tracking starts or stops |
-| `resulting_quantity` | integer      | yes  |          | the stock after the change; `null` = no longer tracked                |
-| `reason`             | stock_reason | no   |          | `MANUAL_SET`, `MANUAL_ADJUST` or `WASTE`                              |
-| `actor_id`           | uuid         | yes  |          | references `profiles (id)` on delete set null; who made it            |
-| `created_at`         | timestamptz  | no   | `now()`  |                                                                       |
+| Column               | Type         | Null | Default             | Notes                                                                 |
+| -------------------- | ------------ | ---- | ------------------- | --------------------------------------------------------------------- |
+| `id`                 | bigint       | no   | identity            | primary key                                                           |
+| `store_id`           | uuid         | no   |                     | references `stores (id)`                                              |
+| `menu_item_id`       | uuid         | no   |                     | references `menu_items (id)`                                          |
+| `delta`              | integer      | yes  |                     | units added (negative: removed); `null` when tracking starts or stops |
+| `resulting_quantity` | integer      | yes  |                     | the stock after the change; `null` = no longer tracked                |
+| `reason`             | stock_reason | no   |                     | `MANUAL_SET`, `MANUAL_ADJUST` or `WASTE`                              |
+| `actor_id`           | uuid         | yes  |                     | references `profiles (id)` on delete set null; who made it            |
+| `created_at`         | timestamptz  | no   | `clock_timestamp()` | when the row is written (it may wait on the item lock)                |
 
 ### orders
 
