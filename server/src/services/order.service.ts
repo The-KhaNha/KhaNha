@@ -9,6 +9,8 @@ import {
   idempotencyKeyReused,
   insufficientStock,
   itemUnavailable,
+  modifierInvalid,
+  modifierRequired,
   notFound,
   priceChanged,
   storeClosed,
@@ -20,7 +22,10 @@ import { paiseToRupees } from '../utils/money';
 import { selectOrders, type OrderWithDetails } from '../utils/serializers';
 import { raisedByDatabase, supabaseAdmin } from '../utils/supabase';
 import { invalidate } from '../utils/cache';
+import { priceLine } from '../domain/pricing';
+import { isEnabled } from './flags.service';
 import { invalidateMenus } from './menu.service';
+import { loadItemModifiers, type ItemModifiers } from './modifier.service';
 import { simulatePayment } from './payment.service';
 import { getSettings } from './settings.service';
 import { describeWhen } from '../domain/schedule';
@@ -58,6 +63,7 @@ type OrderLine = {
   name: string;
   quantity: number;
   unit_price_paise: number;
+  modifier_option_ids: string[];
 };
 
 /** What createOrder placed, and whether it was placed now or already existed under the same idempotency key. */
@@ -91,29 +97,33 @@ export async function createOrder(
   const ids = input.items.map((line) => line.menuItemId).filter(isUuid);
   // None of these reads depends on another, so they go out together: one round trip to the database instead of one
   // each (test/api/order-reads.test.ts). The checks below still run in the same order.
-  const [existing, settings, store, schedule, customerName, menuItems] = await Promise.all([
-    input.idempotencyKey
-      ? selectOrders()
-          .eq('user_id', user.id)
-          .eq('idempotency_key', input.idempotencyKey)
-          .maybeSingle()
-          .throwOnError()
-          .then(({ data }) => data)
-      : null,
-    // A site setting, read through the cache: an admin's change can take up to the 10 s TTL on other instances, which
-    // is harmless for a cap this generous.
-    getSettings(),
-    getStore(input.storeId),
-    // Uncached, like the store: a write never reads through the cache.
-    loadSchedule(input.storeId),
-    input.customerName ?? lookupUserName(user.id),
-    supabaseAdmin
-      .from('menu_items')
-      .select()
-      .in('id', ids)
-      .throwOnError()
-      .then(({ data }) => data),
-  ]);
+  const [existing, settings, store, schedule, customerName, menuItems, modifiersOn] =
+    await Promise.all([
+      input.idempotencyKey
+        ? selectOrders()
+            .eq('user_id', user.id)
+            .eq('idempotency_key', input.idempotencyKey)
+            .maybeSingle()
+            .throwOnError()
+            .then(({ data }) => data)
+        : null,
+      // A site setting, read through the cache: an admin's change can take up to the 10 s TTL on other instances, which
+      // is harmless for a cap this generous.
+      getSettings(),
+      getStore(input.storeId),
+      // Uncached, like the store: a write never reads through the cache.
+      loadSchedule(input.storeId),
+      input.customerName ?? lookupUserName(user.id),
+      supabaseAdmin
+        .from('menu_items')
+        .select()
+        .in('id', ids)
+        .throwOnError()
+        .then(({ data }) => data),
+      // Options (P3.2) where the store's flag is on, evaluated as the menu evaluates it (the store alone), so checkout
+      // never disagrees with what the menu showed; place_order is told the same answer.
+      isEnabled('modifiers', { storeId: input.storeId }),
+    ]);
 
   // A replay answers the order the key placed, even at a store that has stopped trading since.
   if (existing && existing.store_id === store.id && matchesRequest(existing, input))
@@ -144,12 +154,14 @@ export async function createOrder(
   const byId = new Map(
     menuItems.filter((item) => item.store_id === store.id).map((item) => [item.id, item]),
   );
+  const modifiers = modifiersOn ? await loadItemModifiers(store.id, [...byId.keys()]) : null;
 
   const { lines, totalPaise } = priceLines(
     input.items,
     byId,
     store.id,
     store.max_quantity_per_item,
+    modifiers,
   );
   // A real gateway would be charged here. With one, a refusal from place_order (sold out, price changed) must refund it.
   const paymentStatus = await simulatePayment(totalPaise);
@@ -169,6 +181,7 @@ export async function createOrder(
         // Recorded with the order.placed event the function emits in the same transaction.
         p_actor: ctx.actor,
         p_request_id: ctx.requestId,
+        p_modifiers_enabled: modifiersOn,
       })
       .throwOnError());
   } catch (err) {
@@ -184,6 +197,19 @@ export async function createOrder(
     const changed = raisedByDatabase(err, 'PRICE_CHANGED');
     if (changed)
       throw priceChanged(String(changed.menuItemId), String(changed.name), Number(changed.price));
+    // An option changed between the check above and place_order's read (sold out, removed, a group's rule).
+    for (const [code, refuse] of [
+      ['MODIFIER_REQUIRED', modifierRequired],
+      ['MODIFIER_INVALID', modifierInvalid],
+    ] as const) {
+      const refused = raisedByDatabase(err, code);
+      if (refused)
+        throw refuse(
+          String(refused.menuItemId),
+          String(refused.name),
+          refused.group ? String(refused.group) : null,
+        );
+    }
     // Switched off or closed after the checks above: the same refusals those checks give.
     const unavailable = raisedByDatabase(err, 'ITEM_UNAVAILABLE');
     if (unavailable)
@@ -225,10 +251,24 @@ function matchesRequest(
   input: CreateOrderInput,
   customerName = input.customerName,
 ): boolean {
-  const stored = new Map(order.order_items.map((line) => [line.menu_item_id, line.quantity]));
+  // Line by line: each requested line has its own stored line of the same item and quantity whose options include the
+  // requested ones (a stored line also holds the defaults a request may have left out, P3.2).
+  const unused = [...order.order_items];
   const sameItems =
-    input.items.length === stored.size &&
-    input.items.every((line) => stored.get(line.menuItemId) === line.quantity);
+    input.items.length === unused.length &&
+    input.items.every((asked) => {
+      const i = unused.findIndex(
+        (line) =>
+          line.menu_item_id === asked.menuItemId &&
+          line.quantity === asked.quantity &&
+          asked.modifierOptionIds.every((id) =>
+            line.order_item_modifiers.some((m) => m.modifier_option_id === id),
+          ),
+      );
+      if (i < 0) return false;
+      unused.splice(i, 1);
+      return true;
+    });
   return (
     sameItems &&
     (customerName === undefined || customerName === order.customer_name) &&
@@ -398,18 +438,23 @@ function statusesLeadingTo(target: OrderStatus): OrderStatus[] {
 }
 
 /**
- * Checks each requested item and prices the order in paise from the items just read, for the payment. Every refusal
+ * Checks each requested line and prices the order in paise from the items just read, for the payment. Every refusal
  * names the item (or, when the item is gone, identifies it by id) so the client can point at the exact cart line.
- * Items arrive already merged by the schema, so the quantity cap applies to the real total per item.
+ * Lines arrive merged by item and options; the quantity cap counts all of an item's lines. A line's price is the item's
+ * plus its options' (domain/pricing.ts; with `modifiers` null, the store offers none and options sent are refused).
  */
 function priceLines(
   requested: CreateOrderInput['items'],
   byId: Map<string, MenuItem>,
   storeId: string,
   maxQuantity: number,
+  modifiers: ItemModifiers | null,
 ): { lines: OrderLine[]; totalPaise: number } {
+  const perItem = new Map<string, number>();
+  for (const { menuItemId, quantity } of requested)
+    perItem.set(menuItemId, (perItem.get(menuItemId) ?? 0) + quantity);
   let totalPaise = 0;
-  const lines = requested.map(({ menuItemId, quantity, expectedUnitPrices }) => {
+  const lines = requested.map(({ menuItemId, quantity, expectedUnitPrices, modifierOptionIds }) => {
     const item = byId.get(menuItemId);
     if (!item) {
       throw new AppError(400, 'ITEM_NOT_FOUND', 'One of the items is no longer on the menu.', {
@@ -418,24 +463,36 @@ function priceLines(
       });
     }
     if (!item.is_available) throw itemUnavailable(menuItemId, item.name);
-    if (quantity > maxQuantity) {
+    if ((perItem.get(menuItemId) ?? quantity) > maxQuantity) {
       throw validationError(
         `You can order at most ${maxQuantity} of ${item.name}. Please reduce the quantity in your cart.`,
       );
     }
+    const groups = (modifiers?.groupIds.get(menuItemId) ?? []).flatMap((id) => {
+      const group = modifiers?.groups.get(id);
+      return group ? [group] : [];
+    });
+    const priced = priceLine(item.price_paise, groups, modifierOptionIds, modifiers !== null);
+    if (!priced.ok) {
+      // As for a changed price: the checkout reloads the menu, which must not be the cached copy that offered it.
+      invalidateMenus(storeId);
+      const refuse = priced.code === 'MODIFIER_REQUIRED' ? modifierRequired : modifierInvalid;
+      throw refuse(menuItemId, item.name, priced.groupName ?? null);
+    }
     // The customer saw another price (a cart kept from before a price change): refused before any charge.
-    const price = paiseToRupees(item.price_paise);
+    const price = paiseToRupees(priced.unitPricePaise);
     if (expectedUnitPrices.some((expected) => expected !== price)) {
       // The checkout reloads the menu after this refusal: a cached menu would show the old price and be refused again.
       invalidateMenus(storeId);
       throw priceChanged(menuItemId, item.name, price);
     }
-    totalPaise += item.price_paise * quantity;
+    totalPaise += priced.unitPricePaise * quantity;
     return {
       menu_item_id: menuItemId,
       name: item.name,
       quantity,
-      unit_price_paise: item.price_paise,
+      unit_price_paise: priced.unitPricePaise,
+      modifier_option_ids: modifierOptionIds,
     };
   });
   return { lines, totalPaise };

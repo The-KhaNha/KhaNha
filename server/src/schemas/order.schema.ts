@@ -29,6 +29,15 @@ const orderItemInput = z.object({
     .int('expectedUnitPrice must be a whole number of rupees.')
     .positive('expectedUnitPrice must be positive.')
     .optional(),
+  // The options chosen for this line (P3.2): ids of the item's modifier options. Optional, so the deployed client keeps
+  // working; a required group left out takes its default.
+  modifierOptionIds: z
+    .array(
+      z.uuid('Each option id must be a UUID.'),
+      'modifierOptionIds must be a list of option ids.',
+    )
+    .max(20, 'A line can have at most 20 options.')
+    .optional(),
 });
 
 type OrderItemInput = z.infer<typeof orderItemInput>;
@@ -38,19 +47,29 @@ interface MergedOrderItem {
   menuItemId: string;
   quantity: number;
   expectedUnitPrices: number[];
+  /** Sorted, so the same choice in any order is one line. */
+  modifierOptionIds: string[];
 }
 
 /**
- * The same item listed twice becomes one line with the quantities summed, so the
- * per-item cap (enforced in order.service, where the item's name is known) applies to the total.
+ * The same line listed twice (the same item with the same options, P3.2) becomes one line with the quantities summed.
+ * The same item with other options stays its own line; the per-item cap (enforced in order.service, where the item's
+ * name is known) counts all of an item's lines.
  */
 function mergeDuplicateItems(items: OrderItemInput[]): MergedOrderItem[] {
   const merged = new Map<string, MergedOrderItem>();
-  for (const { menuItemId, quantity, expectedUnitPrice } of items) {
-    const line = merged.get(menuItemId) ?? { menuItemId, quantity: 0, expectedUnitPrices: [] };
+  for (const { menuItemId, quantity, expectedUnitPrice, modifierOptionIds = [] } of items) {
+    const options = [...modifierOptionIds].map((id) => id.toLowerCase()).sort();
+    const key = `${menuItemId}:${options.join(',')}`;
+    const line = merged.get(key) ?? {
+      menuItemId,
+      quantity: 0,
+      expectedUnitPrices: [],
+      modifierOptionIds: options,
+    };
     line.quantity += quantity;
     if (expectedUnitPrice !== undefined) line.expectedUnitPrices.push(expectedUnitPrice);
-    merged.set(menuItemId, line);
+    merged.set(key, line);
   }
   return [...merged.values()];
 }

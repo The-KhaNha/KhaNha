@@ -209,6 +209,10 @@ export interface OrderItem {
   lineTotal: number;
   /** Photo of the menu item. Optional so orders served before the API added it still render (cream placeholder). */
   imageUrl?: string | null;
+  /** The item's own price before its options (`unitPrice` includes them); null or absent on older orders. */
+  baseUnitPrice?: number | null;
+  /** The options the line was made with (P3.2). Optional: absent from a server before them. */
+  modifiers?: { groupName: string; optionName: string; priceDelta: number }[];
 }
 
 export interface Order {
@@ -326,7 +330,13 @@ export interface CreateOrderInput {
   /** The store the cart belongs to; without it the API picks the one active store. */
   storeId?: string;
   /** `expectedUnitPrice`: the rupee price the cart shows; a different current price is 409 PRICE_CHANGED. */
-  items: { menuItemId: string; quantity: number; expectedUnitPrice?: number }[];
+  items: {
+    menuItemId: string;
+    quantity: number;
+    expectedUnitPrice?: number;
+    /** The options chosen for the line (P3.2). */
+    modifierOptionIds?: string[];
+  }[];
   customerName: string;
   customerPhone?: string;
   note?: string;

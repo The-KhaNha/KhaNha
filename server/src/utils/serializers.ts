@@ -39,9 +39,12 @@ export function selectOrders() {
       `id, order_number, status, payment_status, total_paise, customer_name, customer_phone, note,
        estimated_ready_at, created_at, updated_at, user_id, store_id, store_name,
        store:stores!inner (slug, brand_id),
-       order_items (id, line_number, menu_item_id, name, unit_price_paise, quantity, line_total_paise, image_url)`,
+       order_items (id, line_number, menu_item_id, name, unit_price_paise, base_unit_price_paise, quantity,
+         line_total_paise, image_url,
+         order_item_modifiers (modifier_option_id, group_name, option_name, price_delta_paise, position))`,
     )
-    .order('line_number', { referencedTable: 'order_items' });
+    .order('line_number', { referencedTable: 'order_items' })
+    .order('position', { referencedTable: 'order_items.order_item_modifiers' });
 }
 
 export type OrderWithDetails = QueryData<ReturnType<typeof selectOrders>>[number];
@@ -265,6 +268,13 @@ function toOrderItemDto(item: OrderItemRow): OrderItemDto {
     quantity: item.quantity,
     lineTotal: paiseToRupees(item.line_total_paise),
     imageUrl: item.image_url,
+    baseUnitPrice:
+      item.base_unit_price_paise === null ? null : paiseToRupees(item.base_unit_price_paise),
+    modifiers: item.order_item_modifiers.map((m) => ({
+      groupName: m.group_name,
+      optionName: m.option_name,
+      priceDelta: paiseToRupees(m.price_delta_paise),
+    })),
   };
 }
 

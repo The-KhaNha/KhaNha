@@ -256,6 +256,10 @@ export interface OrderItemDto {
   lineTotal: number;
   /** The menu item's photo when the order was placed, so order screens need no menu lookup for thumbnails. */
   imageUrl: string | null;
+  /** The item's own price, whole rupees, before its options (`unitPrice` includes them); null on older orders. */
+  baseUnitPrice: number | null;
+  /** The options the line was made with, as they were then (P3.2): empty for a line without any. */
+  modifiers: { groupName: string; optionName: string; priceDelta: number }[];
 }
 
 export interface OrderDto {

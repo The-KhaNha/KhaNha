@@ -519,6 +519,7 @@ export type Database = {
           modifier_option_id: string | null;
           option_name: string;
           order_item_id: string;
+          position: number;
           price_delta_paise: number;
         };
         ComputedFields: never;
@@ -528,6 +529,7 @@ export type Database = {
           modifier_option_id?: string | null;
           option_name: string;
           order_item_id: string;
+          position?: number;
           price_delta_paise: number;
         };
         Update: {
@@ -536,6 +538,7 @@ export type Database = {
           modifier_option_id?: string | null;
           option_name?: string;
           order_item_id?: string;
+          position?: number;
           price_delta_paise?: number;
         };
         Relationships: [
@@ -1281,6 +1284,7 @@ export type Database = {
           p_customer_phone?: string;
           p_idempotency_key?: string;
           p_lines: Json;
+          p_modifiers_enabled?: boolean;
           p_note?: string;
           p_payment_status: Database['public']['Enums']['payment_status'];
           p_request_id?: string;
@@ -1288,6 +1292,17 @@ export type Database = {
           p_user_id: string;
         };
         Returns: string;
+      };
+      price_order_line: {
+        Args: {
+          p_base_paise: number;
+          p_enabled: boolean;
+          p_item_name: string;
+          p_menu_item_id: string;
+          p_option_ids: string[];
+          p_store_id: string;
+        };
+        Returns: Json;
       };
       profile_name: { Args: { p_email: string; p_name: string }; Returns: string };
       profile_phone: { Args: { p_phone: string }; Returns: string };

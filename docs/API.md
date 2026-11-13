@@ -258,19 +258,35 @@ Code: `requireAuth` → `writeLimiter` → `validate(createOrderSchema)` → `or
 
 Body (`server/src/schemas/order.schema.ts`):
 
-| Field                       | Type   | Rules                                                                                                               |
-| --------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------- |
-| `items`                     | array  | required, 1–30 entries (counted before duplicates are merged)                                                       |
-| `items[].menuItemId`        | string | required, at least 1 character                                                                                      |
-| `items[].quantity`          | number | required, whole number, at least 1                                                                                  |
-| `items[].expectedUnitPrice` | number | optional, whole rupees, at least 1: the price the customer was shown for this line; never charged, only compared    |
-| `customerName`              | string | optional, typed text, at most 60 characters; blank (also invisible-only) or missing falls back to the profile name  |
-| `customerPhone`             | string | optional; see [phone numbers](#shared-field-rules)                                                                  |
-| `note`                      | string | optional, typed text, at most 200 characters                                                                        |
-| `idempotencyKey`            | string | optional, a UUID; one per checkout attempt, resent unchanged on every retry of that attempt                         |
-| `storeId`                   | string | required, a UUID: the store the order is for (no default store); missing is 400 `VALIDATION_ERROR`, field `storeId` |
+| Field                       | Type     | Rules                                                                                                                                                               |
+| --------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `items`                     | array    | required, 1–30 entries (counted before duplicates are merged)                                                                                                       |
+| `items[].menuItemId`        | string   | required, at least 1 character                                                                                                                                      |
+| `items[].quantity`          | number   | required, whole number, at least 1                                                                                                                                  |
+| `items[].expectedUnitPrice` | number   | optional, whole rupees, at least 1: the price the customer was shown for this line; never charged, only compared                                                    |
+| `items[].modifierOptionIds` | string[] | optional, at most 20 UUIDs: the options chosen for this line (P3.2). A required group left out takes its default; `expectedUnitPrice` is the price with the options |
+| `customerName`              | string   | optional, typed text, at most 60 characters; blank (also invisible-only) or missing falls back to the profile name                                                  |
+| `customerPhone`             | string   | optional; see [phone numbers](#shared-field-rules)                                                                                                                  |
+| `note`                      | string   | optional, typed text, at most 200 characters                                                                                                                        |
+| `idempotencyKey`            | string   | optional, a UUID; one per checkout attempt, resent unchanged on every retry of that attempt                                                                         |
+| `storeId`                   | string   | required, a UUID: the store the order is for (no default store); missing is 400 `VALIDATION_ERROR`, field `storeId`                                                 |
 
-- Entries with the same `menuItemId` are merged into one line with the quantities summed (`mergeDuplicateItems`).
+- Entries with the same `menuItemId` and the same `modifierOptionIds` (in any order) are merged into one line with the
+  quantities summed (`mergeDuplicateItems`); the same item with other options stays its own line, and the store's
+  per-item cap counts all of an item's lines.
+- **Options (P3.2):** with the store's `modifiers` flag off, a line is the item alone and a line that names options is
+  400 `MODIFIER_INVALID`. With it on, a line's price is the item's plus its options' (`domain/pricing.ts`, then
+  `place_order` again under its locks): an option that is not the item's, not available, or twice, too many in a
+  group, or a price below zero is 400 `MODIFIER_INVALID`; a required group with nothing chosen and no default is 400
+  `MODIFIER_REQUIRED`. Both have `details: { kind: 'modifier', menuItemId, name, group }` (`group` null when the
+  refusal is about the line as a whole). Stock is still the item's, taken across all its lines (`INSUFFICIENT_STOCK`'s
+  `available` is the item's stock, whichever line ran out). The flag is evaluated for the store alone, as the menu
+  evaluates it. **Turning `modifiers` on for a store needs the client of P3 PR 15 and a `min_client_version` bump**: a
+  client from before it sends the item's base price as `expectedUnitPrice`, which a required group's priced default
+  turns into `PRICE_CHANGED` on every checkout.
+- A replay (the same `idempotencyKey`) must ask for the same lines: each requested line needs a stored line of the
+  same item and quantity whose options include the requested ones (a stored line also holds the defaults applied).
+  Other options are `IDEMPOTENCY_KEY_REUSED`.
 - Unknown keys (`price`, `unitPrice`, `total`, …) are dropped by `z.object`. Prices come from the database only;
   `expectedUnitPrice` can only refuse an order, never change what is charged. Merged duplicates keep every
   `expectedUnitPrice` sent, and each one is compared.
@@ -965,15 +981,17 @@ required and nothing is chosen.
 
 `OrderItemDto`
 
-| Field        | Type           | Notes                               |
-| ------------ | -------------- | ----------------------------------- |
-| `id`         | string (uuid)  |                                     |
-| `menuItemId` | string (uuid)  |                                     |
-| `name`       | string         | snapshot at order time              |
-| `unitPrice`  | number         | snapshot at order time              |
-| `quantity`   | number         |                                     |
-| `lineTotal`  | number         | `unitPrice × quantity`              |
-| `imageUrl`   | string \| null | the menu item's photo at order time |
+| Field           | Type                                      | Notes                                                                                                                            |
+| --------------- | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `id`            | string (uuid)                             |                                                                                                                                  |
+| `menuItemId`    | string (uuid)                             |                                                                                                                                  |
+| `name`          | string                                    | snapshot at order time                                                                                                           |
+| `unitPrice`     | number                                    | snapshot at order time                                                                                                           |
+| `quantity`      | number                                    |                                                                                                                                  |
+| `lineTotal`     | number                                    | `unitPrice × quantity`                                                                                                           |
+| `imageUrl`      | string \| null                            | the menu item's photo at order time                                                                                              |
+| `baseUnitPrice` | number \| null                            | the item's own price before its options (`unitPrice` includes them); null on orders before P3.2                                  |
+| `modifiers`     | `{ groupName, optionName, priceDelta }[]` | the options the line was made with, as they were then (a later rename or delete of the option changes nothing); `[]` without any |
 
 `MemberDto`
 
@@ -1105,6 +1123,8 @@ shape carries a `kind`, and the client narrows on it.
 | 400    | `UPLOAD_INVALID`            | a photo upload refused: the bytes are not the declared type, size or format, the upload is not finished, or it is already done; `details: { kind: 'uploadInvalid', reason }`                                                                                                                                                                                                                                                       |
 | 409    | `INVALID_STATUS_TRANSITION` | `PATCH /orders/:id/status` (from `update_order_status`); `POST /stores/:storeId/publish` and `/unpublish` on a `SUSPENDED` or `ARCHIVED` store (from `set_store_status`)                                                                                                                                                                                                                                                           |
 | 409    | `IDEMPOTENCY_KEY_REUSED`    | `POST /orders`: the `idempotencyKey` already placed an order that differs from this request. "Your earlier order #<n> already went through. Pay again to order what is in your cart now." with `details: { orderId, orderNumber }` (`ReplayedOrderDetails`)                                                                                                                                                                        |
+| 400    | `MODIFIER_REQUIRED`         | `POST /orders`: a required option group was left empty and has no default. "Choose a <group> for <name>.", `details: { kind: 'modifier', menuItemId, name, group }`; nothing is placed                                                                                                                                                                                                                                             |
+| 400    | `MODIFIER_INVALID`          | `POST /orders`: the options chosen for a line cannot be ordered (not the item's, unavailable, twice, too many in a group, a price below zero, or any option while the store's `modifiers` flag is off). Same `details`; nothing is placed                                                                                                                                                                                          |
 | 409    | `PRICE_CHANGED`             | `POST /orders`: an `expectedUnitPrice` is not the item's current price, or (from `place_order`) an item's price changed after the API charged for it. "The price of <name> just changed to ₹<price>. Please review your order.", no `details`; nothing is placed                                                                                                                                                                   |
 | 413    | `PAYLOAD_TOO_LARGE`         | JSON body over 100 kB (`JSON_BODY_LIMIT_BYTES`), refused on the declared `Content-Length` before auth runs: the rest of the upload is read and thrown away (at most 1 MB or 2 s), then 413 with `Connection: close`; a chunked body when it passes the limit ("The request body is too large.")                                                                                                                                    |
 | 500    | `INTERNAL`                  | anything else ("Something went wrong. Please try again."), logged with its stack                                                                                                                                                                                                                                                                                                                                                   |
