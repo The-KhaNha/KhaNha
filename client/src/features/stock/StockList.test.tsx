@@ -173,6 +173,30 @@ describe('StockList', () => {
     await waitFor(() => expect(api.fetchStockMovements).toHaveBeenCalledTimes(2));
   });
 
+  it('Set waits while a write on the item is in flight, so a save is never dropped', async () => {
+    api.changeStock.mockReturnValue(new Promise(() => {}));
+    render(<StockList store={store} />);
+    await screen.findByText('Samosa');
+    fireEvent.click(within(row('Samosa')).getByRole('button', { name: 'Set' }));
+    fireEvent.click(screen.getByRole('button', { name: 'One more Samosa' }));
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Stop counting' })).toBeDisabled();
+  });
+
+  it("reloads after a write lands, and a refused refresh shows the server's reason", async () => {
+    api.changeStock.mockResolvedValue(11);
+    render(<StockList store={store} />);
+    await screen.findByText('Samosa');
+    api.fetchStock.mockRejectedValueOnce(
+      new ApiError(403, 'FORBIDDEN', 'This store does not let staff change stock.'),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'One more Samosa' }));
+    expect(
+      await screen.findByText('This store does not let staff change stock.'),
+    ).toBeInTheDocument();
+    expect(api.fetchStock).toHaveBeenCalledTimes(2);
+  });
+
   it('every control is a 44px target', async () => {
     render(<StockList store={store} />);
     await screen.findByText('Samosa');

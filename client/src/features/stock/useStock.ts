@@ -50,6 +50,8 @@ export function useStock(store: { id: string; slug: string }) {
     try {
       setLocal(itemId, await changeStock(store.id, itemId, change));
       setWrites((n) => n + 1);
+      // An answer can arrive after a poll that already holds a newer count (someone else's change): reload settles it.
+      reload();
       dropPersisted(`menu:${store.slug}`);
       dropPersisted(`menu:${store.id}`);
     } catch (err) {

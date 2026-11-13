@@ -61,7 +61,7 @@ export function StockList({ store }: StockListProps) {
           compact
           className="mb-3"
           title="Showing the last stock we loaded"
-          message="We couldn't refresh it just now."
+          message={stock.error.message}
           onRetry={stock.retry}
           unreachable={stock.error.isUnreachable}
         />
@@ -178,6 +178,7 @@ function StockRow({
       {setting && (
         <SetForm
           item={item}
+          busy={busy}
           onSubmit={(value) => {
             onSetting(false);
             onChange(value === null ? { untracked: true } : { set: value }, value);
@@ -194,10 +195,13 @@ function StockRow({
 /** A count to set; "Stop counting" leaves only the per-order cap. The server judges the upper bound. */
 function SetForm({
   item,
+  busy,
   onSubmit,
   onCancel,
 }: {
   item: ManagedMenuItem;
+  /** A write on this item is in flight: a save now would be dropped, so it waits. */
+  busy: boolean;
   onSubmit: (value: number | null) => void;
   onCancel: () => void;
 }) {
@@ -222,9 +226,11 @@ function SetForm({
         onChange={(e) => setRaw(e.target.value)}
       />
       <div className="mt-3 flex flex-wrap gap-2">
-        <Button type="submit">Save</Button>
+        <Button type="submit" disabled={busy}>
+          Save
+        </Button>
         {item.stockQuantity !== null && (
-          <Button variant="ghost" onClick={() => onSubmit(null)}>
+          <Button variant="ghost" disabled={busy} onClick={() => onSubmit(null)}>
             Stop counting
           </Button>
         )}

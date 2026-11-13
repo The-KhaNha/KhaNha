@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { Card } from '../components/Card';
+import { ErrorState } from '../components/ErrorState';
+import { Skeleton } from '../components/Skeleton';
 import { Switch } from '../components/Switch';
 import { useStoreSettings } from '../features/manage/useManage';
 import { StockList } from '../features/stock/StockList';
@@ -16,12 +18,28 @@ export function ManageStockTab({ store }: { store: { id: string; slug: string } 
   );
 }
 
-/** Flips at once and rolls back when the server refuses. Hidden until the settings load (a guess could mislead). */
+/** Flips at once and rolls back when the server refuses. Never shown before the settings load (a guess could mislead). */
 function StaffStockSwitch({ storeId }: { storeId: string }) {
-  const { data, mutate, reload } = useStoreSettings(storeId);
+  const { data, isLoading, error: loadError, mutate, reload } = useStoreSettings(storeId);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  if (!data) return null;
+  if (isLoading)
+    return (
+      <div className="mt-4" aria-busy aria-label="Loading the staff setting">
+        <Skeleton className="h-20" />
+      </div>
+    );
+  if (!data)
+    return (
+      <ErrorState
+        compact
+        className="mt-4"
+        title="The staff setting didn't load"
+        message={loadError?.message}
+        onRetry={reload}
+        unreachable={loadError?.isUnreachable}
+      />
+    );
 
   async function flip(next: boolean) {
     setSaving(true);

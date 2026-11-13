@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { Store as StoreIcon } from 'lucide-react';
-import { ButtonLink } from '../components/Button';
+import { ButtonLink, buttonClasses } from '../components/Button';
 import { Card } from '../components/Card';
 import { EmptyState } from '../components/EmptyState';
 import type { Order, OrderStatus } from '../types/api';
@@ -29,7 +29,6 @@ import { ApiError } from '../services/api';
 import { updateOrderStatus } from '../services/orders';
 import { StockList } from '../features/stock/StockList';
 import { canSeeStock } from '../features/stock/stockRules';
-import { cn } from '../lib/cn';
 
 /** The 200ms --animate-card-leave plus a 20ms margin, so the card is removed just after it finishes fading. */
 const LEAVE_MS = 220;
@@ -172,10 +171,7 @@ export function StaffDashboardPage() {
                 type="button"
                 aria-pressed={view === v}
                 onClick={() => setView(v)}
-                className={cn(
-                  'min-h-11 rounded-full px-4 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus',
-                  view === v ? 'bg-ink text-surface' : 'text-muted hover:bg-surface-2',
-                )}
+                className={buttonClasses({ variant: view === v ? 'primary' : 'ghost' })}
               >
                 {v === 'orders' ? 'Orders' : 'Stock'}
               </button>
