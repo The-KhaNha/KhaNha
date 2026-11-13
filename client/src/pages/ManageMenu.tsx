@@ -18,13 +18,15 @@ import type { ManagedMenuItem, StoreSummary } from '../types/api';
 
 interface ManageMenuTabProps {
   store: Pick<StoreSummary, 'id' | 'slug' | 'brand'>;
+  /** After every write: the shell reloads the store's go-live checklist. */
+  onChanged?: () => void;
 }
 
 /** `/manage/:storeSlug/menu`: search, switch, reorder and edit the store's items. */
-export function ManageMenuTab({ store }: ManageMenuTabProps) {
+export function ManageMenuTab({ store, onChanged }: ManageMenuTabProps) {
   const user = useAuthStore((s) => s.user);
   const allowed = !!user && canEditMenu(user, store);
-  const menu = useManageMenu(store, allowed);
+  const menu = useManageMenu(store, allowed, onChanged);
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<string | null>(null);
   // undefined: closed; null: adding; an item: editing it.

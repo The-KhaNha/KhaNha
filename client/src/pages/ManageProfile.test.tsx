@@ -36,6 +36,21 @@ describe('ManageProfileTab', () => {
     expect(screen.getByText('Saved')).toBeInTheDocument();
   });
 
+  it("never sends back a field someone else changed meanwhile: only the person's own edit", async () => {
+    api.updateStoreProfile.mockResolvedValue({
+      ...store,
+      name: 'South',
+      contactPhone: '9876543210',
+    });
+    const { rerender } = render(<ManageProfileTab store={store} onSaved={onSaved} />);
+    rerender(<ManageProfileTab store={{ ...store, name: 'South' }} onSaved={onSaved} />);
+    expect(screen.getByLabelText('Name')).toHaveValue('South');
+    fireEvent.change(screen.getByLabelText('Phone'), { target: { value: '9876543210' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    expect(api.updateStoreProfile).toHaveBeenCalledWith('s1', { contactPhone: '9876543210' });
+  });
+
   it("shows the API's field error on its field", async () => {
     api.updateStoreProfile.mockRejectedValue(
       new ApiError(400, 'VALIDATION_ERROR', 'Enter a valid phone number.', {

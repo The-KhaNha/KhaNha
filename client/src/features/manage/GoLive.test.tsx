@@ -72,6 +72,17 @@ describe('GoLive', () => {
     expect(onChanged).toHaveBeenCalled();
   });
 
+  it('a refused unpublish closes the dialog and shows why on the card', async () => {
+    api.unpublishStore.mockRejectedValue(
+      new ApiError(409, 'INVALID_STATUS_TRANSITION', 'Not now.'),
+    );
+    show('ACTIVE');
+    fireEvent.click(screen.getByRole('button', { name: 'Unpublish' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Unpublish' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Not now.');
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
   it('shows nothing for a suspended or closed branch (only an operator moves it)', () => {
     const { container } = show('SUSPENDED');
     expect(container).toBeEmptyDOMElement();

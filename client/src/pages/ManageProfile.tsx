@@ -6,6 +6,7 @@ import { VALIDATION } from '../features/config/fallbacks';
 import {
   fieldErrorsOf,
   profileChanges,
+  reconcileDraft,
   toProfileDraft,
   type ProfileDraft,
 } from '../features/manage/storeProfileRules';
@@ -19,12 +20,22 @@ const { nameMax, taglineMax, descriptionMax, areaMax, addressMax } = VALIDATION.
  * on the template, what new branches copy.
  */
 export function ManageProfileTab({ store, onSaved }: { store: ManagedStore; onSaved: () => void }) {
-  const [draft, setDraft] = useState(() => toProfileDraft(store));
+  // `before` is the store as last loaded or saved: what the draft is compared with (CodeRabbit #88).
+  const [before, setBefore] = useState(() => toProfileDraft(store));
+  const [draft, setDraft] = useState(before);
+  const [synced, setSynced] = useState(store);
+  if (store !== synced) {
+    // A refresh (someone else's save): untouched fields follow it; edited ones stay the person's.
+    const next = toProfileDraft(store);
+    setDraft(reconcileDraft(draft, before, next));
+    setBefore(next);
+    setSynced(store);
+  }
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const changes = profileChanges(store, draft);
+  const changes = profileChanges(before, draft);
   const dirty = Object.keys(changes).length > 0;
 
   const set = (key: keyof ProfileDraft) => (e: { target: { value: string } }) => {
@@ -39,7 +50,9 @@ export function ManageProfileTab({ store, onSaved }: { store: ManagedStore; onSa
     if (!dirty || saving) return;
     setSaving(true);
     try {
-      setDraft(toProfileDraft(await updateStoreProfile(store.id, changes)));
+      const saved = toProfileDraft(await updateStoreProfile(store.id, changes));
+      setBefore(saved);
+      setDraft(saved);
       setSaved(true);
       onSaved();
     } catch (err) {

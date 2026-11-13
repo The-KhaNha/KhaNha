@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
@@ -105,6 +105,16 @@ vi.mock('../features/stores/useStores', () => ({
 }));
 // The hours tab loads its week through the services; it is tested in ManageHours.test.tsx.
 vi.mock('../services/stores', () => ({ fetchStoreHours: () => new Promise(() => {}) }));
+const publishStore = vi.hoisted(() => vi.fn());
+vi.mock('../services/manageStores', async (actual) => ({
+  ...(await actual<typeof import('../services/manageStores')>()),
+  publishStore,
+}));
+const dropped = vi.hoisted(() => vi.fn());
+vi.mock('../lib/useResource', async (actual) => ({
+  ...(await actual<typeof import('../lib/useResource')>()),
+  dropPersisted: dropped,
+}));
 const { ManagePage } = await import('./Manage');
 const { ManageStorePage } = await import('./ManageStore');
 const { RequireAuth } = await import('../features/auth/RequireAuth');
@@ -296,5 +306,15 @@ describe('/manage/:storeSlug shell', () => {
     renderAt('/manage/d/profile');
     expect(screen.getByRole('heading', { name: 'Store d' })).toBeInTheDocument();
     expect(screen.queryByRole('region', { name: 'Go live' })).toBeNull();
+  });
+
+  it("a publish drops this browser's saved public copy of the store, so it never shows the old one", async () => {
+    publishStore.mockResolvedValue(managedStore('d'));
+    state.user = owner();
+    state.brands = [{ ...brand, template: null, stores: [managedStore('d', { status: 'DRAFT' })] }];
+    manage('d', { status: 'DRAFT' }, []);
+    renderAt('/manage/d/hours');
+    fireEvent.click(screen.getByRole('button', { name: 'Publish' }));
+    await waitFor(() => expect(dropped).toHaveBeenCalledWith('store:d'));
   });
 });

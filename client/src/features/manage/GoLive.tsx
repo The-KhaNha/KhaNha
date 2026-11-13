@@ -36,10 +36,11 @@ export function GoLive({ store, missing, onChanged }: GoLiveProps) {
     setError(null);
     try {
       await write();
-      setConfirming(false);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Something went wrong. Please try again.');
     } finally {
+      // Closed either way: a refusal's message shows on the card, never behind the dialog's overlay.
+      setConfirming(false);
       setBusy(false);
       onChanged();
     }

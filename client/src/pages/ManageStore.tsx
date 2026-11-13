@@ -18,6 +18,7 @@ import {
 import { useManagedStore, useMyBrands } from '../features/manage/useManage';
 import { useStoreByRef, useStores } from '../features/stores/useStores';
 import { cn } from '../lib/cn';
+import { dropPersisted } from '../lib/useResource';
 import { ManageSettingsTab } from './ManageSettings';
 import { ManageTeamTab } from './ManageTeam';
 import { NotFoundPage } from './NotFound';
@@ -98,6 +99,9 @@ export function ManageStorePage() {
 
   // Every write here can change what the store shows, its checklist, and the lists that name it.
   const refresh = () => {
+    // The saved public copy too (`store:<slug>`, `store:<id>`), or this browser shows the old store until it refreshes.
+    dropPersisted(`store:${view.slug}`);
+    dropPersisted(`store:${view.id}`);
     if (ownId) managed.reload();
     else pub.retry();
     if (owner) brands.reload();
@@ -110,7 +114,7 @@ export function ManageStorePage() {
     ((path !== 'stock' && path !== 'profile') || canEditMenu(user, view));
   const tabs = MANAGE_TABS.filter((t) => allowed(t.path));
   const elements: Record<string, ReactNode> = {
-    menu: <ManageMenuTab store={view} />,
+    menu: <ManageMenuTab store={view} onChanged={refresh} />,
     stock: <ManageStockTab store={view} />,
     profile: managed.data && <ManageProfileTab store={managed.data.store} onSaved={refresh} />,
     hours: <ManageHoursPage store={view} onChanged={refresh} />,

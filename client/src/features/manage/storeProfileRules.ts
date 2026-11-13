@@ -25,11 +25,15 @@ export const toProfileDraft = (s: ManagedStore) => ({
 });
 export type ProfileDraft = ReturnType<typeof toProfileDraft>;
 
-/** Only what changed; a blank place or phone is sent as null (cleared). */
-export function profileChanges(saved: ManagedStore, draft: ProfileDraft): StoreProfileInput {
-  const before = toProfileDraft(saved);
+const KEYS = ['name', 'tagline', 'description', 'area', 'addressLine', 'contactPhone'] as const;
+
+/**
+ * Only what the person changed since `before` (the store as last loaded or saved, never a later refresh: a field they
+ * did not touch must not overwrite someone else's change). A blank place or phone is sent as null (cleared).
+ */
+export function profileChanges(before: ProfileDraft, draft: ProfileDraft): StoreProfileInput {
   const changes: StoreProfileInput = {};
-  for (const key of Object.keys(draft) as (keyof ProfileDraft)[]) {
+  for (const key of KEYS) {
     const value = draft[key].trim();
     if (value === before[key].trim()) continue;
     const clearable = key === 'area' || key === 'addressLine' || key === 'contactPhone';
@@ -37,3 +41,13 @@ export function profileChanges(saved: ManagedStore, draft: ProfileDraft): StoreP
   }
   return changes;
 }
+
+/** A refreshed store into the form: fields the person has not touched take the new value; edited ones are kept. */
+export const reconcileDraft = (
+  draft: ProfileDraft,
+  before: ProfileDraft,
+  next: ProfileDraft,
+): ProfileDraft =>
+  Object.fromEntries(
+    KEYS.map((k) => [k, draft[k] === before[k] ? next[k] : draft[k]]),
+  ) as ProfileDraft;
