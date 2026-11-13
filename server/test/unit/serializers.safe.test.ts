@@ -212,6 +212,7 @@ describe('toMenuItemDto', () => {
       description: 'Creamy chilled coffee',
       price: 120,
       imageUrl: '/images/cold-coffee.jpg',
+      imageSrcSet: null,
       diet: 'VEG',
       isAvailable: false,
       isPopular: true,
@@ -222,6 +223,19 @@ describe('toMenuItemDto', () => {
 
   it('reports untracked stock as null', () => {
     expect(toMenuItemDto(menuItem()).stockQuantity).toBeNull();
+  });
+
+  it("offers an uploaded photo's variants as a srcset", () => {
+    const key = (w: number) => `stores/s/variants/abc-${w}.webp`;
+    const dto = toMenuItemDto(
+      menuItem({
+        image_variants: [
+          { width: 400, height: 300, key: key(400) },
+          { width: 900, height: 675, key: key(900) },
+        ],
+      }),
+    );
+    expect(dto.imageSrcSet).toBe(`/media/${key(400)} 400w, /media/${key(900)} 900w`);
   });
 });
 

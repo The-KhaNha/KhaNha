@@ -127,7 +127,8 @@ An empty poll logs nothing.
 
 `GET /health` and a failed `queue_metrics` read are deliberately not logged: it is a polling path, and the depth is
 `null` in the body when the read fails. A handler's own lines (`notifyHandler`'s `info` "Order event"; `mediaHandler`'s `info` "Photo processed" with
-`uploadId` and `variants`, and `warn` "Photo refused" with `uploadId` and `failure`, a photo that can never be processed:
+`uploadId` and `variants`, and `warn` "Photo refused" with `uploadId` and `failure`, a photo that can never be processed; `info` "Media swept" with
+`uploads` and `failed`, once a night, and `warn` "Media sweep skipped an upload" with `err` and `uploadId`:
 expected, but worth noticing) use the logger it is given.
 
 ## Client error reports

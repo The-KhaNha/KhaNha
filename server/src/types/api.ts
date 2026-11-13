@@ -128,6 +128,8 @@ export interface MenuItemDto {
   price: number;
   /** null: no photo yet (an item made in the editor before its upload). */
   imageUrl: string | null;
+  /** An uploaded photo's WebP sizes, for `<img srcset>` ("/media/… 400w, /media/… 900w"); null for a bundled photo. */
+  imageSrcSet: string | null;
   /** null: not marked. */
   diet: Diet | null;
   /** Effective availability: false when the item is switched off OR its tracked stock has run out. */

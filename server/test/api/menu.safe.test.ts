@@ -34,6 +34,7 @@ describe('GET /api/stores/:ref/menu', () => {
           'description',
           'price',
           'imageUrl',
+          'imageSrcSet',
           'diet',
           'isAvailable',
           'isPopular',

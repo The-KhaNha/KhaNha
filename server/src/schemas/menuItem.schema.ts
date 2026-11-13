@@ -7,6 +7,9 @@ const { nameMin, nameMax, descriptionMax, categoryMax, priceMin, priceMax, stock
 
 export const DIETS = ['VEG', 'NON_VEG', 'EGG'] as const;
 
+// A processed upload of the same store (POST …/media/uploads, then the worker); null removes the photo.
+const imageUploadId = z.uuid('imageUploadId must be an upload id.').nullable().optional();
+
 const fields = {
   name: typedText(nameMax, `Name must be at most ${nameMax} characters.`).refine(
     // Code points too: the database's char_length counts them, and one emoji is two UTF-16 units but one code point.
@@ -46,6 +49,7 @@ export const createMenuItemSchema = z.strictObject({
   diet: fields.diet.optional(),
   isPopular: fields.isPopular.optional(),
   stockQuantity: fields.stockQuantity.optional(),
+  imageUploadId,
 });
 
 export const updateMenuItemSchema = z
@@ -58,6 +62,7 @@ export const updateMenuItemSchema = z
     isPopular: fields.isPopular.optional(),
     // No stockQuantity: a stock edit goes through the stock function and its trail (PR 04).
     isAvailable: z.boolean('isAvailable must be true or false.').optional(),
+    imageUploadId,
   })
   .refine((input) => Object.values(input).some((value) => value !== undefined), {
     message: 'Send at least one field to change.',

@@ -1,3 +1,4 @@
+import { mediaStore } from '../integrations/media';
 import type { QueryData } from '@supabase/supabase-js';
 import type { Tables } from '../types/database';
 import type { StoreRole } from '../types/enums';
@@ -216,6 +217,15 @@ export function isPurchasable(
   return item.is_available && (item.stock_quantity === null || item.stock_quantity > 0);
 }
 
+/** "/media/<key> 400w, /media/<key> 900w" from an item's uploaded-photo variants; null without them. */
+function srcSet(variants: Tables<'menu_items'>['image_variants']): string | null {
+  if (!Array.isArray(variants) || variants.length === 0) return null;
+  const store = mediaStore();
+  return (variants as { width: number; key: string }[])
+    .map(({ width, key }) => `${store.publicPath(key)} ${width}w`)
+    .join(', ');
+}
+
 export function toMenuItemDto(item: Tables<'menu_items'>): MenuItemDto {
   return {
     id: item.id,
@@ -224,6 +234,7 @@ export function toMenuItemDto(item: Tables<'menu_items'>): MenuItemDto {
     description: item.description,
     price: paiseToRupees(item.price_paise),
     imageUrl: item.image_url,
+    imageSrcSet: srcSet(item.image_variants),
     diet: item.diet,
     isAvailable: isPurchasable(item),
     isPopular: item.is_popular,

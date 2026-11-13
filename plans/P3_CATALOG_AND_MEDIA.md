@@ -548,7 +548,7 @@ local bucket and its CORS rule (refused on production). nginx's `/media/` upstre
 
 ### PR 10 — Media: the image pipeline in the worker (P3.3)
 
-- [ ] Merged (10a; 10b)
+- [ ] Merged (10a #93, 6c37a09; 10b)
 
 Migration `<ts>_q_media.sql`: `select pgmq.create('q_media')`; subscription `('media.*', 'q_media')`;
 a nightly schedule calls `emit_event('media.sweep', …)`, because the sweep below deletes objects from the store,
@@ -600,6 +600,9 @@ As built, in two PRs. **10a**: the queue (`media.uploaded` only, not `media.*`, 
 `stores/<store>/variants/`, inside `MEDIA_KEY`), the S3 write's immutable `Cache-Control`, and the `images` job's
 sharp check (the API image is 284 MB of its 300). **10b**: `imageUploadId` and `imageSrcSet` on the item routes, the
 nightly `media.sweep`, and its tests.
+10b as built: the candidates are chosen in SQL (`media_sweep_candidates`), since the reference checks span
+`menu_items`, `order_items` and `media_uploads`, which only their owners may query; a processed upload's row stays while
+anything shows it, so a replaced photo is found and swept later. The sweep reads its time from the event.
 
 ### PR 11 — Client: photo upload, and `FoodPhoto` with variants (P3.3)
 

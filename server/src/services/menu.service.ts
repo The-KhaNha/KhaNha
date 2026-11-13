@@ -1,3 +1,5 @@
+import { mediaStore } from '../integrations/media';
+import { processedVariants, type MediaVariant } from './media.service';
 import type {
   BulkAvailabilityInput,
   CreateMenuItemInput,
@@ -117,6 +119,22 @@ function toRow(input: UpdateMenuItemInput): TablesUpdate<'menu_items'> {
 }
 
 /**
+ * The photo columns for `imageUploadId`: a processed upload of this store shows its largest variant (and offers all of
+ * them as a srcset); null removes the photo; undefined changes nothing.
+ */
+async function photoRow(
+  storeId: string,
+  imageUploadId: string | null | undefined,
+): Promise<Pick<TablesUpdate<'menu_items'>, 'image_url' | 'image_variants'>> {
+  if (imageUploadId === undefined) return {};
+  if (imageUploadId === null) return { image_url: null, image_variants: null };
+  const variants = await processedVariants(storeId, imageUploadId);
+  // processedVariants never answers an empty list; the last is the widest.
+  const largest = variants[variants.length - 1] as MediaVariant;
+  return { image_url: mediaStore().publicPath(largest.key), image_variants: variants };
+}
+
+/**
  * The sort_order that puts an item last in `category`, or last on the menu for a new category. A category's place is
  * its first item's (groupByCategory), so an item keeping its old place in a new category could move the whole category.
  */
@@ -153,6 +171,7 @@ export async function createMenuItem(
       price_paise: rupeesToPaise(input.price),
       category: input.category,
       stock_quantity: input.stockQuantity,
+      ...(await photoRow(storeId, input.imageUploadId)),
       store_id: storeId,
       sort_order: await lastPlaceIn(storeId, input.category),
     })
@@ -174,7 +193,7 @@ export async function updateMenuItem(
   ctx: RequestContext,
 ): Promise<Tables<'menu_items'>> {
   if (!isUuid(itemId)) throw notFound('Item not found.');
-  const row = toRow(input);
+  const row = { ...toRow(input), ...(await photoRow(storeId, input.imageUploadId)) };
   if (input.category !== undefined) {
     const { data: current } = await supabaseAdmin
       .from('menu_items')

@@ -135,6 +135,11 @@ export interface MenuItem {
   /** null: no photo yet (an item made in the editor before its upload). */
   imageUrl: string | null;
   /**
+   * An uploaded photo's WebP sizes for `<img srcset>`; null for a bundled photo. Optional: a menu persisted before the
+   * field existed (fp_cache) lacks it.
+   */
+  imageSrcSet?: string | null;
+  /**
    * null: not marked. Optional because a menu persisted before the field existed (fp_cache) lacks it; read it as
    * `item.diet ?? null`.
    */
