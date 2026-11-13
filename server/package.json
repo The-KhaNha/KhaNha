@@ -17,6 +17,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "seed": "tsx scripts/seed.ts",
     "media:bucket": "tsx scripts/media-bucket.ts",
+    "migrate:media": "tsx scripts/migrate-media.ts",
     "db:start": "supabase start",
     "db:start:ci": "supabase start -x studio,storage-api,imgproxy,mailpit,realtime,edge-runtime,logflare,vector,supavisor,postgres-meta",
     "db:stop": "supabase stop",

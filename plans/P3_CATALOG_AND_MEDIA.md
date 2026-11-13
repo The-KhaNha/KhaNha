@@ -647,6 +647,13 @@ Docs: `docs/DEPLOYMENT.md` (the migration, replacing "Compressing photos"), `.cl
 
 Split seam: the script and seed as 12a, the removal as 12b after staging has migrated.
 
+12a as built: `scripts/media-migration.ts` (shared by `migrate:media` and the seed) runs each (store, photo) through
+the worker's `makeVariants`, and two SQL functions find and repoint the rows (`bundled_photo_refs`,
+`move_bundled_photo`: the items and the order lines in one transaction). Store covers are not moved yet: the cover
+stays bundled until a store can upload its own, which 12b brings with the settings screen's cover upload. The seed
+leaves the photos bundled where no media store is available (staging has no bucket until P8), so **12b waits for P8**:
+staging can only migrate once it has a bucket.
+
 ### PR 13 — Modifiers: schema, pricing, orders (P3.2)
 
 - [ ] Merged
