@@ -431,9 +431,13 @@ Code: `requireAuth` → `requireStore('menu.edit')` → `writeLimiter` → `vali
 `menu.controller.createMenuItem` → `menu.service.createMenuItem`.
 
 Body: `name` (2–80), `description?` (at most 300, default `""`), `price` (whole rupees, 1–100000), `category` (1–40),
-`diet?` (`VEG`, `NON_VEG`, `EGG` or `null`), `isPopular?`, `stockQuantity?` (0–100000, or `null` for not tracked). Text
+`diet?` (`VEG`, `NON_VEG`, `EGG` or `null`), `isPopular?`, `stockQuantity?` (0–100000, or `null` for not tracked),
+`imageUploadId?` (a `PROCESSED` upload of this store, [Photo uploads](#photo-uploads): the item shows its 900w variant as
+`imageUrl` and offers every size as `imageSrcSet`; anything else, including an upload swept after 24 hours unattached,
+is 400 `UPLOAD_INVALID` `state` and nothing is written; `null` removes the photo). Text
 is trimmed and counted as in [Shared field rules](#shared-field-rules); an unknown field is 400 `VALIDATION_ERROR`. The
-item goes last in its category (a new category last on the menu), with no photo (`imageUrl: null`). A store may hold
+item goes last in its category (a new category last on the menu), with no photo (`imageUrl: null`) unless it names an
+upload. A store may hold
 two items with the same name. Answers 201 `{ item: ManagedMenuItemDto }`.
 
 ### PATCH /stores/:storeId/menu-items/:itemId
@@ -905,19 +909,20 @@ fields of `StoreDto` a store picker needs (client: `StoreSummary`).
 
 `MenuItemDto`
 
-| Field           | Type                                      | Notes                                                        |
-| --------------- | ----------------------------------------- | ------------------------------------------------------------ |
-| `id`            | string (uuid)                             |                                                              |
-| `category`      | string                                    |                                                              |
-| `name`          | string                                    |                                                              |
-| `description`   | string                                    |                                                              |
-| `price`         | number                                    | whole rupees                                                 |
-| `imageUrl`      | string \| null                            | `null`: no photo yet                                         |
-| `diet`          | `'VEG'` \| `'NON_VEG'` \| `'EGG'` \| null | `null`: not marked                                           |
-| `isAvailable`   | boolean                                   | false when switched off or tracked stock is 0                |
-| `isPopular`     | boolean                                   |                                                              |
-| `sortOrder`     | number                                    |                                                              |
-| `stockQuantity` | number \| null                            | units left; `null` = not tracked (only the 10-per-order cap) |
+| Field           | Type                                      | Notes                                                                                           |
+| --------------- | ----------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `id`            | string (uuid)                             |                                                                                                 |
+| `category`      | string                                    |                                                                                                 |
+| `name`          | string                                    |                                                                                                 |
+| `description`   | string                                    |                                                                                                 |
+| `price`         | number                                    | whole rupees                                                                                    |
+| `imageUrl`      | string \| null                            | `null`: no photo yet                                                                            |
+| `imageSrcSet`   | string \| null                            | an uploaded photo's sizes, `"/media/… 400w, /media/… 900w"`; `null` for a bundled photo or none |
+| `diet`          | `'VEG'` \| `'NON_VEG'` \| `'EGG'` \| null | `null`: not marked                                                                              |
+| `isAvailable`   | boolean                                   | false when switched off or tracked stock is 0                                                   |
+| `isPopular`     | boolean                                   |                                                                                                 |
+| `sortOrder`     | number                                    |                                                                                                 |
+| `stockQuantity` | number \| null                            | units left; `null` = not tracked (only the 10-per-order cap)                                    |
 
 `ManagedMenuItemDto` (the editor's list): `MenuItemDto` plus `isEnabled` (boolean, the switch alone; `isAvailable` also
 counts stock), `archivedAt` (ISO 8601 \| null) and `templateItemId` (the brand template item it was copied from, its

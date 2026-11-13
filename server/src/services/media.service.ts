@@ -191,3 +191,49 @@ export async function finishUpload(
     .throwOnError();
   return data;
 }
+
+/**
+ * A processed upload of this store, for an item to show: its variants, narrowest first. Anything else (another store's,
+ * unknown, not processed yet, failed, or swept after 24 hours unattached) is UPLOAD_INVALID `state`: upload again.
+ */
+export async function processedVariants(
+  storeId: string,
+  uploadId: string,
+): Promise<MediaVariant[]> {
+  const { data } = await supabaseAdmin
+    .from('media_uploads')
+    .select('status, variants')
+    .eq('id', uploadId)
+    .eq('store_id', storeId)
+    .maybeSingle()
+    .throwOnError();
+  if (data?.status !== 'PROCESSED' || !Array.isArray(data.variants) || data.variants.length === 0)
+    throw uploadInvalid('That photo is not ready to use: upload it again.', 'state');
+  return data.variants as MediaVariant[];
+}
+
+/** Uploads the sweep reads at a time. */
+export const SWEEP_BATCH = 50;
+
+/** What the nightly sweep may delete (media_sweep_candidates): uploads, oldest first, and the variant keys with each. */
+export async function sweepCandidates(
+  now: Date,
+): Promise<{ upload_id: string; original_key: string; remove_keys: string[] }[]> {
+  const { data } = await supabaseAdmin
+    .rpc('media_sweep_candidates', { p_now: now.toISOString(), p_limit: SWEEP_BATCH })
+    .throwOnError();
+  return data;
+}
+
+/** Whether a menu item or an order line shows one of the upload's variants (media_upload_shown). */
+export async function uploadShown(uploadId: string): Promise<boolean> {
+  const { data } = await supabaseAdmin
+    .rpc('media_upload_shown', { p_upload_id: uploadId })
+    .throwOnError();
+  return data;
+}
+
+/** Deletes a swept upload's row, once its objects are gone. */
+export async function deleteUpload(uploadId: string): Promise<void> {
+  await supabaseAdmin.from('media_uploads').delete().eq('id', uploadId).throwOnError();
+}

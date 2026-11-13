@@ -2,8 +2,16 @@ import { createHash } from 'node:crypto';
 import sharp from 'sharp';
 import { mediaStore } from '../integrations/media';
 import { MEDIA_UPLOAD, MEDIA_VARIANTS } from '../schemas/limits';
-import { finishUpload, getUploadForJob, type MediaVariant } from '../services/media.service';
-import type { JobHandler } from './runner';
+import {
+  deleteUpload,
+  finishUpload,
+  getUploadForJob,
+  SWEEP_BATCH,
+  sweepCandidates,
+  uploadShown,
+  type MediaVariant,
+} from '../services/media.service';
+import type { JobContext, JobHandler } from './runner';
 
 // The production host has 1 GB (P8): one image at a time, no libvips cache, one thread.
 sharp.cache(false);
@@ -78,20 +86,70 @@ export async function makeVariants(
   return variants;
 }
 
+/** How long one sweep may run: well inside the handler's visibility timeout, so no second reader takes the message. */
+const SWEEP_BUDGET_MS = 60_000;
+
 /**
- * media.uploaded → the upload's variants (docs/JOBS.md "Media events"). A finished upload (PROCESSED or FAILED) is
+ * media.sweep (nightly): for each upload media_sweep_candidates names, removes the variant keys nothing else shows and
+ * the original, then deletes the row. Batches of SWEEP_BATCH while full ones come back, within SWEEP_BUDGET_MS and
+ * until shutdown; what is left waits for the next night. A failure on one upload is logged and leaves its row for the
+ * next night; the rest go on. On S3 the bucket's lifecycle rule (originals expire after a day, P8) is the backstop.
+ * `now` is when the sweep was asked for.
+ */
+export async function sweepMedia(
+  now: Date,
+  { log, signal }: Pick<JobContext, 'log'> & { signal?: AbortSignal },
+): Promise<number> {
+  const store = mediaStore();
+  const deadline = Date.now() + SWEEP_BUDGET_MS;
+  let swept = 0;
+  let failed = 0;
+  for (;;) {
+    const batch = await sweepCandidates(now);
+    let batchFailed = false;
+    for (const { upload_id, original_key, remove_keys } of batch) {
+      if (signal?.aborted || Date.now() > deadline) break;
+      try {
+        // An item may have taken the photo since the batch was read: look again just before anything goes.
+        // ponytail: a check, not a lock; an attach landing between this read and the removal still loses its photo.
+        // The window is milliseconds, once a night, for an upload left unattached over 24 hours.
+        if (await uploadShown(upload_id)) continue;
+        for (const key of remove_keys) await store.remove(key);
+        await store.remove(original_key);
+        await deleteUpload(upload_id);
+        swept += 1;
+      } catch (err) {
+        failed += 1;
+        batchFailed = true;
+        log.warn({ err, uploadId: upload_id }, 'Media sweep skipped an upload');
+      }
+    }
+    // A failed or shown upload comes back in the next batch: stop rather than read it again tonight.
+    if (batchFailed || batch.length < SWEEP_BATCH || signal?.aborted || Date.now() > deadline)
+      break;
+  }
+  log.info({ uploads: swept, failed }, 'Media swept');
+  return swept;
+}
+
+/**
+ * media.uploaded → the upload's variants; media.sweep → sweepMedia (docs/JOBS.md "Media events"). A finished upload (PROCESSED or FAILED) is
  * acknowledged without reading the store: a redelivery after a completed run costs one row read and an idempotent
  * removal of the original. A crash before
  * the mark reruns the whole handler, which writes the same content-addressed keys. The original is deleted last.
  */
-export const mediaHandler: JobHandler<{ key: string }> = {
+export const mediaHandler: JobHandler<{ key?: string }> = {
   queue: 'q_media',
   concurrency: 1,
   // An 8 MB, 6000×6000 photo takes a few seconds on one thread; the margin covers a slow store.
   visibilityTimeoutSec: 120,
   maxAttempts: 5,
   backoff: { baseSec: 10, maxSec: 900 },
-  async handle({ event }, { log }) {
+  async handle({ event }, { log, signal }) {
+    if (event.type === 'media.sweep') {
+      await sweepMedia(new Date(event.occurredAt), { log, signal });
+      return;
+    }
     const upload = await getUploadForJob(event.aggregateId);
     if (!upload || upload.status === 'PENDING') return;
     const store = mediaStore();

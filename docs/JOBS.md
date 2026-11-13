@@ -84,12 +84,25 @@ removes a variant first checks that nothing still points at it (the sweep, PR 10
 `sharp` runs with its cache off and one thread, one photo at a time: the production host has 1 GB. The test drives a
 6000×6000 photo through it under a 400 MB peak.
 
+`media.sweep` (nightly, from the `media-sweep` schedule, actor `SCHEDULER`) goes to the same handler, because only the
+worker can reach the store: `media_sweep_candidates(p_now)` names the uploads to delete, each with the variant keys it
+may remove, and `sweepMedia` checks once more that nothing shows the upload (`media_upload_shown`: an item may have
+taken it since the batch was read), removes those keys and the original, then deletes the row. A failure on one upload
+is logged (`warn` "Media sweep skipped an upload") and leaves its row for the next night; the others go on. It reads
+batches of 50 while full ones come back, for at most 60 seconds (inside the 120 s visibility timeout) and until
+shutdown; what is left waits for the next night. `p_now` is the event's `occurredAt`, so a late delivery sweeps by the time it was asked for
+(tests pass their own). Swept: an upload `PENDING`, `UPLOADED` or `FAILED` started more than 24 hours earlier, and a
+`PROCESSED` one older than 24 hours that no menu item and no order line shows. A processed upload stays while anything
+shows it, so a photo replaced later is swept the night after the 24 hours run out. A variant key is removed only when
+no upload that stays lists it (two uploads of one photo share keys). On S3 the bucket's lifecycle rule (originals
+expire after a day, P8) is the backstop. Log line: `info` "Media swept" with `uploads` and `failed`.
+
 ## Queues and subscriptions
 
-| Queue             | Subscribed to                                                                                          | Consumer                           | Added by                            |
-| ----------------- | ------------------------------------------------------------------------------------------------------ | ---------------------------------- | ----------------------------------- |
-| `q_notifications` | `order.*`                                                                                              | `notifyHandler` (`jobs/notify.ts`) | `20261024181904_outbox.sql`         |
-| `q_media`         | `media.uploaded` (not `media.*`: the handler's own `media.processed` / `media.failed` would come back) | `mediaHandler` (`jobs/media.ts`)   | `20261113170333_media_pipeline.sql` |
+| Queue             | Subscribed to                                                                                                         | Consumer                           | Added by                            |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------- | ---------------------------------- | ----------------------------------- |
+| `q_notifications` | `order.*`                                                                                                             | `notifyHandler` (`jobs/notify.ts`) | `20261024181904_outbox.sql`         |
+| `q_media`         | `media.uploaded`, `media.sweep` (not `media.*`: the handler's own `media.processed` / `media.failed` would come back) | `mediaHandler` (`jobs/media.ts`)   | `20261113170333_media_pipeline.sql` |
 
 A queue is created with its first consumer, never ahead of it, in one migration: `select pgmq.create('q_<name>')`,
 then its `event_subscriptions` rows. A subscription naming a queue that does not exist makes `emit_event` raise, and
@@ -170,10 +183,11 @@ Deployment: [DEPLOYMENT.md](DEPLOYMENT.md#local-compose). Log lines: [LOGGING.md
 Registered by migrations with `cron.schedule(name, schedule, command)`. Scheduling an existing name replaces it. A
 schedule that purges by age calls a SQL function that takes `p_now timestamptz default now()`, so tests choose the time.
 
-| Job                      | Schedule (UTC)            | Runs                              | Added by                              |
-| ------------------------ | ------------------------- | --------------------------------- | ------------------------------------- |
-| `purge-domain-events`    | `17 21 * * *` (02:47 IST) | `public.purge_domain_events()`    | `20261024181904_outbox.sql`           |
-| `purge-session-activity` | `27 21 * * *` (02:57 IST) | `public.purge_session_activity()` | `20261102110929_session_activity.sql` |
+| Job                      | Schedule (UTC)            | Runs                                                                              | Added by                              |
+| ------------------------ | ------------------------- | --------------------------------------------------------------------------------- | ------------------------------------- |
+| `purge-domain-events`    | `17 21 * * *` (02:47 IST) | `public.purge_domain_events()`                                                    | `20261024181904_outbox.sql`           |
+| `purge-session-activity` | `27 21 * * *` (02:57 IST) | `public.purge_session_activity()`                                                 | `20261102110929_session_activity.sql` |
+| `media-sweep`            | `37 21 * * *` (03:07 IST) | `emit_event('media.sweep', …)`: the worker sweeps ([Media events](#media-events)) | `20261113174022_media_sweep.sql`      |
 
 - Supabase recommends at most 8 jobs running at once, each under 10 minutes.
 - A paused Free project runs nothing; staging's schedules resume after a restore (ADR-002).

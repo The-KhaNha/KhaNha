@@ -1069,6 +1069,15 @@ export type Database = {
         Returns: boolean;
       };
       lock_store_menu: { Args: { p_store_id: string }; Returns: undefined };
+      media_sweep_candidates: {
+        Args: { p_limit?: number; p_now?: string };
+        Returns: {
+          original_key: string;
+          remove_keys: string[];
+          upload_id: string;
+        }[];
+      };
+      media_upload_shown: { Args: { p_upload_id: string }; Returns: boolean };
       pause_store: {
         Args: {
           p_actor?: Json;
