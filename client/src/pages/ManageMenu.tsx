@@ -209,6 +209,7 @@ export function ManageMenuTab({ store, onChanged }: ManageMenuTabProps) {
       )}
       {editing !== undefined && (
         <ItemEditor
+          storeId={store.id}
           item={editing}
           categories={categories}
           onSave={(input) => menu.save(editing, input)}

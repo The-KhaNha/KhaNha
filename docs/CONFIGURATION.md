@@ -125,5 +125,9 @@ Server-only platform constants (no client copy, so not in the parity test):
 
 Presentation constants (animation timings, layout sizes, the reduced-motion rules), `CACHE_PREFIX`, the Supabase
 project refs in `db-push.sh` and the product name (`APP_TITLE` in `client/src/config/app.ts`, named once) stay in
-code by design. `pnpm run check:durations` (CI, `repo` job) fails on a `\d+_000` duration literal in
+code by design. So do the photo upload's client values: `UPLOAD_MAX_SIDE` (2000 px) and the JPEG quality (0.85) in
+`features/manage/usePhotoUpload.ts`, which shape what the browser sends, not what the server accepts (`MEDIA_UPLOAD`
+does that); `PROCESS_WAIT_MS` (120 s, how long the editor waits for the worker before offering a retry) beside them; and
+`UPLOAD_TIMEOUT_MS` (120 s, the send of one photo on a slow uplink) in `services/media.ts`. Each is a one-line edit with
+a test, and none is a setting an operator tunes per store or per deployment. `pnpm run check:durations` (CI, `repo` job) fails on a `\d+_000` duration literal in
 `server/src/services`, `server/src/domain` or a client `*Rules.ts`.

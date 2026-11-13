@@ -12,6 +12,8 @@ export interface MenuItemInput {
   category: string;
   diet: Diet | null;
   isPopular: boolean;
+  /** A processed upload of this store to show; null removes the photo; absent keeps it. */
+  imageUploadId?: string | null;
 }
 
 export const fetchManagedMenu = async (storeId: string) =>

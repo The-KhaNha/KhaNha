@@ -548,7 +548,7 @@ local bucket and its CORS rule (refused on production). nginx's `/media/` upstre
 
 ### PR 10 — Media: the image pipeline in the worker (P3.3)
 
-- [ ] Merged (10a #93, 6c37a09; 10b)
+- [x] Merged (10a #93, 6c37a09; 10b #94, 30027a6)
 
 Migration `<ts>_q_media.sql`: `select pgmq.create('q_media')`; subscription `('media.*', 'q_media')`;
 a nightly schedule calls `emit_event('media.sweep', …)`, because the sweep below deletes objects from the store,
