@@ -560,7 +560,8 @@ Server:
 - `src/jobs/media.ts`, added to `worker.ts`'s handler list: first read the upload row; `PROCESSED` means
   acknowledge and return, so a redelivered message after a completed run never reads the store. Otherwise read the
   original (a missing original for an upload that is not `PROCESSED` is a `PermanentError` that marks it `FAILED`);
-  `sharp` checks the real type from the bytes (anything but JPEG, PNG or WebP, or larger than 6000×6000, is a
+  the original is untrusted even after `complete` (its presigned form stays valid for five minutes and can replace
+  the bytes at the same size), so `sharp` checks the real type from the bytes (anything but JPEG, PNG or WebP, or larger than 6000×6000, is a
   `PermanentError` that marks the upload `FAILED`); auto-rotate, strip metadata, write 400w and 900w WebP under
   `stores/<storeId>/<sha256 prefix>-<width>.webp` with `public, max-age=31536000, immutable`; mark the upload
   `PROCESSED` with its variants; delete the original last. A crash before the mark reruns the whole handler and

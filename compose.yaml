@@ -69,7 +69,7 @@ services:
   media:
     image: rustfs/rustfs:1.0.4
     ports:
-      - '9000:9000'
+      - '127.0.0.1:9000:9000'
     environment:
       RUSTFS_ACCESS_KEY: rustfsadmin
       RUSTFS_SECRET_KEY: rustfsadmin
