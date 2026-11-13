@@ -1034,6 +1034,7 @@ export type Database = {
           store_id: string;
         }[];
       };
+      bundled_photo_row_count: { Args: Record<PropertyKey, never>; Returns: number };
       complete_media_upload: {
         Args: { p_actor?: Json; p_request_id?: string; p_store_id: string; p_upload_id: string };
         Returns: boolean;

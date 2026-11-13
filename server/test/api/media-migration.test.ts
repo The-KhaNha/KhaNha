@@ -136,6 +136,24 @@ describe('migrate:media', () => {
     expect(cli(['--check']).status).toBe(0);
   });
 
+  it('a null where a path or the variants belong is refused, never written', async () => {
+    for (const args of [
+      { p_to: null },
+      { p_from: null },
+      { p_variants: null },
+      { p_store_id: null },
+    ]) {
+      const { error } = await supabaseAdmin.rpc('move_bundled_photo', {
+        p_store_id: storeId,
+        p_from: '/images/espresso.jpg',
+        p_to: '/media/stores/x/variants/y-900.webp',
+        p_variants: [],
+        ...(args as object),
+      } as never);
+      expect(error?.message).toBe('VALIDATION_ERROR');
+    }
+  });
+
   it('refuses production without --production, and --production anywhere else', () => {
     // MEDIA_STORAGE=s3: production refuses local storage before the script would get that far.
     const prod = cli([], { APP_ENV: 'production', MEDIA_STORAGE: 's3' });

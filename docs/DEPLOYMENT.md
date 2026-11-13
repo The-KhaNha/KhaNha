@@ -122,8 +122,9 @@ order lines' snapshots (the same photo at a new address, so order history keeps 
 repeat. `--check` changes nothing: it prints how many rows still point at `/images/` and exits non-zero unless none do.
 Production needs `--production`, and the user runs it. The seed runs the same code, so a fresh local database never
 shows `/images/`; where no media store is available (staging until P8 gives it a bucket) the seed warns and leaves the
-photos bundled. Store covers stay bundled until a store can upload its own. Once every environment's `--check` reports
-zero, PR 12b deletes the bundled photos.
+photos bundled. Store covers stay bundled until a store can upload its own, and `--check` does not count them. PR 12b
+deletes the bundled photos only once every environment's `--check` reports zero **and** no store cover points at
+`/images/` any more (12b brings the cover upload that moves them).
 
 ### Compressing photos before a build
 

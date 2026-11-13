@@ -26,6 +26,18 @@ as $$
    order by r.store_id, r.image_url;
 $$;
 
+-- How many rows still point at a bundled photo: `migrate:media --check`, counted here rather than summed over
+-- bundled_photo_refs(), whose result the Data API caps at 1000 rows.
+create function public.bundled_photo_row_count()
+returns bigint
+language sql
+stable
+set search_path = ''
+as $$
+  select (select count(*) from public.menu_items where image_url like '/images/%')
+       + (select count(*) from public.order_items where image_url like '/images/%');
+$$;
+
 -- Repoints one store's rows from a bundled path to its media copy, in one transaction: the menu items (the URL and
 -- the variants, audited with the caller as actor) and the order lines' snapshots (the same photo at a new address,
 -- so order history keeps it). Returns the rows changed; a repeat changes none.
@@ -45,7 +57,10 @@ declare
   v_items integer;
   v_lines integer;
 begin
-  if p_from not like '/images/%' or p_to not like '/media/%' or jsonb_typeof(p_variants) <> 'array' then
+  -- Null-safe: a null in any of these must raise, not slip past the check and write nulls.
+  if p_store_id is null or p_from is null or p_to is null
+     or p_from not like '/images/%' or p_to not like '/media/%'
+     or jsonb_typeof(p_variants) is distinct from 'array' then
     raise exception using message = 'VALIDATION_ERROR';
   end if;
   perform set_config('app.actor', coalesce(p_actor::text, ''), true);
@@ -66,6 +81,8 @@ begin
 end;
 $$;
 
+revoke execute on function public.bundled_photo_row_count() from public, anon, authenticated;
+grant execute on function public.bundled_photo_row_count() to service_role;
 revoke execute on function public.bundled_photo_refs() from public, anon, authenticated;
 grant execute on function public.bundled_photo_refs() to service_role;
 revoke execute on function public.move_bundled_photo(uuid, text, text, jsonb, jsonb, text) from public, anon, authenticated;
