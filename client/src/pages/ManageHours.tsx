@@ -19,10 +19,10 @@ import { canEditHours } from '../features/manage/manageRules';
 import { useStores } from '../features/stores/useStores';
 import { useResource } from '../lib/useResource';
 import { ApiError } from '../services/api';
+import { fetchManagedHours } from '../services/manageStores';
 import {
   createScheduleException,
   deleteScheduleException,
-  fetchStoreHours,
   saveStoreHours,
 } from '../services/stores';
 import type { StoreSummary } from '../types/api';
@@ -41,7 +41,7 @@ export function ManageHoursPage({ store, onChanged }: ManageHoursPageProps) {
   const user = useAuthStore((s) => s.user);
   const allowed = !!user && canEditHours(user, store);
   // Not persisted: only an editor reads it, and a stale week must never be what someone edits.
-  const { data, isLoading, error, reload } = useResource(() => fetchStoreHours(store.id), {
+  const { data, isLoading, error, reload } = useResource(() => fetchManagedHours(store.id), {
     key: `manage:hours:${store.id}`,
     enabled: allowed,
   });

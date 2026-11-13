@@ -9,6 +9,8 @@ const api = vi.hoisted(() => ({
   deleteScheduleException: vi.fn(),
 }));
 vi.mock('../services/stores', () => api);
+// The editor reads the week through the manage route (any status); the writes stay on services/stores.
+vi.mock('../services/manageStores', () => ({ fetchManagedHours: api.fetchStoreHours }));
 const state = vi.hoisted(() => ({ user: null as User | null }));
 const reloadStores = vi.hoisted(() => vi.fn());
 vi.mock('../features/auth/authStore', () => ({
