@@ -7,8 +7,16 @@ import { notFound, slugTaken, validationError } from '../utils/errors';
 import { isUuid } from '../utils/ids';
 import { logger } from '../utils/logger';
 import { toManagedStoreDto } from '../utils/serializers';
-import { supabaseAdmin } from '../utils/supabase';
+import type { PushTemplateInput } from '../schemas/menuItem.schema';
+import { raisedByDatabase, supabaseAdmin } from '../utils/supabase';
+import { invalidateMenus } from './menu.service';
 import { getStore } from './store.service';
+
+/** A brand route is its owner's alone: anyone else, an admin included, gets the 404 of a brand they cannot see. */
+function assertOwnsBrand(brandId: string, user: Pick<AuthUser, 'ownedBrandIds'>): void {
+  if (!isUuid(brandId) || !user.ownedBrandIds.includes(brandId.toLowerCase()))
+    throw notFound('Brand not found.');
+}
 
 /** The brands `user` owns, each with its branches (every status, oldest first) and its template. */
 export async function listMyBrands(user: Pick<AuthUser, 'ownedBrandIds'>): Promise<MyBrandDto[]> {
@@ -64,8 +72,7 @@ export async function createStore(
   user: Pick<AuthUser, 'ownedBrandIds'>,
   ctx: RequestContext,
 ): Promise<ManagedStoreDto> {
-  if (!isUuid(brandId) || !user.ownedBrandIds.includes(brandId.toLowerCase()))
-    throw notFound('Brand not found.');
+  assertOwnsBrand(brandId, user);
   const slug = input.slug ?? slugFromName(input.name);
   if (!NEW_STORE_SLUG_PATTERN.test(slug))
     throw validationError(
@@ -92,4 +99,39 @@ export async function createStore(
     throw err;
   }
   return toManagedStoreDto(await getStore(storeId));
+}
+
+/**
+ * Sends chosen fields of chosen template items to chosen branches (push_template_items): a branch's copy, found by
+ * lineage, is overwritten; a branch without one gets a new copy. Only the brand's owner may (anyone else gets 404), and
+ * an item or a store outside the brand refuses the whole push. Returns the copies changed or created.
+ */
+export async function pushTemplate(
+  brandId: string,
+  input: PushTemplateInput,
+  user: Pick<AuthUser, 'ownedBrandIds'>,
+  ctx: RequestContext,
+): Promise<number> {
+  assertOwnsBrand(brandId, user);
+  const storeIds = input.storeIds.map((id) => id.toLowerCase());
+  let changed: number;
+  try {
+    const { data } = await supabaseAdmin
+      .rpc('push_template_items', {
+        p_brand_id: brandId.toLowerCase(),
+        p_template_item_ids: input.itemIds.map((id) => id.toLowerCase()),
+        p_store_ids: storeIds,
+        p_fields: input.fields,
+        p_actor: ctx.actor,
+        p_request_id: ctx.requestId,
+      })
+      .throwOnError();
+    changed = data;
+  } catch (err) {
+    if (raisedByDatabase(err, 'NOT_FOUND'))
+      throw notFound('An item or a store is not part of this brand.');
+    throw err;
+  }
+  storeIds.forEach(invalidateMenus);
+  return changed;
 }

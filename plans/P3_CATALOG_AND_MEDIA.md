@@ -387,7 +387,7 @@ the picker needs (the store page reads the public store route, which never serve
 
 ### PR 06 — Client: stock in `/manage` and on the staff board (P3.4, P3.5)
 
-- [ ] Merged
+- [x] Merged (06a #83, 1f09d6e; 06b #84)
 
 One `StockList` component (quick −/+, "Set", "Sold out", low-stock highlight from the store's
 `low_stock_threshold`, the item's last movements on demand), used at `/manage/:storeSlug/stock` and as a Stock view
@@ -421,6 +421,15 @@ one request id); `PushSheet.test.tsx`.
 
 Docs: `docs/API.md`, `docs/SCHEMA.md`, `docs/PERMISSIONS.md`, `docs/ARCHITECTURE.md`. Intent:
 `--server minor --client minor`.
+
+As built: server only. The push sheet moves to PR 07b: `/manage` reads the public store route, which never serves a
+template, so the template's item editor is not reachable until 07b adds the template to the store picker. No
+`requireBrandOwner` and no `template.push` capability: like `POST /brands/:brandId/stores`, the service checks the brand
+is in `ownedBrandIds`, and a manager or an admin gets 404 (not 403: a brand route is someone else's resource). A
+branch whose copy was archived gets a new copy. Review round: the template items are locked `for update` (concurrent
+pushes made duplicate copies, seen in the test), only copies that differ are written (`updated` counts real changes),
+targets are `DRAFT` or `ACTIVE` branches, the template comes from `brands.template_store_id`, and one push reaches at
+most `TEMPLATE_PUSH_COPIES_MAX` (5000) copies.
 
 ### PR 07b — Client: open a branch, its profile, publish (P3.1, D6)
 

@@ -1,5 +1,6 @@
 import type { RequestHandler } from 'express';
 import { currentUser, requestContext } from '../middleware/auth';
+import type { PushTemplateInput } from '../schemas/menuItem.schema';
 import type { CreateStoreInput } from '../schemas/store.schema';
 import * as brandService from '../services/brand.service';
 import type { BodyHandler } from '../types/http';
@@ -18,4 +19,15 @@ export const createStore: BodyHandler<CreateStoreInput> = async (req, res) => {
     requestContext(req),
   );
   res.status(201).json({ store });
+};
+
+/** POST /api/brands/:brandId/template/push: answers how many branch copies were changed or created. */
+export const pushTemplate: BodyHandler<PushTemplateInput> = async (req, res) => {
+  const updated = await brandService.pushTemplate(
+    String(req.params.brandId),
+    req.body,
+    currentUser(req),
+    requestContext(req),
+  );
+  res.json({ updated });
 };

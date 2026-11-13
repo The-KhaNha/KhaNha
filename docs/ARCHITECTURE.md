@@ -1111,7 +1111,8 @@ erDiagram
 (`stores.is_template`, always `DRAFT`). A new branch is a copy of the template's menu and settings
 (`create_store_from_template`), and every copied item keeps `template_item_id`, its lineage. After the copy a branch
 changes freely: there is no override layer, and a template edit reaches an existing branch only through an explicit
-push (P3 PR 07). Details: [SCHEMA.md](SCHEMA.md#stores).
+push: the owner chooses items, branches and fields (`POST /api/brands/:brandId/template/push`, `push_template_items`),
+and a copy is found by lineage, so a branch that renamed it still receives a price. Details: [SCHEMA.md](SCHEMA.md#stores).
 
 **A store's life (P3.1 PR 01b).** The brand's owner opens a branch (`POST /api/brands/:brandId/stores`), which is a
 `DRAFT` copy of the template: invisible to the public, so it is out of `GET /api/stores` and `POST /orders` for it is 404. Owners and managers fill in its profile, hours and menu; the owner publishes it (`set_store_status`, `DRAFT` →
