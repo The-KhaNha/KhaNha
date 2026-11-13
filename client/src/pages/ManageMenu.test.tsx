@@ -91,6 +91,14 @@ describe('ManageMenuTab', () => {
     expect(api.updateMenuItem).toHaveBeenCalledWith('s1', 'a', { isAvailable: false });
   });
 
+  it('tells the shell after a write, so the go-live checklist follows the menu', async () => {
+    api.updateMenuItem.mockResolvedValue(item('a', 'Tea', 'Drinks', { isEnabled: false }));
+    const onChanged = vi.fn();
+    render(<ManageMenuTab store={store} onChanged={onChanged} />);
+    fireEvent.click(await screen.findByRole('switch', { name: 'Tea on the menu' }));
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+  });
+
   it('sends no second request while a switch write is pending', async () => {
     let done: (v?: unknown) => void = () => {};
     api.updateMenuItem.mockReturnValue(new Promise((r) => (done = r)));

@@ -125,16 +125,15 @@ test('staff marks an item sold out on the Stock view and the menu shows it', asy
   await expect(page.getByText('Sold out').first()).toBeVisible();
 });
 
-test("the owner opens a branch from the brand's template and lands on its draft", async ({
-  page,
-}) => {
+test('the owner opens a branch, gives it an address and publishes it', async ({ page }) => {
   await mockApi(page);
   await signIn(page, 'CUSTOMER', 'PLACED', { ownedBrands: [store.brand] });
-  const branch = managed(store, {
+  let branch = managed(store, {
     id: 's9',
     slug: 'north-gate',
     name: 'North Gate',
     status: 'DRAFT',
+    address: null,
   });
   let opened = false;
   await page.route('**/api/brands/mine', (route) =>
@@ -161,11 +160,18 @@ test("the owner opens a branch from the brand's template and lands on its draft"
     return route.fulfill({ status: 201, json: { store: branch } });
   });
   await page.route('**/api/stores/s9/manage', (route) =>
-    route.fulfill({ json: { store: branch, brand: store.brand, missing: ['address', 'hours'] } }),
+    route.fulfill({
+      json: { store: branch, brand: store.brand, missing: branch.address ? [] : ['address'] },
+    }),
   );
-  await page.route('**/api/stores/s9/manage/hours', (route) =>
-    route.fulfill({ json: { timezone: 'Asia/Kolkata', hours: [], exceptions: [] } }),
-  );
+  await page.route('**/api/stores/s9/profile', (route) => {
+    branch = { ...branch, address: route.request().postDataJSON().addressLine };
+    return route.fulfill({ json: { store: branch } });
+  });
+  await page.route('**/api/stores/s9/publish', (route) => {
+    branch = { ...branch, status: 'ACTIVE' };
+    return route.fulfill({ json: { store: branch } });
+  });
 
   await page.goto('/manage');
   await expect(page.getByRole('link', { name: /Brand template/ })).toBeVisible();
@@ -173,6 +179,13 @@ test("the owner opens a branch from the brand's template and lands on its draft"
   await page.getByRole('button', { name: 'Open a branch' }).click();
   await page.getByLabel('Branch name').fill('North Gate');
   await page.getByRole('button', { name: 'Open the branch' }).click();
-  await expect(page).toHaveURL(/\/manage\/north-gate/);
-  await expect(page.getByRole('heading', { name: 'North Gate' })).toBeVisible();
+  await expect(page).toHaveURL(/\/manage\/north-gate\/profile/);
+  const goLive = page.getByRole('region', { name: 'Go live' });
+  await expect(goLive.getByRole('button', { name: 'Publish' })).toBeDisabled();
+  await page.getByLabel('Address').fill('Gate 2, North Campus');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(goLive.getByRole('button', { name: 'Publish' })).toBeEnabled();
+  await noHorizontalOverflow(page);
+  await goLive.getByRole('button', { name: 'Publish' }).click();
+  await expect(page.getByText('Customers can find it and order.')).toBeVisible();
 });

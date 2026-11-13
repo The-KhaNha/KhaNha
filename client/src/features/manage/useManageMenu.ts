@@ -17,7 +17,12 @@ import { liveItems, moveItem } from './menuRules';
  * The menu editor's list and its writes. Every write reloads the list and drops the saved public menu
  * (`menu:<slug>` and `menu:<id>`), so the customer's next visit refetches it (CLAUDE.md §8).
  */
-export function useManageMenu(store: { id: string; slug: string }, enabled = true) {
+/** `onChanged` runs after every write too: the shell's go-live checklist counts the orderable items. */
+export function useManageMenu(
+  store: { id: string; slug: string },
+  enabled = true,
+  onChanged?: () => void,
+) {
   const { data, isLoading, error, reload, mutate } = useResource(
     () => fetchManagedMenu(store.id),
     // Not persisted: a manager's own list, and a stale copy must never be what they edit.
@@ -29,7 +34,8 @@ export function useManageMenu(store: { id: string; slug: string }, enabled = tru
     dropPersisted(`menu:${store.slug}`);
     dropPersisted(`menu:${store.id}`);
     reload();
-  }, [store.id, store.slug, reload]);
+    onChanged?.();
+  }, [store.id, store.slug, reload, onChanged]);
 
   /** Runs a write; on failure `rollback` restores what was shown, the message is kept and the list reloads. */
   const attempt = async (write: () => Promise<unknown>, rollback?: () => void) => {

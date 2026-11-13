@@ -114,7 +114,7 @@ export function ManagePage() {
               onCancel={() => setOpening(null)}
               onOpened={(store) => {
                 brands.reload();
-                navigate(`/manage/${store.slug}`);
+                navigate(`/manage/${store.slug}/profile`);
               }}
             />
           ) : (

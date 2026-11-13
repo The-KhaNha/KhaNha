@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
@@ -105,6 +105,16 @@ vi.mock('../features/stores/useStores', () => ({
 }));
 // The hours tab loads its week through the services; it is tested in ManageHours.test.tsx.
 vi.mock('../services/stores', () => ({ fetchStoreHours: () => new Promise(() => {}) }));
+const publishStore = vi.hoisted(() => vi.fn());
+vi.mock('../services/manageStores', async (actual) => ({
+  ...(await actual<typeof import('../services/manageStores')>()),
+  publishStore,
+}));
+const dropped = vi.hoisted(() => vi.fn());
+vi.mock('../lib/useResource', async (actual) => ({
+  ...(await actual<typeof import('../lib/useResource')>()),
+  dropPersisted: dropped,
+}));
 const { ManagePage } = await import('./Manage');
 const { ManageStorePage } = await import('./ManageStore');
 const { RequireAuth } = await import('../features/auth/RequireAuth');
@@ -264,5 +274,47 @@ describe('/manage/:storeSlug shell', () => {
     state.storeError = { status: 404, message: 'Not found', isUnreachable: false };
     renderAt('/manage/zzz');
     expect(screen.getByText('Page not found')).toBeInTheDocument();
+  });
+
+  it('a template has only what branches copy: Menu, Profile and Settings, and no Go live', () => {
+    state.user = owner();
+    state.brands = [
+      { ...brand, template: managedStore('t', { isTemplate: true, status: 'DRAFT' }), stores: [] },
+    ];
+    manage('t', { isTemplate: true, status: 'DRAFT' }, ['address', 'hours']);
+    renderAt('/manage/t/profile');
+    const nav = screen.getByRole('navigation', { name: 'Manage' });
+    expect([...nav.querySelectorAll('a')].map((a) => a.textContent)).toEqual([
+      'Menu',
+      'Profile',
+      'Settings',
+    ]);
+    expect(screen.getByRole('heading', { name: 'Brew: brand template' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Go live' })).toBeNull();
+  });
+
+  it('the owner of a DRAFT branch sees Go live; its manager does not', () => {
+    state.user = owner();
+    state.brands = [{ ...brand, template: null, stores: [managedStore('d', { status: 'DRAFT' })] }];
+    manage('d', { status: 'DRAFT' }, ['hours']);
+    const { unmount } = renderAt('/manage/d/profile');
+    expect(screen.getByRole('region', { name: 'Go live' })).toBeInTheDocument();
+    unmount();
+    state.user = user({
+      memberships: [{ storeId: 'd', storeSlug: 'd', storeName: 'D', role: 'MANAGER' }],
+    });
+    renderAt('/manage/d/profile');
+    expect(screen.getByRole('heading', { name: 'Store d' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Go live' })).toBeNull();
+  });
+
+  it("a publish drops this browser's saved public copy of the store, so it never shows the old one", async () => {
+    publishStore.mockResolvedValue(managedStore('d'));
+    state.user = owner();
+    state.brands = [{ ...brand, template: null, stores: [managedStore('d', { status: 'DRAFT' })] }];
+    manage('d', { status: 'DRAFT' }, []);
+    renderAt('/manage/d/hours');
+    fireEvent.click(screen.getByRole('button', { name: 'Publish' }));
+    await waitFor(() => expect(dropped).toHaveBeenCalledWith('store:d'));
   });
 });
