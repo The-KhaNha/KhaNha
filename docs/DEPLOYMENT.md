@@ -112,6 +112,19 @@ In the web image, each of these values can also be set at start ([runtime enviro
 `pnpm start` does not load `tsx`; it needs `pnpm run build` first. `server.ts` loads `dotenv/config`, so a
 `server/.env` is read if present; on a host, set the variables in its environment instead.
 
+### Moving the bundled photos to media
+
+The demo menus point at photos bundled in `client/public/images` (`/images/<name>.jpg`). `pnpm run migrate:media`
+(server/, P3.3 PR 12a) moves them to the media store of the environment `server/.env` names: each (store, photo) that
+a menu item or an order line still shows goes through the worker's own variant code (400w and 900w WebP under
+`stores/<store>/variants/`), then `move_bundled_photo` repoints that store's menu items (URL and variants) and its old
+order lines' snapshots (the same photo at a new address, so order history keeps it) in one transaction. It is safe to
+repeat. `--check` changes nothing: it prints how many rows still point at `/images/` and exits non-zero unless none do.
+Production needs `--production`, and the user runs it. The seed runs the same code, so a fresh local database never
+shows `/images/`; where no media store is available (staging until P8 gives it a bucket) the seed warns and leaves the
+photos bundled. Store covers stay bundled until a store can upload its own. Once every environment's `--check` reports
+zero, PR 12b deletes the bundled photos.
+
 ### Compressing photos before a build
 
 `python3 client/scripts/optimize-images.py` (needs Pillow: `pip3 install pillow`) re-encodes every `<name>.jpg`

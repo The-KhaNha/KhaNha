@@ -4,6 +4,8 @@
 //
 // Production (`pnpm run seed --production`): first-time setup only. Creates the store and menu while production
 // has no store yet, and nothing else: no wipes, and no test accounts with well-known passwords.
+import { IntegrationError } from '../src/utils/errors';
+import { migrateBundledPhotos } from './media-migration';
 import { env } from '../src/utils/env';
 import { logger } from '../src/utils/logger';
 import { supabaseAdmin as db } from '../src/utils/supabase';
@@ -231,6 +233,14 @@ async function seedDemo(): Promise<void> {
     })
     .eq('id', true)
     .throwOnError();
+
+  // The menus point at the bundled photos (seed-data.ts); move them to the media store as an operator would
+  // (migrate:media), so a fresh database never shows /images/. Without a reachable store (staging until P8 gives it a
+  // bucket) they stay bundled.
+  await migrateBundledPhotos(logger).catch((err: unknown) => {
+    if (!(err instanceof IntegrationError)) throw err;
+    logger.warn({ err }, 'Photos left bundled: the media store is not available');
+  });
 
   // Never log emails or passwords, in any environment (CWE-532): logs can be centralized and read by more people
   // than the terminal that ran the seed. Demo logins are documented in README.md "Test accounts" instead.

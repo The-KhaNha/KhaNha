@@ -1025,6 +1025,15 @@ export type Database = {
         };
         Returns: number;
       };
+      bundled_photo_refs: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          image_url: string;
+          menu_rows: number;
+          order_rows: number;
+          store_id: string;
+        }[];
+      };
       complete_media_upload: {
         Args: { p_actor?: Json; p_request_id?: string; p_store_id: string; p_upload_id: string };
         Returns: boolean;
@@ -1078,6 +1087,17 @@ export type Database = {
         }[];
       };
       media_upload_shown: { Args: { p_upload_id: string }; Returns: boolean };
+      move_bundled_photo: {
+        Args: {
+          p_actor?: Json;
+          p_from: string;
+          p_request_id?: string;
+          p_store_id: string;
+          p_to: string;
+          p_variants: Json;
+        };
+        Returns: number;
+      };
       pause_store: {
         Args: {
           p_actor?: Json;
