@@ -153,3 +153,41 @@ export async function completeUpload(
 }
 
 export const getUpload = findUpload;
+
+/** One variant the pipeline wrote: its key and its real size. */
+export type MediaVariant = { width: number; height: number; key: string };
+
+/** The worker's read of an upload, by id alone (the event names it); null once it is gone. */
+export async function getUploadForJob(uploadId: string): Promise<MediaUploadRow | null> {
+  const { data } = await supabaseAdmin
+    .from('media_uploads')
+    .select('*')
+    .eq('id', uploadId)
+    .maybeSingle()
+    .throwOnError();
+  return data;
+}
+
+/**
+ * Ends an UPLOADED upload: PROCESSED with its variants, or FAILED with a reason (finish_media_upload, which emits
+ * media.processed / media.failed). Recorded as the worker, under the request that completed the upload. A repeat
+ * changes nothing; returns whether this call moved it.
+ */
+export async function finishUpload(
+  uploadId: string,
+  outcome: { variants: MediaVariant[] } | { failure: string },
+  requestId: string | null,
+): Promise<boolean> {
+  const processed = 'variants' in outcome;
+  const { data } = await supabaseAdmin
+    .rpc('finish_media_upload', {
+      p_upload_id: uploadId,
+      p_status: processed ? 'PROCESSED' : 'FAILED',
+      p_variants: processed ? outcome.variants : undefined,
+      p_failure: processed ? undefined : outcome.failure,
+      p_actor: { type: 'WORKER' },
+      p_request_id: requestId ?? undefined,
+    })
+    .throwOnError();
+  return data;
+}

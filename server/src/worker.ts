@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { createServer } from 'node:http';
 import { healthReport, readQueueMetrics } from './jobs/health';
+import { mediaHandler } from './jobs/media';
 import { notifyHandler } from './jobs/notify';
 import { runQueue, type JobHandler } from './jobs/runner';
 import { env } from './utils/env';
@@ -10,7 +11,7 @@ import { APP_VERSION, GIT_COMMIT } from './utils/version';
 
 // The worker process (ADR-005): one loop per queue consumer, a health endpoint, and a stop that lets jobs finish.
 // A consumer is added to this list (docs/JOBS.md "Handlers and the runner").
-const HANDLERS: JobHandler<unknown>[] = [notifyHandler];
+const HANDLERS: JobHandler<unknown>[] = [notifyHandler, mediaHandler];
 
 const stop = new AbortController();
 const lastActiveAt = new Map(HANDLERS.map((handler) => [handler.queue, Date.now()]));
