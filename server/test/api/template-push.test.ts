@@ -277,19 +277,22 @@ describe('a push', () => {
   });
 
   it.each([
-    ['a store of another brand', () => ({ itemIds: [chai], storeIds: [northId, otherStoreId] })],
-    ['the template itself', () => ({ itemIds: [chai], storeIds: [northId, templateId] })],
+    [
+      'a store of another brand',
+      async () => ({ itemIds: [chai], storeIds: [northId, otherStoreId] }),
+    ],
+    ['the template itself', async () => ({ itemIds: [chai], storeIds: [northId, templateId] })],
     [
       'an item of another brand',
-      () => ({ itemIds: [chai, otherTemplateItem], storeIds: [northId] }),
+      async () => ({ itemIds: [chai, otherTemplateItem], storeIds: [northId] }),
     ],
     [
-      'a branch item, not a template one',
-      () => ({ itemIds: [chai, northId], storeIds: [northId] }),
+      "a branch's own copy, not a template item",
+      async () => ({ itemIds: [chai, (await copyOf(southId, chai))[0]!.id], storeIds: [northId] }),
     ],
   ])('%s refuses the whole push (404) and changes nothing', async (_label, body) => {
     const before = await copyOf(northId, chai);
-    const res = await push({ ...body(), fields: ['price'] });
+    const res = await push({ ...(await body()), fields: ['price'] });
     expect(res.status).toBe(404);
     expect(await copyOf(northId, chai)).toEqual(before);
   });
