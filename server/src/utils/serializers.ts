@@ -232,7 +232,12 @@ export function toMenuItemDto(item: Tables<'menu_items'>): MenuItemDto {
 }
 
 export function toManagedMenuItemDto(item: Tables<'menu_items'>): ManagedMenuItemDto {
-  return { ...toMenuItemDto(item), isEnabled: item.is_available, archivedAt: item.archived_at };
+  return {
+    ...toMenuItemDto(item),
+    isEnabled: item.is_available,
+    archivedAt: item.archived_at,
+    templateItemId: item.template_item_id,
+  };
 }
 
 function toOrderItemDto(item: OrderItemRow): OrderItemDto {

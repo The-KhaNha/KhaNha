@@ -145,6 +145,8 @@ export interface ManagedMenuItemDto extends MenuItemDto {
   /** The switch alone; `isAvailable` also counts stock. Always false once archived. */
   isEnabled: boolean;
   archivedAt: string | null;
+  /** The brand template item this one was copied from (its lineage, P3.1); null for a branch's own item or a template's. */
+  templateItemId: string | null;
 }
 
 export interface MenuCategoryDto {

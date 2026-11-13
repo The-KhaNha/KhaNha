@@ -885,7 +885,8 @@ fields of `StoreDto` a store picker needs (client: `StoreSummary`).
 | `stockQuantity` | number \| null                            | units left; `null` = not tracked (only the 10-per-order cap) |
 
 `ManagedMenuItemDto` (the editor's list): `MenuItemDto` plus `isEnabled` (boolean, the switch alone; `isAvailable` also
-counts stock) and `archivedAt` (ISO 8601 \| null). The public menu never carries archived items.
+counts stock), `archivedAt` (ISO 8601 \| null) and `templateItemId` (the brand template item it was copied from, its
+lineage; null for a branch's own item or a template's own). The public menu never carries archived items.
 
 `ManagedStoreDto` (a store as its owner and managers see it, any status): `id`, `slug`, `name`, `status` (`DRAFT`,
 `ACTIVE`, `SUSPENDED`, `ARCHIVED`), `isTemplate`, `area`, `address` (both string \| null), `contactPhone` (string \|

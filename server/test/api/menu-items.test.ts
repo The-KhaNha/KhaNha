@@ -268,6 +268,7 @@ describe('creating, editing and archiving an item', () => {
       isEnabled: true,
       stockQuantity: 5,
       archivedAt: null,
+      templateItemId: null,
     });
     const { data: rows } = await supabaseAdmin
       .from('menu_items')

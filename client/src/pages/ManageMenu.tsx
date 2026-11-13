@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowDown, ArrowUp, Lock, Plus, SearchX, UtensilsCrossed } from 'lucide-react';
+import { ArrowDown, ArrowUp, Lock, Plus, SearchX, Send, UtensilsCrossed } from 'lucide-react';
 import { Button } from '../components/Button';
 import { EmptyState } from '../components/EmptyState';
 import { ErrorState } from '../components/ErrorState';
@@ -10,6 +10,8 @@ import { Skeleton } from '../components/Skeleton';
 import { Switch } from '../components/Switch';
 import { useAuthStore } from '../features/auth/authStore';
 import { ItemEditor } from '../features/manage/ItemEditor';
+import { PushSheet } from '../features/manage/PushSheet';
+import { useMyBrands } from '../features/manage/useManage';
 import { canEditMenu } from '../features/manage/manageRules';
 import { canMove, categoryNames, filterItems } from '../features/manage/menuRules';
 import { useManageMenu } from '../features/manage/useManageMenu';
@@ -17,7 +19,7 @@ import { cn } from '../lib/cn';
 import type { ManagedMenuItem, StoreSummary } from '../types/api';
 
 interface ManageMenuTabProps {
-  store: Pick<StoreSummary, 'id' | 'slug' | 'brand'>;
+  store: Pick<StoreSummary, 'id' | 'slug' | 'brand'> & { isTemplate?: boolean };
   /** After every write: the shell reloads the store's go-live checklist. */
   onChanged?: () => void;
 }
@@ -31,6 +33,10 @@ export function ManageMenuTab({ store, onChanged }: ManageMenuTabProps) {
   const [category, setCategory] = useState<string | null>(null);
   // undefined: closed; null: adding; an item: editing it.
   const [editing, setEditing] = useState<ManagedMenuItem | null | undefined>(undefined);
+  // On a brand template: the item being pushed to the branches, and the branches (the owner's brands).
+  const [pushing, setPushing] = useState<ManagedMenuItem | null>(null);
+  const brands = useMyBrands(!!store.isTemplate);
+  const branches = brands.data?.find((b) => b.id === store.brand.id)?.stores ?? [];
 
   if (!allowed)
     return (
@@ -170,6 +176,13 @@ export function ManageMenuTab({ store, onChanged }: ManageMenuTabProps) {
                   />
                 </>
               )}
+              {store.isTemplate && (
+                <IconButton
+                  label={`Push ${item.name} to branches`}
+                  icon={<Send className="h-4 w-4" />}
+                  onClick={() => setPushing(item)}
+                />
+              )}
               <Switch
                 checked={item.isEnabled}
                 label={`${item.name} on the menu`}
@@ -181,6 +194,14 @@ export function ManageMenuTab({ store, onChanged }: ManageMenuTabProps) {
         </ul>
       )}
 
+      {pushing && (
+        <PushSheet
+          brandId={store.brand.id}
+          item={pushing}
+          branches={branches}
+          onClose={() => setPushing(null)}
+        />
+      )}
       {editing !== undefined && (
         <ItemEditor
           item={editing}

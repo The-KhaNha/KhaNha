@@ -52,3 +52,18 @@ export const publishStore = async (storeId: string) =>
 
 export const unpublishStore = async (storeId: string) =>
   (await request<{ store: ManagedStore }>(store(storeId, '/unpublish'), { method: 'POST' })).store;
+
+/** What a template push may overwrite; stock, availability, order and popularity never move. */
+export type PushField = 'name' | 'description' | 'price' | 'category' | 'diet' | 'photo';
+
+/** Sends chosen fields of template items to chosen branches; answers how many copies changed or were made. */
+export const pushTemplate = async (
+  brandId: string,
+  body: { itemIds: string[]; storeIds: string[]; fields: PushField[] },
+) =>
+  (
+    await request<{ updated: number }>(`/brands/${encodeURIComponent(brandId)}/template/push`, {
+      method: 'POST',
+      body,
+    })
+  ).updated;
