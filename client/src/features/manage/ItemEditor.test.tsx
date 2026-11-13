@@ -56,80 +56,46 @@ const withPhoto: ManagedMenuItem = {
   templateItemId: null,
 };
 
+/** Opens the editor on `withPhoto`; `again()` renders it once more after setPhoto. */
+function editPhoto(onSave: ReturnType<typeof vi.fn> = vi.fn().mockResolvedValue(undefined)) {
+  const ui = () => (
+    <ItemEditor storeId="s1" item={withPhoto} categories={[]} onSave={onSave} onClose={vi.fn()} />
+  );
+  const { rerender } = render(ui());
+  return { onSave, again: () => rerender(ui()) };
+}
+
 describe('ItemEditor photo', () => {
   beforeEach(() => setPhoto({}));
 
   it('a chosen photo goes up at once, and saving attaches it when ready', async () => {
-    const onSave = vi.fn().mockResolvedValue(undefined);
-    const { rerender } = render(
-      <ItemEditor
-        storeId="s1"
-        item={withPhoto}
-        categories={[]}
-        onSave={onSave}
-        onClose={vi.fn()}
-      />,
-    );
+    const { onSave, again } = editPhoto();
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
     const file = new File(['x'], 'lassi.jpg', { type: 'image/jpeg' });
     fireEvent.change(input, { target: { files: [file] } });
     expect(photo.upload).toHaveBeenCalledWith(file);
 
     setPhoto({ status: 'processing', preview: 'blob:preview' });
-    rerender(
-      <ItemEditor
-        storeId="s1"
-        item={withPhoto}
-        categories={[]}
-        onSave={onSave}
-        onClose={vi.fn()}
-      />,
-    );
+    again();
     expect(screen.getByText('Making it ready for the menu…')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
 
     setPhoto({ status: 'ready', preview: '/media/new-900.webp', uploadId: 'u1' });
-    rerender(
-      <ItemEditor
-        storeId="s1"
-        item={withPhoto}
-        categories={[]}
-        onSave={onSave}
-        onClose={vi.fn()}
-      />,
-    );
+    again();
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     await waitFor(() => expect(onSave).toHaveBeenCalled());
     expect(onSave.mock.calls[0]![0]).toMatchObject({ imageUploadId: 'u1' });
   });
 
   it('untouched, the save leaves the photo alone', async () => {
-    const onSave = vi.fn().mockResolvedValue(undefined);
-    render(
-      <ItemEditor
-        storeId="s1"
-        item={withPhoto}
-        categories={[]}
-        onSave={onSave}
-        onClose={vi.fn()}
-      />,
-    );
+    const { onSave } = editPhoto();
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     await waitFor(() => expect(onSave).toHaveBeenCalled());
     expect(onSave.mock.calls[0]![0]).not.toHaveProperty('imageUploadId');
   });
 
   it('Remove takes the photo off on save', async () => {
-    const onSave = vi.fn().mockResolvedValue(undefined);
-    render(
-      <ItemEditor
-        storeId="s1"
-        item={withPhoto}
-        categories={[]}
-        onSave={onSave}
-        onClose={vi.fn()}
-      />,
-    );
+    const { onSave } = editPhoto();
     fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
     expect(screen.getByRole('button', { name: 'Add photo' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
@@ -138,27 +104,10 @@ describe('ItemEditor photo', () => {
   });
 
   it('after Remove, a new photo that fails to go up still saves the item without a photo', async () => {
-    const onSave = vi.fn().mockResolvedValue(undefined);
-    const { rerender } = render(
-      <ItemEditor
-        storeId="s1"
-        item={withPhoto}
-        categories={[]}
-        onSave={onSave}
-        onClose={vi.fn()}
-      />,
-    );
+    const { onSave, again } = editPhoto();
     fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
     setPhoto({ status: 'failed', preview: 'blob:failed', error: 'Offline' });
-    rerender(
-      <ItemEditor
-        storeId="s1"
-        item={withPhoto}
-        categories={[]}
-        onSave={onSave}
-        onClose={vi.fn()}
-      />,
-    );
+    again();
     // The form shows what a save keeps: no photo, not the one that failed.
     expect(document.querySelector('[role="dialog"] img')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
@@ -167,15 +116,7 @@ describe('ItemEditor photo', () => {
   });
 
   it('the photo cannot change while the item is being saved', async () => {
-    render(
-      <ItemEditor
-        storeId="s1"
-        item={withPhoto}
-        categories={[]}
-        onSave={() => new Promise(() => {})}
-        onClose={vi.fn()}
-      />,
-    );
+    editPhoto(vi.fn(() => new Promise(() => {})));
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Remove' })).toBeDisabled());
     expect(screen.getByRole('button', { name: 'Change photo' })).toBeDisabled();
