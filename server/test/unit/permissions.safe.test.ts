@@ -20,7 +20,11 @@ const EXPECTED: Record<Capability, Record<StoreAccess, boolean>> = {
   'team.manageStaff': { STAFF: false, MANAGER: true, OWNER: true, ADMIN: true },
   'team.manageManagers': { STAFF: false, MANAGER: false, OWNER: true, ADMIN: true },
   'audit.store': { STAFF: false, MANAGER: true, OWNER: true, ADMIN: true },
+  // STAFF while the store lets staff edit stock (the default); the cell with the setting off is tested below.
+  'stock.update': { STAFF: true, MANAGER: true, OWNER: true, ADMIN: false },
 };
+
+const STAFF_STOCK_ON = { staffCanEditStock: true };
 
 describe('can', () => {
   for (const [capability, row] of Object.entries(EXPECTED) as [
@@ -29,13 +33,21 @@ describe('can', () => {
   ][]) {
     for (const [access, allowed] of Object.entries(row) as [StoreAccess, boolean][]) {
       it(`${access} ${allowed ? 'may' : 'may not'} ${capability}`, () => {
-        expect(can(access, capability)).toBe(allowed);
+        expect(can(access, capability, STAFF_STOCK_ON)).toBe(allowed);
       });
     }
     it(`no access may not ${capability}`, () => {
       expect(can(null, capability)).toBe(false);
     });
   }
+
+  it("staff may not update stock where the store has it off, nor where the store's rules are not given", () => {
+    expect(can('STAFF', 'stock.update', { staffCanEditStock: false })).toBe(false);
+    expect(can('STAFF', 'stock.update')).toBe(false);
+    // The setting is only about staff.
+    expect(can('MANAGER', 'stock.update', { staffCanEditStock: false })).toBe(true);
+    expect(can('OWNER', 'stock.update', { staffCanEditStock: false })).toBe(true);
+  });
 
   // EXPECTED is a Record<Capability, …>, so a capability missing from it, or one the map lacks, fails to compile.
   it('an unknown capability does not compile', () => {
@@ -77,6 +89,17 @@ describe('accessFor', () => {
     expect(accessFor(admin, store, 'orders.view')).toBe('STAFF');
     expect(accessFor(admin, store, 'team.manageManagers')).toBe('ADMIN');
     expect(accessFor(user({ role: 'ADMIN' }), store, 'store.pause')).toBe('ADMIN');
+  });
+
+  it('a staff member keeps their standing where stock editing is off, so the refusal is 403', () => {
+    const staff = user({ memberships: [{ storeId: 'store-a', role: 'STAFF' }] });
+    expect(accessFor(staff, { ...store, staffCanEditStock: false }, 'stock.update')).toBe('STAFF');
+    // An owner who is also staff there edits stock as the owner whatever the setting.
+    const both = user({
+      ownedBrandIds: ['brand-a'],
+      memberships: [{ storeId: 'store-a', role: 'STAFF' }],
+    });
+    expect(accessFor(both, { ...store, staffCanEditStock: false }, 'stock.update')).toBe('OWNER');
   });
 
   it('a STAFF profile with no membership has no access: the profile role grants nothing at a store', () => {

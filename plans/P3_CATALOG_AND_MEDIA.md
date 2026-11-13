@@ -294,7 +294,7 @@ Docs: `docs/API.md`, `docs/SCHEMA.md`, `docs/PERMISSIONS.md`, `docs/CONFIGURATIO
 
 ### PR 03 — Quick edits: availability, bulk, order (P3.4)
 
-- [ ] Merged
+- [x] Merged (#80, c655244)
 
 Migration `<ts>_reorder_menu.sql`: `reorder_menu(p_store_id, p_item_ids uuid[], p_actor, p_request_id)` sets
 `sort_order` to each id's position, refuses a list that is not exactly the store's unarchived items
@@ -345,9 +345,18 @@ orders' reserved quantities account for every unit; "set to N" while orders are 
 Docs: `docs/API.md`, `docs/SCHEMA.md`, `docs/PERMISSIONS.md`, `docs/CONFIGURATION.md` (the setting). Intent:
 `--server minor`.
 
+As built: `stock_movements.delta` is nullable (null when tracking starts or stops: one side has no number), and the
+function locks the item's row before its update. A change that leaves the stock as it was writes no movement and
+emits nothing. An archived item is 404; an adjustment of an untracked item is `VALIDATION_ERROR` on `adjust`; below
+zero is `INSUFFICIENT_STOCK` with its own staff-facing message (`stockBelowZero`). `can(access, capability, rules)`
+denies STAFF `stock.update` unless `rules.staffCanEditStock` is true. A new branch starts with the setting on: the
+copy functions do not carry it (redefining both for one flag was not worth it). The client settings form keeps to the
+numeric settings; the staff-stock switch belongs to PR 06, which also needs a way for staff to learn the setting (the
+settings route is `settings.edit`): add it to their membership in `/auth/me` there.
+
 ### PR 05 — Client: the menu screen and the item editor (P3.4)
 
-- [ ] Merged
+- [x] Merged (#81, 94bd8d2)
 
 `frontend-design:frontend-design` for the direction, then `agent-skills:frontend-ui-engineering`. `/before-write`:
 reuse-scout (`ItemDetailSheet`'s sheet pattern, `Input`, `QuantityStepper`, `StockPill`, `Skeleton`, `EmptyState`,

@@ -209,6 +209,15 @@ export const insufficientStock = (menuItemId: string, name: string, available: n
     { menuItemId, name, available },
   );
 
+/** A stock adjustment would take an item below zero (adjust_stock): names what is left so staff can correct it. */
+export const stockBelowZero = (menuItemId: string, name: string, available: number): AppError =>
+  new AppError(
+    400,
+    'INSUFFICIENT_STOCK',
+    `Only ${available} ${name} left: you cannot remove more than that.`,
+    { menuItemId, name, available },
+  );
+
 /** An item switched off, by the API's check or by place_order's when it was switched off in between. */
 export const itemUnavailable = (menuItemId: string, name: string): AppError =>
   new AppError(

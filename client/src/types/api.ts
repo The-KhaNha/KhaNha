@@ -235,6 +235,22 @@ export interface StoreSettings {
   staffOrderListLimit: number;
   /** Minutes before closing at which the store stops taking orders; 0 = until it closes. */
   lastOrderMinutesBeforeClose: number;
+  /** Whether STAFF may change stock here (P3.5); managers and the owner always may. */
+  staffCanEditStock: boolean;
+}
+
+/** One hand-made stock change (GET /api/stores/:storeId/stock-movements). Sales are not movements. */
+export interface StockMovement {
+  id: number;
+  menuItemId: string;
+  /** Units added (negative: removed); null when tracking started or stopped. */
+  delta: number | null;
+  /** Stock after the change; null: no longer tracked. */
+  resultingQuantity: number | null;
+  reason: 'MANUAL_SET' | 'MANUAL_ADJUST' | 'WASTE';
+  /** Who made it; null for a system change or a deleted account. */
+  actor: { id: string; name: string } | null;
+  createdAt: string;
 }
 
 /** Site-wide limits edited on the admin dashboard. */

@@ -52,6 +52,7 @@ a new file (see [DEPLOYMENT.md](DEPLOYMENT.md#schema-changes)).
 | `20261112173552_store_publish.sql`                 | adds the checks `stores_name_length`, `stores_address_line_length` and `stores_contact_phone_format`; `stores_audit` also watches `tagline` and `description`; the trigger `stores_changed` (`stores_emit_changed()`, emits `store.changed`); `set_store_status()` (`service_role` only)                                                                                                                                                                                                                                                                                                                                               |
 | `20261112163716_menu_item_lifecycle.sql`           | adds the `diet_marker` enum, `menu_items.diet` and `image_variants`; `menu_items.image_url` and `order_items.image_url` become nullable; the menu item bounds as check constraints; `menu_items_archived_unavailable` (an archived item is switched off, so `place_order` refuses it as `ITEM_UNAVAILABLE`); `menu_items_audit` also fires on insert and watches `description`, `diet`, `archived_at`, `is_popular` and `sort_order`; `menu_items_emit_changed()` and its two statement triggers emit `menu.changed`; `ensure_brand_template` and `create_store_from_template` (same signatures) also copy `diet` and `image_variants` |
 | `20261112183242_reorder_menu.sql`                  | adds `lock_store_menu()`, `reorder_menu()` and `set_menu_availability()` (`service_role` only): the menu editor's quick edits                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `20261113085219_adjust_stock.sql`                  | adds `stock_reason`, `stock_movements` (RLS, revoked), `stores.staff_can_edit_stock` (also watched by `stores_settings_audit`) and `adjust_stock()` (`service_role` only): stock by hand, with its trail                                                                                                                                                                                                                                                                                                                                                                                                                               |
 
 ## Enums
 
@@ -63,6 +64,7 @@ a new file (see [DEPLOYMENT.md](DEPLOYMENT.md#schema-changes)).
 | `actor_type`     | `USER`, `WORKER`, `RECONCILER`, `WEBHOOK`, `SCHEDULER`, `SYSTEM` |
 | `store_status`   | `DRAFT`, `ACTIVE`, `SUSPENDED`, `ARCHIVED`                       |
 | `store_role`     | `MANAGER`, `STAFF`                                               |
+| `stock_reason`   | `MANUAL_SET`, `MANUAL_ADJUST`, `WASTE`                           |
 
 `ADMIN` was added with `alter type ... add value` (`20260927094610_admin_settings_collected.sql`); it is the
 site-wide developer/operator role (the `/admin` dashboard), not a restaurant role — see
@@ -177,6 +179,7 @@ Five rows in the demo seed: Campus Cafe, two branches of Brew Lane, and each bra
 | `low_stock_threshold`             | integer        | no   | `5`                 | store setting; check 0–50; "only N left" at or below it                                                                                             |
 | `staff_order_list_limit`          | integer        | no   | `100`               | store setting; check 1–500; finished orders on the board                                                                                            |
 | `last_order_minutes_before_close` | integer        | no   | `0`                 | store setting; check 0–240; stored only until P2 PR 06                                                                                              |
+| `staff_can_edit_stock`            | boolean        | no   | `true`              | store setting; whether STAFF hold `stock.update` here; not copied to a new branch                                                                   |
 | `created_at`                      | timestamptz    | no   | `now()`             |                                                                                                                                                     |
 | `updated_at`                      | timestamptz    | no   | `now()`             | `stores_set_updated_at`                                                                                                                             |
 | `accepting_orders`                | boolean        | no   | `true`              | false = paused; see `pause_store`                                                                                                                   |
@@ -211,6 +214,16 @@ statement and returns how many it covered; a list naming anything else, or a cat
 three are plpgsql, invoker, `service_role` only. `menu_items_changed_on_update` emits the one `menu.changed`; an edit
 that changes nothing emits none.
 
+`adjust_stock(p_store_id, p_menu_item_id, p_set, p_delta, p_untracked, p_reason, p_actor, p_request_id) returns
+integer` changes one unarchived item's stock by exactly one of `p_set` (N available now), `p_delta` (±n) or
+`p_untracked` (stop counting), anything else `VALIDATION_ERROR`. `p_reason` defaults to `MANUAL_SET` (set, untracked)
+or `MANUAL_ADJUST`; `WASTE` must be a negative delta. It locks the item's row first, so it and `place_order`'s
+conditional update queue on it: a delta that would go below zero raises `INSUFFICIENT_STOCK` (`detail`: `menuItemId`,
+`name`, `available`), a delta on an untracked item `STOCK_UNTRACKED`, another store's or an archived item `NOT_FOUND`.
+A real change writes one `stock_movements` row (the actor's id from `p_actor`) and emits one `menu.changed` itself
+(the statement trigger ignores stock); a change that leaves the stock as it was writes and emits nothing. Returns the
+stock afterwards (`null`: untracked). plpgsql, invoker, `service_role` only.
+
 | Message                     | When                                                               |
 | --------------------------- | ------------------------------------------------------------------ |
 | `NOT_FOUND`                 | unknown store, or a template                                       |
@@ -235,7 +248,7 @@ photo, copies the template's unarchived items with `template_item_id` set, and e
 (`{ brandId, templateStoreId }`). A taken slug fails the whole call (`23505`), leaving nothing behind. The seed opens
 each brand's later branches with it.
 
-The four store settings are edited through `PATCH /api/stores/:storeId/settings` ([API.md](API.md#patch-storesstoreidsettings)); their bounds are
+The store settings are edited through `PATCH /api/stores/:storeId/settings` ([API.md](API.md#patch-storesstoreidsettings)); their bounds are
 the check constraints (`stores_<column>_check`), mirrored by `STORE_SETTING_BOUNDS`. A new store takes the constant defaults
 (no insert trigger); the migration copied each existing store's `staff_order_list_limit` from `site_settings` once, writing no audit rows.
 Audited by `stores_settings_audit` (`store_settings.changed`), apart from `stores_audit`.
@@ -288,6 +301,23 @@ exception beats `SPECIAL_HOURS` on the same day. Index `(store_id, ends_on, star
 
 `stock_quantity` is decremented by `place_order` and restored when an order is cancelled, by what the order's lines
 reserved (`order_items.reserved_quantity`), not by what they ordered.
+Any other change goes through `adjust_stock` (below), which writes a `stock_movements` row.
+
+### stock_movements
+
+Every stock change made by hand (P3.4, P3.5), written only by `adjust_stock`. Sales and cancels are not here: an
+order's lines record what they reserved. RLS enabled, no policies, revoked from `anon` and `authenticated`.
+
+| Column               | Type         | Null | Default             | Notes                                                                 |
+| -------------------- | ------------ | ---- | ------------------- | --------------------------------------------------------------------- |
+| `id`                 | bigint       | no   | identity            | primary key                                                           |
+| `store_id`           | uuid         | no   |                     | references `stores (id)`                                              |
+| `menu_item_id`       | uuid         | no   |                     | references `menu_items (id)`                                          |
+| `delta`              | integer      | yes  |                     | units added (negative: removed); `null` when tracking starts or stops |
+| `resulting_quantity` | integer      | yes  |                     | the stock after the change; `null` = no longer tracked                |
+| `reason`             | stock_reason | no   |                     | `MANUAL_SET`, `MANUAL_ADJUST` or `WASTE`                              |
+| `actor_id`           | uuid         | yes  |                     | references `profiles (id)` on delete set null; who made it            |
+| `created_at`         | timestamptz  | no   | `clock_timestamp()` | when the row is written (it may wait on the item lock)                |
 
 ### orders
 
@@ -451,6 +481,8 @@ One row per Supabase Auth session, written only by `touch_session`; a row is pur
 | `brands_owner_id_idx`                   | `brands (owner_id)`                                                                         |
 | `store_memberships_store_id_idx`        | `store_memberships (store_id)`, the team list                                               |
 | `store_memberships_created_by_idx`      | `store_memberships (created_by)`                                                            |
+| `stock_movements_item_time_idx`         | `stock_movements (menu_item_id, created_at desc)`, an item's trail                          |
+| `stock_movements_store_time_idx`        | `stock_movements (store_id, created_at desc)`, the store's trail                            |
 | `store_invites_open_email_key`          | unique `store_invites (store_id, email)` where `accepted_at is null and revoked_at is null` |
 | `store_invites_store_id_idx`            | `store_invites (store_id)`                                                                  |
 | `store_invites_created_by_idx`          | `store_invites (created_by)`                                                                |
@@ -493,7 +525,7 @@ write for one small nightly scan.
 | `stores_set_updated_at`                                        | before update on `stores`, each row                                                                                                                                                                                                                            | `set_updated_at()`                                                                                                                                                                                        |
 | `brands_audit`                                                 | after update on `brands`, each row                                                                                                                                                                                                                             | `audit_row_change('brand.changed', '*')`                                                                                                                                                                  |
 | `stores_changed`                                               | after update of `name`, `tagline`, `description`, `area`, `address_line`, `contact_phone`, `status` on `stores`, each row                                                                                                                                      | `stores_emit_changed()` (`store.changed` event)                                                                                                                                                           |
-| `stores_settings_audit`                                        | after update of `max_quantity_per_item`, `low_stock_threshold`, `staff_order_list_limit`, `last_order_minutes_before_close` on `stores`, each row                                                                                                              | `audit_row_change('store_settings.changed', …)`                                                                                                                                                           |
+| `stores_settings_audit`                                        | after update of `max_quantity_per_item`, `low_stock_threshold`, `staff_order_list_limit`, `last_order_minutes_before_close`, `staff_can_edit_stock` on `stores`, each row                                                                                      | `audit_row_change('store_settings.changed', …)`                                                                                                                                                           |
 | `store_schedule_exceptions_audit`                              | after insert, update or delete on `store_schedule_exceptions`, each row                                                                                                                                                                                        | `audit_row_change('schedule_exception.changed', …)`                                                                                                                                                       |
 | `stores_audit`                                                 | after update of `name`, `slug`, `status`, `is_open`, `area`, `address_line`, `contact_phone`, `timezone`, `accepting_orders`, `paused_until`, `pause_reason`, `tagline`, `description` on `stores`, each row (its audit row has `store_id = stores.id`)        | `audit_row_change('store.changed', …)`                                                                                                                                                                    |
 | `store_invites_audit`                                          | after insert or update or delete on `store_invites`, each row (`invite.changed`: `role`, `email`, `accepted_at`, `revoked_at`; never `token_hash`)                                                                                                             | `audit_row_change('invite.changed', 'role', 'email', 'accepted_at', 'revoked_at')`                                                                                                                        |
@@ -524,6 +556,7 @@ object (SQLSTATE `P0001`). How the API maps them is in [API.md](API.md#database-
 | `lock_store_menu(...)`       | plpgsql  | invoker  | void                | `reorder_menu`, `set_menu_availability`                                                                       | `service_role`       |
 | `reorder_menu(...)`          | plpgsql  | invoker  | void                | `menu.service.reorderMenu`                                                                                    | `service_role`       |
 | `set_menu_availability(...)` | plpgsql  | invoker  | integer             | `menu.service.setAvailability`                                                                                | `service_role`       |
+| `adjust_stock(...)`          | plpgsql  | invoker  | integer             | `stock.service.adjustStock`                                                                                   | `service_role`       |
 | `set_store_status(...)`      | plpgsql  | invoker  | `text[]`            | `store.service.setStoreStatus`                                                                                | `service_role`       |
 | `stores_emit_changed()`      | plpgsql  | invoker  | trigger             | `stores_changed`                                                                                              | nobody               |
 | `pause_store(...)`           | plpgsql  | invoker  | boolean             | `storePause.service.pauseStore`                                                                               | `service_role`       |
@@ -786,9 +819,9 @@ never read (a later SQL edit would carry the last admin's id).
 
 ## Row-level security and grants
 
-- RLS is enabled on all fourteen tables (`site_settings`, the outbox tables, `audit_log`, `feature_flags` and `session_activity` included, each by the migration
+- RLS is enabled on every table (`site_settings`, the outbox tables, `audit_log`, `feature_flags` and `session_activity` included, each by the migration
   that creates it). There are no policies.
-- `revoke all` on all fourteen tables from `anon` and `authenticated`.
+- `revoke all` on every table from `anon` and `authenticated`.
 - Default privileges for role `postgres` in `public`: new tables grant nothing to `anon`/`authenticated`, and new
   functions grant no `EXECUTE` to `public`, `anon` or `authenticated`. This is why the `20260927094610` migration did
   not need its own `revoke`/`grant` for functions — it adds no new function — but still revokes table privileges for

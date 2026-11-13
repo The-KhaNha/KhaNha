@@ -62,12 +62,15 @@ it has (so a visible store answers 403), else none. An ADMIN who is also a STAFF
 | `team.manageStaff`    |       | yes     | yes   | yes   |
 | `team.manageManagers` |       |         | yes   | yes   |
 | `audit.store`         |       | yes     | yes   | yes   |
+| `stock.update`        | yes¹  | yes     | yes   |       |
 
 `ADMIN` holds only `store.pause`, `team.*` and `audit.store`: no kitchen power of its own (an ADMIN with a store membership still has that membership's kitchen access).
 
 `store.pause` guards `POST /stores/:storeId/pause` and `POST /stores/:storeId/resume` ([API.md](API.md#post-storesstoreidpause)); STAFF, MANAGER, OWNER and ADMIN may pause.
 
-`menu.edit` guards the menu editor, `GET`, `POST`, `PATCH` and `DELETE /stores/:storeId/menu-items` ([API.md](API.md#get-storesstoreidmenu-items)); STAFF get 403 (stock edits for staff arrive with `stock.update`, P3 PR 04).
+`menu.edit` guards the menu editor, `GET`, `POST`, `PATCH` and `DELETE /stores/:storeId/menu-items` ([API.md](API.md#get-storesstoreidmenu-items)); STAFF get 403.
+
+`stock.update` guards `PATCH /stores/:storeId/menu-items/:itemId/stock` and `GET /stores/:storeId/stock-movements` ([API.md](API.md#patch-storesstoreidmenu-itemsitemidstock)). ¹ STAFF hold it only while the store's `staff_can_edit_stock` setting is on (the default); a manager or the owner turns it off in the store's settings, and staff then get 403. It is the one cell that depends on a store setting: `can(access, capability, rules)` takes the store's rules, `requireStore` passes them from the store row, and a caller that passes none gets the stricter answer. A brand template has no stock, so `stock.update` is not a template capability.
 
 `store.profile` guards `PATCH /stores/:storeId/profile` ([API.md](API.md#patch-storesstoreidprofile)); STAFF get 403. `store.publish` guards `POST /stores/:storeId/publish` and `/unpublish` ([API.md](API.md#post-storesstoreidpublish)) and is the OWNER's alone: making a store public or taking it down is the brand's call, so a MANAGER or an ADMIN cannot. `store.profile` is also a template capability (the owner edits the tagline and description new branches copy); `store.publish` is not. A published store cannot have its address cleared (400 on `addressLine`): unpublish first. Opening a branch (`POST /brands/:brandId/stores`) is not a store capability: the route checks that the brand is in the caller's `ownedBrandIds`, and everyone else, an admin included, gets 404.
 

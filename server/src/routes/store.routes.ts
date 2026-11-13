@@ -3,6 +3,7 @@ import * as admin from '../controllers/admin.controller';
 import * as menu from '../controllers/menu.controller';
 import * as orders from '../controllers/order.controller';
 import * as store from '../controllers/store.controller';
+import * as stock from '../controllers/stock.controller';
 import * as team from '../controllers/team.controller';
 import { requireAuth, requireStore } from '../middleware/auth';
 import { writeLimiter } from '../middleware/rateLimit';
@@ -22,6 +23,7 @@ import {
   updateStoreProfileSchema,
 } from '../schemas/store.schema';
 import { createExceptionSchema, setStoreHoursSchema } from '../schemas/storeHours.schema';
+import { adjustStockSchema, stockMovementsQuerySchema } from '../schemas/stock.schema';
 import { createInviteSchema } from '../schemas/team.schema';
 import { pauseStoreSchema } from '../schemas/storePause.schema';
 
@@ -178,6 +180,22 @@ storesRouter.delete(
   requireStore('menu.edit'),
   writeLimiter,
   menu.archiveMenuItem,
+);
+// Stock (P3.4, P3.5): managers and the owner, and staff while the store lets them (stock.update).
+storesRouter.patch(
+  '/:storeId/menu-items/:itemId/stock',
+  requireAuth,
+  requireStore('stock.update'),
+  writeLimiter,
+  validate(adjustStockSchema),
+  stock.adjustStock,
+);
+storesRouter.get(
+  '/:storeId/stock-movements',
+  requireAuth,
+  requireStore('stock.update'),
+  validate(stockMovementsQuerySchema, 'query'),
+  stock.listStockMovements,
 );
 // A branch's profile and whether it is public (P3.1, D6): managers edit the profile; only the owner publishes.
 storesRouter.patch(

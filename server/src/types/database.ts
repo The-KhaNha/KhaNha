@@ -560,6 +560,61 @@ export type Database = {
           },
         ];
       };
+      stock_movements: {
+        Row: {
+          actor_id: string | null;
+          created_at: string;
+          delta: number | null;
+          id: number;
+          menu_item_id: string;
+          reason: Database['public']['Enums']['stock_reason'];
+          resulting_quantity: number | null;
+          store_id: string;
+        };
+        Insert: {
+          actor_id?: string | null;
+          created_at?: string;
+          delta?: number | null;
+          id?: never;
+          menu_item_id: string;
+          reason: Database['public']['Enums']['stock_reason'];
+          resulting_quantity?: number | null;
+          store_id: string;
+        };
+        Update: {
+          actor_id?: string | null;
+          created_at?: string;
+          delta?: number | null;
+          id?: never;
+          menu_item_id?: string;
+          reason?: Database['public']['Enums']['stock_reason'];
+          resulting_quantity?: number | null;
+          store_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'stock_movements_actor_id_fkey';
+            columns: ['actor_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'stock_movements_menu_item_id_fkey';
+            columns: ['menu_item_id'];
+            isOneToOne: false;
+            referencedRelation: 'menu_items';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'stock_movements_store_id_fkey';
+            columns: ['store_id'];
+            isOneToOne: false;
+            referencedRelation: 'stores';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       store_hours: {
         Row: {
           closes_at: string;
@@ -775,6 +830,7 @@ export type Database = {
           prep_time_max_minutes: number;
           prep_time_min_minutes: number;
           slug: string;
+          staff_can_edit_stock: boolean;
           staff_order_list_limit: number;
           status: Database['public']['Enums']['store_status'];
           tagline: string;
@@ -803,6 +859,7 @@ export type Database = {
           prep_time_max_minutes?: number;
           prep_time_min_minutes?: number;
           slug: string;
+          staff_can_edit_stock?: boolean;
           staff_order_list_limit?: number;
           status?: Database['public']['Enums']['store_status'];
           tagline: string;
@@ -831,6 +888,7 @@ export type Database = {
           prep_time_max_minutes?: number;
           prep_time_min_minutes?: number;
           slug?: string;
+          staff_can_edit_stock?: boolean;
           staff_order_list_limit?: number;
           status?: Database['public']['Enums']['store_status'];
           tagline?: string;
@@ -882,6 +940,19 @@ export type Database = {
           isOneToOne: true;
           isSetofReturn: false;
         };
+      };
+      adjust_stock: {
+        Args: {
+          p_actor?: Json;
+          p_delta?: number;
+          p_menu_item_id: string;
+          p_reason?: Database['public']['Enums']['stock_reason'];
+          p_request_id?: string;
+          p_set?: number;
+          p_store_id: string;
+          p_untracked?: boolean;
+        };
+        Returns: number;
       };
       create_store_from_template: {
         Args: {
@@ -1061,6 +1132,7 @@ export type Database = {
       order_status: 'PLACED' | 'PREPARING' | 'READY' | 'COLLECTED' | 'CANCELLED';
       payment_status: 'PENDING' | 'PAID';
       schedule_exception_kind: 'CLOSED' | 'SPECIAL_HOURS';
+      stock_reason: 'MANUAL_SET' | 'MANUAL_ADJUST' | 'WASTE';
       store_role: 'MANAGER' | 'STAFF';
       store_status: 'DRAFT' | 'ACTIVE' | 'SUSPENDED' | 'ARCHIVED';
       user_role: 'CUSTOMER' | 'STAFF' | 'ADMIN';
@@ -1193,6 +1265,7 @@ export const Constants = {
       order_status: ['PLACED', 'PREPARING', 'READY', 'COLLECTED', 'CANCELLED'],
       payment_status: ['PENDING', 'PAID'],
       schedule_exception_kind: ['CLOSED', 'SPECIAL_HOURS'],
+      stock_reason: ['MANUAL_SET', 'MANUAL_ADJUST', 'WASTE'],
       store_role: ['MANAGER', 'STAFF'],
       store_status: ['DRAFT', 'ACTIVE', 'SUSPENDED', 'ARCHIVED'],
       user_role: ['CUSTOMER', 'STAFF', 'ADMIN'],

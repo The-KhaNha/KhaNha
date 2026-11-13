@@ -12,6 +12,7 @@ const TABLE_OWNERS = {
   menu_items: ['src/services/menu.service.ts', 'src/services/order.service.ts'],
   store_memberships: ['src/services/team.service.ts'],
   store_invites: ['src/services/team.service.ts'],
+  stock_movements: ['src/services/stock.service.ts'],
   domain_events: [],
 };
 

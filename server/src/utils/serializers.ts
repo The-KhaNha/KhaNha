@@ -14,6 +14,7 @@ import type {
   SiteSettingsDto,
   StoreDto,
   StoreSettingsDto,
+  StockMovementDto,
   StoreSummaryDto,
   UserDto,
 } from '../types/api';
@@ -77,6 +78,7 @@ export type StoreSettings = Pick<
   | 'low_stock_threshold'
   | 'staff_order_list_limit'
   | 'last_order_minutes_before_close'
+  | 'staff_can_edit_stock'
 >;
 
 export function toStoreSettingsDto(settings: StoreSettings): StoreSettingsDto {
@@ -85,6 +87,25 @@ export function toStoreSettingsDto(settings: StoreSettings): StoreSettingsDto {
     lowStockThreshold: settings.low_stock_threshold,
     staffOrderListLimit: settings.staff_order_list_limit,
     lastOrderMinutesBeforeClose: settings.last_order_minutes_before_close,
+    staffCanEditStock: settings.staff_can_edit_stock,
+  };
+}
+
+/** A stock_movements row with its actor embedded (stock.service.listStockMovements). */
+export type StockMovementRow = Pick<
+  Tables<'stock_movements'>,
+  'id' | 'menu_item_id' | 'delta' | 'resulting_quantity' | 'reason' | 'created_at'
+> & { actor: Pick<Tables<'profiles'>, 'id' | 'name'> | null };
+
+export function toStockMovementDto(row: StockMovementRow): StockMovementDto {
+  return {
+    id: row.id,
+    menuItemId: row.menu_item_id,
+    delta: row.delta,
+    resultingQuantity: row.resulting_quantity,
+    reason: row.reason,
+    actor: row.actor ? { id: row.actor.id, name: row.actor.name } : null,
+    createdAt: row.created_at,
   };
 }
 
