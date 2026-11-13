@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { X } from 'lucide-react';
+import { ImagePlus, X } from 'lucide-react';
 import { Button } from '../../components/Button';
 import { VALIDATION } from '../config/fallbacks';
 import { FoodPhoto } from '../../components/FoodPhoto';
@@ -11,8 +11,11 @@ import { useFocusTrap } from '../../lib/useFocusTrap';
 import { ApiError } from '../../services/api';
 import type { MenuItemInput } from '../../services/manageMenu';
 import type { Diet, ManagedMenuItem } from '../../types/api';
+import { usePhotoUpload, type PhotoUploadStatus } from './usePhotoUpload';
 
 interface ItemEditorProps {
+  /** The store the item belongs to: its photo is uploaded there. */
+  storeId: string;
   /** The item to edit; null adds a new one. */
   item: ManagedMenuItem | null;
   /** The store's categories, offered while typing; a new name is allowed. */
@@ -35,11 +38,20 @@ const DIETS: { value: Diet | null; label: string }[] = [
 const parsePrice = (text: string): number | null =>
   /^\d+$/.test(text.trim()) ? Number(text) : null;
 
+const PHOTO_STEPS: Partial<Record<PhotoUploadStatus, string>> = {
+  preparing: 'Preparing the photo…',
+  sending: 'Sending the photo…',
+  processing: 'Making it ready for the menu…',
+  ready: 'New photo ready. Save to use it.',
+};
+const PHOTO_BUSY: PhotoUploadStatus[] = ['preparing', 'sending', 'processing'];
+
 /**
  * The item form: a bottom sheet on phones, a side panel from `md` (the ItemDetailSheet pattern). Field errors come
- * from the API's `details.field`; any other refusal shows under the buttons. Photo upload arrives with P3 PR 11.
+ * from the API's `details.field`; any other refusal shows under the buttons. A new photo goes up as soon as it is
+ * chosen (usePhotoUpload); saving attaches it once it is processed.
  */
-export function ItemEditor({ item, categories, onSave, onClose }: ItemEditorProps) {
+export function ItemEditor({ storeId, item, categories, onSave, onClose }: ItemEditorProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const listId = useId();
   useFocusTrap(dialogRef, true);
@@ -52,6 +64,15 @@ export function ItemEditor({ item, categories, onSave, onClose }: ItemEditorProp
     isPopular: item?.isPopular ?? false,
   });
   const [busy, setBusy] = useState(false);
+  const photo = usePhotoUpload(storeId);
+  const photoBusy = PHOTO_BUSY.includes(photo.status);
+  // The item's photo was taken off (saved as imageUploadId: null).
+  const [photoRemoved, setPhotoRemoved] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
+  // What a save would keep: the new photo once it is going up or ready; otherwise the item's own, unless removed. A
+  // failed upload shows what stays (its error says why).
+  const newPhoto = photoBusy || photo.status === 'ready';
+  const shownPhoto = newPhoto ? photo.preview : photoRemoved ? null : (item?.imageUrl ?? null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -98,6 +119,11 @@ export function ItemEditor({ item, categories, onSave, onClose }: ItemEditorProp
         category: form.category.trim(),
         diet: form.diet,
         isPopular: form.isPopular,
+        ...(photo.uploadId
+          ? { imageUploadId: photo.uploadId }
+          : photoRemoved
+            ? { imageUploadId: null }
+            : {}),
       });
       if (mounted.current) onClose();
     } catch (err) {
@@ -133,9 +159,82 @@ export function ItemEditor({ item, categories, onSave, onClose }: ItemEditorProp
           <IconButton label="Close" icon={<X className="h-5 w-5" />} onClick={onClose} />
         </div>
         <form onSubmit={submit} className="mt-3 space-y-3" noValidate>
-          {item?.imageUrl && (
-            <FoodPhoto src={item.imageUrl} alt="" className="h-28 w-28 rounded-control" />
-          )}
+          <fieldset>
+            <legend className="mb-1.5 text-sm font-semibold text-ink">Photo</legend>
+            <div className="flex items-start gap-3">
+              <FoodPhoto
+                src={shownPhoto}
+                srcSet={newPhoto ? null : item?.imageSrcSet}
+                alt=""
+                className="h-24 w-24 shrink-0 rounded-control"
+                sizes="96px"
+              />
+              <div className="min-w-0 flex-1 space-y-2">
+                <p aria-live="polite" className="text-caption text-muted">
+                  {photo.status === 'failed' ? null : PHOTO_STEPS[photo.status]}
+                </p>
+                {photo.error && (
+                  <p role="alert" className="text-caption font-medium text-brand-700">
+                    {photo.error}
+                  </p>
+                )}
+                <input
+                  ref={fileInput}
+                  type="file"
+                  accept="image/*"
+                  className="sr-only"
+                  tabIndex={-1}
+                  aria-hidden="true"
+                  onChange={(e) => {
+                    const chosen = e.target.files?.[0];
+                    e.target.value = '';
+                    if (!chosen) return;
+                    void photo.upload(chosen);
+                  }}
+                />
+                <div className="flex flex-wrap gap-2">
+                  {photoBusy ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      disabled={busy}
+                      onClick={photo.cancel}
+                    >
+                      Cancel upload
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      disabled={busy}
+                      onClick={() => fileInput.current?.click()}
+                    >
+                      <ImagePlus className="h-4 w-4" aria-hidden />
+                      {shownPhoto ? 'Change photo' : 'Add photo'}
+                    </Button>
+                  )}
+                  {photo.status === 'failed' && (
+                    <Button type="button" variant="tint" disabled={busy} onClick={photo.retry}>
+                      Try again
+                    </Button>
+                  )}
+                  {!photoBusy && shownPhoto && (
+                    <Button
+                      type="button"
+                      variant="ghost-danger"
+                      disabled={busy}
+                      onClick={() => {
+                        photo.cancel();
+                        setPhotoRemoved(Boolean(item?.imageUrl));
+                      }}
+                    >
+                      Remove
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </fieldset>
           <Input
             label="Name"
             value={form.name}
@@ -208,7 +307,7 @@ export function ItemEditor({ item, categories, onSave, onClose }: ItemEditorProp
               {formError}
             </p>
           )}
-          <Button type="submit" size="lg" fullWidth loading={busy}>
+          <Button type="submit" size="lg" fullWidth loading={busy} disabled={photoBusy}>
             {item ? 'Save changes' : 'Add item'}
           </Button>
         </form>

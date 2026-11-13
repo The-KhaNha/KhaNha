@@ -56,6 +56,7 @@ export const FoodCard = memo(function FoodCard({
         <FoodPhoto
           ref={photoRef}
           src={item.imageUrl}
+          srcSet={item.imageSrcSet}
           muted={unavailable}
           className="h-28 w-28 rounded-control"
           imgClassName="transition-transform duration-[400ms] ease-out group-hover:scale-[1.04]"

@@ -168,6 +168,7 @@ against the card, WCAG 1.4.11), an errored one `border-brand-600`; never `border
 | `muted`        | `boolean` = `false`  | greyed out for unavailable items                                                                                                                                                                                                                                                                                      |
 | `eager`        | `boolean` = `false`  | `loading="eager"`; otherwise `lazy`                                                                                                                                                                                                                                                                                   |
 | `sizes`        | `string` = `'112px'` | the photo's real rendered width, so the browser picks the 400px thumbnail or the 900px original (`lib/photo.ts`'s `photoSrcSet`); `PopularRail` passes `'188px'`, `ItemDetailSheet` passes `'(min-width: 768px) 480px, 100vw'` — see [FRONTEND_STRUCTURE.md#photo-thumbnails](FRONTEND_STRUCTURE.md#photo-thumbnails) |
+| `srcSet`       | `string \| null`     | an uploaded photo's sizes (`MenuItem.imageSrcSet`); without it a bundled photo gets its 400px thumbnail from `photoSrcSet`                                                                                                                                                                                            |
 | `children`     | `ReactNode`          | only `PopularBadge` belongs here                                                                                                                                                                                                                                                                                      |
 
 **`FoodCard`** / **`FoodCardSkeleton`** (`FoodCard.tsx`). Memoised (`React.memo`; keep its props stable: the item, a
@@ -326,7 +327,7 @@ with `selectLimits`.
 
 Selectors: `selectLines`, `selectCount`, `selectTotal`, `selectQuantityOf(id)`, `selectLimits`, `selectStoreName`.
 
-**`ItemEditor({ item: ManagedMenuItem \| null, categories, onSave, onClose })`** (`features/manage/ItemEditor.tsx`): the menu item form (name, description, price in whole rupees, category with a datalist of the store's own, diet, popular, the current photo read-only until upload lands). A bottom sheet on phones and a side panel from `md`, the `ItemDetailSheet` pattern: `useFocusTrap`, Escape and the backdrop close, 44px+ controls. `onSave` throws an `ApiError`; one with `details.field` shows on that field, any other under the form. `item` null adds. Mount it only while open.
+**`ItemEditor({ storeId, item: ManagedMenuItem \| null, categories, onSave, onClose })`** (`features/manage/ItemEditor.tsx`): the menu item form (name, description, price in whole rupees, category with a datalist of the store's own, diet, popular, and the photo: Add / Change starts `usePhotoUpload` at once, its steps show in a live line, Cancel and Try again are offered, Remove takes the photo off; Save waits while a photo is going up and sends `imageUploadId`, or `null` after Remove). A bottom sheet on phones and a side panel from `md`, the `ItemDetailSheet` pattern: `useFocusTrap`, Escape and the backdrop close, 44px+ controls. `onSave` throws an `ApiError`; one with `details.field` shows on that field, any other under the form. `item` null adds. Mount it only while open.
 
 **`ConfirmSheet({ title, text, confirmLabel, onConfirm, onCancel, busy? })`** (`components/ConfirmSheet.tsx`): "Are you sure?" for a destructive tap (remove a member, revoke an invite), the `ReplaceCartSheet` pattern: `useFocusTrap`, Escape and the backdrop cancel, Keep takes the first focus, 44px+ buttons. Mount it only while the question is open.
 
@@ -415,6 +416,14 @@ UI (presentational; the pages own the data):
 `stockRules.ts`: `stockLevel(stock, lowStockThreshold)` → `'untracked' | 'out' | 'low' | 'ok'` (low is at or under the
 threshold), `canSeeStock(membership)` (a MANAGER always, STAFF unless the store turned it off; a membership saved
 without the field reads as on), `describeMovement(m)` ("Set to 12", "+3 → 15", "Wasted 2 → 13", "Stopped counting").
+`usePhotoUpload(storeId)` → `{ status, preview, uploadId, error, upload(file), cancel(), retry() }`
+(`features/manage/usePhotoUpload.ts`): a photo for one of the store's items. It redraws the file on a canvas as a JPEG at
+most 2000px on its longer side (less data, and any format the browser shows becomes one the server takes), starts the
+upload, sends it as the server says (`services/media.ts`), completes it, then polls every `polling.orderMs` while the
+tab is visible until the worker has processed it (`ready`, with `uploadId` and the variant as `preview`) or refused it
+(`failed`, with the reason). A failure keeps the file for `retry`; `cancel` stops everything, the wait included.
+`fitWithin(w, h, max)` is the sizing rule.
+
 `useStock(store)` → `{ data, isLoading, error, retry, writeError, pendingIds, change(itemId, change, guess?) }`: the
 stock list (polled at `polling.staffBoardMs`, never persisted); a change shows `guess` at once, then the server's
 answer, rolls back and reloads on a refusal, allows one write per item at a time and drops the saved public menu.

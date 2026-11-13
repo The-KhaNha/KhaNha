@@ -96,6 +96,7 @@ function RailCard({ item, onOpen }: { item: MenuItem; onOpen: (item: MenuItem) =
           <FoodPhoto
             ref={photoRef}
             src={item.imageUrl}
+            srcSet={item.imageSrcSet}
             muted={unavailable}
             eager
             sizes="188px"

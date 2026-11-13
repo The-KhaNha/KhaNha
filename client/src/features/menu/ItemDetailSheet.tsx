@@ -133,6 +133,7 @@ export function ItemDetailSheet({ item, onClose }: ItemDetailSheetProps) {
         <div className="relative shrink-0">
           <FoodPhoto
             src={item.imageUrl}
+            srcSet={item.imageSrcSet}
             alt={item.name}
             eager
             muted={unavailable}

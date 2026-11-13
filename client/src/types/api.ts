@@ -359,3 +359,27 @@ export interface FeatureFlag {
   updatedAt: string;
   updatedBy: string | null;
 }
+
+/** How to send a photo's bytes (POST …/media/uploads): a form for the bucket, or a PUT to the API (local storage). */
+export interface UploadTarget {
+  method: 'POST' | 'PUT';
+  url: string;
+  /** The bucket form's fields, sent before the file. */
+  fields?: Record<string, string>;
+  /** Headers the PUT must carry. */
+  headers?: Record<string, string>;
+}
+
+/** A photo upload (server MediaUploadDto): processed by the worker into WebP variants. */
+export interface MediaUpload {
+  id: string;
+  status: 'PENDING' | 'UPLOADED' | 'PROCESSED' | 'FAILED';
+  contentType: string;
+  byteSize: number;
+  /** The largest variant once PROCESSED; the original before. */
+  url: string;
+  variants: { width: number; height: number; url: string }[] | null;
+  /** Why it FAILED, ready to show ("not a photo"). */
+  failure: string | null;
+  createdAt: string;
+}

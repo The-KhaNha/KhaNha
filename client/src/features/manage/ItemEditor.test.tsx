@@ -1,15 +1,204 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../services/api';
+import type { ManagedMenuItem } from '../../types/api';
 import { ItemEditor } from './ItemEditor';
+import type { PhotoUploadState } from './usePhotoUpload';
+
+// The upload itself is usePhotoUpload's (its own tests); here each test sets where it stands.
+const photo = vi.hoisted(() => ({
+  state: { status: 'idle', preview: null, uploadId: null, error: null } as PhotoUploadState,
+  upload: vi.fn(),
+  cancel: vi.fn(),
+  retry: vi.fn(),
+}));
+vi.mock('./usePhotoUpload', () => ({
+  usePhotoUpload: () => ({
+    ...photo.state,
+    upload: photo.upload,
+    cancel: photo.cancel,
+    retry: photo.retry,
+  }),
+}));
+const setPhoto = (state: Partial<PhotoUploadState>) => {
+  photo.state = { status: 'idle', preview: null, uploadId: null, error: null, ...state };
+};
 
 const show = (onSave = vi.fn()) => {
   const onClose = vi.fn();
-  render(<ItemEditor item={null} categories={['Drinks']} onSave={onSave} onClose={onClose} />);
+  render(
+    <ItemEditor
+      storeId="s1"
+      item={null}
+      categories={['Drinks']}
+      onSave={onSave}
+      onClose={onClose}
+    />,
+  );
   return { onSave, onClose };
 };
 
+const withPhoto: ManagedMenuItem = {
+  id: 'i1',
+  category: 'Drinks',
+  name: 'Lassi',
+  description: '',
+  price: 60,
+  imageUrl: '/media/stores/s1/variants/abc-900.webp',
+  imageSrcSet: null,
+  diet: null,
+  isAvailable: true,
+  isPopular: false,
+  sortOrder: 1,
+  stockQuantity: null,
+  isEnabled: true,
+  archivedAt: null,
+  templateItemId: null,
+};
+
+describe('ItemEditor photo', () => {
+  beforeEach(() => setPhoto({}));
+
+  it('a chosen photo goes up at once, and saving attaches it when ready', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const { rerender } = render(
+      <ItemEditor
+        storeId="s1"
+        item={withPhoto}
+        categories={[]}
+        onSave={onSave}
+        onClose={vi.fn()}
+      />,
+    );
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(['x'], 'lassi.jpg', { type: 'image/jpeg' });
+    fireEvent.change(input, { target: { files: [file] } });
+    expect(photo.upload).toHaveBeenCalledWith(file);
+
+    setPhoto({ status: 'processing', preview: 'blob:preview' });
+    rerender(
+      <ItemEditor
+        storeId="s1"
+        item={withPhoto}
+        categories={[]}
+        onSave={onSave}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('Making it ready for the menu…')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
+
+    setPhoto({ status: 'ready', preview: '/media/new-900.webp', uploadId: 'u1' });
+    rerender(
+      <ItemEditor
+        storeId="s1"
+        item={withPhoto}
+        categories={[]}
+        onSave={onSave}
+        onClose={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0]![0]).toMatchObject({ imageUploadId: 'u1' });
+  });
+
+  it('untouched, the save leaves the photo alone', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ItemEditor
+        storeId="s1"
+        item={withPhoto}
+        categories={[]}
+        onSave={onSave}
+        onClose={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0]![0]).not.toHaveProperty('imageUploadId');
+  });
+
+  it('Remove takes the photo off on save', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ItemEditor
+        storeId="s1"
+        item={withPhoto}
+        categories={[]}
+        onSave={onSave}
+        onClose={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    expect(screen.getByRole('button', { name: 'Add photo' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0]![0]).toMatchObject({ imageUploadId: null });
+  });
+
+  it('after Remove, a new photo that fails to go up still saves the item without a photo', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const { rerender } = render(
+      <ItemEditor
+        storeId="s1"
+        item={withPhoto}
+        categories={[]}
+        onSave={onSave}
+        onClose={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    setPhoto({ status: 'failed', preview: 'blob:failed', error: 'Offline' });
+    rerender(
+      <ItemEditor
+        storeId="s1"
+        item={withPhoto}
+        categories={[]}
+        onSave={onSave}
+        onClose={vi.fn()}
+      />,
+    );
+    // The form shows what a save keeps: no photo, not the one that failed.
+    expect(document.querySelector('[role="dialog"] img')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0]![0]).toMatchObject({ imageUploadId: null });
+  });
+
+  it('the photo cannot change while the item is being saved', async () => {
+    render(
+      <ItemEditor
+        storeId="s1"
+        item={withPhoto}
+        categories={[]}
+        onSave={() => new Promise(() => {})}
+        onClose={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Remove' })).toBeDisabled());
+    expect(screen.getByRole('button', { name: 'Change photo' })).toBeDisabled();
+  });
+
+  it('a failed upload says why and offers to try again', () => {
+    setPhoto({
+      status: 'failed',
+      preview: 'blob:preview',
+      error: "That photo can't be used: not a photo.",
+    });
+    render(
+      <ItemEditor storeId="s1" item={null} categories={[]} onSave={vi.fn()} onClose={vi.fn()} />,
+    );
+    expect(screen.getByRole('alert')).toHaveTextContent('not a photo');
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(photo.retry).toHaveBeenCalled();
+  });
+});
+
 describe('ItemEditor', () => {
+  beforeEach(() => setPhoto({}));
+
   it('shows a server field error on its field and stays open', async () => {
     const { onClose } = show(
       vi
@@ -46,7 +235,7 @@ describe('ItemEditor', () => {
     const onSave = vi.fn(() => new Promise<void>((r) => (resolve = r)));
     const onClose = vi.fn();
     const { unmount } = render(
-      <ItemEditor item={null} categories={[]} onSave={onSave} onClose={onClose} />,
+      <ItemEditor storeId="s1" item={null} categories={[]} onSave={onSave} onClose={onClose} />,
     );
     fireEvent.change(screen.getByLabelText('Price (₹)'), { target: { value: '10' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add item' }));
