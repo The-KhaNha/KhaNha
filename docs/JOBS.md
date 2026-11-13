@@ -94,7 +94,8 @@ shutdown; what is left waits for the next night. `p_now` is the event's `occurre
 (tests pass their own). Swept: an upload `PENDING`, `UPLOADED` or `FAILED` started more than 24 hours earlier, and a
 `PROCESSED` one older than 24 hours that no menu item and no order line shows. A processed upload stays while anything
 shows it, so a photo replaced later is swept the night after the 24 hours run out. A variant key is removed only when
-no upload that stays lists it (two uploads of one photo share keys). On S3 the bucket's lifecycle rule (originals
+no upload that stays lists it (two uploads of one photo share keys), checked again for each key just before it
+goes, since one of a batch may be kept that night. On S3 the bucket's lifecycle rule (originals
 expire after a day, P8) is the backstop. Log line: `info` "Media swept" with `uploads` and `failed`.
 
 ## Queues and subscriptions

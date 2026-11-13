@@ -9,6 +9,7 @@ import {
   SWEEP_BATCH,
   sweepCandidates,
   uploadShown,
+  variantHeldElsewhere,
   type MediaVariant,
 } from '../services/media.service';
 import type { JobContext, JobHandler } from './runner';
@@ -114,7 +115,10 @@ export async function sweepMedia(
         // ponytail: a check, not a lock; an attach landing between this read and the removal still loses its photo.
         // The window is milliseconds, once a night, for an upload left unattached over 24 hours.
         if (await uploadShown(upload_id)) continue;
-        for (const key of remove_keys) await store.remove(key);
+        // The batch was chosen together; an upload sharing a key may have been kept since (shown, or skipped on a
+        // failure), so a key goes only while no other upload still lists it.
+        for (const key of remove_keys)
+          if (!(await variantHeldElsewhere(upload_id, key))) await store.remove(key);
         await store.remove(original_key);
         await deleteUpload(upload_id);
         swept += 1;

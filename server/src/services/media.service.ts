@@ -233,6 +233,18 @@ export async function uploadShown(uploadId: string): Promise<boolean> {
   return data;
 }
 
+/** Whether an upload other than `uploadId` lists `key` among its variants (two uploads of one photo share keys). */
+export async function variantHeldElsewhere(uploadId: string, key: string): Promise<boolean> {
+  const { data } = await supabaseAdmin
+    .from('media_uploads')
+    .select('id')
+    .neq('id', uploadId)
+    .contains('variants', JSON.stringify([{ key }]))
+    .limit(1)
+    .throwOnError();
+  return data.length > 0;
+}
+
 /** Deletes a swept upload's row, once its objects are gone. */
 export async function deleteUpload(uploadId: string): Promise<void> {
   await supabaseAdmin.from('media_uploads').delete().eq('id', uploadId).throwOnError();

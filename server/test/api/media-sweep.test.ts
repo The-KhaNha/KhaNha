@@ -335,4 +335,37 @@ describe('the nightly sweep', () => {
     expect(await rowExists(fine.id)).toBe(false);
     await supabaseAdmin.from('media_uploads').delete().eq('id', broken).throwOnError();
   });
+
+  it('a shared variant stays when the other upload holding it is skipped this night', async () => {
+    const first = await processedUpload();
+    const id = randomUUID();
+    await supabaseAdmin
+      .from('media_uploads')
+      .insert({
+        id,
+        store_id: storeId,
+        original_key: `stores/${storeId}/uploads/${id}.jpg`,
+        content_type: 'image/jpeg',
+        byte_size: 10,
+        status: 'PROCESSED',
+        variants: first.keys.map((key, i) => ({ width: [400, 900][i], height: 1, key })),
+        processed_at: new Date(Date.now() + HOUR).toISOString(),
+      })
+      .throwOnError();
+    // Both are due at 26 hours; the older one's check fails, so it is kept with its row.
+    const real = supabaseAdmin.rpc.bind(supabaseAdmin);
+    const spy = vi.spyOn(supabaseAdmin, 'rpc').mockImplementation(((fn: string, args: object) => {
+      if (fn === 'media_upload_shown' && (args as { p_upload_id: string }).p_upload_id === first.id)
+        return { throwOnError: async () => Promise.reject(new Error('connection reset')) };
+      return real(fn as 'media_upload_shown', args as never);
+    }) as unknown as typeof supabaseAdmin.rpc);
+    try {
+      await sweepMedia(at(26), { log });
+    } finally {
+      spy.mockRestore();
+    }
+    expect(await rowExists(id)).toBe(false);
+    expect(await rowExists(first.id)).toBe(true);
+    for (const key of first.keys) expect(await exists(key)).toBe(true);
+  });
 });
