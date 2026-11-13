@@ -265,4 +265,36 @@ describe('/manage/:storeSlug shell', () => {
     renderAt('/manage/zzz');
     expect(screen.getByText('Page not found')).toBeInTheDocument();
   });
+
+  it('a template has only what branches copy: Menu, Profile and Settings, and no Go live', () => {
+    state.user = owner();
+    state.brands = [
+      { ...brand, template: managedStore('t', { isTemplate: true, status: 'DRAFT' }), stores: [] },
+    ];
+    manage('t', { isTemplate: true, status: 'DRAFT' }, ['address', 'hours']);
+    renderAt('/manage/t/profile');
+    const nav = screen.getByRole('navigation', { name: 'Manage' });
+    expect([...nav.querySelectorAll('a')].map((a) => a.textContent)).toEqual([
+      'Menu',
+      'Profile',
+      'Settings',
+    ]);
+    expect(screen.getByRole('heading', { name: 'Brew: brand template' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Go live' })).toBeNull();
+  });
+
+  it('the owner of a DRAFT branch sees Go live; its manager does not', () => {
+    state.user = owner();
+    state.brands = [{ ...brand, template: null, stores: [managedStore('d', { status: 'DRAFT' })] }];
+    manage('d', { status: 'DRAFT' }, ['hours']);
+    const { unmount } = renderAt('/manage/d/profile');
+    expect(screen.getByRole('region', { name: 'Go live' })).toBeInTheDocument();
+    unmount();
+    state.user = user({
+      memberships: [{ storeId: 'd', storeSlug: 'd', storeName: 'D', role: 'MANAGER' }],
+    });
+    renderAt('/manage/d/profile');
+    expect(screen.getByRole('heading', { name: 'Store d' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Go live' })).toBeNull();
+  });
 });

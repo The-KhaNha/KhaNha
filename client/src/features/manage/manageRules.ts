@@ -24,6 +24,7 @@ export const canEditHours = (user: User, store: Pick<StoreSummary, 'id' | 'brand
 export const MANAGE_TABS = [
   { path: 'menu', label: 'Menu' },
   { path: 'stock', label: 'Stock' },
+  { path: 'profile', label: 'Profile' },
   { path: 'hours', label: 'Hours' },
   { path: 'settings', label: 'Settings' },
   { path: 'team', label: 'Team' },

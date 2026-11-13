@@ -470,7 +470,8 @@ manage screen reads it and `set_store_status` (redefined, same signature) publis
 (client): this section's screens on those reads. 07c (client): PR 07's push sheet, once the template is reachable.
 07b-2 split again for size: 07b-2a the picker (template first, branches at every status, "Open a branch", which
 lands on the new branch's page) and the store shell on the manage reads (the hours editor too); 07b-2b the Profile
-tab and the Go live card.
+tab and the Go live card (a new branch then lands on its Profile tab, where the address the checklist asks for
+is filled in).
 
 ### PR 08 — Media: the port, local storage, the uploads API (P3.3)
 
