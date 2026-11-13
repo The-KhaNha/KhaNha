@@ -1,4 +1,6 @@
 import 'dotenv/config';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { defineConfig } from 'vitest/config';
 
 // Staging runs only the suites that create and clean up their own data (*.safe.test.ts); see docs/TESTING.md.
@@ -24,6 +26,10 @@ export default defineConfig({
       RATE_LIMIT_IP_MAX: process.env.RATE_LIMIT_IP_MAX ?? '0',
       RATE_LIMIT_WRITE_MAX: process.env.RATE_LIMIT_WRITE_MAX ?? '0',
       RATE_LIMIT_REGISTER_MAX: process.env.RATE_LIMIT_REGISTER_MAX ?? '0',
+      RATE_LIMIT_UPLOAD_MAX: process.env.RATE_LIMIT_UPLOAD_MAX ?? '0',
+      // Photos go to a throwaway folder, never the developer's own .media.
+      MEDIA_STORAGE: 'local',
+      MEDIA_LOCAL_DIR: join(tmpdir(), 'khanha-test-media'),
     },
     // Suites share one database; running files one at a time keeps their data from colliding.
     fileParallelism: false,

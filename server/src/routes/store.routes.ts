@@ -1,14 +1,17 @@
-import { Router } from 'express';
+import express, { Router } from 'express';
 import * as admin from '../controllers/admin.controller';
+import * as media from '../controllers/media.controller';
 import * as menu from '../controllers/menu.controller';
 import * as orders from '../controllers/order.controller';
 import * as store from '../controllers/store.controller';
 import * as stock from '../controllers/stock.controller';
 import * as team from '../controllers/team.controller';
 import { requireAuth, requireStore } from '../middleware/auth';
-import { writeLimiter } from '../middleware/rateLimit';
+import { uploadLimiter, writeLimiter } from '../middleware/rateLimit';
 import { validate } from '../middleware/validate';
 import { auditQuerySchema } from '../schemas/admin.schema';
+import { MEDIA_UPLOAD } from '../schemas/limits';
+import { createUploadSchema } from '../schemas/media.schema';
 import {
   bulkAvailabilitySchema,
   createMenuItemSchema,
@@ -26,6 +29,9 @@ import { createExceptionSchema, setStoreHoursSchema } from '../schemas/storeHour
 import { adjustStockSchema, stockMovementsQuerySchema } from '../schemas/stock.schema';
 import { createInviteSchema } from '../schemas/team.schema';
 import { pauseStoreSchema } from '../schemas/storePause.schema';
+
+/** The local-mode upload route (its path is matched in app.ts to lift the JSON body limit). */
+export const MEDIA_FILE_ROUTE = '/:storeId/media/uploads/:uploadId/file';
 
 export const storesRouter = Router();
 
@@ -233,4 +239,35 @@ storesRouter.post(
   requireStore('store.publish'),
   writeLimiter,
   store.unpublishStore,
+);
+
+// Photo uploads (P3.3): whoever edits the menu (the template's owner too). The bytes go straight to storage; in local
+// mode to the PUT below, the one route whose body may exceed the JSON limit (app.ts exempts it by path).
+storesRouter.post(
+  '/:storeId/media/uploads',
+  requireAuth,
+  requireStore('menu.edit'),
+  uploadLimiter,
+  validate(createUploadSchema),
+  media.createUpload,
+);
+storesRouter.put(
+  MEDIA_FILE_ROUTE,
+  requireAuth,
+  requireStore('menu.edit'),
+  express.raw({ type: () => true, limit: MEDIA_UPLOAD.maxBytes }),
+  media.putFile,
+);
+storesRouter.post(
+  '/:storeId/media/uploads/:uploadId/complete',
+  requireAuth,
+  requireStore('menu.edit'),
+  writeLimiter,
+  media.completeUpload,
+);
+storesRouter.get(
+  '/:storeId/media/uploads/:uploadId',
+  requireAuth,
+  requireStore('menu.edit'),
+  media.getUpload,
 );

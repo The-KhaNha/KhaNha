@@ -6,7 +6,9 @@ import type { MediaStore } from './port';
 const notYet = (operation: string) =>
   Promise.reject(
     new IntegrationError('s3', operation, false, {
-      cause: new Error('The S3 media store arrives in P3 PR 09; set MEDIA_STORAGE=local to develop.'),
+      cause: new Error(
+        'The S3 media store arrives in P3 PR 09; set MEDIA_STORAGE=local to develop.',
+      ),
     }),
   );
 

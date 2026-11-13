@@ -12,7 +12,8 @@ export function localMediaStore(root = env.MEDIA_LOCAL_DIR): MediaStore {
   const base = resolve(root);
   const pathOf = (key: string) => {
     const full = resolve(base, key);
-    if (!MEDIA_KEY.test(key) || !full.startsWith(base + sep)) throw new Error(`Not a media key: ${key}`);
+    if (!MEDIA_KEY.test(key) || !full.startsWith(base + sep))
+      throw new Error(`Not a media key: ${key}`);
     return full;
   };
   const missing = (err: unknown) => (err as NodeJS.ErrnoException).code === 'ENOENT';

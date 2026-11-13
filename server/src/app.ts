@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { resolve } from 'node:path';
 import cors from 'cors';
 import express, { type Express } from 'express';
 import pino from 'pino';
@@ -18,6 +19,9 @@ const REQUEST_ID = /^[\w.-]{1,64}$/;
 
 /** Largest JSON body accepted (docs/API.md "Headers and limits"); the web image's nginx enforces the same. */
 export const JSON_BODY_LIMIT_BYTES = 100 * 1024;
+
+// The local-mode photo upload route under /api (store.routes MEDIA_FILE_ROUTE).
+const MEDIA_FILE_PATH = /^\/stores\/[^/]+\/media\/uploads\/[^/]+\/file$/;
 
 // An upload refused for its declared size is read and thrown away before the 413, up to these bounds. Answering with it
 // unread made the OS reset the connection, and a client still sending could lose the 413 to the reset (nginx in front
@@ -130,7 +134,9 @@ export function createApp(): Express {
   // body-parser reads an oversized body to its end, however long, before answering 413. Refusing on the declared
   // length reads at most the drain bounds instead, then answers and closes the connection.
   app.use('/api', (req, res, next) => {
-    if (Number(req.headers['content-length']) > JSON_BODY_LIMIT_BYTES) {
+    // The local-mode photo route takes up to MEDIA_UPLOAD.maxBytes of raw bytes, under its own limit (store.routes).
+    const mediaFile = req.method === 'PUT' && MEDIA_FILE_PATH.test(req.path);
+    if (!mediaFile && Number(req.headers['content-length']) > JSON_BODY_LIMIT_BYTES) {
       res.set('Connection', 'close');
       drainThen(req, () => next(payloadTooLarge()));
       return;
@@ -139,6 +145,18 @@ export function createApp(): Express {
   });
   app.use(express.json({ limit: JSON_BODY_LIMIT_BYTES }));
   app.use('/api', apiRouter);
+  // Local media (development): the uploaded photos, by their keys. Off unless MEDIA_STORAGE=local; in production a CDN
+  // serves them. Keys never change once written, so they are cached for good.
+  const localMedia = express.static(resolve(env.MEDIA_LOCAL_DIR), {
+    index: false,
+    dotfiles: 'deny',
+    fallthrough: true,
+    immutable: true,
+    maxAge: '365d',
+  });
+  app.use('/media', (req, res, next) =>
+    env.MEDIA_STORAGE === 'local' ? localMedia(req, res, next) : next(),
+  );
 
   // Express 5 no longer accepts "*" paths; a bare app.use() is the catch-all.
   app.use(notFoundHandler);

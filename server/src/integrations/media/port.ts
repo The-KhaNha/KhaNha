@@ -15,7 +15,13 @@ export interface UploadTarget {
 export interface MediaStore {
   readonly kind: 's3' | 'local';
   /** Where and how the client sends `key`'s bytes: at most `maxBytes`, as `contentType`. */
-  createUpload(key: string, contentType: string, maxBytes: number, uploadId: string, storeId: string): Promise<UploadTarget>;
+  createUpload(
+    key: string,
+    contentType: string,
+    maxBytes: number,
+    uploadId: string,
+    storeId: string,
+  ): Promise<UploadTarget>;
   read(key: string): Promise<Buffer | null>;
   /** The stored object's size, or null when nothing is there yet. */
   size(key: string): Promise<number | null>;

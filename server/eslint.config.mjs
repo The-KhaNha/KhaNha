@@ -9,6 +9,7 @@ import tseslint from 'typescript-eslint';
 const TABLE_OWNERS = {
   orders: ['src/services/order.service.ts', 'src/utils/serializers.ts'],
   order_items: ['src/services/order.service.ts'],
+  media_uploads: ['src/services/media.service.ts'],
   menu_items: ['src/services/menu.service.ts', 'src/services/order.service.ts'],
   store_memberships: ['src/services/team.service.ts'],
   store_invites: ['src/services/team.service.ts'],

@@ -8,6 +8,7 @@ import type {
   MemberDto,
   ManagedMenuItemDto,
   ManagedStoreDto,
+  MediaUploadDto,
   MenuItemDto,
   OrderDto,
   OrderItemDto,
@@ -293,5 +294,19 @@ export function toFeatureFlagDto(flag: Tables<'feature_flags'>): FeatureFlagDto 
     rules: flag.rules as FeatureFlagDto['rules'],
     updatedAt: toIso(flag.updated_at),
     updatedBy: flag.updated_by,
+  };
+}
+
+/** A media_uploads row; `url` is the store's public path for its key (integrations/media). */
+export function toMediaUploadDto(row: Tables<'media_uploads'>, url: string): MediaUploadDto {
+  return {
+    id: row.id,
+    status: row.status,
+    contentType: row.content_type,
+    byteSize: row.byte_size,
+    url,
+    variants: row.variants,
+    failure: row.failure,
+    createdAt: toIso(row.created_at),
   };
 }
