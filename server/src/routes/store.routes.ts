@@ -199,6 +199,19 @@ storesRouter.get(
   stock.listStockMovements,
 );
 // A branch's profile and whether it is public (P3.1, D6): managers edit the profile; only the owner publishes.
+// The manage screen's own reads: the public ones serve only ACTIVE stores, and a DRAFT branch is managed too.
+storesRouter.get(
+  '/:storeId/manage',
+  requireAuth,
+  requireStore('store.profile'),
+  store.getManagedStore,
+);
+storesRouter.get(
+  '/:storeId/manage/hours',
+  requireAuth,
+  requireStore('hours.edit'),
+  store.getManagedHours,
+);
 storesRouter.patch(
   '/:storeId/profile',
   requireAuth,

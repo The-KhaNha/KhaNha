@@ -1,6 +1,11 @@
 import { STORE_LIST_MAX } from '../schemas/limits';
 import type { UpdateStoreProfileInput } from '../schemas/store.schema';
-import type { ManagedStoreDto, StoreSummaryDto } from '../types/api';
+import type {
+  ManageStoreResponseDto,
+  ManagedStoreDto,
+  PublishMissing,
+  StoreSummaryDto,
+} from '../types/api';
 import type { RequestContext } from '../types/auth';
 import type { Tables, TablesUpdate } from '../types/database';
 import { cached, invalidate, PUBLIC_READ_TTL_MS } from '../utils/cache';
@@ -177,4 +182,20 @@ export async function setStoreStatus(
   if (missing.length > 0) throw storeNotReady(missing);
   invalidateStore(storeId);
   return toManagedStoreDto(await getStore(storeId));
+}
+
+/**
+ * The store as its managers see it, uncached and whatever its status (a DRAFT branch or the template too: the public
+ * routes serve only ACTIVE stores), with what it still lacks before it can be published.
+ */
+export async function getManagedStore(storeId: string): Promise<ManageStoreResponseDto> {
+  const [store, { data: missing }] = await Promise.all([
+    getStore(storeId),
+    supabaseAdmin.rpc('store_publish_missing', { p_store_id: storeId }).throwOnError(),
+  ]);
+  return {
+    store: toManagedStoreDto(store),
+    brand: store.brand,
+    missing: (missing ?? []) as PublishMissing[],
+  };
 }
