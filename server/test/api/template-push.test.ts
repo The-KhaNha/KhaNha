@@ -3,6 +3,7 @@
 // Anyone but the owner, and any item or store outside the brand, is refused whole.
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { invalidate } from '../../src/utils/cache';
 import { supabaseAdmin } from '../../src/utils/supabase';
 import { api } from '../setup/api';
 import {
@@ -151,6 +152,15 @@ describe('the bounds', () => {
   });
 });
 
+describe("the editor's list shows lineage", () => {
+  it("a branch's copy names the template item it came from; the push sheet previews against it", async () => {
+    const res = await api().get(`/api/stores/${northId}/menu-items`).set(auth(owner));
+    expect(res.status).toBe(200);
+    const [copy] = await copyOf(northId, chai);
+    expect(res.body.items.find((i: { id: string }) => i.id === copy!.id).templateItemId).toBe(chai);
+  });
+});
+
 describe('a push', () => {
   beforeEach(async () => {
     // North renamed its chai, counts it and switched it off: all of it is North's own.
@@ -237,12 +247,14 @@ describe('a push', () => {
   });
 
   it('reaches the public menu at once, and leaves one menu.changed per store sharing one request id', async () => {
-    // A DRAFT branch is not public: publish North for this check, before any read caches it as unseen.
+    // A DRAFT branch is not public: publish North for this check, and drop the in-process cache: an
+    // earlier test's store route read North while it was a DRAFT.
     await supabaseAdmin
       .from('stores')
       .update({ status: 'ACTIVE' })
       .eq('id', northId)
       .throwOnError();
+    invalidate();
     await api().get(`/api/stores/${northId}/menu`); // fill the cache with the old price
     await supabaseAdmin
       .from('menu_items')

@@ -472,6 +472,9 @@ manage screen reads it and `set_store_status` (redefined, same signature) publis
 lands on the new branch's page) and the store shell on the manage reads (the hours editor too); 07b-2b the Profile
 tab and the Go live card (a new branch then lands on its Profile tab, where the address the checklist asks for
 is filled in).
+07c: the push sheet opens from a "Push to branches" button on each row of the template's Menu tab (not from inside
+the item editor). Its preview reads each chosen branch's list fresh and finds the copy by lineage, so
+`ManagedMenuItemDto` gained `templateItemId` (server, additive).
 
 ### PR 08 — Media: the port, local storage, the uploads API (P3.3)
 

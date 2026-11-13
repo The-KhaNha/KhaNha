@@ -154,6 +154,8 @@ export interface ManagedMenuItem extends MenuItem {
   /** The switch alone; `isAvailable` also counts stock. */
   isEnabled: boolean;
   archivedAt: string | null;
+  /** The template item this one was copied from (lineage); null for a branch's own. Optional: older answers lack it. */
+  templateItemId?: string | null;
 }
 
 export interface MenuCategory {
