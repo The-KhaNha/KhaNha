@@ -304,6 +304,16 @@ describe('ordering with options, beyond the table', () => {
         items: [{ menuItemId: item.id, quantity: 1, modifierOptionIds: [real.get('o-large')] }],
       });
     expect(other.body.error.code).toBe('IDEMPOTENCY_KEY_REUSED');
+    // Naming the default the first request left out is another request too: the options asked for are compared.
+    const named = await api()
+      .post('/api/orders')
+      .set({ Authorization: `Bearer ${customer.token}` })
+      .send({
+        storeId,
+        idempotencyKey: key,
+        items: [{ menuItemId: item.id, quantity: 1, modifierOptionIds: [real.get('o-regular')] }],
+      });
+    expect(named.body.error.code).toBe('IDEMPOTENCY_KEY_REUSED');
   });
 
   it('an option refused at checkout drops the cached menu, so the retry shows it as it is', async () => {
@@ -326,5 +336,18 @@ describe('ordering with options, beyond the table', () => {
     const refused = await order([{ menuItemId: item.id, options: [syrup] }]);
     expect(refused.body.error.code).toBe('MODIFIER_INVALID');
     expect(offered((await menu()).body)).toBe(false);
+  });
+
+  it('a line an option brings to ₹0 can be ordered at the ₹0 the customer saw', async () => {
+    await setFlag(true);
+    const free = await itemFor(2000, [SIZE]);
+    // Beside a paid line: an order's total must be above ₹0 (the payment).
+    const paid = await itemFor(5000, []);
+    const res = await order([
+      { menuItemId: free.id, options: [real.get('o-small') ?? ''], expected: 0 },
+      { menuItemId: paid.id, expected: 50 },
+    ]);
+    expect(res.body.error).toBeUndefined();
+    expect(res.body.order.items[0].unitPrice).toBe(0);
   });
 });

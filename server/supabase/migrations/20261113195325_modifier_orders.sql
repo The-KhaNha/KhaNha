@@ -3,6 +3,11 @@
 -- behaviour); a line may carry modifier_option_ids. The signature changes, so the old function is dropped first: a
 -- second overload would make every named call ambiguous.
 
+-- What the request named for a line, sorted, without the defaults place_order added: a retry with the same key must
+-- name the same options to be answered with this order (order.service matchesRequest).
+alter table public.order_items
+  add column requested_modifier_option_ids uuid[] not null default '{}';
+
 -- The snapshots' order on their line: the item's group order, then the option's, as price_order_line applied them.
 alter table public.order_item_modifiers add column position integer not null default 0;
 
@@ -251,6 +256,7 @@ begin
            'unit_price_paise', (p.priced ->> 'unit')::bigint,
            'base_unit_price_paise', m.price_paise,
            'applied', p.priced -> 'applied',
+           'requested', to_jsonb(l.modifier_option_ids),
            'is_available', m.is_available,
            'expected_paise', l.unit_price_paise,
            'image_url', m.image_url,
@@ -324,13 +330,14 @@ begin
 
   insert into public.order_items (
     order_id, line_number, menu_item_id, name, unit_price_paise, base_unit_price_paise, quantity, line_total_paise,
-    image_url, category, reserved_quantity
+    image_url, category, reserved_quantity, requested_modifier_option_ids
   )
   select v_order_id, l.line_number, l.menu_item_id, l.name, l.unit_price_paise, l.base_unit_price_paise, l.quantity,
-         l.unit_price_paise * l.quantity, l.image_url, l.category, l.reserved_quantity
+         l.unit_price_paise * l.quantity, l.image_url, l.category, l.reserved_quantity,
+         array(select x from unnest(coalesce(l.requested, '{}')) as x order by x)
   from jsonb_to_recordset(v_priced) as l(
     line_number integer, menu_item_id uuid, name text, quantity integer, unit_price_paise bigint,
-    base_unit_price_paise bigint, image_url text, category text, reserved_quantity integer
+    base_unit_price_paise bigint, image_url text, category text, reserved_quantity integer, requested uuid[]
   );
 
   -- What each line was made with, as it is now: a later rename or delete of an option leaves these as they were.

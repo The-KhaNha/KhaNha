@@ -711,8 +711,8 @@ already ~22 KB raw, so a 25 KB raw total measured content, not modifiers. The li
 
 13b as built: `price_order_line()` is the SQL half of `priceLine`; `place_order` is dropped and created again with
 `p_modifiers_enabled` (an added defaulted parameter would be a second overload, and named calls ambiguous);
-`order_item_modifiers.position` keeps the snapshots in the order applied. The replay check compares line by line, each requested line matching a stored line of the same item and quantity whose options include the requested
-ones (a stored line also holds defaults the request left out). **The flag stays off until PR 15's client ships with a
+`order_item_modifiers.position` keeps the snapshots in the order applied. The replay check compares line by line, each requested line matching a stored line of the same item, quantity and requested options
+(`order_items.requested_modifier_option_ids`, as named, without the defaults applied). **The flag stays off until PR 15's client ships with a
 `min_client_version` bump**: an older client prices a required group's default at the item's base price and would
 loop on `PRICE_CHANGED`. A line naming a default and one leaving it out stay two lines (the merge happens before the
 groups are known); advisory.

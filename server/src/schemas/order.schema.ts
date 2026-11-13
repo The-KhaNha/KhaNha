@@ -27,7 +27,8 @@ const orderItemInput = z.object({
   expectedUnitPrice: z
     .number()
     .int('expectedUnitPrice must be a whole number of rupees.')
-    .positive('expectedUnitPrice must be positive.')
+    // A negative option can bring a line to ₹0 (P3.2), so 0 is a price a customer can see.
+    .nonnegative('expectedUnitPrice must not be negative.')
     .optional(),
   // The options chosen for this line (P3.2): ids of the item's modifier options. Optional, so the deployed client keeps
   // working; a required group left out takes its default.

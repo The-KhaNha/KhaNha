@@ -570,6 +570,7 @@ export type Database = {
           name: string;
           order_id: string;
           quantity: number;
+          requested_modifier_option_ids: string[];
           reserved_quantity: number;
           unit_price_paise: number;
         };
@@ -585,6 +586,7 @@ export type Database = {
           name: string;
           order_id: string;
           quantity: number;
+          requested_modifier_option_ids?: string[];
           reserved_quantity: number;
           unit_price_paise: number;
         };
@@ -599,6 +601,7 @@ export type Database = {
           name?: string;
           order_id?: string;
           quantity?: number;
+          requested_modifier_option_ids?: string[];
           reserved_quantity?: number;
           unit_price_paise?: number;
         };

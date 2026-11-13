@@ -285,8 +285,8 @@ Body (`server/src/schemas/order.schema.ts`):
   client from before it sends the item's base price as `expectedUnitPrice`, which a required group's priced default
   turns into `PRICE_CHANGED` on every checkout.
 - A replay (the same `idempotencyKey`) must ask for the same lines: each requested line needs a stored line of the
-  same item and quantity whose options include the requested ones (a stored line also holds the defaults applied).
-  Other options are `IDEMPOTENCY_KEY_REUSED`.
+  same item, quantity and requested options (`order_items.requested_modifier_option_ids`, as named, without the
+  defaults applied). Other options, fewer or more, are `IDEMPOTENCY_KEY_REUSED`.
 - Unknown keys (`price`, `unitPrice`, `total`, …) are dropped by `z.object`. Prices come from the database only;
   `expectedUnitPrice` can only refuse an order, never change what is charged. Merged duplicates keep every
   `expectedUnitPrice` sent, and each one is compared.

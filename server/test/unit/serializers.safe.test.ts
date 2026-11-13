@@ -109,6 +109,7 @@ function orderWithDetails(overrides: Partial<OrderWithDetails> = {}): OrderWithD
         image_url: '/images/cold-coffee.jpg',
         base_unit_price_paise: null,
         order_item_modifiers: [],
+        requested_modifier_option_ids: [],
       },
     ],
     ...overrides,
@@ -295,6 +296,7 @@ describe('toOrderDto', () => {
             image_url: '/images/espresso.jpg',
             base_unit_price_paise: null,
             order_item_modifiers: [],
+            requested_modifier_option_ids: [],
           },
           {
             id: 'oi-1',
@@ -307,6 +309,7 @@ describe('toOrderDto', () => {
             image_url: '/images/cold-coffee.jpg',
             base_unit_price_paise: null,
             order_item_modifiers: [],
+            requested_modifier_option_ids: [],
           },
         ] as OrderWithDetails['order_items'],
       }),

@@ -424,7 +424,9 @@ Item options ("Size", "Milk", "Extra cheese +₹20"), scoped to a store like its
   delete cascade, `modifier_option_id` → `modifier_options` on delete set null, `group_name`, `option_name`,
   `price_delta_paise`, `position` (the order `price_order_line` applied them in; PR 13b). Indexes `(order_item_id)`, `(modifier_option_id)`.
 - **`order_items.base_unit_price_paise`** (bigint, ≥ 0, null on older lines): the item's own price on a line whose
-  `unit_price_paise` includes modifiers.
+  `unit_price_paise` includes modifiers. **`order_items.requested_modifier_option_ids`** (uuid[], sorted, default
+  `{}`; PR 13b): the options the request named for the line, without the defaults `place_order` applied, which a
+  retry with the same idempotency key must name again.
 
 ### order_items
 

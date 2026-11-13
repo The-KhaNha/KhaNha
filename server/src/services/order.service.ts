@@ -251,8 +251,8 @@ function matchesRequest(
   input: CreateOrderInput,
   customerName = input.customerName,
 ): boolean {
-  // Line by line: each requested line has its own stored line of the same item and quantity whose options include the
-  // requested ones (a stored line also holds the defaults a request may have left out, P3.2).
+  // Line by line: each requested line has its own stored line of the same item, quantity and requested options (as the
+  // request named them, sorted; the defaults place_order added are not part of the comparison, P3.2).
   const unused = [...order.order_items];
   const sameItems =
     input.items.length === unused.length &&
@@ -261,9 +261,7 @@ function matchesRequest(
         (line) =>
           line.menu_item_id === asked.menuItemId &&
           line.quantity === asked.quantity &&
-          asked.modifierOptionIds.every((id) =>
-            line.order_item_modifiers.some((m) => m.modifier_option_id === id),
-          ),
+          line.requested_modifier_option_ids.join(',') === asked.modifierOptionIds.join(','),
       );
       if (i < 0) return false;
       unused.splice(i, 1);

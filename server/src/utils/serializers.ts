@@ -40,7 +40,7 @@ export function selectOrders() {
        estimated_ready_at, created_at, updated_at, user_id, store_id, store_name,
        store:stores!inner (slug, brand_id),
        order_items (id, line_number, menu_item_id, name, unit_price_paise, base_unit_price_paise, quantity,
-         line_total_paise, image_url,
+         line_total_paise, image_url, requested_modifier_option_ids,
          order_item_modifiers (modifier_option_id, group_name, option_name, price_delta_paise, position))`,
     )
     .order('line_number', { referencedTable: 'order_items' })
