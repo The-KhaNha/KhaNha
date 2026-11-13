@@ -8,11 +8,12 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { invalidate } from '../../src/utils/cache';
 import { supabaseAdmin } from '../../src/utils/supabase';
 import { api } from '../setup/api';
-import { deleteTestStores } from '../setup/helpers';
+import { createTestUser, deleteTestStores, type TestUser } from '../setup/helpers';
 
 const tag = randomUUID().slice(0, 8);
 const brandIds: string[] = [];
 const storeIds: string[] = [];
+const users: TestUser[] = [];
 let slug = '';
 let storeId = '';
 const groupIds: Record<string, string> = {};
@@ -145,7 +146,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await setFlag(false);
   await supabaseAdmin.from('modifier_groups').delete().eq('store_id', storeId).throwOnError();
-  await deleteTestStores(storeIds, brandIds, []);
+  await deleteTestStores(storeIds, brandIds, users);
 });
 
 const menu = async () => {
@@ -217,5 +218,64 @@ describe('modifiers on the public menu', () => {
     expect(bytes(withModifiers) - bytes(plain)).toBeLessThan(9 * 1024);
     // What a phone downloads: nginx gzips JSON at level 6.
     expect(gzipSync(JSON.stringify(withModifiers), { level: 6 }).length).toBeLessThan(8 * 1024);
+  });
+
+  it('the demo reset clears orders whose lines carry modifier snapshots', async () => {
+    const customer = await createTestUser();
+    users.push(customer);
+    const { data: order } = await supabaseAdmin
+      .from('orders')
+      .insert({
+        user_id: customer.id,
+        store_id: storeId,
+        store_name: 'Mods',
+        customer_name: 'Test',
+        total_paise: 15000,
+        estimated_ready_at: new Date().toISOString(),
+        status: 'COLLECTED',
+      })
+      .select('id')
+      .single()
+      .throwOnError();
+    const { data: item } = await supabaseAdmin
+      .from('menu_items')
+      .select('id')
+      .eq('store_id', storeId)
+      .limit(1)
+      .single()
+      .throwOnError();
+    const { data: line } = await supabaseAdmin
+      .from('order_items')
+      .insert({
+        order_id: order.id,
+        line_number: 1,
+        menu_item_id: item.id,
+        name: 'Coffee',
+        category: 'Coffee',
+        quantity: 1,
+        reserved_quantity: 0,
+        unit_price_paise: 15000,
+        base_unit_price_paise: 12000,
+        line_total_paise: 15000,
+      })
+      .select('id')
+      .single()
+      .throwOnError();
+    await supabaseAdmin
+      .from('order_item_modifiers')
+      .insert({
+        order_item_id: line.id,
+        group_name: 'Size',
+        option_name: 'Large',
+        price_delta_paise: 3000,
+      })
+      .throwOnError();
+    const { error } = await supabaseAdmin.rpc('reset_demo_orders');
+    expect(error).toBeNull();
+    const { data: left } = await supabaseAdmin
+      .from('order_item_modifiers')
+      .select('id')
+      .throwOnError();
+    expect(left).toEqual([]);
   });
 });

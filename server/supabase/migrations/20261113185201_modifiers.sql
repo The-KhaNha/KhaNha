@@ -77,5 +77,16 @@ create trigger modifier_options_audit
 -- The links have no id for an audit row (audit_log.entity_id); the function that sets an item's groups (PR 14) records
 -- the change in its menu.changed event instead.
 
+-- The demo reset (the seed) empties orders with their lines; their modifier snapshots must go with them, or the
+-- truncate is refused for the foreign key.
+create or replace function public.reset_demo_orders()
+returns void
+language sql
+security definer
+set search_path = ''
+as $$
+  truncate public.order_item_modifiers, public.order_items, public.orders restart identity;
+$$;
+
 insert into public.feature_flags (key, description, enabled, client_visible)
 values ('modifiers', 'Item options (size, milk, add-ons) on the menu and in orders (P3.2).', false, true);

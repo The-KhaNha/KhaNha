@@ -55,8 +55,8 @@ The client reads the first two from the menu's `rules`; with no menu loaded it u
 ## Feature flags
 
 Not a limit but a switch: whether a feature is on, and for whom. One `feature_flags` row per flag
-([SCHEMA.md](SCHEMA.md#feature_flags)), created by the migration of the phase that ships the feature (none yet; the
-planned ones are in the roadmap's P1.7). Evaluated on the server by `flags.service.isEnabled(key, { userId, role,
+([SCHEMA.md](SCHEMA.md#feature_flags)), created by the migration of the phase that ships the feature: `modifiers` (P3.2, `client_visible`, off: item
+options on the menu and, from P3 PR 13b, in orders; turned on per store with `rules.storeIds`). Evaluated on the server by `flags.service.isEnabled(key, { userId, role,
 storeId })`: `enabled`, then the store list, then the role list, then a stable percentage of signed-in users. An
 unknown key is off, so code can ship before its flag's row. Read through `getFlags()` (cached as `feature_flags`,
 invalidated by the flip). A `client_visible` flag also reaches the client through `GET /api/config`'s `features`
