@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { ApiError } from '../../services/api';
+import type { MenuItemInput } from '../../services/manageMenu';
 import type { ManagedMenuItem } from '../../types/api';
 import { ItemEditor } from './ItemEditor';
 import type { PhotoUploadState } from './usePhotoUpload';
@@ -57,7 +58,9 @@ const withPhoto: ManagedMenuItem = {
 };
 
 /** Opens the editor on `withPhoto`; `again()` renders it once more after setPhoto. */
-function editPhoto(onSave: ReturnType<typeof vi.fn> = vi.fn().mockResolvedValue(undefined)) {
+function editPhoto(
+  onSave: Mock<(input: MenuItemInput) => Promise<void>> = vi.fn().mockResolvedValue(undefined),
+) {
   const ui = () => (
     <ItemEditor storeId="s1" item={withPhoto} categories={[]} onSave={onSave} onClose={vi.fn()} />
   );
@@ -116,7 +119,7 @@ describe('ItemEditor photo', () => {
   });
 
   it('the photo cannot change while the item is being saved', async () => {
-    editPhoto(vi.fn(() => new Promise(() => {})));
+    editPhoto(vi.fn(() => new Promise<void>(() => {})));
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Remove' })).toBeDisabled());
     expect(screen.getByRole('button', { name: 'Change photo' })).toBeDisabled();
