@@ -62,11 +62,34 @@ an insert, or an update of anything but `stock_quantity` and `template_item_id`.
 so a copy or a bulk edit is one event, and a stock move by an order is none; a stock change by hand (`adjust_stock`) emits its own one. The actor and request id come from
 `app.actor` or the Data API's `x-actor` and `x-request-id` headers. Nothing subscribes to it yet (P7.7).
 
+## Media events
+
+`media.uploaded` (`aggregateId`: the upload; payload `{ key, contentType, byteSize }`) is emitted by
+`complete_media_upload` when an upload's bytes are in storage, and subscribed to `q_media`. `mediaHandler`
+(`jobs/media.ts`) reads the upload row first: anything but `UPLOADED` (or a row that is gone) is acknowledged without
+touching the store, so a redelivery after a completed run costs one row read. Otherwise it reads the original, which it
+treats as untrusted even after `complete` (a presigned form can replace it at the same size for five minutes): `sharp`
+decides the real format (JPEG, PNG or WebP) and refuses more than 6000 pixels on a side (`MEDIA_VARIANTS`). It decodes once
+(rotated by the EXIF orientation, cut to the widest variant, kept raw), drops all metadata and writes WebP at 400 and
+900 px wide (never enlarged) under
+`stores/<store>/variants/<sha256 prefix>-<width>.webp`, content-addressed, so a rerun writes the same keys. Then
+`finish_media_upload` marks the upload `PROCESSED` with its variants and emits `media.processed`, and the original is
+deleted last; a redelivery of a finished upload removes it again (idempotent, no read), so a crash or a store failure
+between the mark and the removal leaves nothing behind. A photo that can never be processed (not an image, too large,
+the original missing) is marked `FAILED` with a short reason the manager sees (the decoder's own message is logged
+only), its original is removed (`media.failed`), and the job ends normally: nothing is dead-lettered. A store failure
+that may pass (a 5xx, no answer) is retried; one that will not (a denied role) dead-letters and leaves the upload
+`UPLOADED` for the sweep. Variants are content-addressed, so two uploads of the same photo share them: whatever
+removes a variant first checks that nothing still points at it (the sweep, PR 10b).
+`sharp` runs with its cache off and one thread, one photo at a time: the production host has 1 GB. The test drives a
+6000×6000 photo through it under a 400 MB peak.
+
 ## Queues and subscriptions
 
-| Queue             | Subscribed to | Consumer                           | Added by                    |
-| ----------------- | ------------- | ---------------------------------- | --------------------------- |
-| `q_notifications` | `order.*`     | `notifyHandler` (`jobs/notify.ts`) | `20261024181904_outbox.sql` |
+| Queue             | Subscribed to                                                                                          | Consumer                           | Added by                            |
+| ----------------- | ------------------------------------------------------------------------------------------------------ | ---------------------------------- | ----------------------------------- |
+| `q_notifications` | `order.*`                                                                                              | `notifyHandler` (`jobs/notify.ts`) | `20261024181904_outbox.sql`         |
+| `q_media`         | `media.uploaded` (not `media.*`: the handler's own `media.processed` / `media.failed` would come back) | `mediaHandler` (`jobs/media.ts`)   | `20261113170333_media_pipeline.sql` |
 
 A queue is created with its first consumer, never ahead of it, in one migration: `select pgmq.create('q_<name>')`,
 then its `event_subscriptions` rows. A subscription naming a queue that does not exist makes `emit_event` raise, and
@@ -110,9 +133,10 @@ would stay hidden for its whole visibility timeout with no one to handle it. A f
 message simply comes back. A message never read, or one that is not a domain event, is an `InvariantError`:
 dead-lettered, logged with `invariant: true`. Log lines: [LOGGING.md](LOGGING.md#jobs).
 
-| Handler         | Queue             | Concurrency | Visibility | Attempts | Backoff     | Does (until P6.3)                        |
-| --------------- | ----------------- | ----------- | ---------- | -------- | ----------- | ---------------------------------------- |
-| `notifyHandler` | `q_notifications` | 4           | 30 s       | 5        | 5 s → 900 s | logs `info` "Order event" with `orderId` |
+| Handler         | Queue             | Concurrency | Visibility | Attempts | Backoff      | Does (until P6.3)                                                                                                                    |
+| --------------- | ----------------- | ----------- | ---------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `notifyHandler` | `q_notifications` | 4           | 30 s       | 5        | 5 s → 900 s  | logs `info` "Order event" with `orderId`                                                                                             |
+| `mediaHandler`  | `q_media`         | 1           | 120 s      | 5        | 10 s → 900 s | the photo's variants ([Media events](#media-events)); `info` "Photo processed", `warn` "Photo refused" with `uploadId` and `failure` |
 
 ## The worker process
 

@@ -69,3 +69,13 @@ export const MEDIA_UPLOAD = {
 } as const;
 
 export type MediaContentType = keyof typeof MEDIA_UPLOAD.types;
+
+/**
+ * What the worker makes of an uploaded photo (P3.3): WebP at these widths (never enlarged), from an original no wider
+ * or taller than `maxSide`. 400w is the menu card's thumbnail, 900w the item sheet's photo.
+ */
+export const MEDIA_VARIANTS = {
+  widths: [400, 900],
+  maxSide: 6000,
+  webpQuality: 80,
+} as const;

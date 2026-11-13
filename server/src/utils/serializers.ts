@@ -302,15 +302,26 @@ export function toFeatureFlagDto(flag: Tables<'feature_flags'>): FeatureFlagDto 
   };
 }
 
-/** A media_uploads row; `url` is the store's public path for its key (integrations/media). */
-export function toMediaUploadDto(row: Tables<'media_uploads'>, url: string): MediaUploadDto {
+/**
+ * A media_uploads row. `publicPath` is the store's (integrations/media): the original is deleted once processed, so a
+ * PROCESSED upload is served by its largest variant.
+ */
+export function toMediaUploadDto(
+  row: Tables<'media_uploads'>,
+  publicPath: (key: string) => string,
+): MediaUploadDto {
+  const variants = Array.isArray(row.variants)
+    ? (row.variants as { width: number; height: number; key: string }[]).map(
+        ({ width, height, key }) => ({ width, height, url: publicPath(key) }),
+      )
+    : null;
   return {
     id: row.id,
     status: row.status,
     contentType: row.content_type,
     byteSize: row.byte_size,
-    url,
-    variants: row.variants,
+    url: variants?.at(-1)?.url ?? publicPath(row.original_key),
+    variants,
     failure: row.failure,
     createdAt: toIso(row.created_at),
   };

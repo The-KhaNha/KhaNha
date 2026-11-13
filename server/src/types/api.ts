@@ -313,10 +313,10 @@ export interface MediaUploadDto {
   status: 'PENDING' | 'UPLOADED' | 'PROCESSED' | 'FAILED';
   contentType: string;
   byteSize: number;
-  /** Where the original is served from (a path on this API in local mode, the CDN in production). */
+  /** Where the photo is served from: the largest variant once PROCESSED, the original before. */
   url: string;
-  /** The resized copies, once PROCESSED (PR 10); null before. */
-  variants: unknown;
+  /** The WebP copies, narrowest first, once PROCESSED; null before. */
+  variants: { width: number; height: number; url: string }[] | null;
   failure: string | null;
   createdAt: string;
 }

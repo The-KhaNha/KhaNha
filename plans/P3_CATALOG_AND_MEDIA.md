@@ -548,7 +548,7 @@ local bucket and its CORS rule (refused on production). nginx's `/media/` upstre
 
 ### PR 10 — Media: the image pipeline in the worker (P3.3)
 
-- [ ] Merged
+- [ ] Merged (10a; 10b)
 
 Migration `<ts>_q_media.sql`: `select pgmq.create('q_media')`; subscription `('media.*', 'q_media')`;
 a nightly schedule calls `emit_event('media.sweep', …)`, because the sweep below deletes objects from the store,
@@ -593,6 +593,13 @@ and the image stays under its 300 MB budget.
 
 Docs: `docs/JOBS.md` (the queue, the handler, the sweep), `docs/SCHEMA.md`, `docs/API.md` (`imageSrcSet`,
 `imageUploadId`), `docs/LOGGING.md`. Intent: `--server minor --client patch`.
+
+As built, in two PRs. **10a**: the queue (`media.uploaded` only, not `media.*`, so the handler's own
+`media.processed` / `media.failed` do not come back), `finish_media_upload` (the transition and its event, actor
+`WORKER`), the handler with `sharp` 0.35 (the variants are `{ width, height, key }` under
+`stores/<store>/variants/`, inside `MEDIA_KEY`), the S3 write's immutable `Cache-Control`, and the `images` job's
+sharp check (the API image is 284 MB of its 300). **10b**: `imageUploadId` and `imageSrcSet` on the item routes, the
+nightly `media.sweep`, and its tests.
 
 ### PR 11 — Client: photo upload, and `FoodPhoto` with variants (P3.3)
 

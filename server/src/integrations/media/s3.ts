@@ -104,11 +104,14 @@ export function s3MediaStore(config: S3MediaConfig): MediaStore {
             Key,
             Body: bytes,
             ContentType: contentType,
+            // Write-once keys never change, so whatever serves them may keep them for good.
+            CacheControl: 'public, max-age=31536000, immutable',
             IfNoneMatch: '*',
           }),
         );
       } catch (err) {
-        if (status(err) === 412)
+        // 412: the key holds bytes; 409: another write of it is in flight. Either way it is not this write's.
+        if (status(err) === 412 || status(err) === 409)
           throw Object.assign(new Error(`Already stored: ${key}`), { code: 'EEXIST' });
         failed('write')(err);
       }

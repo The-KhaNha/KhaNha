@@ -8,8 +8,10 @@ import { toMediaUploadDto } from '../utils/serializers';
 
 // Photo uploads (P3.3), every route after requireStore('menu.edit').
 
-const dto = (row: mediaService.MediaUploadRow) =>
-  toMediaUploadDto(row, mediaStore().publicPath(row.original_key));
+const dto = (row: mediaService.MediaUploadRow) => {
+  const store = mediaStore();
+  return toMediaUploadDto(row, (key) => store.publicPath(key));
+};
 
 /** POST /api/stores/:storeId/media/uploads: an upload id and where to send the bytes. */
 export const createUpload: BodyHandler<CreateUploadInput> = async (req, res) => {

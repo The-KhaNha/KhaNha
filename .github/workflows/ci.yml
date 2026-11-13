@@ -281,6 +281,9 @@ jobs:
             curl -fsS -o /dev/null -w "$url %{http_code}\n" "$url"
           done
           curl -fsS localhost:8000/api/health | grep -q '"commit":"${{ github.sha }}"'
+          # The worker's image pipeline: sharp's prebuilt libvips must load and encode in the plain-Alpine runtime.
+          docker run --rm fp-api:ci node -e "require('sharp')({create:{width:8,height:8,channels:3,background:'#fff'}}).webp().toBuffer().then(()=>console.log('sharp ok'))" \
+            | grep -q 'sharp ok' || { echo "sharp does not load in fp-api"; exit 1; }
           # The web manifest goes out as a manifest (nginx's own MIME table says octet-stream).
           curl -fsSI localhost:8080/manifest.webmanifest | grep -qi '^content-type: application/manifest+json' \
             || { echo "manifest served with the wrong content type"; exit 1; }

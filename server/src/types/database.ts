@@ -1057,6 +1057,17 @@ export type Database = {
         Args: { p_actor?: Json; p_brand_id: string; p_request_id?: string };
         Returns: string;
       };
+      finish_media_upload: {
+        Args: {
+          p_actor?: Json;
+          p_failure?: string;
+          p_request_id?: string;
+          p_status: Database['public']['Enums']['media_upload_status'];
+          p_upload_id: string;
+          p_variants?: Json;
+        };
+        Returns: boolean;
+      };
       lock_store_menu: { Args: { p_store_id: string }; Returns: undefined };
       pause_store: {
         Args: {

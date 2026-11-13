@@ -526,7 +526,10 @@ brand template too) → `media.controller` → `media.service`; another store's 
    `media.uploaded` ([SCHEMA.md](SCHEMA.md#media_uploads)). A repeat is 200 and emits nothing. Answers
    `{ upload: MediaUploadDto }`.
 4. `GET …/uploads/:uploadId`: `{ upload: MediaUploadDto }` (`id`, `status`, `contentType`, `byteSize`, `url`,
-   `variants`, `failure`, `createdAt`).
+   `variants`, `failure`, `createdAt`). The worker then makes the photo's WebP variants ([JOBS.md](JOBS.md#media-events)):
+   `PROCESSED` with `variants` (`[{ width, height, url }]`, narrowest first) and `url` the largest of them (the
+   original is deleted), or `FAILED` with `failure`, a short reason such as `not a photo` or `larger than 6000 pixels on
+a side`. Before that `variants` is null and `url` the original's path. Poll this route for the outcome.
 
 In local mode the API serves `/media/<key>` from `MEDIA_LOCAL_DIR` with `Cache-Control: public, max-age=31536000,
 immutable` (keys never change); in S3 mode `/media` is not served by the API.
