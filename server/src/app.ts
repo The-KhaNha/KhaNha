@@ -9,6 +9,7 @@ import { readClientVersion } from './middleware/clientVersion';
 import { errorHandler, loggedAtDebug, notFoundHandler } from './middleware/errorHandler';
 import { floodLimiter } from './middleware/rateLimit';
 import { securityHeaders } from './middleware/securityHeaders';
+import { MEDIA_UPLOAD } from './schemas/limits';
 import { payloadTooLarge } from './utils/errors';
 import { apiRouter } from './routes/index';
 import { env } from './utils/env';
@@ -21,7 +22,7 @@ const REQUEST_ID = /^[\w.-]{1,64}$/;
 export const JSON_BODY_LIMIT_BYTES = 100 * 1024;
 
 // The local-mode photo upload route under /api (store.routes MEDIA_FILE_ROUTE).
-const MEDIA_FILE_PATH = /^\/stores\/[^/]+\/media\/uploads\/[^/]+\/file$/;
+const MEDIA_FILE_PATH = /^\/stores\/[^/]+\/media\/uploads\/[^/]+\/file\/?$/i;
 
 // An upload refused for its declared size is read and thrown away before the 413, up to these bounds. Answering with it
 // unread made the OS reset the connection, and a client still sending could lose the 413 to the reset (nginx in front
@@ -134,9 +135,11 @@ export function createApp(): Express {
   // body-parser reads an oversized body to its end, however long, before answering 413. Refusing on the declared
   // length reads at most the drain bounds instead, then answers and closes the connection.
   app.use('/api', (req, res, next) => {
-    // The local-mode photo route takes up to MEDIA_UPLOAD.maxBytes of raw bytes, under its own limit (store.routes).
+    // The local-mode photo route takes up to MEDIA_UPLOAD.maxBytes of raw bytes (store.routes); still refused on its
+    // declared length past that, so a huge body is never read.
     const mediaFile = req.method === 'PUT' && MEDIA_FILE_PATH.test(req.path);
-    if (!mediaFile && Number(req.headers['content-length']) > JSON_BODY_LIMIT_BYTES) {
+    const limit = mediaFile ? MEDIA_UPLOAD.maxBytes : JSON_BODY_LIMIT_BYTES;
+    if (Number(req.headers['content-length']) > limit) {
       res.set('Connection', 'close');
       drainThen(req, () => next(payloadTooLarge()));
       return;

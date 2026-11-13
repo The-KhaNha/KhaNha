@@ -37,10 +37,12 @@ export function localMediaStore(root = env.MEDIA_LOCAL_DIR): MediaStore {
         (err) => (missing(err) ? null : Promise.reject(err)),
       );
     },
+    // Write-once ('wx'): a key's bytes never change after they land, which is what lets /media cache them as
+    // immutable. A second write of a key is EEXIST.
     async write(key, bytes) {
       const full = pathOf(key);
       await mkdir(dirname(full), { recursive: true });
-      await writeFile(full, bytes);
+      await writeFile(full, bytes, { flag: 'wx' });
     },
     async remove(key) {
       await rm(pathOf(key), { force: true });

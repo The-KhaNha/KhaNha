@@ -75,7 +75,7 @@ export interface StoreNotReadyDetails {
 /** Why a photo upload was refused (P3.3), so the client can say which rule it broke. */
 export interface UploadInvalidDetails {
   kind: 'uploadInvalid';
-  reason: 'type' | 'size' | 'sizeMismatch' | 'content' | 'notUploaded' | 'state';
+  reason: 'type' | 'sizeMismatch' | 'content' | 'notUploaded' | 'state';
 }
 
 export type ErrorDetails =

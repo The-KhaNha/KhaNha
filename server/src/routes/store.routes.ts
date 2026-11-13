@@ -255,6 +255,7 @@ storesRouter.put(
   MEDIA_FILE_ROUTE,
   requireAuth,
   requireStore('menu.edit'),
+  writeLimiter,
   express.raw({ type: () => true, limit: MEDIA_UPLOAD.maxBytes }),
   media.putFile,
 );

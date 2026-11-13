@@ -3,7 +3,10 @@
 // one media.uploaded; a repeat changes nothing. Another store's upload is 404; staff cannot upload. In S3 mode (until
 // PR 09) the local route is 404 and starting an upload is 503.
 import { randomUUID } from 'node:crypto';
+import { request } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { createApp } from '../../src/app';
 import { env } from '../../src/utils/env';
 import { supabaseAdmin } from '../../src/utils/supabase';
 import { api } from '../setup/api';
@@ -206,6 +209,60 @@ describe('an upload, start to finish', () => {
       expect((await complete(uploadId)).body.error.details.reason).toBe('notUploaded');
     },
   );
+
+  it('a photo is written once: a second PUT, even before complete, is refused and the first stays', async () => {
+    const first = png(120 * 1024);
+    const { uploadId } = (await start({ contentType: 'image/png', byteSize: first.length })).body;
+    // Express matches paths case-insensitively with a trailing slash; the size exemption must match the same way.
+    const odd = await api()
+      .put(`${base()}/${uploadId}/FILE/`)
+      .set(auth(manager))
+      .set('Content-Type', 'image/png')
+      .send(first);
+    expect(odd.status).toBe(204);
+    const again = await put(uploadId, Buffer.concat([PNG_HEAD, Buffer.alloc(first.length - 8, 9)]));
+    expect(again.body.error).toMatchObject({
+      code: 'UPLOAD_INVALID',
+      details: { reason: 'state' },
+    });
+    const done = await complete(uploadId);
+    const served = await api().get(done.body.upload.url);
+    expect(Buffer.compare(served.body as Buffer, first)).toBe(0);
+  });
+
+  it('a body declared past 8 MB is 413 at once, before any of it is read', async () => {
+    const { uploadId } = (await start({ contentType: 'image/png', byteSize: 1000 })).body;
+    // Only the headers: a guard that waited for the body would never answer within the drain bound.
+    const server = createApp().listen(0, '127.0.0.1');
+    await new Promise((resolve) => server.once('listening', resolve));
+    try {
+      const { port } = server.address() as AddressInfo;
+      const status = await new Promise<number>((resolve, reject) => {
+        const req = request(
+          {
+            host: '127.0.0.1',
+            port,
+            method: 'PUT',
+            path: `${base()}/${uploadId}/file`,
+            headers: {
+              ...auth(manager),
+              'Content-Type': 'image/png',
+              'Content-Length': String(9 * 1024 * 1024),
+            },
+          },
+          (res) => {
+            res.resume();
+            resolve(res.statusCode ?? 0);
+          },
+        );
+        req.on('error', reject);
+        req.flushHeaders();
+      });
+      expect(status).toBe(413);
+    } finally {
+      server.close();
+    }
+  });
 
   it('an unknown or malformed upload id is 404', async () => {
     expect((await complete(randomUUID())).status).toBe(404);

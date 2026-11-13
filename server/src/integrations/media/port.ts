@@ -25,6 +25,7 @@ export interface MediaStore {
   read(key: string): Promise<Buffer | null>;
   /** The stored object's size, or null when nothing is there yet. */
   size(key: string): Promise<number | null>;
+  /** Write-once: a key that already holds bytes is refused (an Error with code EEXIST). */
   write(key: string, bytes: Buffer, contentType: string): Promise<void>;
   remove(key: string): Promise<void>;
   /** The URL path a browser loads it from. */

@@ -94,7 +94,12 @@ export async function putLocalFile(
     );
   if (!looksLike(row.content_type, bytes))
     throw uploadInvalid('That file is not a JPEG, PNG or WebP photo.', 'content');
-  await store.write(row.original_key, bytes, row.content_type);
+  // Write-once: a photo already sent for this upload (or one racing this request) is never replaced.
+  await store.write(row.original_key, bytes, row.content_type).catch((err: unknown) => {
+    if ((err as NodeJS.ErrnoException).code === 'EEXIST')
+      throw uploadInvalid('The photo for this upload was already sent.', 'state');
+    throw err;
+  });
 }
 
 /**
@@ -123,8 +128,9 @@ export async function completeUpload(
       );
     }
   }
+  let moved: boolean;
   try {
-    await supabaseAdmin
+    const { data } = await supabaseAdmin
       .rpc('complete_media_upload', {
         p_store_id: storeId,
         p_upload_id: row.id,
@@ -132,11 +138,13 @@ export async function completeUpload(
         p_request_id: ctx.requestId,
       })
       .throwOnError();
+    moved = data;
   } catch (err) {
     if (raisedByDatabase(err, 'NOT_FOUND')) throw notFound('Upload not found.');
     throw err;
   }
-  return findUpload(storeId, row.id);
+  // A repeat changed nothing: the row read above is still the answer.
+  return moved ? findUpload(storeId, row.id) : row;
 }
 
 export const getUpload = findUpload;

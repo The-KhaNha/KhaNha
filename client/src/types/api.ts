@@ -217,7 +217,7 @@ export interface ApiErrorDetails {
   /** STORE_PAUSED: when the pause ends, or null when it lasts until someone resumes. */
   pausedUntil?: string | null;
   /** UPLOAD_INVALID: which rule a photo upload broke. */
-  reason?: 'type' | 'size' | 'sizeMismatch' | 'content' | 'notUploaded' | 'state';
+  reason?: 'type' | 'sizeMismatch' | 'content' | 'notUploaded' | 'state';
   /** STORE_NOT_READY: what a store still needs before it can be published: 'address', 'hours', 'menu'. */
   missing?: string[];
   /** RATE_LIMITED: seconds until the window resets, the same number as the Retry-After header. */

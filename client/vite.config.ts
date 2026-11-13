@@ -38,6 +38,11 @@ export default defineConfig(({ mode }) => {
           target: env.VITE_API_PROXY_TARGET ?? 'http://localhost:8000',
           changeOrigin: true,
         },
+        // Photos in local media mode (MEDIA_STORAGE=local) are served by the API.
+        '/media': {
+          target: env.VITE_API_PROXY_TARGET ?? 'http://localhost:8000',
+          changeOrigin: true,
+        },
       },
     },
   };

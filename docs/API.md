@@ -516,7 +516,8 @@ brand template too) → `media.controller` → `media.service`; another store's 
 2. Local mode only (`MEDIA_STORAGE=local`, development): `PUT /stores/:storeId/media/uploads/:uploadId/file` with
    the raw bytes and the declared `Content-Type` (the start answer's `headers`). This route alone takes a body past
    the 100 KB JSON limit, up to 8 MB. The bytes must be exactly the declared size (`sizeMismatch`), of the declared
-   type (`type`), and start the way that type does (`content`, the magic bytes); a finished upload is `state`. All
+   type (`type`), and start the way that type does (`content`, the magic bytes); a key is written once, so a second PUT, or one for a
+   finished upload, is `state`. A body declared past 8 MB is 413 before it is read; `writeLimiter` applies. All
    400 `UPLOAD_INVALID`, nothing written. 204. In S3 mode it is 404.
 3. `POST …/uploads/:uploadId/complete`: checks the bytes arrived at the declared size (`notUploaded`, or
    `sizeMismatch` and the object is removed), then `complete_media_upload` marks it `UPLOADED` and emits
@@ -1060,7 +1061,7 @@ shape carries a `kind`, and the client narrows on it.
 | `StorePausedDetails`   | `STORE_PAUSED`                                                            | `{ kind: 'storePaused', pausedUntil }`: when the pause ends (ISO 8601); null when it lasts until someone resumes                                                                                 |
 | `StoreClosedDetails`   | `STORE_CLOSED`                                                            | `{ kind: 'storeClosed', nextChangeAt }`: when the store next opens (ISO 8601); absent when no opening is known                                                                                   |
 | `StoreNotReadyDetails` | `STORE_NOT_READY`                                                         | `{ kind: 'storeNotReady', missing }`: what to add before publishing, any of `address`, `hours`, `menu`                                                                                           |
-| `UploadInvalidDetails` | `UPLOAD_INVALID`                                                          | `{ kind: 'uploadInvalid', reason }`: which rule a photo upload broke, `type`, `size`, `sizeMismatch`, `content`, `notUploaded` or `state`                                                        |
+| `UploadInvalidDetails` | `UPLOAD_INVALID`                                                          | `{ kind: 'uploadInvalid', reason }`: which rule a photo upload broke, `type`, `sizeMismatch`, `content`, `notUploaded` or `state`                                                        |
 | `RateLimitDetails`     | `RATE_LIMITED`                                                            | `{ kind: 'rateLimit', retryAfterSeconds }`: the same number as the `Retry-After` header, the seconds until that key's window resets                                                              |
 
 ### Error codes
