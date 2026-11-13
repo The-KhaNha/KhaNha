@@ -27,6 +27,7 @@ export const managedStores = (user: User, stores: StoreSummary[]): StoreSummary[
 
 export const MANAGE_TABS = [
   { path: 'menu', label: 'Menu' },
+  { path: 'stock', label: 'Stock' },
   { path: 'hours', label: 'Hours' },
   { path: 'settings', label: 'Settings' },
   { path: 'team', label: 'Team' },

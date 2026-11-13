@@ -7,6 +7,7 @@ import { IconButton } from '../components/IconButton';
 import { Input } from '../components/Input';
 import { Price } from '../components/Price';
 import { Skeleton } from '../components/Skeleton';
+import { Switch } from '../components/Switch';
 import { useAuthStore } from '../features/auth/authStore';
 import { ItemEditor } from '../features/manage/ItemEditor';
 import { canEditMenu } from '../features/manage/manageRules';
@@ -167,30 +168,12 @@ export function ManageMenuTab({ store }: ManageMenuTabProps) {
                   />
                 </>
               )}
-              <button
-                type="button"
-                role="switch"
-                aria-checked={item.isEnabled}
-                aria-label={`${item.name} on the menu`}
+              <Switch
+                checked={item.isEnabled}
+                label={`${item.name} on the menu`}
                 disabled={!!menu.listBusy || menu.pendingIds.has(item.id)}
-                onClick={() => menu.toggle(item)}
-                className={cn(
-                  'relative h-11 w-14 shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus',
-                )}
-              >
-                <span
-                  className={cn(
-                    'absolute inset-x-1 top-2.5 h-6 rounded-full',
-                    item.isEnabled ? 'bg-success-500' : 'bg-hint',
-                  )}
-                />
-                <span
-                  className={cn(
-                    'absolute left-2 top-3 h-4 w-4 rounded-full bg-surface transition-transform motion-reduce:transition-none',
-                    item.isEnabled && 'translate-x-6',
-                  )}
-                />
-              </button>
+                onChange={() => menu.toggle(item)}
+              />
             </li>
           ))}
         </ul>

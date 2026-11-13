@@ -158,6 +158,16 @@ const LAYOUT_ROUTES: {
   { path: '/staff/cafe', role: 'STAFF' },
   // An account on no store's team: the switcher's empty state.
   { path: '/staff', role: 'CUSTOMER' },
+  // The stock screen of a manager: the staff switch, a row with a count and a low one.
+  {
+    path: '/manage/cafe/stock',
+    role: 'CUSTOMER',
+    account: {
+      memberships: [
+        { storeId: store.id, storeSlug: store.slug, storeName: store.name, role: 'MANAGER' },
+      ],
+    },
+  },
   // The hours editor of a manager, with a day that has hours (its Add and Copy row).
   {
     path: '/manage/cafe/hours',

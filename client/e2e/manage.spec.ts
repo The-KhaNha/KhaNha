@@ -86,3 +86,41 @@ test('a manager adds an item and a customer sees it', async ({ page }) => {
   await page.goto('/s/cafe/menu');
   await expect(page.getByText('Masala Chai').first()).toBeVisible();
 });
+
+test('staff marks an item sold out on the Stock view and the menu shows it', async ({ page }) => {
+  await mockApi(page);
+  await signIn(page, 'STAFF');
+  const first = menu.categories[0]!.items[0]!;
+  let soldOut = false;
+  const current = () => ({
+    ...first,
+    stockQuantity: soldOut ? 0 : 8,
+    isAvailable: !soldOut,
+  });
+  await page.route('**/api/stores/s1/stock', (route) =>
+    route.fulfill({
+      json: { items: [{ ...current(), isEnabled: true, archivedAt: null }], lowStockThreshold: 5 },
+    }),
+  );
+  await page.route(`**/api/stores/s1/menu-items/${first.id}/stock`, (route) => {
+    expect(route.request().postDataJSON()).toEqual({ set: 0 });
+    soldOut = true;
+    return route.fulfill({ json: { stockQuantity: 0 } });
+  });
+  await page.route('**/api/stores/cafe/menu', (route) =>
+    route.fulfill({
+      json: { ...menu, categories: [{ name: 'Coffee', items: [current()] }], popular: [] },
+    }),
+  );
+
+  await page.goto('/staff/cafe');
+  await page.getByRole('button', { name: 'Stock' }).click();
+  await expect(page.getByLabel(`${first.name}: 8 left`)).toBeVisible();
+  await noHorizontalOverflow(page);
+  await page.getByRole('button', { name: 'Mark sold out' }).click();
+  await expect(page.getByLabel(`${first.name}: 0 left`)).toBeVisible();
+  expect(soldOut).toBe(true);
+
+  await page.goto('/s/cafe/menu');
+  await expect(page.getByText('Sold out').first()).toBeVisible();
+});

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { Store as StoreIcon } from 'lucide-react';
-import { ButtonLink } from '../components/Button';
+import { ButtonLink, buttonClasses } from '../components/Button';
 import { Card } from '../components/Card';
 import { EmptyState } from '../components/EmptyState';
 import type { Order, OrderStatus } from '../types/api';
@@ -27,6 +27,8 @@ import {
 } from '../features/orders/staffBoardRules';
 import { ApiError } from '../services/api';
 import { updateOrderStatus } from '../services/orders';
+import { StockList } from '../features/stock/StockList';
+import { canSeeStock } from '../features/stock/stockRules';
 
 /** The 200ms --animate-card-leave plus a 20ms margin, so the card is removed just after it finishes fading. */
 const LEAVE_MS = 220;
@@ -39,6 +41,7 @@ export function StaffDashboardPage() {
   );
   const storeId = membership?.storeId;
   const { polling } = useConfig();
+  // Keeps polling in the Stock view: an unchanged list is a bodiless 304, and the board is current when staff switch back.
   const { orders, isLoading, error, retry, mutate, updatedAt } = useOrders({
     audience: 'staff',
     storeId,
@@ -53,6 +56,8 @@ export function StaffDashboardPage() {
   const navigate = useNavigate();
 
   const [filterKey, setFilterKey] = useState<StaffFilterKey>('ALL');
+  const [view, setView] = useState<'orders' | 'stock'>('orders');
+  const stockView = view === 'stock' && canSeeStock(membership);
   const [pendingIds, setPendingIds] = useState<ReadonlySet<string>>(new Set());
   const [actionErrors, setActionErrors] = useState<Record<string, StaffActionError>>({});
   const [leavingIds, setLeavingIds] = useState<ReadonlySet<string>>(new Set());
@@ -158,24 +163,45 @@ export function StaffDashboardPage() {
           )
         }
       >
-        <StaffFilters value={filterKey} counts={counts} onChange={selectFilter} />
+        {canSeeStock(membership) && (
+          <div role="group" aria-label="View" className="flex gap-1 pt-2">
+            {(['orders', 'stock'] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                aria-pressed={view === v}
+                onClick={() => setView(v)}
+                className={buttonClasses({ variant: view === v ? 'primary' : 'ghost' })}
+              >
+                {v === 'orders' ? 'Orders' : 'Stock'}
+              </button>
+            ))}
+          </div>
+        )}
+        {!stockView && <StaffFilters value={filterKey} counts={counts} onChange={selectFilter} />}
       </StaffHeader>
 
       <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
-        <StaffBoard
-          orders={orders}
-          visible={visible}
-          isLoading={isLoading}
-          error={error}
-          filter={filter}
-          pendingIds={pendingIds}
-          actionErrors={visibleActionErrors(actionErrors, updatedAt)}
-          freshIds={freshIds}
-          leavingIds={leavingIds}
-          onRetry={retry}
-          onShowAll={() => selectFilter('ALL')}
-          onChangeStatus={(o, status) => void changeStatus(o, status)}
-        />
+        {stockView && storeId ? (
+          <div className="mx-auto max-w-2xl">
+            <StockList store={{ id: storeId, slug: storeSlug }} />
+          </div>
+        ) : (
+          <StaffBoard
+            orders={orders}
+            visible={visible}
+            isLoading={isLoading}
+            error={error}
+            filter={filter}
+            pendingIds={pendingIds}
+            actionErrors={visibleActionErrors(actionErrors, updatedAt)}
+            freshIds={freshIds}
+            leavingIds={leavingIds}
+            onRetry={retry}
+            onShowAll={() => selectFilter('ALL')}
+            onChangeStatus={(o, status) => void changeStatus(o, status)}
+          />
+        )}
       </main>
     </div>
   );
