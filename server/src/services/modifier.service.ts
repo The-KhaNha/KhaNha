@@ -12,8 +12,33 @@ export interface ItemModifiers {
  * The live (unarchived) groups of `itemIds`, each with its unarchived options in order: what the menu offers and what
  * an order line is priced against. Unavailable options stay (shown as sold out; refused if chosen).
  */
-/** Item ids per query: 100 uuids keep the request URL short, and their links stay far below the 1000-row cap. */
+/** Item ids per query: 100 uuids keep the request URL short. */
 const ITEMS_PER_QUERY = 100;
+/** PostgREST's max_rows (supabase/config.toml): a longer result is cut without an error, so links are read in pages. */
+const ROWS_PER_PAGE = 1000;
+
+/** Every link of `ids` (with its group and options), page by page in a stable order until a short page. */
+async function linksOf(storeId: string, ids: string[]) {
+  const rows = [];
+  for (let from = 0; ; from += ROWS_PER_PAGE) {
+    const { data } = await supabaseAdmin
+      .from('menu_item_modifier_groups')
+      .select(
+        `menu_item_id, group_id, sort_order,
+         modifier_groups!inner (id, name, min_select, max_select, sort_order, store_id, archived_at,
+           modifier_options (id, name, price_delta_paise, is_default, is_available, sort_order, archived_at))`,
+      )
+      .in('menu_item_id', ids)
+      .eq('modifier_groups.store_id', storeId)
+      .is('modifier_groups.archived_at', null)
+      .order('menu_item_id')
+      .order('group_id')
+      .range(from, from + ROWS_PER_PAGE - 1)
+      .throwOnError();
+    rows.push(...data);
+    if (data.length < ROWS_PER_PAGE) return rows;
+  }
+}
 
 export async function loadItemModifiers(
   storeId: string,
@@ -23,24 +48,7 @@ export async function loadItemModifiers(
   const chunks = Array.from({ length: Math.ceil(itemIds.length / ITEMS_PER_QUERY) }, (_, i) =>
     itemIds.slice(i * ITEMS_PER_QUERY, (i + 1) * ITEMS_PER_QUERY),
   );
-  const pages = await Promise.all(
-    chunks.map(
-      async (ids) =>
-        (
-          await supabaseAdmin
-            .from('menu_item_modifier_groups')
-            .select(
-              `menu_item_id, sort_order,
-               modifier_groups!inner (id, name, min_select, max_select, sort_order, store_id, archived_at,
-                 modifier_options (id, name, price_delta_paise, is_default, is_available, sort_order, archived_at))`,
-            )
-            .in('menu_item_id', ids)
-            .eq('modifier_groups.store_id', storeId)
-            .is('modifier_groups.archived_at', null)
-            .throwOnError()
-        ).data,
-    ),
-  );
+  const pages = await Promise.all(chunks.map((ids) => linksOf(storeId, ids)));
   // An item's groups in the item's own order, then the group's, then by id: the same on every load, so the menu's
   // ETag holds.
   const links = pages
