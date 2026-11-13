@@ -152,6 +152,12 @@ afterAll(async () => {
 testAuthMatrix('PATCH /api/stores/:storeId/menu-items/:itemId/stock', (http) =>
   http.patch(`/api/stores/${storeId}/menu-items/${randomUUID()}/stock`).send({ set: 1 }),
 );
+testAuthMatrix('GET /api/stores/:storeId/stock', (http) =>
+  http.get(`/api/stores/${storeId}/stock`),
+);
+testStoreIsolation('GET /api/stores/:storeId/stock', (http, store) =>
+  http.get(`/api/stores/${store}/stock`),
+);
 testAuthMatrix('GET /api/stores/:storeId/stock-movements', (http) =>
   http.get(`/api/stores/${storeId}/stock-movements`),
 );
@@ -172,6 +178,18 @@ describe('who changes stock', () => {
   it('staff may while the store lets them (the default)', async () => {
     expect((await patchStock({ set: 9 }, staff)).status).toBe(200);
     expect((await movementsOf(staff)).status).toBe(200);
+    expect((await api().get(`/api/stores/${storeId}/stock`).set(auth(staff))).status).toBe(200);
+  });
+
+  it('a member learns the setting from /auth/me, which follows it', async () => {
+    const mine = async () =>
+      (await api().get('/api/auth/me').set(auth(staff))).body.user.memberships.find(
+        (m: { storeId: string }) => m.storeId === storeId,
+      )?.staffCanEditStock;
+    expect(await mine()).toBe(true);
+    await setStaffStock(false);
+    expect(await mine()).toBe(false);
+    await setStaffStock(true);
   });
 
   it('staff may not where the store turned it off (403), and nothing changes', async () => {
@@ -182,6 +200,7 @@ describe('who changes stock', () => {
     expect(refused.status).toBe(403);
     expect(refused.body.error.code).toBe('FORBIDDEN');
     expect((await movementsOf(staff)).status).toBe(403);
+    expect((await api().get(`/api/stores/${storeId}/stock`).set(auth(staff))).status).toBe(403);
     expect(await stockNow()).toBe(10);
     // Managers and the owner are not affected by the setting.
     expect((await patchStock({ set: 8 }, manager)).status).toBe(200);
@@ -350,6 +369,21 @@ describe('each change and its trail', () => {
       "select column_default from information_schema.columns where table_name = 'stock_movements' and column_name = 'created_at'",
     );
     expect(column?.column_default).toBe('clock_timestamp()');
+  });
+
+  it('the stock list has the live items with their stock and the threshold, never an archived one', async () => {
+    await writeStock(4);
+    const res = await api().get(`/api/stores/${storeId}/stock`).set(auth(staff));
+    expect(res.status).toBe(200);
+    const ids = res.body.items.map((i: { id: string }) => i.id);
+    expect(ids).toContain(itemId);
+    expect(ids).not.toContain(archivedId);
+    expect(res.body.items.find((i: { id: string }) => i.id === itemId).stockQuantity).toBe(4);
+    expect(res.body.lowStockThreshold).toEqual(expect.any(Number));
+    // Never cached: the next read sees a change at once.
+    await patchStock({ set: 2 });
+    const again = await api().get(`/api/stores/${storeId}/stock`).set(auth(staff));
+    expect(again.body.items.find((i: { id: string }) => i.id === itemId).stockQuantity).toBe(2);
   });
 
   it('the movements list is newest first, filters by item and names who made each', async () => {

@@ -210,6 +210,8 @@ async function seedDemo(): Promise<void> {
   }
   // Orders are demo data: wipe them so numbering starts from #1001 again.
   await db.rpc('reset_demo_orders').throwOnError();
+  // Hand-made stock changes are demo data too, and their rows would block deleting an item dropped from the menu.
+  await db.from('stock_movements').delete().gte('id', 0).throwOnError();
 
   const accountIds = await seedAccounts();
   const stores = await seedBrands(BRANDS, accountIds);

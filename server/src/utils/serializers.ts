@@ -49,7 +49,10 @@ const toIso = (timestamp: string): string => new Date(timestamp).toISOString();
 
 /** A profile with its store memberships and owned brands embedded (auth.service.getProfile). */
 export type ProfileWithStanding = Tables<'profiles'> & {
-  memberships: { role: StoreRole; store: { id: string; slug: string; name: string } }[];
+  memberships: {
+    role: StoreRole;
+    store: { id: string; slug: string; name: string; staff_can_edit_stock: boolean };
+  }[];
   brands: { id: string; name: string; slug: string }[];
 };
 
@@ -66,6 +69,7 @@ export function toUserDto(profile: ProfileWithStanding): UserDto {
       storeSlug: store.slug,
       storeName: store.name,
       role,
+      staffCanEditStock: store.staff_can_edit_stock,
     })),
     ownedBrands: profile.brands.map(({ id, name, slug }) => ({ id, name, slug })),
   };

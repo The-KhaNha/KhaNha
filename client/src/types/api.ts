@@ -14,7 +14,14 @@ export interface User {
   role: Role;
   createdAt: string; // ISO
   /** The stores this account works at. */
-  memberships: { storeId: string; storeSlug: string; storeName: string; role: StoreRole }[];
+  memberships: {
+    storeId: string;
+    storeSlug: string;
+    storeName: string;
+    role: StoreRole;
+    /** Whether the store lets its STAFF change stock. Optional: a profile saved before the field lacks it. */
+    staffCanEditStock?: boolean;
+  }[];
   /** The brands this account owns: OWNER of every store of each. */
   ownedBrands: { id: string; name: string; slug: string }[];
 }

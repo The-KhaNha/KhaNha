@@ -10,7 +10,14 @@ export interface UserDto {
   role: Role;
   createdAt: string;
   /** The stores this account works at (P2.2); the brand's owner has no rows here. */
-  memberships: { storeId: string; storeSlug: string; storeName: string; role: StoreRole }[];
+  memberships: {
+    storeId: string;
+    storeSlug: string;
+    storeName: string;
+    role: StoreRole;
+    /** The store's setting: whether its STAFF may change stock (a manager may change it at any time). */
+    staffCanEditStock: boolean;
+  }[];
   /** The brands this account owns: OWNER of every store of each (ADR-001). */
   ownedBrands: { id: string; name: string; slug: string }[];
 }

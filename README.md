@@ -206,7 +206,7 @@ Menu items can carry a `stockQuantity` (`null` = not tracked, which is the defau
 
 ## Re-seeding wipes orders
 
-`pnpm run seed` (in `server/`, or `./start.sh --seed`) deletes **every order** and restarts numbering at **#1001**. The store, menu items and the two test accounts are updated in place and keep their ids, so logins and saved carts in an open browser keep working. Accounts registered while testing are removed. It seeds whichever project `server/.env` points at, and refuses `APP_ENV=production`.
+`pnpm run seed` (in `server/`, or `./start.sh --seed`) deletes **every order** and every hand-made stock change (`stock_movements`), and restarts numbering at **#1001**. The store, menu items and the two test accounts are updated in place and keep their ids, so logins and saved carts in an open browser keep working. Accounts registered while testing are removed. It seeds whichever project `server/.env` points at, and refuses `APP_ENV=production`.
 
 ## Ports
 
