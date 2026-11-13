@@ -1,3 +1,4 @@
+import type { PricingGroup } from '../domain/pricing';
 import { mediaStore } from '../integrations/media';
 import type { QueryData } from '@supabase/supabase-js';
 import type { Tables } from '../types/database';
@@ -10,6 +11,7 @@ import type {
   ManagedMenuItemDto,
   ManagedStoreDto,
   MediaUploadDto,
+  ModifierGroupDto,
   MenuItemDto,
   OrderDto,
   OrderItemDto,
@@ -235,6 +237,8 @@ export function toMenuItemDto(item: Tables<'menu_items'>): MenuItemDto {
     price: paiseToRupees(item.price_paise),
     imageUrl: item.image_url,
     imageSrcSet: srcSet(item.image_variants),
+    // Filled by the public menu (loadMenu) from the item's groups; empty elsewhere.
+    modifierGroupIds: [],
     diet: item.diet,
     isAvailable: isPurchasable(item),
     isPopular: item.is_popular,
@@ -335,5 +339,22 @@ export function toMediaUploadDto(
     variants,
     failure: row.failure,
     createdAt: toIso(row.created_at),
+  };
+}
+
+/** One modifier group as the menu offers it (P3.2): deltas in whole rupees, like every price at the API. */
+export function toModifierGroupDto(group: PricingGroup): ModifierGroupDto {
+  return {
+    id: group.id,
+    name: group.name,
+    minSelect: group.minSelect,
+    maxSelect: group.maxSelect,
+    options: group.options.map((o) => ({
+      id: o.id,
+      name: o.name,
+      priceDelta: paiseToRupees(o.priceDeltaPaise),
+      isDefault: o.isDefault,
+      isAvailable: o.isAvailable,
+    })),
   };
 }

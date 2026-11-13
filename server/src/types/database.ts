@@ -324,6 +324,40 @@ export type Database = {
           },
         ];
       };
+      menu_item_modifier_groups: {
+        Row: {
+          group_id: string;
+          menu_item_id: string;
+          sort_order: number;
+        };
+        ComputedFields: never;
+        Insert: {
+          group_id: string;
+          menu_item_id: string;
+          sort_order?: number;
+        };
+        Update: {
+          group_id?: string;
+          menu_item_id?: string;
+          sort_order?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'menu_item_modifier_groups_group_id_fkey';
+            columns: ['group_id'];
+            isOneToOne: false;
+            referencedRelation: 'modifier_groups';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'menu_item_modifier_groups_menu_item_id_fkey';
+            columns: ['menu_item_id'];
+            isOneToOne: false;
+            referencedRelation: 'menu_items';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       menu_items: {
         Row: {
           archived_at: string | null;
@@ -394,8 +428,136 @@ export type Database = {
           },
         ];
       };
+      modifier_groups: {
+        Row: {
+          archived_at: string | null;
+          created_at: string;
+          id: string;
+          max_select: number;
+          min_select: number;
+          name: string;
+          sort_order: number;
+          store_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          archived_at?: string | null;
+          created_at?: string;
+          id?: string;
+          max_select?: number;
+          min_select?: number;
+          name: string;
+          sort_order?: number;
+          store_id: string;
+        };
+        Update: {
+          archived_at?: string | null;
+          created_at?: string;
+          id?: string;
+          max_select?: number;
+          min_select?: number;
+          name?: string;
+          sort_order?: number;
+          store_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'modifier_groups_store_id_fkey';
+            columns: ['store_id'];
+            isOneToOne: false;
+            referencedRelation: 'stores';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      modifier_options: {
+        Row: {
+          archived_at: string | null;
+          group_id: string;
+          id: string;
+          is_available: boolean;
+          is_default: boolean;
+          name: string;
+          price_delta_paise: number;
+          sort_order: number;
+        };
+        ComputedFields: never;
+        Insert: {
+          archived_at?: string | null;
+          group_id: string;
+          id?: string;
+          is_available?: boolean;
+          is_default?: boolean;
+          name: string;
+          price_delta_paise?: number;
+          sort_order?: number;
+        };
+        Update: {
+          archived_at?: string | null;
+          group_id?: string;
+          id?: string;
+          is_available?: boolean;
+          is_default?: boolean;
+          name?: string;
+          price_delta_paise?: number;
+          sort_order?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'modifier_options_group_id_fkey';
+            columns: ['group_id'];
+            isOneToOne: false;
+            referencedRelation: 'modifier_groups';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      order_item_modifiers: {
+        Row: {
+          group_name: string;
+          id: string;
+          modifier_option_id: string | null;
+          option_name: string;
+          order_item_id: string;
+          price_delta_paise: number;
+        };
+        ComputedFields: never;
+        Insert: {
+          group_name: string;
+          id?: string;
+          modifier_option_id?: string | null;
+          option_name: string;
+          order_item_id: string;
+          price_delta_paise: number;
+        };
+        Update: {
+          group_name?: string;
+          id?: string;
+          modifier_option_id?: string | null;
+          option_name?: string;
+          order_item_id?: string;
+          price_delta_paise?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'order_item_modifiers_modifier_option_id_fkey';
+            columns: ['modifier_option_id'];
+            isOneToOne: false;
+            referencedRelation: 'modifier_options';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'order_item_modifiers_order_item_id_fkey';
+            columns: ['order_item_id'];
+            isOneToOne: false;
+            referencedRelation: 'order_items';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       order_items: {
         Row: {
+          base_unit_price_paise: number | null;
           category: string;
           id: string;
           image_url: string | null;
@@ -410,6 +572,7 @@ export type Database = {
         };
         ComputedFields: never;
         Insert: {
+          base_unit_price_paise?: number | null;
           category: string;
           id?: string;
           image_url?: string | null;
@@ -423,6 +586,7 @@ export type Database = {
           unit_price_paise: number;
         };
         Update: {
+          base_unit_price_paise?: number | null;
           category?: string;
           id?: string;
           image_url?: string | null;

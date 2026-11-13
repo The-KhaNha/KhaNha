@@ -130,6 +130,8 @@ export interface MenuItemDto {
   imageUrl: string | null;
   /** An uploaded photo's WebP sizes, for `<img srcset>` ("/media/… 400w, /media/… 900w"); null for a bundled photo. */
   imageSrcSet: string | null;
+  /** The item's modifier groups, in order, as keys of MenuResponse.modifierGroups; empty while `modifiers` is off. */
+  modifierGroupIds: string[];
   /** null: not marked. */
   diet: Diet | null;
   /** Effective availability: false when the item is switched off OR its tracked stock has run out. */
@@ -162,6 +164,26 @@ export interface MenuResponse {
   store: StoreDto;
   popular: MenuItemDto[];
   categories: MenuCategoryDto[];
+  /** Every modifier group the menu's items offer, once (items name them by id); empty while `modifiers` is off. */
+  modifierGroups: Record<string, ModifierGroupDto>;
+}
+
+/** A choice on an item (P3.2): "Size" (choose 1), "Add-ons" (up to 3). */
+export interface ModifierGroupDto {
+  id: string;
+  name: string;
+  /** 0: optional. */
+  minSelect: number;
+  maxSelect: number;
+  options: {
+    id: string;
+    name: string;
+    /** Whole rupees, may be negative ("Small −₹20"). */
+    priceDelta: number;
+    /** Applied when the group is required and nothing is chosen. */
+    isDefault: boolean;
+    isAvailable: boolean;
+  }[];
 }
 
 /** A store's own limits (GET/PATCH /api/stores/:storeId/settings), edited by its manager or owner. */
