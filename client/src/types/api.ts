@@ -139,6 +139,8 @@ export interface MenuItem {
    * field existed (fp_cache) lacks it.
    */
   imageSrcSet?: string | null;
+  /** The item's modifier groups, keys of MenuResponse.modifierGroups. Optional: a menu persisted before (fp_cache). */
+  modifierGroupIds?: string[];
   /**
    * null: not marked. Optional because a menu persisted before the field existed (fp_cache) lacks it; read it as
    * `item.diet ?? null`.
@@ -177,6 +179,25 @@ export interface MenuResponse {
   store: Store;
   popular: MenuItem[];
   categories: MenuCategory[];
+  /** Every modifier group the items offer, once. Optional: a menu persisted before the field existed. */
+  modifierGroups?: Record<string, ModifierGroup>;
+}
+
+/** A choice on an item (server ModifierGroupDto): "Size" (choose 1), "Add-ons" (up to 3). */
+export interface ModifierGroup {
+  id: string;
+  name: string;
+  /** 0: optional. */
+  minSelect: number;
+  maxSelect: number;
+  options: {
+    id: string;
+    name: string;
+    /** Whole rupees, may be negative. */
+    priceDelta: number;
+    isDefault: boolean;
+    isAvailable: boolean;
+  }[];
 }
 
 export interface OrderItem {

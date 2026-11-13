@@ -57,6 +57,7 @@ a new file (see [DEPLOYMENT.md](DEPLOYMENT.md#schema-changes)).
 | `20261113142425_store_readiness.sql`               | `store_publish_missing()` (`service_role` only), the go-live checklist; `set_store_status` (same signature) reads it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `20261113183803_bundled_photos.sql`                | adds `bundled_photo_refs()`, `bundled_photo_row_count()` and `move_bundled_photo()` (`service_role` only): the bundled photos' move to the media store (P3.3)                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `20261113174022_media_sweep.sql`                   | subscribes `media.sweep` to `q_media`, adds `media_upload_shown()` and `media_sweep_candidates()` (`service_role` only), the partial index `order_items_media_image_idx` and the nightly `media-sweep` schedule (P3.3)                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `20261113185201_modifiers.sql`                     | adds `modifier_groups`, `modifier_options`, `menu_item_modifier_groups`, `order_item_modifiers` (RLS on, revoked; groups and options audited), `order_items.base_unit_price_paise`, the `modifiers` flag (off), and `reset_demo_orders()` truncating the snapshots too (P3.2)                                                                                                                                                                                                                                                                                                                                                          |
 | `20261113170333_media_pipeline.sql`                | creates the `q_media` queue, subscribes `media.uploaded` to it, and adds `finish_media_upload()` (`service_role` only): the image pipeline (P3.3)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `20261113151317_media_uploads.sql`                 | adds `media_upload_status`, `media_uploads` (RLS, revoked) and `complete_media_upload()` (`service_role` only): photo uploads (P3.3)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 
@@ -401,6 +402,28 @@ candidate only when `media_upload_shown` is false; the partial index `order_item
 | `created_at`         | timestamptz      | no   | `now()`             |                                                                                            |
 | `updated_at`         | timestamptz      | no   | `now()`             | set on every update by `orders_set_updated_at`                                             |
 | `idempotency_key`    | uuid             | yes  |                     | the client's per-attempt key; unique per `user_id` when set ([API.md](API.md#post-orders)) |
+
+### Modifiers (P3.2)
+
+Item options ("Size", "Milk", "Extra cheese +₹20"), scoped to a store like its menu, money in paise. Pricing with them is
+`domain/pricing.ts` (and `place_order` from PR 13b); editing is PR 14. RLS on and revoked from `anon` and
+`authenticated` on all four tables.
+
+- **`modifier_groups`**: `id`, `store_id` → `stores`, `name` (1–40), `min_select` (0–20, 0 = optional), `max_select`
+  (1–20), `min_select ≤ max_select`, `sort_order`, `archived_at`, `created_at`. Index `(store_id)`. Audited
+  (`modifier_group.changed`: name, min/max, archived).
+- **`modifier_options`**: `id`, `group_id` → `modifier_groups` on delete cascade, `name` (1–40), `price_delta_paise`
+  (whole rupees, −₹10000 to ₹10000; a line still never goes below zero), `is_default` (applied when the group is
+  required and nothing is chosen), `is_available`, `sort_order`, `archived_at`. Index `(group_id)`. Audited
+  (`modifier_option.changed`; no store on the audit row: the group's).
+- **`menu_item_modifier_groups`**: (`menu_item_id` → `menu_items`, `group_id` → `modifier_groups`, both on delete
+  cascade) primary key, `sort_order`. Index `(group_id)`. Both sides are one store's: the functions that write links
+  (PR 14) and copy them (13c) ensure it. Not audited (no id for an audit row); its writes emit `menu.changed`.
+- **`order_item_modifiers`**: what an order line was made with, as it was then: `order_item_id` → `order_items` on
+  delete cascade, `modifier_option_id` → `modifier_options` on delete set null, `group_name`, `option_name`,
+  `price_delta_paise`. Indexes `(order_item_id)`, `(modifier_option_id)`.
+- **`order_items.base_unit_price_paise`** (bigint, ≥ 0, null on older lines): the item's own price on a line whose
+  `unit_price_paise` includes modifiers.
 
 ### order_items
 
@@ -800,7 +823,8 @@ member with the same role consumes the invite; one with another role is refused,
 
 ### reset_demo_orders
 
-`truncate public.order_items, public.orders restart identity`. The next order is #1001 again. `security definer`
+`truncate public.order_item_modifiers, public.order_items, public.orders restart identity` (the modifier snapshots
+since P3 PR 13a: their foreign key would refuse the truncate otherwise). The next order is #1001 again. `security definer`
 because restarting the identity sequence needs its owner. Used only by the demo seed, which refuses to run against
 production (see [DEPLOYMENT.md](DEPLOYMENT.md#seeding)).
 

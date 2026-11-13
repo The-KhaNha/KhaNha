@@ -213,6 +213,7 @@ describe('toMenuItemDto', () => {
       price: 120,
       imageUrl: '/images/cold-coffee.jpg',
       imageSrcSet: null,
+      modifierGroupIds: [],
       diet: 'VEG',
       isAvailable: false,
       isPopular: true,

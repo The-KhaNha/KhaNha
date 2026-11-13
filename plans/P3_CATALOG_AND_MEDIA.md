@@ -700,6 +700,15 @@ Docs: `docs/SCHEMA.md`, `docs/API.md` (request, menu, order, two error codes), `
 
 Split seam: the schema and menu payload as 13a, `place_order` and the order DTO as 13b.
 
+As built, in three: **13a** the tables, the flag row, the menu payload, `domain/pricing.ts` with the shared case table
+(`test/setup/modifierCases.ts`); **13b** `place_order` and the order DTO; **13c** the copies in
+`create_store_from_template` and `push_template_items`. 13a also makes `reset_demo_orders` truncate the snapshots
+(the seed failed on the new foreign key), and filters the menu's links by the groups' store rather than `in(itemIds)`
+(500 ids overflow the request URL). The menu budget became two numbers: the modifiers add under 9 KB raw to 60 items
+sharing three groups, and the whole menu goes out under 8 KB gzipped (nginx); the plain 60-item menu of the test is
+already ~22 KB raw, so a 25 KB raw total measured content, not modifiers. The link table is not audited
+(`audit_log.entity_id` needs an id); its writes are events.
+
 ### PR 14 — Modifiers: editing API (P3.2)
 
 - [ ] Merged

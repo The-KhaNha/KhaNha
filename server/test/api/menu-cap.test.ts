@@ -56,6 +56,61 @@ describe('GET /api/stores/:ref/menu with a menu larger than the cap', () => {
   });
 });
 
+describe('GET /api/stores/:ref/menu with modifiers on every item of a menu past the cap', () => {
+  it('every item keeps its groups: no link is lost to the 1000-row response cap', async () => {
+    const groups = await Promise.all(
+      Array.from({ length: 11 }, (_, i) => `Group ${i}`).map(async (name) => {
+        const { data } = await supabaseAdmin
+          .from('modifier_groups')
+          .insert({ store_id: storeId, name, min_select: 0, max_select: 1 })
+          .select('id')
+          .single()
+          .throwOnError();
+        return data.id;
+      }),
+    );
+    // The items the menu serves (the lowest sort orders), 11 groups each: every 100-item query finds 1100 links, past
+    // the 1000-row cap, so only reading in pages keeps them all.
+    const { data: items } = await supabaseAdmin
+      .from('menu_items')
+      .select('id')
+      .eq('store_id', storeId)
+      .is('archived_at', null)
+      .order('sort_order')
+      .order('id')
+      .limit(MENU_ITEMS_MAX)
+      .throwOnError();
+    await supabaseAdmin
+      .from('menu_item_modifier_groups')
+      .insert(
+        items.flatMap((item) => groups.map((group_id) => ({ menu_item_id: item.id, group_id }))),
+      )
+      .throwOnError();
+    await supabaseAdmin
+      .from('feature_flags')
+      .update({ enabled: true, rules: { storeIds: [storeId] } })
+      .eq('key', 'modifiers')
+      .throwOnError();
+    invalidate();
+    try {
+      const res = await api().get(await menuPath());
+      const served = (res.body.categories as { items: { modifierGroupIds: string[] }[] }[]).flatMap(
+        (c) => c.items,
+      );
+      expect(served).toHaveLength(MENU_ITEMS_MAX);
+      for (const item of served) expect(item.modifierGroupIds).toHaveLength(11);
+    } finally {
+      await supabaseAdmin
+        .from('feature_flags')
+        .update({ enabled: false, rules: {} })
+        .eq('key', 'modifiers')
+        .throwOnError();
+      await supabaseAdmin.from('modifier_groups').delete().in('id', groups).throwOnError();
+      invalidate();
+    }
+  }, 30_000);
+});
+
 describe('GET /api/stores/:ref/menu when the cap bites', () => {
   it('logs a warning naming how many items were cut', async () => {
     const warn = vi.spyOn(logger, 'warn');

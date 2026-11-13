@@ -16,7 +16,14 @@ import { isUuid } from '../utils/ids';
 import { logger } from '../utils/logger';
 import { rupeesToPaise } from '../utils/money';
 import { raisedByDatabase, supabaseAdmin } from '../utils/supabase';
-import { toMenuItemDto, toStoreDto, type StoreWithBrand } from '../utils/serializers';
+import {
+  toMenuItemDto,
+  toModifierGroupDto,
+  toStoreDto,
+  type StoreWithBrand,
+} from '../utils/serializers';
+import { isEnabled } from './flags.service';
+import { loadItemModifiers } from './modifier.service';
 import { getOpenFields } from './schedule.service';
 
 /**
@@ -28,10 +35,22 @@ export const MENU_ITEMS_MAX = 500;
 
 /** The menu of one ACTIVE store (the caller resolved it through getActiveStore), cached under `menu:<storeId>`. */
 export async function getStoreMenu(store: StoreWithBrand): Promise<MenuResponse> {
-  return withOpenFields(
-    await cached(`menu:${store.id}`, PUBLIC_READ_TTL_MS, () => loadMenu(store)),
-    store,
-  );
+  const menu = await cached(`menu:${store.id}`, PUBLIC_READ_TTL_MS, () => loadMenu(store));
+  // The flag is evaluated per read, after the cache, so turning it on or off needs no menu invalidation.
+  const offered = await isEnabled('modifiers', { storeId: store.id });
+  return withOpenFields(offered ? menu : withoutModifiers(menu), store);
+}
+
+/** The menu as it is while the store's `modifiers` flag is off: no groups, and no item naming any. */
+function withoutModifiers(menu: MenuResponse): MenuResponse {
+  const plain = (item: MenuItemDto): MenuItemDto =>
+    item.modifierGroupIds.length ? { ...item, modifierGroupIds: [] } : item;
+  return {
+    ...menu,
+    modifierGroups: {},
+    popular: menu.popular.map(plain),
+    categories: menu.categories.map((c) => ({ ...c, items: c.items.map(plain) })),
+  };
 }
 
 /** The open state changes with the clock, not with the menu: computed on every read, never cached with the menu. */
@@ -60,7 +79,14 @@ async function loadMenu(store: StoreWithBrand): Promise<MenuResponse> {
   if (count !== null && count > MENU_ITEMS_MAX) {
     logger.warn({ storeId: store.id, total: count, shown: MENU_ITEMS_MAX }, 'Menu truncated');
   }
-  const items = rows.map(toMenuItemDto);
+  const modifiers = await loadItemModifiers(
+    store.id,
+    rows.map((row) => row.id),
+  );
+  const items = rows.map((row) => ({
+    ...toMenuItemDto(row),
+    modifierGroupIds: modifiers.groupIds.get(row.id) ?? [],
+  }));
 
   return {
     // The cart rules the client applies: the store's own cap and "only N left" threshold, off the store row (its
@@ -72,6 +98,9 @@ async function loadMenu(store: StoreWithBrand): Promise<MenuResponse> {
     store: toStoreDto(store, await getOpenFields(store)),
     popular: items.filter((item) => item.isPopular),
     categories: groupByCategory(items),
+    modifierGroups: Object.fromEntries(
+      [...modifiers.groups].map(([id, group]) => [id, toModifierGroupDto(group)]),
+    ),
   };
 }
 

@@ -231,8 +231,11 @@ Public, cached (see Caching) and ETag'd. Code: `store.controller` → `store.ser
 - `/stores/:storeRef/menu` returns the store's `MenuResponse`: every menu item including unavailable ones (the client
   greys them out), ordered by `sort_order`: `rules` (`{ maxQuantityPerItem, lowStockThreshold }`, the store's settings,
   [PATCH /stores/:storeId/settings](#patch-storesstoreidsettings) changes them and drops the cached menu), `store`
-  (`StoreDto`), `popular` (the items with `isPopular`, in `sortOrder` order) and `categories` (`{ name, items }[]`, a
-  category placed by its first item). An item's `isAvailable` is `is_available AND (stock_quantity IS NULL OR
+  (`StoreDto`), `popular` (the items with `isPopular`, in `sortOrder` order), `categories` (`{ name, items }[]`, a
+  category placed by its first item) and `modifierGroups` (P3.2: every group the items offer, once, by id; each item
+  names its own in order as `modifierGroupIds`; archived groups and options are left out, unavailable options stay
+  with `isAvailable: false`). While the store's `modifiers` flag is off, `modifierGroups` is `{}` and every
+  `modifierGroupIds` is `[]`, whatever is configured; the flag is read on every request, after the cached menu. An item's `isAvailable` is `is_available AND (stock_quantity IS NULL OR
 stock_quantity > 0)` (`isPurchasable` in `server/src/utils/serializers.ts`); `stockQuantity` is `null` when the
   item does not track stock.
 - `/stores/:storeRef/hours` returns `{ timezone, hours: [{ dayOfWeek, opensAt, closesAt }], exceptions: [{ id, startsOn,
@@ -909,20 +912,21 @@ fields of `StoreDto` a store picker needs (client: `StoreSummary`).
 
 `MenuItemDto`
 
-| Field           | Type                                      | Notes                                                                                           |
-| --------------- | ----------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `id`            | string (uuid)                             |                                                                                                 |
-| `category`      | string                                    |                                                                                                 |
-| `name`          | string                                    |                                                                                                 |
-| `description`   | string                                    |                                                                                                 |
-| `price`         | number                                    | whole rupees                                                                                    |
-| `imageUrl`      | string \| null                            | `null`: no photo yet                                                                            |
-| `imageSrcSet`   | string \| null                            | an uploaded photo's sizes, `"/media/… 400w, /media/… 900w"`; `null` for a bundled photo or none |
-| `diet`          | `'VEG'` \| `'NON_VEG'` \| `'EGG'` \| null | `null`: not marked                                                                              |
-| `isAvailable`   | boolean                                   | false when switched off or tracked stock is 0                                                   |
-| `isPopular`     | boolean                                   |                                                                                                 |
-| `sortOrder`     | number                                    |                                                                                                 |
-| `stockQuantity` | number \| null                            | units left; `null` = not tracked (only the 10-per-order cap)                                    |
+| Field              | Type                                      | Notes                                                                                                                         |
+| ------------------ | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `id`               | string (uuid)                             |                                                                                                                               |
+| `category`         | string                                    |                                                                                                                               |
+| `name`             | string                                    |                                                                                                                               |
+| `description`      | string                                    |                                                                                                                               |
+| `price`            | number                                    | whole rupees                                                                                                                  |
+| `imageUrl`         | string \| null                            | `null`: no photo yet                                                                                                          |
+| `imageSrcSet`      | string \| null                            | an uploaded photo's sizes, `"/media/… 400w, /media/… 900w"`; `null` for a bundled photo or none                               |
+| `modifierGroupIds` | string[]                                  | the item's groups, keys of `MenuResponse.modifierGroups`, in order; `[]` while `modifiers` is off and outside the public menu |
+| `diet`             | `'VEG'` \| `'NON_VEG'` \| `'EGG'` \| null | `null`: not marked                                                                                                            |
+| `isAvailable`      | boolean                                   | false when switched off or tracked stock is 0                                                                                 |
+| `isPopular`        | boolean                                   |                                                                                                                               |
+| `sortOrder`        | number                                    |                                                                                                                               |
+| `stockQuantity`    | number \| null                            | units left; `null` = not tracked (only the 10-per-order cap)                                                                  |
 
 `ManagedMenuItemDto` (the editor's list): `MenuItemDto` plus `isEnabled` (boolean, the switch alone; `isAvailable` also
 counts stock), `archivedAt` (ISO 8601 \| null) and `templateItemId` (the brand template item it was copied from, its
@@ -935,7 +939,11 @@ null), `tagline`, `description`, `imageUrl` (string \| null), `createdAt` (clien
 `MyBrandDto`: `{ id, name, slug, template: ManagedStoreDto | null, stores: ManagedStoreDto[] }`, the branches without the
 template (client: `MyBrand`).
 
-`MenuResponse`: `{ rules: { maxQuantityPerItem, lowStockThreshold }, store: StoreDto, popular: MenuItemDto[], categories: { name: string, items: MenuItemDto[] }[] }`.
+`MenuResponse`: `{ rules: { maxQuantityPerItem, lowStockThreshold }, store: StoreDto, popular: MenuItemDto[], categories: { name: string, items: MenuItemDto[] }[], modifierGroups: { [id]: ModifierGroupDto } }`.
+
+`ModifierGroupDto` (P3.2): `{ id, name, minSelect, maxSelect, options: { id, name, priceDelta, isDefault, isAvailable }[] }`;
+`minSelect` 0 is optional, `priceDelta` is whole rupees and may be negative, `isDefault` is applied when the group is
+required and nothing is chosen.
 
 `OrderDto`
 

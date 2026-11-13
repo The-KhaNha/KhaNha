@@ -9,11 +9,11 @@ describe('GET /api/stores/:ref/menu', () => {
     expect(res.body.rules).toEqual({ maxQuantityPerItem: 10, lowStockThreshold: 5 });
   });
 
-  it('needs no Authorization header and returns store, popular, categories and rules', async () => {
+  it('needs no Authorization header and returns store, popular, categories, rules and modifier groups', async () => {
     const res = await api().get(await menuPath());
     expect(res.status).toBe(200);
     expect(Object.keys(res.body).sort()).toEqual(
-      ['store', 'popular', 'categories', 'rules'].sort(),
+      ['store', 'popular', 'categories', 'rules', 'modifierGroups'].sort(),
     );
     expect(Array.isArray(res.body.popular)).toBe(true);
     expect(Array.isArray(res.body.categories)).toBe(true);
@@ -35,6 +35,7 @@ describe('GET /api/stores/:ref/menu', () => {
           'price',
           'imageUrl',
           'imageSrcSet',
+          'modifierGroupIds',
           'diet',
           'isAvailable',
           'isPopular',

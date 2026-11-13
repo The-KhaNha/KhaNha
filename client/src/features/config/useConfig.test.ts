@@ -56,7 +56,7 @@ describe('useConfig', () => {
     expect(result.current.clientErrors).toEqual(CONFIG_FALLBACK.clientErrors);
     expect(result.current.polling).toEqual({ ...CONFIG_FALLBACK.polling, orderMs: 6000 });
     expect(result.current.session).toEqual(CONFIG_FALLBACK.session);
-    expect(result.current.features).toEqual({ multi_store_ui: true });
+    expect(result.current.features).toEqual({ modifiers: false, multi_store_ui: true });
   });
 });
 

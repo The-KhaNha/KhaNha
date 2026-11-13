@@ -1,6 +1,8 @@
 {
   "minClientVersion": "0.0.0",
-  "features": {},
+  "features": {
+    "modifiers": false
+  },
   "payment": null,
   "limits": {
     "maxLinesPerOrder": 30
