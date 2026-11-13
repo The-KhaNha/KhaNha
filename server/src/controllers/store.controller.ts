@@ -101,6 +101,21 @@ export const resumeStore: RequestHandler = async (req, res) => {
   res.json({ store: await freshStore(id) });
 };
 
+/** GET /api/stores/:storeId/manage, after requireStore('store.profile'). */
+export const getManagedStore: RequestHandler = async (req, res) => {
+  res.json(await storeService.getManagedStore(currentStore(req).id));
+};
+
+/**
+ * GET /api/stores/:storeId/manage/hours, after requireStore('hours.edit'): uncached, whatever the status (the public
+ * read is cached and serves only ACTIVE stores).
+ */
+export const getManagedHours: RequestHandler = async (req, res) => {
+  res.json(
+    await scheduleService.getStoreSchedule(await storeService.getStore(currentStore(req).id), true),
+  );
+};
+
 /** PATCH /api/stores/:storeId/profile, after requireStore('store.profile'). */
 export const updateStoreProfile: BodyHandler<UpdateStoreProfileInput> = async (req, res) => {
   const { id, status } = currentStore(req);

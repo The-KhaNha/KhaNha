@@ -54,6 +54,7 @@ a new file (see [DEPLOYMENT.md](DEPLOYMENT.md#schema-changes)).
 | `20261112183242_reorder_menu.sql`                  | adds `lock_store_menu()`, `reorder_menu()` and `set_menu_availability()` (`service_role` only): the menu editor's quick edits                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `20261113085219_adjust_stock.sql`                  | adds `stock_reason`, `stock_movements` (RLS, revoked), `stores.staff_can_edit_stock` (also watched by `stores_settings_audit`) and `adjust_stock()` (`service_role` only): stock by hand, with its trail                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `20261113140540_push_template_items.sql`           | `push_template_items()` (`service_role` only): the template push                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `20261113142425_store_readiness.sql`               | `store_publish_missing()` (`service_role` only), the go-live checklist; `set_store_status` (same signature) reads it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 
 ## Enums
 
@@ -200,7 +201,9 @@ unpublish and an operator's status change in SQL each emit one, and a same-value
 `set_store_status(p_store_id, p_status, p_actor, p_request_id) returns text[]` (plpgsql, invoker, `service_role` only)
 moves a store between `DRAFT` and `ACTIVE` under its row lock. Publishing returns what is missing among `address`
 (non-blank `address_line`), `hours` (at least one `store_hours` row) and `menu` (at least one available, unarchived
-item with `stock_quantity` null or above 0) and changes nothing when any is; otherwise it returns `{}`. A store already
+item with `stock_quantity` null or above 0) and changes nothing when any is; otherwise it returns `{}`. The list comes
+from `store_publish_missing(p_store_id)` (sql, stable, `service_role` only), which the manage screen also reads
+(`GET /stores/:storeId/manage`), so the checklist an owner sees is the rule the publish applies. A store already
 in `p_status` changes nothing and emits nothing.
 
 The menu editor's quick edits each take `lock_store_menu(p_store_id)` (`NOT_FOUND` for a missing store, then a
@@ -553,36 +556,37 @@ All functions set `search_path = ''` and use schema-qualified names. Each call i
 raises leaves nothing behind. Expected failures are raised with `message` = an API error code and `detail` = a JSON
 object (SQLSTATE `P0001`). How the API maps them is in [API.md](API.md#database-errors-p0001).
 
-| Function                     | Language | Security | Returns             | Called by                                                                                                     | `EXECUTE` granted to |
-| ---------------------------- | -------- | -------- | ------------------- | ------------------------------------------------------------------------------------------------------------- | -------------------- |
-| `set_updated_at()`           | plpgsql  | invoker  | trigger             | `orders_set_updated_at`, `site_settings_set_updated_at`, `feature_flags_set_updated_at`                       | nobody               |
-| `handle_new_user()`          | plpgsql  | definer  | trigger             | `on_auth_user_created`                                                                                        | nobody               |
-| `handle_user_email_change()` | plpgsql  | definer  | trigger             | `on_auth_user_email_changed`                                                                                  | nobody               |
-| `profile_name(text, text)`   | plpgsql  | invoker  | text                | `handle_new_user()`, `20261103173300_profile_name_bounds.sql`                                                 | nobody               |
-| `profile_phone(text)`        | sql      | invoker  | text                | `handle_new_user()`, `20261103173300_profile_name_bounds.sql`                                                 | nobody               |
-| `place_order(...)`           | plpgsql  | invoker  | uuid                | `order.service.createOrder`                                                                                   | `service_role`       |
-| `update_order_status(...)`   | plpgsql  | invoker  | boolean             | `order.service.updateOrderStatus`                                                                             | `service_role`       |
-| `reset_demo_orders()`        | sql      | definer  | void                | `server/scripts/seed.ts`                                                                                      | `service_role`       |
-| `emit_event(...)`            | plpgsql  | definer  | uuid                | `place_order`, `update_order_status`, `accept_store_invite`, `menu_items_emit_changed`, `stores_emit_changed` | `service_role`       |
-| `accept_store_invite(...)`   | plpgsql  | invoker  | `store_memberships` | `team.service.acceptInvite`                                                                                   | `service_role`       |
-| `set_store_hours(...)`       | plpgsql  | definer  | boolean             | `storeHours.service.setStoreHours`                                                                            | `service_role`       |
-| `lock_store_menu(...)`       | plpgsql  | invoker  | void                | `reorder_menu`, `set_menu_availability`                                                                       | `service_role`       |
-| `reorder_menu(...)`          | plpgsql  | invoker  | void                | `menu.service.reorderMenu`                                                                                    | `service_role`       |
-| `set_menu_availability(...)` | plpgsql  | invoker  | integer             | `menu.service.setAvailability`                                                                                | `service_role`       |
-| `adjust_stock(...)`          | plpgsql  | invoker  | integer             | `stock.service.adjustStock`                                                                                   | `service_role`       |
-| `push_template_items(...)`   | plpgsql  | invoker  | integer             | `brand.service.pushTemplate`                                                                                  | `service_role`       |
-| `set_store_status(...)`      | plpgsql  | invoker  | `text[]`            | `store.service.setStoreStatus`                                                                                | `service_role`       |
-| `stores_emit_changed()`      | plpgsql  | invoker  | trigger             | `stores_changed`                                                                                              | nobody               |
-| `pause_store(...)`           | plpgsql  | invoker  | boolean             | `storePause.service.pauseStore`                                                                               | `service_role`       |
-| `resume_store(...)`          | plpgsql  | invoker  | boolean             | `storePause.service.resumeStore`                                                                              | `service_role`       |
-| `queue_read(...)`            | plpgsql  | definer  | table               | the worker (P1 PR 03)                                                                                         | `service_role`       |
-| `queue_delete(...)`          | sql      | definer  | boolean             | the worker                                                                                                    | `service_role`       |
-| `queue_retry(...)`           | sql      | definer  | void                | the worker                                                                                                    | `service_role`       |
-| `queue_dead_letter(...)`     | sql      | definer  | boolean             | the worker                                                                                                    | `service_role`       |
-| `queue_metrics(text)`        | sql      | definer  | table               | the worker's health report                                                                                    | `service_role`       |
-| `purge_domain_events(...)`   | sql      | invoker  | integer             | pg_cron `purge-domain-events`                                                                                 | `service_role`       |
-| `audit_row_change()`         | plpgsql  | definer  | trigger             | the `*_audit` triggers                                                                                        | nobody               |
-| `audit_log_append_only()`    | plpgsql  | invoker  | trigger             | `audit_log_no_change`, `_no_truncate`                                                                         | nobody               |
+| Function                      | Language | Security | Returns             | Called by                                                                                                     | `EXECUTE` granted to |
+| ----------------------------- | -------- | -------- | ------------------- | ------------------------------------------------------------------------------------------------------------- | -------------------- |
+| `set_updated_at()`            | plpgsql  | invoker  | trigger             | `orders_set_updated_at`, `site_settings_set_updated_at`, `feature_flags_set_updated_at`                       | nobody               |
+| `handle_new_user()`           | plpgsql  | definer  | trigger             | `on_auth_user_created`                                                                                        | nobody               |
+| `handle_user_email_change()`  | plpgsql  | definer  | trigger             | `on_auth_user_email_changed`                                                                                  | nobody               |
+| `profile_name(text, text)`    | plpgsql  | invoker  | text                | `handle_new_user()`, `20261103173300_profile_name_bounds.sql`                                                 | nobody               |
+| `profile_phone(text)`         | sql      | invoker  | text                | `handle_new_user()`, `20261103173300_profile_name_bounds.sql`                                                 | nobody               |
+| `place_order(...)`            | plpgsql  | invoker  | uuid                | `order.service.createOrder`                                                                                   | `service_role`       |
+| `update_order_status(...)`    | plpgsql  | invoker  | boolean             | `order.service.updateOrderStatus`                                                                             | `service_role`       |
+| `reset_demo_orders()`         | sql      | definer  | void                | `server/scripts/seed.ts`                                                                                      | `service_role`       |
+| `emit_event(...)`             | plpgsql  | definer  | uuid                | `place_order`, `update_order_status`, `accept_store_invite`, `menu_items_emit_changed`, `stores_emit_changed` | `service_role`       |
+| `accept_store_invite(...)`    | plpgsql  | invoker  | `store_memberships` | `team.service.acceptInvite`                                                                                   | `service_role`       |
+| `set_store_hours(...)`        | plpgsql  | definer  | boolean             | `storeHours.service.setStoreHours`                                                                            | `service_role`       |
+| `lock_store_menu(...)`        | plpgsql  | invoker  | void                | `reorder_menu`, `set_menu_availability`                                                                       | `service_role`       |
+| `reorder_menu(...)`           | plpgsql  | invoker  | void                | `menu.service.reorderMenu`                                                                                    | `service_role`       |
+| `set_menu_availability(...)`  | plpgsql  | invoker  | integer             | `menu.service.setAvailability`                                                                                | `service_role`       |
+| `adjust_stock(...)`           | plpgsql  | invoker  | integer             | `stock.service.adjustStock`                                                                                   | `service_role`       |
+| `push_template_items(...)`    | plpgsql  | invoker  | integer             | `brand.service.pushTemplate`                                                                                  | `service_role`       |
+| `set_store_status(...)`       | plpgsql  | invoker  | `text[]`            | `store.service.setStoreStatus`                                                                                | `service_role`       |
+| `store_publish_missing(uuid)` | sql      | invoker  | `text[]`            | `store.service.getManagedStore`, `set_store_status`                                                           | `service_role`       |
+| `stores_emit_changed()`       | plpgsql  | invoker  | trigger             | `stores_changed`                                                                                              | nobody               |
+| `pause_store(...)`            | plpgsql  | invoker  | boolean             | `storePause.service.pauseStore`                                                                               | `service_role`       |
+| `resume_store(...)`           | plpgsql  | invoker  | boolean             | `storePause.service.resumeStore`                                                                              | `service_role`       |
+| `queue_read(...)`             | plpgsql  | definer  | table               | the worker (P1 PR 03)                                                                                         | `service_role`       |
+| `queue_delete(...)`           | sql      | definer  | boolean             | the worker                                                                                                    | `service_role`       |
+| `queue_retry(...)`            | sql      | definer  | void                | the worker                                                                                                    | `service_role`       |
+| `queue_dead_letter(...)`      | sql      | definer  | boolean             | the worker                                                                                                    | `service_role`       |
+| `queue_metrics(text)`         | sql      | definer  | table               | the worker's health report                                                                                    | `service_role`       |
+| `purge_domain_events(...)`    | sql      | invoker  | integer             | pg_cron `purge-domain-events`                                                                                 | `service_role`       |
+| `audit_row_change()`          | plpgsql  | definer  | trigger             | the `*_audit` triggers                                                                                        | nobody               |
+| `audit_log_append_only()`     | plpgsql  | invoker  | trigger             | `audit_log_no_change`, `_no_truncate`                                                                         | nobody               |
 
 ### set_updated_at
 

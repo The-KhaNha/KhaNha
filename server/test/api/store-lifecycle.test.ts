@@ -49,6 +49,8 @@ const changes = async (storeId = branchId) =>
       .order('occurred_at')
       .throwOnError()
   ).data;
+const manageOf = (user: TestUser, id = branchId) =>
+  api().get(`/api/stores/${id}/manage`).set(auth(user));
 const statusOf = async (id: string) =>
   (await supabaseAdmin.from('stores').select('status').eq('id', id).single().throwOnError()).data
     .status;
@@ -309,6 +311,8 @@ describe('publish and unpublish', () => {
     ],
   ])('a missing %s alone blocks publish and changes nothing', async (missing, take, restore) => {
     await take();
+    // The checklist the manage screen shows is the rule the publish applies (one function, store_publish_missing).
+    const shown = (await manageOf(branchManager)).body.missing;
     const before = (await changes()).length;
     const res = await publish(owner);
     const status = await statusOf(branchId);
@@ -319,6 +323,7 @@ describe('publish and unpublish', () => {
       code: 'STORE_NOT_READY',
       details: { kind: 'storeNotReady', missing: [missing] },
     });
+    expect(shown).toEqual([missing]);
     expect(status).toBe('DRAFT');
     expect(after).toBe(before);
   });
@@ -395,6 +400,59 @@ describe('publish and unpublish', () => {
   });
 });
 
+describe('the manage screen reads (any status)', () => {
+  it('a manager reads a DRAFT branch, its brand and its checklist', async () => {
+    const res = await manageOf(branchManager);
+    expect(res.status).toBe(200);
+    expect(res.body.store).toMatchObject({ id: branchId, status: 'DRAFT', isTemplate: false });
+    expect(res.body.brand).toEqual({
+      id: brandId,
+      name: expect.any(String),
+      slug: expect.any(String),
+    });
+    expect(res.body.missing).toEqual(expect.any(Array));
+    // The public route never serves it.
+    expect((await api().get(`/api/stores/${branchId}`)).status).toBe(404);
+  });
+
+  it('the owner reads the template; staff → 403; a customer → 404', async () => {
+    const template = await manageOf(owner, templateId);
+    expect(template.status).toBe(200);
+    expect(template.body.store.isTemplate).toBe(true);
+    expect((await manageOf(branchStaff)).status).toBe(403);
+    expect((await manageOf(customer)).status).toBe(404);
+  });
+
+  it("a DRAFT branch's hours reach its manager; the template has none to edit (404)", async () => {
+    await setHours(branchId);
+    const res = await api().get(`/api/stores/${branchId}/manage/hours`).set(auth(branchManager));
+    expect(res.status).toBe(200);
+    expect(res.body.hours).toHaveLength(7);
+    expect(res.body.timezone).toEqual(expect.any(String));
+    expect((await api().get(`/api/stores/${branchId}/hours`)).status).toBe(404);
+    const template = await api().get(`/api/stores/${templateId}/manage/hours`).set(auth(owner));
+    expect(template.status).toBe(404);
+  });
+});
+
+testAuthMatrix('GET /api/stores/:storeId/manage', (http) =>
+  http.get(`/api/stores/${randomUUID()}/manage`),
+);
+testAuthMatrix('GET /api/stores/:storeId/manage/hours', (http) =>
+  http.get(`/api/stores/${randomUUID()}/manage/hours`),
+);
+testStoreIsolation(
+  'GET /api/stores/:storeId/manage',
+  (http, storeId) => http.get(`/api/stores/${storeId}/manage`),
+  undefined,
+  'MANAGER',
+);
+testStoreIsolation(
+  'GET /api/stores/:storeId/manage/hours',
+  (http, storeId) => http.get(`/api/stores/${storeId}/manage/hours`),
+  undefined,
+  'MANAGER',
+);
 testAuthMatrix('GET /api/brands/mine', (http) => http.get('/api/brands/mine'));
 testAuthMatrix('POST /api/brands/:brandId/stores', (http) =>
   http.post(`/api/brands/${randomUUID()}/stores`).send({ name: 'Anon' }),

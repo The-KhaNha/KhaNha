@@ -136,9 +136,12 @@ export async function getOpenFields(store: StoreWithBrand): Promise<OpenFields> 
 
 const hhmm = (time: string | null): string | null => time?.slice(0, 5) ?? null;
 
-/** The week and the exceptions from today (in the store's zone) on. */
-export async function getStoreSchedule(store: StoreWithBrand): Promise<StoreScheduleResponse> {
-  const { hours, exceptions } = await getSchedule(store.id);
+/** The week and the exceptions from today (in the store's zone) on; `fresh` skips the cache (a manager's own read). */
+export async function getStoreSchedule(
+  store: StoreWithBrand,
+  fresh = false,
+): Promise<StoreScheduleResponse> {
+  const { hours, exceptions } = await (fresh ? loadSchedule : getSchedule)(store.id);
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: store.timezone }).format(new Date());
   return {
     timezone: store.timezone,

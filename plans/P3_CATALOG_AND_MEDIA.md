@@ -387,7 +387,7 @@ the picker needs (the store page reads the public store route, which never serve
 
 ### PR 06 — Client: stock in `/manage` and on the staff board (P3.4, P3.5)
 
-- [x] Merged (06a #83, 1f09d6e; 06b #84)
+- [x] Merged (06a #83, 1f09d6e; 06b #84, 58621c3)
 
 One `StockList` component (quick −/+, "Set", "Sold out", low-stock highlight from the store's
 `low_stock_threshold`, the item's last movements on demand), used at `/manage/:storeSlug/stock` and as a Stock view
@@ -409,7 +409,7 @@ Intent: 06a `--server minor`, 06b `--client minor`.
 
 ### PR 07 — Template push (P3.1)
 
-- [ ] Merged
+- [x] Merged (#85, 44dfa98)
 
 Migration `<ts>_push_template_items.sql`: `push_template_items(p_brand_id, p_template_item_ids uuid[], p_store_ids
 uuid[], p_fields text[], p_actor, p_request_id) returns integer`. For each chosen store: an item whose
@@ -461,6 +461,13 @@ Tests: `OpenBranch.test.tsx` (field errors from the API, a taken slug), `GoLive.
 publishes it, and a customer finds it. Visual gate at 390px throttled and 1280px.
 
 Docs: `docs/FRONTEND_STRUCTURE.md`, `docs/COMPONENTS.md` for any new component. Intent: `--client minor`.
+
+As built: split in three. 07b-1 (server): `/manage` read the store and its hours through the public routes, which
+serve only `ACTIVE` stores, so a `DRAFT` branch could not be managed at all. `GET /stores/:storeId/manage`
+(`store.profile`: the store at any status, its brand, and `missing`, the go-live checklist) and
+`GET /stores/:storeId/manage/hours` (`hours.edit`, uncached). `store_publish_missing` is the one checklist: the
+manage screen reads it and `set_store_status` (redefined, same signature) publishes only when it is empty. 07b-2
+(client): this section's screens on those reads. 07c (client): PR 07's push sheet, once the template is reachable.
 
 ### PR 08 — Media: the port, local storage, the uploads API (P3.3)
 
