@@ -141,6 +141,11 @@ router and shell, so neither crash blanks the page or takes the other down.
 
 ### Forms
 
+**`Switch`** (`Switch.tsx`). `{ checked, label, onChange(next), disabled?, className? }`: an on/off `role="switch"`
+button, a 44px target around a small track (green on, `hint` off). `label` is required (it is the accessible name; the
+switch shows no text). It flips nothing itself: the caller updates at once and rolls back on a refusal. Used by the menu
+tab's availability switch and the stock tab's "Staff can change stock".
+
 **`Input`** and **`Textarea`** (`Input.tsx`). Labelled fields with a hint and an error, `forwardRef`ed.
 `InputProps = InputHTMLAttributes<HTMLInputElement> & { label: string; hint?: string; hintPlacement?: 'inline' | 'below'; error?: string }`;
 `TextareaProps` is the same over `TextareaHTMLAttributes` with `rows = 3`. `className` goes on the wrapper, not the
@@ -404,6 +409,19 @@ UI (presentational; the pages own the data):
 ### features/manage
 
 `manageRules.ts`: `canManage` (owner, MANAGER or ADMIN may open `/manage`), `canEditHours` (owner or MANAGER only: an ADMIN opening `/manage/:storeSlug/hours` sees a note, no editor and no hours request), `managedStores`, `MANAGE_TABS`. `hoursRules.ts`: the week editor's pure helpers (`weekFromHours`, `weekToHours`, `addInterval`, `removeInterval`, `editInterval`, `copyDayToAll`, `sameWeek`, `presetDraft`, `exceptionBody`). **`WeekGrid`** (`{ week, onChange, disabled? }`): a card per day at 360px, a row per day from `md`; add and remove an interval, copy a day to all days. **`ExceptionList`** (`{ exceptions, onAdd, onRemove, busy }`): the special days with the "Closed for …" and "Late hours" presets; `onAdd` resolves with the server's message when refused. `pages/ManageHours.tsx` saves through `services/stores.ts` and reloads the hours, the store and the store list after every change; the server's overlap error shows under the grid.
+
+### features/stock
+
+`stockRules.ts`: `stockLevel(stock, lowStockThreshold)` → `'untracked' | 'out' | 'low' | 'ok'` (low is at or under the
+threshold), `canSeeStock(membership)` (a MANAGER always, STAFF unless the store turned it off; a membership saved
+without the field reads as on), `describeMovement(m)` ("Set to 12", "+3 → 15", "Wasted 2 → 13", "Stopped counting").
+`useStock(store)` → `{ data, isLoading, error, retry, writeError, pendingIds, change(itemId, change, guess?) }`: the
+stock list (polled at `polling.staffBoardMs`, never persisted); a change shows `guess` at once, then the server's
+answer, rolls back and reloads on a refusal, allows one write per item at a time and drops the saved public menu.
+`useStockMovements(storeId, itemId)`. **`StockList({ store: { id, slug } })`**: one row per live item with its count
+(gold when low, paprika at zero, "Not counted"), −/+ by one, "Set" (an inline form; "Stop counting" when counted),
+"Mark sold out", and the item's history on demand; Skeleton, EmptyState and ErrorState. Used by
+`pages/ManageStock.tsx` and the staff board's Stock view.
 
 ### features/menu
 

@@ -5,7 +5,12 @@ import { EmptyState } from '../components/EmptyState';
 import { ErrorState } from '../components/ErrorState';
 import { Skeleton } from '../components/Skeleton';
 import { useAuthStore } from '../features/auth/authStore';
-import { MANAGE_TABS, canEditSettings, canManage } from '../features/manage/manageRules';
+import {
+  MANAGE_TABS,
+  canEditMenu,
+  canEditSettings,
+  canManage,
+} from '../features/manage/manageRules';
 import { useStoreByRef } from '../features/stores/useStores';
 import { cn } from '../lib/cn';
 import { ManageSettingsTab } from './ManageSettings';
@@ -13,6 +18,7 @@ import { ManageTeamTab } from './ManageTeam';
 import { NotFoundPage } from './NotFound';
 import { ManageHoursPage } from './ManageHours';
 import { ManageMenuTab } from './ManageMenu';
+import { ManageStockTab } from './ManageStock';
 
 const ComingNext = () => (
   <EmptyState
@@ -47,10 +53,16 @@ export function ManageStorePage() {
       </div>
     );
 
-  // An admin holds no `settings.edit`: the tab is not offered (and its route is the not-found page).
-  const tabs = MANAGE_TABS.filter((t) => t.path !== 'settings' || canEditSettings(user, store));
+  // An admin holds no `settings.edit` or `stock.update`: those tabs are not offered (their routes are not-found).
+  const tabs = MANAGE_TABS.filter(
+    (t) =>
+      (t.path !== 'settings' || canEditSettings(user, store)) &&
+      // A brand template never gets here: the public store route this page reads never serves one (PR 07b).
+      (t.path !== 'stock' || canEditMenu(user, store)),
+  );
   const elements: Record<string, ReactNode> = {
     menu: <ManageMenuTab store={store} />,
+    stock: <ManageStockTab store={store} />,
     hours: <ManageHoursPage store={store} onChanged={retry} />,
     settings: <ManageSettingsTab storeId={store.id} />,
     team: <ManageTeamTab store={store} user={user} />,
@@ -70,7 +82,7 @@ export function ManageStorePage() {
         />
       )}
       <h1 className="text-xl font-extrabold">{store.name}</h1>
-      {/* Wraps at large text sizes: four tabs no longer fit one row of a phone at 200%. */}
+      {/* Wraps at large text sizes: the tabs no longer fit one row of a phone at 200%. */}
       <nav aria-label="Manage" className="mt-3 flex flex-wrap gap-1 border-b border-line/70">
         {tabs.map(({ path, label }) => (
           <NavLink

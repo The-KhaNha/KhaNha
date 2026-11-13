@@ -319,7 +319,7 @@ on `sort_order` (ties fall back to id).
 
 ### PR 04 — Stock: one function, its trail, the staff setting (P3.4, P3.5)
 
-- [ ] Merged
+- [x] Merged (#82, 1ec75d2)
 
 `/before-write`: schema-guard, NEW TABLE (`stock_movements`), EXTEND (`stores`, whose columns hold the settings since P2).
 
@@ -397,6 +397,15 @@ Tests: `StockList.test.tsx` (each control, a refused adjustment rolls back and s
 (the view appears and disappears with the setting), e2e: staff marks an item sold out and the menu shows it.
 
 Docs: `docs/COMPONENTS.md` (`StockList`), `docs/FRONTEND_STRUCTURE.md`. Intent: `--client minor`.
+
+As built: split in two for size: 06a (#83, 1f09d6e) the server read and the setting in `/auth/me` (and the demo seed
+now wipes `stock_movements`, whose rows blocked it), 06b the client. Both views read a new `GET /stores/:storeId/stock` (`stock.update`: the live items and the threshold, never
+cached). Staff cannot read the editor's list (`menu.edit`), and the public menu is cached and never serves a draft
+branch. `/auth/me` memberships carry `staffCanEditStock`, so the board offers its Stock view only where staff may use it
+(a manager always). Staff learn a change of the setting on their next load; meanwhile the server's 403 shows as an
+error. The "Staff can change stock" switch sits at the top of the `/manage` Stock tab, not on the Settings form. The
+menu tab's switch became the shared `Switch` atom. An open history refetches after every write made on the screen.
+Intent: 06a `--server minor`, 06b `--client minor`.
 
 ### PR 07 — Template push (P3.1)
 

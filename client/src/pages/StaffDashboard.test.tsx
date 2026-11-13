@@ -35,6 +35,9 @@ vi.mock('../features/orders/useOrders', () => ({
     };
   },
 }));
+vi.mock('../features/stock/StockList', () => ({
+  StockList: ({ store }: { store: { id: string } }) => <p>Stock list of {store.id}</p>,
+}));
 vi.mock('../features/stores/useStores', () => ({
   useStoreByRef: () => ({ store: undefined, mutate: () => {} }),
 }));
@@ -132,5 +135,42 @@ describe('the staff board per store', () => {
     );
     expect(screen.getByText("You are not on a store's team.")).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Browse stores' })).toHaveAttribute('href', '/');
+  });
+});
+
+describe('the Stock view', () => {
+  const renderBoard = (membership: Record<string, unknown>) => {
+    signInAt('cafe');
+    const user = useAuthStore.getState().user!;
+    useAuthStore.setState({
+      user: { ...user, memberships: [{ ...user.memberships[0]!, ...membership }] },
+    });
+    render(
+      <MemoryRouter initialEntries={['/staff/cafe']}>
+        <Routes>
+          <Route path="/staff/:storeSlug" element={<StaffDashboardPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+  };
+
+  it('appears for staff while the store lets them, and swaps the board for the stock list', () => {
+    renderBoard({ staffCanEditStock: true });
+    expect(screen.queryByText('Stock list of id-cafe')).not.toBeInTheDocument();
+    act(() => screen.getByRole('button', { name: 'Stock' }).click());
+    expect(screen.getByText('Stock list of id-cafe')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Stock' })).toHaveAttribute('aria-pressed', 'true');
+    act(() => screen.getByRole('button', { name: 'Orders' }).click());
+    expect(screen.queryByText('Stock list of id-cafe')).not.toBeInTheDocument();
+  });
+
+  it('is not offered to staff where the store turned it off', () => {
+    renderBoard({ staffCanEditStock: false });
+    expect(screen.queryByRole('button', { name: 'Stock' })).not.toBeInTheDocument();
+  });
+
+  it('stays for a manager whatever the setting', () => {
+    renderBoard({ role: 'MANAGER', staffCanEditStock: false });
+    expect(screen.getByRole('button', { name: 'Stock' })).toBeInTheDocument();
   });
 });

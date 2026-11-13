@@ -95,6 +95,26 @@ export async function mockApi(page: Page): Promise<void> {
     if (path === '/api/stores') return json({ stores: [summary(store)] });
     if (path === '/api/stores/cafe') return json({ store });
     if (path === '/api/stores/cafe/menu') return json(menu);
+    if (path === '/api/stores/s1/stock')
+      return json({
+        items: items.map((i, n) => ({
+          ...i,
+          stockQuantity: [12, 3][n] ?? null,
+          isEnabled: true,
+          archivedAt: null,
+        })),
+        lowStockThreshold: 5,
+      });
+    if (path === '/api/stores/s1/settings')
+      return json({
+        settings: {
+          maxQuantityPerItem: 10,
+          lowStockThreshold: 5,
+          staffOrderListLimit: 100,
+          lastOrderMinutesBeforeClose: 0,
+          staffCanEditStock: true,
+        },
+      });
     if (path === '/api/stores/s1/hours')
       return json({
         timezone: 'Asia/Kolkata',

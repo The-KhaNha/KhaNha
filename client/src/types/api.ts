@@ -246,6 +246,12 @@ export interface StoreSettings {
   staffCanEditStock: boolean;
 }
 
+/** GET /api/stores/:storeId/stock: the live items and the store's low-stock threshold. */
+export interface StockList {
+  items: ManagedMenuItem[];
+  lowStockThreshold: number;
+}
+
 /** One hand-made stock change (GET /api/stores/:storeId/stock-movements). Sales are not movements. */
 export interface StockMovement {
   id: number;
