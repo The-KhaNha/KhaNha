@@ -36,7 +36,10 @@ export function ManageMenuTab({ store, onChanged }: ManageMenuTabProps) {
   // On a brand template: the item being pushed to the branches, and the branches (the owner's brands).
   const [pushing, setPushing] = useState<ManagedMenuItem | null>(null);
   const brands = useMyBrands(!!store.isTemplate);
-  const branches = brands.data?.find((b) => b.id === store.brand.id)?.stores ?? [];
+  // null while the brands load: the sheet shows that, and an error with a retry, rather than "no branches".
+  const branches = brands.data
+    ? (brands.data.find((b) => b.id === store.brand.id)?.stores ?? [])
+    : null;
 
   if (!allowed)
     return (
@@ -199,6 +202,8 @@ export function ManageMenuTab({ store, onChanged }: ManageMenuTabProps) {
           brandId={store.brand.id}
           item={pushing}
           branches={branches}
+          branchesError={brands.error}
+          onRetryBranches={brands.reload}
           onClose={() => setPushing(null)}
         />
       )}

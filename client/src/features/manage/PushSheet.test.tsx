@@ -96,6 +96,43 @@ describe('PushSheet', () => {
     ).toBeInTheDocument();
   });
 
+  it('a branch whose menu fails to load blocks only a push that includes it', async () => {
+    menu.fetchManagedMenu.mockImplementation(async (id: string) => {
+      if (id === 's') throw new ApiError(500, 'X', 'down');
+      return [{ ...template, id: 'c1', name: 'Cutting Chai', price: 120, templateItemId: 't1' }];
+    });
+    show();
+    expect(await screen.findByText(/Couldn't load South/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Push' })).toBeDisabled();
+    fireEvent.click(screen.getByLabelText('South (draft)'));
+    expect(await screen.findByText('Price at North: ₹120 → ₹140')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Push' })).toBeEnabled();
+  });
+
+  it('waits for the branch list, says so when it fails, and chooses every branch once it arrives', async () => {
+    const { rerender } = render(
+      <PushSheet brandId="b1" item={template} branches={null} onClose={onClose} />,
+    );
+    expect(screen.getByLabelText('Loading the branches')).toBeInTheDocument();
+    const retry = vi.fn();
+    rerender(
+      <PushSheet
+        brandId="b1"
+        item={template}
+        branches={null}
+        branchesError={new ApiError(500, 'X', 'Brands down')}
+        onRetryBranches={retry}
+        onClose={onClose}
+      />,
+    );
+    expect(screen.getByText('Brands down')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /try again/i }));
+    expect(retry).toHaveBeenCalled();
+    rerender(<PushSheet brandId="b1" item={template} branches={branches} onClose={onClose} />);
+    expect(screen.getByLabelText('North')).toBeChecked();
+    expect(screen.getByLabelText('South (draft)')).toBeChecked();
+  });
+
   it('Escape closes it', async () => {
     show();
     fireEvent.keyDown(window, { key: 'Escape' });

@@ -15,8 +15,10 @@ interface PushSheetProps {
   brandId: string;
   /** The template item to push. */
   item: ManagedMenuItem;
-  /** The brand's branches; only DRAFT and ACTIVE ones can receive a push. */
-  branches: ManagedStore[];
+  /** The brand's branches (null while they load); only DRAFT and ACTIVE ones can receive a push. */
+  branches: ManagedStore[] | null;
+  branchesError?: ApiError | null;
+  onRetryBranches?: () => void;
   onClose: () => void;
 }
 
@@ -47,9 +49,19 @@ const toggle = <T,>(list: T[], value: T, on: boolean) =>
  * "Push to branches": choose branches and fields, see what each branch's copy (found by lineage) will change, confirm.
  * Stock, availability, order and popularity never move. A sheet on phones, a dialog from `md`.
  */
-export function PushSheet({ brandId, item, branches, onClose }: PushSheetProps) {
-  const targets = branches.filter((b) => b.status === 'DRAFT' || b.status === 'ACTIVE');
-  const [storeIds, setStoreIds] = useState<string[]>(() => targets.map((b) => b.id));
+export function PushSheet({
+  brandId,
+  item,
+  branches,
+  branchesError,
+  onRetryBranches,
+  onClose,
+}: PushSheetProps) {
+  const targets = (branches ?? []).filter((b) => b.status === 'DRAFT' || b.status === 'ACTIVE');
+  // null until the person changes the choice: every branch is chosen, including ones that arrive after the sheet opens.
+  const [picked, setPicked] = useState<string[] | null>(null);
+  const storeIds = picked ?? targets.map((b) => b.id);
+  const setStoreIds = (update: (ids: string[]) => string[]) => setPicked(update(storeIds));
   const [fields, setFields] = useState<PushField[]>(['price']);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -63,12 +75,23 @@ export function PushSheet({ brandId, item, branches, onClose }: PushSheetProps) 
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  // Every branch's own list, to find its copy: not persisted, and read fresh each time the sheet opens.
+  // Every branch's own list, to find its copy: not persisted, read fresh each time the sheet opens. Each on its own: one
+  // branch that fails to load blocks only a push that includes it.
   const menus = useResource(
-    () => Promise.all(targets.map(async (b) => [b.id, await fetchManagedMenu(b.id)] as const)),
-    { key: `manage:push:${item.id}:${targets.map((b) => b.id).join(',')}` },
+    async () => {
+      const settled = await Promise.allSettled(targets.map((b) => fetchManagedMenu(b.id)));
+      return targets.map((b, i) => {
+        const result = settled[i]!;
+        return [b.id, result.status === 'fulfilled' ? result.value : null] as const;
+      });
+    },
+    {
+      key: `manage:push:${item.id}:${targets.map((b) => b.id).join(',')}`,
+      enabled: branches !== null,
+    },
   );
   const lists = new Map((menus.data ?? []).map(([id, list]) => [id, list] as const));
+  const unloaded = targets.filter((b) => storeIds.includes(b.id) && menus.data && !lists.get(b.id));
   const copyIn = (id: string) =>
     lists.get(id)?.find((i) => i.templateItemId === item.id && i.archivedAt === null);
   const sameNameIn = (id: string) =>
@@ -113,7 +136,22 @@ export function PushSheet({ brandId, item, branches, onClose }: PushSheetProps) 
         <h2 id="push-title" className="text-title font-extrabold leading-tight">
           Push “{item.name}” to branches
         </h2>
-        {targets.length === 0 ? (
+        {branches === null ? (
+          branchesError ? (
+            <ErrorState
+              compact
+              className="mt-3"
+              title="Couldn't load the branches"
+              message={branchesError.message}
+              onRetry={onRetryBranches}
+              unreachable={branchesError.isUnreachable}
+            />
+          ) : (
+            <div className="mt-4" aria-busy aria-label="Loading the branches">
+              <Skeleton className="h-24" />
+            </div>
+          )
+        ) : targets.length === 0 ? (
           <p className="mt-3 text-body text-muted">This brand has no branch to push to yet.</p>
         ) : (
           <>
@@ -145,10 +183,14 @@ export function PushSheet({ brandId, item, branches, onClose }: PushSheetProps) 
             >
               {menus.isLoading ? (
                 <Skeleton className="h-10" />
-              ) : !menus.data ? (
+              ) : !menus.data || unloaded.length > 0 ? (
                 <ErrorState
                   compact
-                  title="Couldn't load the branches' menus"
+                  title={
+                    unloaded.length > 0
+                      ? `Couldn't load ${unloaded.map((b) => b.name).join(', ')}: untick it or retry`
+                      : "Couldn't load the branches' menus"
+                  }
                   message={menus.error?.message}
                   onRetry={menus.reload}
                   unreachable={menus.error?.isUnreachable}
@@ -184,7 +226,11 @@ export function PushSheet({ brandId, item, branches, onClose }: PushSheetProps) 
             fullWidth
             loading={busy}
             disabled={
-              storeIds.length === 0 || fields.length === 0 || !menus.data || preview.length === 0
+              storeIds.length === 0 ||
+              fields.length === 0 ||
+              !menus.data ||
+              unloaded.length > 0 ||
+              preview.length === 0
             }
             onClick={() => void confirm()}
           >

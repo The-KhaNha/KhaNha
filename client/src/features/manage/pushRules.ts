@@ -23,6 +23,9 @@ const shown = (field: Exclude<PushField, 'photo'>, item: ManagedMenuItem): strin
   }
 };
 
+const raw = (field: Exclude<PushField, 'photo'>, item: ManagedMenuItem) =>
+  field === 'price' ? item.price : (item[field] ?? null);
+
 /**
  * What a push of `fields` from `template` will do at one branch: "Price at North Gate: ₹120 → ₹140" per field that
  * differs, "North Gate gets a new copy" when it has none, or nothing when its copy already matches. A branch older than
@@ -44,7 +47,8 @@ export function pushPreview(
   return PUSH_FIELDS.filter(({ key }) => fields.includes(key)).flatMap(({ key, label }) => {
     if (key === 'photo')
       return copy.imageUrl === template.imageUrl ? [] : [`Photo at ${branchName}: replaced`];
-    const [from, to] = [shown(key, copy), shown(key, template)];
-    return from === to ? [] : [`${label} at ${branchName}: ${from} → ${to}`];
+    // The raw values decide; `shown` only describes a difference ("(blank)" is a label, not a value).
+    if (raw(key, copy) === raw(key, template)) return [];
+    return [`${label} at ${branchName}: ${shown(key, copy)} → ${shown(key, template)}`];
   });
 }

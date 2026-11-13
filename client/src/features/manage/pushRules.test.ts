@@ -36,4 +36,12 @@ describe('pushPreview', () => {
       'Old Cafe gets a new copy beside its own “Masala Chai”',
     ]);
   });
+
+  it('compares the values, not their labels: an empty description against "(blank)" is a change', () => {
+    expect(
+      pushPreview(item({ description: '(blank)' }), 'North', item({ description: '' }), [
+        'description',
+      ]),
+    ).toEqual(['Description at North: (blank) → (blank)']);
+  });
 });
