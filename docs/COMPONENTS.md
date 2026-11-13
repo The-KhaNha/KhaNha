@@ -419,8 +419,8 @@ without the field reads as on), `describeMovement(m)` ("Set to 12", "+3 → 15",
 `usePhotoUpload(storeId)` → `{ status, preview, uploadId, error, upload(file), cancel(), retry() }`
 (`features/manage/usePhotoUpload.ts`): a photo for one of the store's items. It redraws the file on a canvas as a JPEG at
 most 2000px on its longer side (less data, and any format the browser shows becomes one the server takes), starts the
-upload, sends it as the server says (`services/media.ts`), completes it, then polls every `polling.orderMs` while the
-tab is visible until the worker has processed it (`ready`, with `uploadId` and the variant as `preview`) or refused it
+upload, sends it as the server says (`services/media.ts`), completes it, then reads the upload through `useResource`
+every `polling.orderMs` (paused while the tab is hidden) until the worker has processed it (`ready`, with `uploadId` and the variant as `preview`) or refused it
 (`failed`, with the reason). A failure keeps the file for `retry`; `cancel` stops everything, the wait included.
 `fitWithin(w, h, max)` is the sizing rule.
 

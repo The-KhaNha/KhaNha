@@ -181,16 +181,29 @@ describe('usePhotoUpload', () => {
     expect(result.current).toMatchObject({ status: 'idle', preview: null, uploadId: null });
   });
 
-  it('a hidden tab does not poll until it is visible again', async () => {
+  it('a hidden tab reads once, then waits until it is visible again', async () => {
     media.fetchUpload.mockResolvedValueOnce(upload('UPLOADED')).mockResolvedValue(processed);
     const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
     const { result } = renderHook(() => usePhotoUpload('s1'));
     act(() => void result.current.upload(file()));
-    await waitFor(() => expect(result.current.status).toBe('processing'));
+    await waitFor(() => expect(media.fetchUpload).toHaveBeenCalledTimes(1));
     await new Promise((r) => setTimeout(r, 60));
-    expect(media.fetchUpload).not.toHaveBeenCalled();
+    expect(media.fetchUpload).toHaveBeenCalledTimes(1);
+    expect(result.current.status).toBe('processing');
     hidden.mockReturnValue(false);
     act(() => document.dispatchEvent(new Event('visibilitychange')));
     await waitFor(() => expect(result.current.status).toBe('ready'));
+  });
+
+  it('a cancel while the photo is being prepared stops before it is decoded', async () => {
+    const { result } = renderHook(() => usePhotoUpload('s1'));
+    act(() => {
+      void result.current.upload(file());
+      result.current.cancel();
+    });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(createImageBitmap).not.toHaveBeenCalled();
+    expect(media.startUpload).not.toHaveBeenCalled();
+    expect(result.current.status).toBe('idle');
   });
 });

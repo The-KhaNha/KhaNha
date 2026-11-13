@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useConfig } from '../config/useConfig';
+import { useResource } from '../../lib/useResource';
 import { ApiError } from '../../services/api';
 import { completeUpload, fetchUpload, sendPhoto, startUpload } from '../../services/media';
 import type { MediaUpload } from '../../types/api';
@@ -53,8 +54,9 @@ function measure(file: File): Promise<{ width: number; height: number }> {
  * (a 50 MP photo never sits in a low-end phone's memory at full size), the browser applies the EXIF orientation, and
  * transparency becomes white rather than JPEG's black.
  */
-async function asJpeg(file: File): Promise<Blob> {
+async function asJpeg(file: File, signal: AbortSignal): Promise<Blob> {
   const { width, height } = await measure(file);
+  signal.throwIfAborted();
   const size = fitWithin(width, height);
   const bitmap = await createImageBitmap(file, {
     resizeWidth: size.width,
@@ -63,6 +65,11 @@ async function asJpeg(file: File): Promise<Blob> {
   }).catch(() => {
     throw new Error("That file isn't a photo we can read. Try a JPEG or PNG.");
   });
+  // Cancelled while decoding: release the pixels now rather than encode a photo nobody wants.
+  if (signal.aborted) {
+    bitmap.close();
+    signal.throwIfAborted();
+  }
   const canvas = document.createElement('canvas');
   canvas.width = bitmap.width;
   canvas.height = bitmap.height;
@@ -84,49 +91,40 @@ async function asJpeg(file: File): Promise<Blob> {
   );
 }
 
-/** Resolves after `ms` of the tab being visible: a hidden tab does not poll (people pay for data). */
-function visibleDelay(ms: number, signal: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const done = () => {
-      document.removeEventListener('visibilitychange', arm);
-      signal.removeEventListener('abort', stop);
-    };
-    const arm = () => {
-      clearTimeout(timer);
-      if (!document.hidden)
-        timer = setTimeout(() => {
-          done();
-          resolve();
-        }, ms);
-    };
-    const stop = () => {
-      clearTimeout(timer);
-      done();
-      reject(signal.reason);
-    };
-    document.addEventListener('visibilitychange', arm);
-    signal.addEventListener('abort', stop, { once: true });
-    arm();
-  });
-}
-
 const message = (err: unknown) =>
   err instanceof ApiError || err instanceof Error
     ? err.message
     : 'Something went wrong. Please try again.';
 
+const processingError = (upload: MediaUpload) =>
+  upload.failure
+    ? `That photo can't be used: ${upload.failure}.`
+    : 'That photo could not be processed.';
+
 /**
- * A photo for one of the store's items (P3.3): prepare, start the upload, send it as the server says, complete it, then
- * wait for the worker to process it. Every step shows; a failure keeps the chosen file for `retry`; `cancel` stops
+ * A photo for one of the store's items (P3.3): prepare, start the upload, send it as the server says and complete it;
+ * then the upload is read through useResource every `polling.orderMs` (paused while the tab is hidden) until the
+ * worker has processed or refused it. Every step shows; a failure keeps the chosen file for `retry`; `cancel` stops
  * whatever is running, including the wait.
  */
 export function usePhotoUpload(storeId: string) {
   const { polling } = useConfig();
   const [state, setState] = useState<PhotoUploadState>(IDLE);
+  // The completed upload the worker is processing, and when to stop waiting for it.
+  const [waiting, setWaiting] = useState<{ id: string; deadline: number } | null>(null);
   const file = useRef<File | null>(null);
   const run = useRef<AbortController | null>(null);
   const localPreview = useRef<string | null>(null);
+
+  const processing = useResource(() => fetchUpload(storeId, waiting?.id ?? ''), {
+    key: `media-upload:${waiting?.id ?? ''}`,
+    enabled: waiting !== null,
+    // Until the worker is done, or the wait has run out (the poll after the deadline is the last).
+    pollInterval: (upload) =>
+      upload.status === 'UPLOADED' && Date.now() <= (waiting?.deadline ?? 0)
+        ? polling.orderMs
+        : null,
+  });
 
   const dropPreview = () => {
     if (localPreview.current) URL.revokeObjectURL(localPreview.current);
@@ -140,9 +138,31 @@ export function usePhotoUpload(storeId: string) {
     [],
   );
 
+  // The wait's outcome, read off the latest poll: ready, refused, unreadable, or too slow (the last poll came after the
+  // deadline). Derived, not stored, so nothing has to be kept in step.
+  const view = ((): PhotoUploadState => {
+    const { data: current, error: readError, updatedAt } = processing;
+    if (!waiting) return state;
+    const failed = (error: string): PhotoUploadState => ({
+      ...state,
+      status: 'failed',
+      uploadId: null,
+      error,
+    });
+    if (readError) return failed(readError.message);
+    if (!current || current.id !== waiting.id) return state;
+    if (current.status === 'PROCESSED')
+      return { status: 'ready', preview: current.url, uploadId: current.id, error: null };
+    if (current.status !== 'UPLOADED') return failed(processingError(current));
+    if ((updatedAt ?? 0) > waiting.deadline)
+      return failed('The photo is taking a while to process. Try again in a moment.');
+    return state;
+  })();
+
   const upload = useCallback(
     async (chosen: File) => {
       run.current?.abort();
+      setWaiting(null);
       const controller = new AbortController();
       run.current = controller;
       const { signal } = controller;
@@ -154,37 +174,28 @@ export function usePhotoUpload(storeId: string) {
         !signal.aborted && setState({ status, preview, uploadId: null, error: null });
       try {
         step('preparing');
-        const photo = await asJpeg(chosen);
+        const photo = await asJpeg(chosen, signal);
         step('sending');
         const { uploadId, upload: target } = await startUpload(storeId, photo, signal);
         await sendPhoto(target, photo, signal);
-        let current: MediaUpload = await completeUpload(storeId, uploadId, signal);
-        step('processing');
-        const deadline = Date.now() + PROCESS_WAIT_MS;
-        while (current.status === 'UPLOADED') {
-          if (Date.now() > deadline)
-            throw new Error('The photo is taking a while to process. Try again in a moment.');
-          await visibleDelay(polling.orderMs, signal);
-          current = await fetchUpload(storeId, uploadId, signal);
-        }
-        if (current.status !== 'PROCESSED')
-          throw new Error(
-            current.failure
-              ? `That photo can't be used: ${current.failure}.`
-              : 'That photo could not be processed.',
-          );
+        const completed = await completeUpload(storeId, uploadId, signal);
         if (signal.aborted) return;
-        setState({ status: 'ready', preview: current.url, uploadId, error: null });
+        if (completed.status === 'PROCESSED')
+          return setState({ status: 'ready', preview: completed.url, uploadId, error: null });
+        if (completed.status !== 'UPLOADED') throw new Error(processingError(completed));
+        step('processing');
+        setWaiting({ id: uploadId, deadline: Date.now() + PROCESS_WAIT_MS });
       } catch (err) {
         if (signal.aborted) return;
         setState({ status: 'failed', preview, uploadId: null, error: message(err) });
       }
     },
-    [storeId, polling.orderMs],
+    [storeId],
   );
 
   const cancel = useCallback(() => {
     run.current?.abort();
+    setWaiting(null);
     dropPreview();
     file.current = null;
     setState(IDLE);
@@ -194,5 +205,5 @@ export function usePhotoUpload(storeId: string) {
     if (file.current) void upload(file.current);
   }, [upload]);
 
-  return { ...state, upload, cancel, retry };
+  return { ...view, upload, cancel, retry };
 }
