@@ -128,9 +128,8 @@ export async function completeUpload(
       );
     }
   }
-  let moved: boolean;
   try {
-    const { data } = await supabaseAdmin
+    await supabaseAdmin
       .rpc('complete_media_upload', {
         p_store_id: storeId,
         p_upload_id: row.id,
@@ -138,13 +137,12 @@ export async function completeUpload(
         p_request_id: ctx.requestId,
       })
       .throwOnError();
-    moved = data;
   } catch (err) {
     if (raisedByDatabase(err, 'NOT_FOUND')) throw notFound('Upload not found.');
     throw err;
   }
-  // A repeat changed nothing: the row read above is still the answer.
-  return moved ? findUpload(storeId, row.id) : row;
+  // Read again either way: a request racing this one may have completed the upload after the read above.
+  return findUpload(storeId, row.id);
 }
 
 export const getUpload = findUpload;

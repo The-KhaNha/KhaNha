@@ -5,7 +5,7 @@
 import { randomUUID } from 'node:crypto';
 import { request } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createApp } from '../../src/app';
 import { env } from '../../src/utils/env';
 import { supabaseAdmin } from '../../src/utils/supabase';
@@ -228,6 +228,31 @@ describe('an upload, start to finish', () => {
     const done = await complete(uploadId);
     const served = await api().get(done.body.upload.url);
     expect(Buffer.compare(served.body as Buffer, first)).toBe(0);
+  });
+
+  it('a completion that loses a race to another answers the upload as it now stands (UPLOADED)', async () => {
+    const bytes = png(100);
+    const { uploadId } = (await start({ contentType: 'image/png', byteSize: bytes.length })).body;
+    expect((await put(uploadId, bytes)).status).toBe(204);
+    // Another request completes the upload between this one's read and its own RPC, which then changes nothing.
+    const real = supabaseAdmin.rpc.bind(supabaseAdmin);
+    const spy = vi.spyOn(supabaseAdmin, 'rpc').mockImplementation(((fn: string, args: object) => {
+      if (fn !== 'complete_media_upload') return real(fn as 'complete_media_upload', args as never);
+      return {
+        throwOnError: async () => {
+          await real('complete_media_upload', args as never).throwOnError();
+          return real('complete_media_upload', args as never).throwOnError();
+        },
+      };
+    }) as unknown as typeof supabaseAdmin.rpc);
+    try {
+      const done = await complete(uploadId);
+      expect(done.status).toBe(200);
+      expect(done.body.upload.status).toBe('UPLOADED');
+    } finally {
+      spy.mockRestore();
+    }
+    expect(await events(uploadId)).toHaveLength(1);
   });
 
   it('a body declared past 8 MB is 413 at once, before any of it is read', async () => {
