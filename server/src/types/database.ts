@@ -1106,6 +1106,7 @@ export type Database = {
         };
         Returns: string[];
       };
+      store_publish_missing: { Args: { p_store_id: string }; Returns: string[] };
       touch_session: {
         Args: {
           p_idle: string;

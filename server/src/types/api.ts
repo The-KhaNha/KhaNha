@@ -76,6 +76,16 @@ export interface ManagedStoreDto {
   createdAt: string;
 }
 
+/** What a branch still lacks before it can be published (store_publish_missing); empty: ready. */
+export type PublishMissing = 'address' | 'hours' | 'menu';
+
+/** GET /api/stores/:storeId/manage: the store as its managers see it, whatever its status, and its go-live checklist. */
+export interface ManageStoreResponseDto {
+  store: ManagedStoreDto;
+  brand: { id: string; name: string; slug: string };
+  missing: PublishMissing[];
+}
+
 /** One brand of GET /api/brands/mine: its branches (every status) and its template, which branches copy. */
 export interface MyBrandDto {
   id: string;
