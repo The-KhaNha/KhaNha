@@ -794,7 +794,17 @@ describe('envelope and DTO keys', () => {
     );
     for (const item of res.body.order.items as Record<string, unknown>[]) {
       expect(Object.keys(item).sort()).toEqual(
-        ['id', 'menuItemId', 'name', 'unitPrice', 'quantity', 'lineTotal', 'imageUrl'].sort(),
+        [
+          'id',
+          'menuItemId',
+          'name',
+          'unitPrice',
+          'quantity',
+          'lineTotal',
+          'imageUrl',
+          'baseUnitPrice',
+          'modifiers',
+        ].sort(),
       );
     }
   });

@@ -15,6 +15,8 @@ export type ErrorCode =
   | 'IDEMPOTENCY_KEY_REUSED'
   | 'MEMBERSHIP_EXISTS'
   | 'PRICE_CHANGED'
+  | 'MODIFIER_REQUIRED'
+  | 'MODIFIER_INVALID'
   | 'SLUG_TAKEN'
   | 'STORE_NOT_READY'
   | 'UPLOAD_INVALID'
@@ -78,7 +80,16 @@ export interface UploadInvalidDetails {
   reason: 'type' | 'sizeMismatch' | 'content' | 'notUploaded' | 'state';
 }
 
+/** Which cart line's options were refused (P3.2), and the group when the refusal is about one. */
+export interface ModifierErrorDetails {
+  kind: 'modifier';
+  menuItemId: string;
+  name: string;
+  group: string | null;
+}
+
 export type ErrorDetails =
+  | ModifierErrorDetails
   | ItemErrorDetails
   | ReplayedOrderDetails
   | FieldErrorDetails
@@ -224,6 +235,33 @@ export const stockBelowZero = (menuItemId: string, name: string, available: numb
     'INSUFFICIENT_STOCK',
     `Only ${available} ${name} left: you cannot remove more than that.`,
     { menuItemId, name, available },
+  );
+
+/** A required choice was left empty (and the group has no default): "Choose a Size for Cold Coffee." */
+export const modifierRequired = (
+  menuItemId: string,
+  name: string,
+  group: string | null,
+): AppError =>
+  new AppError(
+    400,
+    'MODIFIER_REQUIRED',
+    group ? `Choose a ${group} for ${name}.` : `Choose the options for ${name}.`,
+    { kind: 'modifier', menuItemId, name, group },
+  );
+
+/**
+ * The options chosen for an item cannot be ordered: one is sold out or no longer offered, a group got too many, or
+ * (with options switched off for the store) any option at all. The client asks the customer to choose again.
+ */
+export const modifierInvalid = (menuItemId: string, name: string, group: string | null): AppError =>
+  new AppError(
+    400,
+    'MODIFIER_INVALID',
+    group
+      ? `The ${group} chosen for ${name} can't be ordered. Please choose again.`
+      : `The options chosen for ${name} can't be ordered. Please choose again.`,
+    { kind: 'modifier', menuItemId, name, group },
   );
 
 /** An item switched off, by the API's check or by place_order's when it was switched off in between. */

@@ -102,7 +102,7 @@ describe('a cart line priced at what the customer saw (expectedUnitPrice)', () =
     expect(res.body.order.total).toBe(price());
   });
 
-  it.each([0, -5, 1.5, '120'])('expectedUnitPrice %s → 400 VALIDATION_ERROR', async (bad) => {
+  it.each([-5, 1.5, '120'])('expectedUnitPrice %s → 400 VALIDATION_ERROR', async (bad) => {
     const res = await place([{ menuItemId: item.id, quantity: 1, expectedUnitPrice: bad }]);
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');

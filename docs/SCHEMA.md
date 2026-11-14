@@ -57,6 +57,7 @@ a new file (see [DEPLOYMENT.md](DEPLOYMENT.md#schema-changes)).
 | `20261113142425_store_readiness.sql`               | `store_publish_missing()` (`service_role` only), the go-live checklist; `set_store_status` (same signature) reads it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `20261113183803_bundled_photos.sql`                | adds `bundled_photo_refs()`, `bundled_photo_row_count()` and `move_bundled_photo()` (`service_role` only): the bundled photos' move to the media store (P3.3)                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `20261113174022_media_sweep.sql`                   | subscribes `media.sweep` to `q_media`, adds `media_upload_shown()` and `media_sweep_candidates()` (`service_role` only), the partial index `order_items_media_image_idx` and the nightly `media-sweep` schedule (P3.3)                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `20261113195325_modifier_orders.sql`               | adds `price_order_line()` and `order_item_modifiers.position`, and replaces `place_order` with `p_modifiers_enabled` (dropped and created again: a second overload would make named calls ambiguous) pricing each line with its modifiers and writing the snapshots (P3.2)                                                                                                                                                                                                                                                                                                                                                             |
 | `20261113185201_modifiers.sql`                     | adds `modifier_groups`, `modifier_options`, `menu_item_modifier_groups`, `order_item_modifiers` (RLS on, revoked; groups and options audited), `order_items.base_unit_price_paise`, the `modifiers` flag (off), and `reset_demo_orders()` truncating the snapshots too (P3.2)                                                                                                                                                                                                                                                                                                                                                          |
 | `20261113170333_media_pipeline.sql`                | creates the `q_media` queue, subscribes `media.uploaded` to it, and adds `finish_media_upload()` (`service_role` only): the image pipeline (P3.3)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `20261113151317_media_uploads.sql`                 | adds `media_upload_status`, `media_uploads` (RLS, revoked) and `complete_media_upload()` (`service_role` only): photo uploads (P3.3)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
@@ -421,9 +422,11 @@ Item options ("Size", "Milk", "Extra cheese +₹20"), scoped to a store like its
   (PR 14) and copy them (13c) ensure it. Not audited (no id for an audit row); its writes emit `menu.changed`.
 - **`order_item_modifiers`**: what an order line was made with, as it was then: `order_item_id` → `order_items` on
   delete cascade, `modifier_option_id` → `modifier_options` on delete set null, `group_name`, `option_name`,
-  `price_delta_paise`. Indexes `(order_item_id)`, `(modifier_option_id)`.
+  `price_delta_paise`, `position` (the order `price_order_line` applied them in; PR 13b). Indexes `(order_item_id)`, `(modifier_option_id)`.
 - **`order_items.base_unit_price_paise`** (bigint, ≥ 0, null on older lines): the item's own price on a line whose
-  `unit_price_paise` includes modifiers.
+  `unit_price_paise` includes modifiers. **`order_items.requested_modifier_option_ids`** (uuid[], sorted, default
+  `{}`; PR 13b): the options the request named for the line, without the defaults `place_order` applied, which a
+  retry with the same idempotency key must name again.
 
 ### order_items
 
@@ -633,6 +636,7 @@ object (SQLSTATE `P0001`). How the API maps them is in [API.md](API.md#database-
 | `handle_user_email_change()`  | plpgsql  | definer  | trigger             | `on_auth_user_email_changed`                                                                                  | nobody               |
 | `profile_name(text, text)`    | plpgsql  | invoker  | text                | `handle_new_user()`, `20261103173300_profile_name_bounds.sql`                                                 | nobody               |
 | `profile_phone(text)`         | sql      | invoker  | text                | `handle_new_user()`, `20261103173300_profile_name_bounds.sql`                                                 | nobody               |
+| `price_order_line(...)`       | plpgsql  | invoker  | jsonb               | `place_order` (each line)                                                                                     | `service_role`       |
 | `place_order(...)`            | plpgsql  | invoker  | uuid                | `order.service.createOrder`                                                                                   | `service_role`       |
 | `update_order_status(...)`    | plpgsql  | invoker  | boolean             | `order.service.updateOrderStatus`                                                                             | `service_role`       |
 | `reset_demo_orders()`         | sql      | definer  | void                | `server/scripts/seed.ts`                                                                                      | `service_role`       |
@@ -699,6 +703,20 @@ The migration first rewrote legacy rows outside the bounds with these functions,
 
 Copies the new email to `profiles.email` for that user.
 
+### price_order_line
+
+`price_order_line(p_store_id, p_menu_item_id, p_item_name, p_base_paise, p_option_ids uuid[], p_enabled) returns
+jsonb` (plpgsql, stable, invoker, `service_role` only; called by `place_order` for each line, P3 PR 13b): the line's
+`{ unit, applied: [{ option_id, group_name, option_name, price_delta_paise }] }`, by `domain/pricing.ts`'s rules in the
+same order (the shared case table `server/test/setup/modifierCases.ts` runs through both): with `p_enabled` false, the
+item's price, and any option is `MODIFIER_INVALID`; otherwise an option twice, not in a live group of the item, or not
+available is `MODIFIER_INVALID`; per group in the item's order (link, then group `sort_order`, then id) a required
+group left empty takes its available defaults (at most `max_select`), over `max_select` is `MODIFIER_INVALID` and
+under `min_select` `MODIFIER_REQUIRED`; a total below zero is `MODIFIER_INVALID`. Every refusal carries
+`{ menuItemId, name, group? }`. `place_order` stores `unit` as the line's `unit_price_paise` (compared with the price
+charged), the item's price as `base_unit_price_paise`, and `applied` as `order_item_modifiers` rows in that order
+(`position`). Stock is still taken per item, across all its lines.
+
 ### place_order
 
 ```sql
@@ -707,17 +725,18 @@ place_order(
   p_store_id uuid,
   p_customer_name text,
   p_payment_status payment_status,
-  p_lines jsonb,              -- [{ menu_item_id, name, quantity, unit_price_paise }] in cart order
+  p_lines jsonb,              -- [{ menu_item_id, name, quantity, unit_price_paise, modifier_option_ids? }] in cart order
   p_customer_phone text default null,
   p_note text default null,
   p_idempotency_key uuid default null, -- the client's per-attempt key (API.md "POST /orders")
   p_actor jsonb default null,          -- { type, id, role }: who asked (the controller's RequestContext)
-  p_request_id text default null       -- the request's x-request-id
+  p_request_id text default null,      -- the request's x-request-id
+  p_modifiers_enabled boolean default false -- the store's evaluated `modifiers` flag (P3.2)
 ) returns uuid                -- the new order's id, or the id of the order this key already placed
 ```
 
 The API has already checked every line and charged for it. The function prices them itself, from
-`menu_items.price_paise`, and each line's `unit_price_paise` is the price the API charged: a line whose price has
+`menu_items.price_paise` plus each line's modifiers through `price_order_line()` (P3.2, below), and each line's `unit_price_paise` is the price the API charged: a line whose price has
 changed since refuses the order (step 3), so nothing is stored at a price other than the one charged. A line without
 `unit_price_paise` is refused the same way (PR 09 let it through for the pre-paise API, which no longer runs), and any
 other key in a line (a rupee `unit_price`) is ignored.

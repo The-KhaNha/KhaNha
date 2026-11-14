@@ -663,6 +663,17 @@ sequenceDiagram
 
 ---
 
+### 6.5 Pricing a line with its options (P3.2)
+
+An order line's price is the item's plus the options chosen for it ("Large +₹30", "Oat milk +₹20"), decided by one
+set of rules in two places: `server/src/domain/pricing.ts` (`priceLine`, pure) answers early, before the payment,
+with the error the customer can act on, and `place_order` applies the same rules through `price_order_line` under its
+own locks, which is the truth. The shared case table (`server/test/setup/modifierCases.ts`) runs through both, so they
+cannot drift. Both follow the store's `modifiers` flag, evaluated once by `createOrder` and passed to `place_order`:
+off, a line is the item alone and options are refused. A required group left empty takes its default, so a client that
+sends no options keeps ordering. Lines merge by item and options; stock and the per-item cap are the item's, across
+all its lines. Each stored line keeps its base price and its options as they were (`order_item_modifiers`).
+
 ## 7. Customer order tracking, history and Order Again
 
 Code: [client/src/lib/useResource.ts](../client/src/lib/useResource.ts), [client/src/features/orders/useOrder.ts](../client/src/features/orders/useOrder.ts), [client/src/features/orders/useOrders.ts](../client/src/features/orders/useOrders.ts), [client/src/features/cart/useReorder.ts](../client/src/features/cart/useReorder.ts).
