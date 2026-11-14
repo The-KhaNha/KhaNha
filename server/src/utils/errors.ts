@@ -237,7 +237,7 @@ export const stockBelowZero = (menuItemId: string, name: string, available: numb
     { menuItemId, name, available },
   );
 
-/** A required choice was left empty (and the group has no default): "Choose a Size for Cold Coffee." */
+/** A required choice was left empty (and the group has no default): "Choose your Size for Cold Coffee." */
 export const modifierRequired = (
   menuItemId: string,
   name: string,
@@ -246,7 +246,7 @@ export const modifierRequired = (
   new AppError(
     400,
     'MODIFIER_REQUIRED',
-    group ? `Choose a ${group} for ${name}.` : `Choose the options for ${name}.`,
+    group ? `Choose your ${group} for ${name}.` : `Choose the options for ${name}.`,
     { kind: 'modifier', menuItemId, name, group },
   );
 

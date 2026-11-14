@@ -29,6 +29,9 @@ import { ApiError } from '../services/api';
 import { updateOrderStatus } from '../services/orders';
 import { StockList } from '../features/stock/StockList';
 import { canSeeStock } from '../features/stock/stockRules';
+import { useMyBrands } from '../features/manage/useManage';
+import { ownedBranch } from '../features/manage/manageRules';
+import { ErrorState } from '../components/ErrorState';
 
 /** The 200ms --animate-card-leave plus a 20ms margin, so the card is removed just after it finishes fading. */
 const LEAVE_MS = 220;
@@ -39,7 +42,12 @@ export function StaffDashboardPage() {
   const membership = useAuthStore((s) =>
     (s.user?.memberships ?? []).find((m) => m.storeSlug === storeSlug),
   );
-  const storeId = membership?.storeId;
+  // A brand owner works any branch with no membership (orders.view, orders.transition, stock.update).
+  const isOwner = useAuthStore((s) => (s.user?.ownedBrands ?? []).length > 0);
+  const brands = useMyBrands(isOwner && !membership);
+  const branch = membership ? null : ownedBranch(brands.data, storeSlug);
+  const storeId = membership?.storeId ?? branch?.id;
+  const maySeeStock = branch !== null || canSeeStock(membership);
   const { polling } = useConfig();
   // Keeps polling in the Stock view: an unchanged list is a bodiless 304, and the board is current when staff switch back.
   const { orders, isLoading, error, retry, mutate, updatedAt } = useOrders({
@@ -57,7 +65,7 @@ export function StaffDashboardPage() {
 
   const [filterKey, setFilterKey] = useState<StaffFilterKey>('ALL');
   const [view, setView] = useState<'orders' | 'stock'>('orders');
-  const stockView = view === 'stock' && canSeeStock(membership);
+  const stockView = view === 'stock' && maySeeStock;
   const [pendingIds, setPendingIds] = useState<ReadonlySet<string>>(new Set());
   const [actionErrors, setActionErrors] = useState<Record<string, StaffActionError>>({});
   const [leavingIds, setLeavingIds] = useState<ReadonlySet<string>>(new Set());
@@ -144,10 +152,22 @@ export function StaffDashboardPage() {
     navigate('/login', { replace: true });
   }
 
+  // Not this store's member, and not the owner of a branch by this name: nothing to show here.
+  if (!membership && (!isOwner || (brands.data && !branch))) return <Navigate to="/" replace />;
+  if (!membership && !branch && brands.error)
+    return (
+      <ErrorState
+        title="Unable to load your stores."
+        message={brands.error.message}
+        onRetry={brands.reload}
+        unreachable={brands.error.isUnreachable}
+      />
+    );
+
   return (
     <div className="min-h-dvh">
       <StaffHeader
-        storeName={membership?.storeName}
+        storeName={membership?.storeName ?? branch?.name}
         updatedAt={updatedAt}
         offline={error !== null}
         onLogout={handleLogout}
@@ -163,7 +183,7 @@ export function StaffDashboardPage() {
           )
         }
       >
-        {canSeeStock(membership) && (
+        {maySeeStock && (
           <div role="group" aria-label="View" className="flex gap-1 pt-2">
             {(['orders', 'stock'] as const).map((v) => (
               <button

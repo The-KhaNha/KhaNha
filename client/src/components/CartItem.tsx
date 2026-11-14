@@ -111,7 +111,7 @@ export function CartItem({ line }: CartItemProps) {
                   'bg-brand-50 px-2.5 font-bold text-brand-700 group-hover:bg-brand-100',
                 )}
               >
-                {soldOut ? 'Remove' : 'Fix'}
+                {problem.kind === 'over-limit' ? 'Fix' : 'Remove'}
               </span>
             </button>
           )}

@@ -21,7 +21,7 @@ export function useStoreMenu(storeRef: string, enabled = true) {
     if (cartHoldsOtherStore(cart, data.store.id)) return;
     const items = data.categories.flatMap((category) => category.items);
     cart.setLimits(data.rules);
-    cart.syncAvailability(items);
+    cart.syncAvailability(items, data.modifierGroups);
   }, [data]);
 
   return { menu: data, isLoading, error, retry: reload };

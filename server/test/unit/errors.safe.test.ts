@@ -10,6 +10,7 @@ import {
   forbidden,
   idempotencyKeyReused,
   insufficientStock,
+  modifierRequired,
   notFound,
   payloadTooLarge,
   rateLimited,
@@ -264,5 +265,17 @@ describe('errorHandler mapping', () => {
 
   it('does not treat an ordinary TypeError as a transport failure', () => {
     expect(run(new TypeError('x is not a function')).status).toBe(500);
+  });
+});
+
+describe('modifier messages', () => {
+  // A customer reads these at checkout: "Choose a Extras" read wrong (/break, P3 close).
+  it('read as English whatever the group is called', () => {
+    expect(modifierRequired('i1', 'Cold Coffee', 'Extras').message).toBe(
+      'Choose your Extras for Cold Coffee.',
+    );
+    expect(modifierRequired('i1', 'Cold Coffee', null).message).toBe(
+      'Choose the options for Cold Coffee.',
+    );
   });
 });

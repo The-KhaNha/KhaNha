@@ -23,6 +23,8 @@ export function useOrders({ status, storeId, audience = 'customer' }: UseOrdersO
   const { data, isLoading, error, reload, mutate, updatedAt } = useResource(fetcher, {
     key: `orders:${storeId ?? 'own'}:${status ?? 'all'}`,
     pollInterval: () => pollMs,
+    // A board whose store is not known yet (an owner's branches still loading) waits: never the caller's own orders.
+    enabled: audience !== 'staff' || storeId !== undefined,
   });
 
   return { orders: data, isLoading, error, retry: reload, mutate, updatedAt };

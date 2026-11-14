@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fillStorage } from '../../test/storage';
 import type { MenuItem } from '../../types/api';
 import { CACHE_PREFIX } from '../../lib/useResource';
@@ -236,6 +236,28 @@ describe('one cart per store', () => {
     useCartStore.getState().add(menuItem({ id: 'item-2' }), 1, bakery);
     expect(selectLines(useCartStore.getState()).map((l) => l.menuItemId)).toEqual(['item-2']);
     expect(useCartStore.getState().storeName).toBe('Bakery');
+  });
+});
+
+describe('another tab', () => {
+  it("takes another tab's cart when it changes, so a paid cart is not paid again here", async () => {
+    useCartStore.getState().add(menuItem(), 1, cafe);
+    expect(selectCount(useCartStore.getState())).toBe(1);
+    // The other tab paid and emptied the cart: only its storage write reaches this tab.
+    const emptied = JSON.stringify({
+      state: {
+        storeId: null,
+        storeSlug: null,
+        storeName: null,
+        lines: [],
+        limits: { maxQuantityPerItem: CAP, lowStockThreshold: 5 },
+      },
+      version: 3,
+    });
+    localStorage.setItem('fp_cart', emptied);
+    window.dispatchEvent(new StorageEvent('storage', { key: 'fp_cart', newValue: emptied }));
+    await vi.waitFor(() => expect(useCartStore.getState().lines).toEqual([]));
+    expect(useCartStore.getState().storeId).toBeNull();
   });
 });
 

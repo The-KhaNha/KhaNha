@@ -4,7 +4,7 @@ import { safeJSONStorage } from '../../lib/safeStorage';
 import type { MenuItem, MenuResponse, ModifierGroup } from '../../types/api';
 import { CACHE_PREFIX } from '../../lib/useResource';
 import fallbacks from '../../config/fallbacks.json';
-import { availableQuantity, lineLimit, type CartLimits } from './cartRules';
+import { availableQuantity, lineLimit, optionsUnorderable, type CartLimits } from './cartRules';
 
 /** The limits used until a menu says otherwise (config/fallbacks.json, parity-tested against the store defaults). */
 const DEFAULT_LIMITS: CartLimits = fallbacks.storeDefaults;
@@ -33,6 +33,11 @@ export interface CartLine {
    * null = no stock limit, 0 = sold out / off the menu. Prices are deliberately never refreshed this way (only `syncPrices`, after a PRICE_CHANGED refusal).
    */
   maxQuantity: number | null;
+  /**
+   * The line's options can no longer be ordered as chosen (one switched off or gone, a required choice with no
+   * default to fill it), from the last menu the app saw. Missing on carts saved before it existed: fine.
+   */
+  optionsStale?: boolean;
 }
 
 /** An item's line key: its id alone without options, so a plain item's line is addressed by the item id. */
@@ -100,7 +105,7 @@ interface CartState {
   /** Records what the server said is left of one item, on every line of it (a checkout error's `details.available`). */
   setAvailability: (menuItemId: string, available: number | null) => void;
   /** Refreshes every line's limit from a freshly loaded menu. Prices, names and photos are left alone. */
-  syncAvailability: (items: MenuItem[]) => void;
+  syncAvailability: (items: MenuItem[], groups?: Record<string, ModifierGroup>) => void;
   /**
    * Sets every line's price to the menu's, its options' deltas included (an option gone from `groups` keeps its
    * delta). Only after the server refused an order over a price change (PRICE_CHANGED).
@@ -268,7 +273,8 @@ export const useCartStore = create<CartState>()(
             state,
             updateLine(state.lines, lineKey, (l) => {
               const limit = lineLimit(l.maxQuantity, state.limits) - otherQuantity(state.lines, l);
-              if (limit <= 0) return null;
+              // Options that can't be ordered: the customer adds the item again with new choices.
+              if (limit <= 0 || l.optionsStale) return null;
               return l.quantity > limit ? { ...l, quantity: limit } : l;
             }),
           ),
@@ -287,7 +293,7 @@ export const useCartStore = create<CartState>()(
         });
       },
 
-      syncAvailability(items) {
+      syncAvailability(items, groups) {
         set((state) => {
           const byId = new Map(items.map((item) => [item.id, item]));
           let changed = false;
@@ -295,9 +301,13 @@ export const useCartStore = create<CartState>()(
             const item = byId.get(line.menuItemId);
             // An item that vanished from the menu can't be ordered either.
             const maxQuantity = item ? availableQuantity(item) : 0;
-            if (maxQuantity === line.maxQuantity) return line;
+            // A menu without choices (an older API, persisted before P3.2) says nothing about them.
+            const optionsStale =
+              item && groups ? optionsUnorderable(item, groups, line.options) : line.optionsStale;
+            if (maxQuantity === line.maxQuantity && !!optionsStale === !!line.optionsStale)
+              return line;
             changed = true;
-            return { ...line, maxQuantity };
+            return { ...line, maxQuantity, optionsStale };
           });
           return changed ? { lines } : state;
         });
@@ -398,6 +408,13 @@ export const useCartStore = create<CartState>()(
     },
   ),
 );
+
+// Another tab's write reaches this one: without it a second checkout tab could pay the cart again after the first
+// paid and emptied it, and a stale tab's add at another store would skip "Start a new cart?" (/break, P3 close). The
+// event fires only in the other tabs; `key` is null when storage was cleared.
+window.addEventListener('storage', (e) => {
+  if (e.key === 'fp_cart' || e.key === null) void useCartStore.persist.rehydrate();
+});
 
 /* Derived selectors — count and total are never stored. */
 export const selectStoreName = (state: CartState) => state.storeName;

@@ -121,6 +121,10 @@ export function ownStoreId(user: User, brands: MyBrand[] | null, slug: string): 
   return null;
 }
 
+/** The branch `slug` names among the owner's brands (never a template: it has no kitchen), or null. */
+export const ownedBranch = (brands: MyBrand[] | null | undefined, slug: string) =>
+  brands?.flatMap((b) => b.stores).find((s) => s.slug === slug) ?? null;
+
 /** `store.publish`: the brand's owner alone. */
 export const canPublish = (user: User, brandId: string): boolean =>
   user.ownedBrands.some((b) => b.id === brandId);
