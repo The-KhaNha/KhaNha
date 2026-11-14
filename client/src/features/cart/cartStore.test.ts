@@ -317,6 +317,18 @@ describe('lines with options (P3.2)', () => {
     expect(selectLines(useCartStore.getState()).map((l) => l.lineKey)).toEqual(['item-1']);
   });
 
+  it('takes the stock an add sees onto every line of the item, so none keeps a stale limit', () => {
+    const { add, increment } = useCartStore.getState();
+    add(menuItem({ stockQuantity: 10 }), 1, cafe);
+    add(menuItem({ stockQuantity: 2 }), 1, cafe, [large]);
+    increment('item-1');
+    expect(selectQuantityOf('item-1')(useCartStore.getState())).toBe(2);
+    // Nothing left to add, but the plain line still learns the new stock.
+    useCartStore.setState({ lines: selectLines(useCartStore.getState()).slice(0, 1) });
+    add(menuItem({ stockQuantity: 1 }), 1, cafe, [large]);
+    expect(selectLines(useCartStore.getState())[0]?.maxQuantity).toBe(1);
+  });
+
   it("syncs a line's price with its options' current deltas", () => {
     useCartStore.getState().add(menuItem(), 1, cafe, [large]);
     useCartStore.getState().syncPrices([menuItem({ price: 130 })], {

@@ -173,12 +173,19 @@ export const useCartStore = create<CartState>()(
             item.id,
             options.map((o) => o.id),
           );
+          // The stock just seen is the item's: every line of it takes it, or a sibling keeps a stale higher limit.
+          let synced = false;
+          const lines = state.lines.map((l) => {
+            if (l.menuItemId !== item.id || l.maxQuantity === maxQuantity) return l;
+            synced = true;
+            return { ...l, maxQuantity };
+          });
           const limit =
             lineLimit(maxQuantity, state.limits) -
-            otherQuantity(state.lines, { menuItemId: item.id, lineKey });
-          if (limit <= 0) return state;
+            otherQuantity(lines, { menuItemId: item.id, lineKey });
+          if (limit <= 0) return synced ? { lines } : state;
 
-          const existing = state.lines.find((line) => line.lineKey === lineKey);
+          const existing = lines.find((line) => line.lineKey === lineKey);
           if (!existing) {
             const line: CartLine = {
               lineKey,
@@ -191,7 +198,7 @@ export const useCartStore = create<CartState>()(
               maxQuantity,
             };
             return {
-              lines: [...state.lines, line],
+              lines: [...lines, line],
               storeId: store.id,
               storeSlug: store.slug,
               storeName: store.name,
@@ -202,14 +209,10 @@ export const useCartStore = create<CartState>()(
             existing.quantity >= limit
               ? existing.quantity
               : Math.min(limit, existing.quantity + quantity);
-          return withLines(
-            state,
-            updateLine(state.lines, lineKey, (l) =>
-              l.quantity === nextQuantity && l.maxQuantity === maxQuantity
-                ? l
-                : { ...l, quantity: nextQuantity, maxQuantity },
-            ),
+          const next = updateLine(lines, lineKey, (l) =>
+            l.quantity === nextQuantity ? l : { ...l, quantity: nextQuantity },
           );
+          return next === state.lines ? state : { lines: next };
         });
       },
 
