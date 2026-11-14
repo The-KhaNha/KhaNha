@@ -519,7 +519,7 @@ limit for it alone. `MEDIA_UPLOAD` is its own constant (not in `LIMITS`, which t
 
 ### PR 09 — Media: S3 and MinIO (P3.3)
 
-- [ ] Merged
+- [x] Merged (#92)
 
 - `src/integrations/media/s3.ts` with `@aws-sdk/client-s3` and `@aws-sdk/s3-presigned-post`: a presigned POST that
   pins the exact key, the content type and a `content-length-range`, valid for five minutes. Env: `MEDIA_BUCKET`,
@@ -606,7 +606,7 @@ anything shows it, so a replaced photo is found and swept later. The sweep reads
 
 ### PR 11 — Client: photo upload, and `FoodPhoto` with variants (P3.3)
 
-- [ ] Merged
+- [x] Merged (#95)
 
 - `features/manage/usePhotoUpload.ts`: redraw the chosen file on a canvas at 2000px on its longer side and encode a
   JPEG (saves upload data on a metered connection, and turns any format the browser can show into one the server
@@ -626,7 +626,7 @@ Docs: `docs/COMPONENTS.md` (`FoodPhoto`'s `srcSet`), `docs/FRONTEND_STRUCTURE.md
 
 ### PR 12 — The bundled photos move to media (P3.3)
 
-- [ ] Merged
+- [ ] Merged (12a #96, 1c17be0; 12b waits for P8: staging has no bucket, so the bundled photos cannot leave yet, D7)
 
 - `server/scripts/migrate-media.ts`: for one environment per run, push every photo under `client/public/images/`
   through the same pipeline and rewrite `menu_items.image_url`, `image_variants` and `stores.image_url`, and also rewrite the
@@ -656,7 +656,7 @@ staging can only migrate once it has a bucket.
 
 ### PR 13 — Modifiers: schema, pricing, orders (P3.2)
 
-- [x] Merged
+- [x] Merged (13a #97, 11f5b04; 13b #98, b2e1599; 13c #100, 94dea64)
 
 `/before-write`: schema-guard, NEW TABLE ×4. Skill: `agent-skills:test` (rules first, as failing tests).
 
@@ -722,7 +722,7 @@ groups are known); advisory.
 
 ### PR 14 — Modifiers: editing API (P3.2)
 
-- [x] Merged
+- [x] Merged (#101, 3cb0570)
 
 `GET/POST/PATCH/DELETE /api/stores/:storeId/modifier-groups[/:groupId]` (a group with its options in one body;
 delete archives) and `PUT /api/stores/:storeId/menu-items/:itemId/modifier-groups { groupIds }`, all `menu.edit`.
@@ -743,7 +743,7 @@ it.
 
 ### PR 15 — Client: the modifier picker and the cart (P3.2)
 
-- [x] Merged
+- [x] Merged (15a #102, 16642a5; 15b #103, d14eecd)
 
 - `ModifierPicker` in `ItemDetailSheet`: radio buttons when a group allows one choice, checkboxes otherwise, a live
   price, "Choose one" inline, 44px targets, keyboard and screen-reader labels.
@@ -772,7 +772,7 @@ manager → customer → kitchen e2e covers it once orders show their options.
 
 ### PR 16 — Client: modifiers on orders, and their editor (P3.2)
 
-- [x] Merged
+- [x] Merged (16a #106, 6e78c7a; 16b #107, 412fad0)
 
 - `OrderCard`, the order page and `StaffOrderCard` list each line's options (the kitchen must see them: the staff
   card shows them at full size, not as a footnote).
@@ -859,6 +859,9 @@ branch, publishes it from a phone, and a customer orders from it.
   `MEDIA_STORAGE=local`, and the presigned flow is exercised against MinIO locally and in CI. Production's bucket
   and its CloudFront route come from [P8 PR 05](P8_INFRASTRUCTURE.md#build-order).
 - Run `migrate-media` for staging after PR 12a; for production, with `--production`, at P8's first release.
+- Before `modifiers` goes on anywhere: raise `min_client_version` (Admin → site settings) to the client version with
+  PR 15. An older client sends an item's base price, so with a priced default option every checkout of that item
+  fails `PRICE_CHANGED`, and it cannot show or send options.
 - Turn `modifiers` on per store with `PATCH /api/admin/flags/modifiers` and an admin token.
 
 ## Risks and gotchas
