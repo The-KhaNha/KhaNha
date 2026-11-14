@@ -89,6 +89,7 @@ test('a manager adds an item and a customer sees it', async ({ page }) => {
 
 test('a manager adds an item with a photo, and a phone downloads its 400w size', async ({
   page,
+  browserName,
 }) => {
   await mockApi(page);
   await signIn(page, 'CUSTOMER', 'PLACED', {
@@ -98,7 +99,7 @@ test('a manager adds an item with a photo, and a phone downloads its 400w size',
   });
   const variant = (w: number) => `/media/stores/s1/variants/abc-${w}.webp`;
   // Filled by the routes below: what the browser sent.
-  const captured: { photo?: Buffer; item?: Record<string, unknown> } = {};
+  const captured: { photo?: Buffer; photoType?: string; item?: Record<string, unknown> } = {};
   await page.route('**/api/stores/s1/media/uploads', (route) =>
     route.fulfill({
       status: 201,
@@ -114,6 +115,7 @@ test('a manager adds an item with a photo, and a phone downloads its 400w size',
   );
   await page.route('**/api/stores/s1/media/uploads/u1/file', (route) => {
     captured.photo = route.request().postDataBuffer() ?? undefined;
+    captured.photoType = route.request().headers()['content-type'];
     return route.fulfill({ status: 204 });
   });
   const processed = {
@@ -173,8 +175,11 @@ test('a manager adds an item with a photo, and a phone downloads its 400w size',
   await page.locator('input[type="file"]').setInputFiles('public/images/cold-coffee.jpg');
   await expect(page.getByText('New photo ready. Save to use it.')).toBeVisible();
   await noHorizontalOverflow(page);
-  // The browser redrew it as a JPEG before sending.
-  expect(captured.photo?.subarray(0, 3)).toEqual(Buffer.from([0xff, 0xd8, 0xff]));
+  // The browser redrew it as a JPEG before sending. Playwright's WebKit never hands a route a Blob body (text and
+  // ArrayBuffer bodies, yes; checked 15 November 2026), so there the header is what can be seen of it.
+  expect(captured.photoType).toBe('image/jpeg');
+  if (browserName !== 'webkit')
+    expect(captured.photo?.subarray(0, 3)).toEqual(Buffer.from([0xff, 0xd8, 0xff]));
   await page.getByRole('dialog').getByRole('button', { name: 'Add item' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(captured.item).toMatchObject({ imageUploadId: 'u1' });
