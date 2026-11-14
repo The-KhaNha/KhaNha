@@ -125,6 +125,15 @@ jobs:
         with:
           cache-dependency-path: server/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
+      # A key or flag the Supabase CLI has deprecated is removed in its next major: fail now, not on that upgrade.
+      # The config is read by any command; the push script's flags only when it runs against a project.
+      - name: Nothing the Supabase CLI deprecated
+        run: |
+          out=$(pnpm exec supabase status 2>&1 || true)
+          if grep -i deprecated <<<"$out"; then exit 1; fi
+          if grep -n -- '--project-ref' scripts/*.sh package.json; then
+            echo '--project-ref is deprecated: use --remote=<ref>'; exit 1
+          fi
       # Only the services the API and tests use: Postgres, GoTrue, PostgREST and Kong.
       - run: pnpm run db:start:ci
       # The S3 store's suite (test/api/media-s3.test.ts) runs against RustFS, as compose's `media` service does locally.
