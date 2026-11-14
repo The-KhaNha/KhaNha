@@ -1,5 +1,14 @@
 import { useState } from 'react';
-import { ArrowDown, ArrowUp, Lock, Plus, SearchX, Send, UtensilsCrossed } from 'lucide-react';
+import {
+  ArrowDown,
+  ArrowUp,
+  ChevronRight,
+  Lock,
+  Plus,
+  SearchX,
+  Send,
+  UtensilsCrossed,
+} from 'lucide-react';
 import { Button } from '../components/Button';
 import { EmptyState } from '../components/EmptyState';
 import { ErrorState } from '../components/ErrorState';
@@ -10,13 +19,15 @@ import { Skeleton } from '../components/Skeleton';
 import { Switch } from '../components/Switch';
 import { useAuthStore } from '../features/auth/authStore';
 import { ItemEditor } from '../features/manage/ItemEditor';
+import { ModifierGroupEditor } from '../features/manage/ModifierGroupEditor';
+import { useModifierGroups } from '../features/manage/useModifierGroups';
 import { PushSheet } from '../features/manage/PushSheet';
 import { useMyBrands } from '../features/manage/useManage';
 import { canEditMenu } from '../features/manage/manageRules';
 import { canMove, categoryNames, filterItems } from '../features/manage/menuRules';
 import { useManageMenu } from '../features/manage/useManageMenu';
 import { cn } from '../lib/cn';
-import type { ManagedMenuItem, StoreSummary } from '../types/api';
+import type { ManagedMenuItem, ModifierGroup, StoreSummary } from '../types/api';
 
 interface ManageMenuTabProps {
   store: Pick<StoreSummary, 'id' | 'slug' | 'brand'> & { isTemplate?: boolean };
@@ -29,6 +40,9 @@ export function ManageMenuTab({ store, onChanged }: ManageMenuTabProps) {
   const user = useAuthStore((s) => s.user);
   const allowed = !!user && canEditMenu(user, store);
   const menu = useManageMenu(store, allowed, onChanged);
+  const modifiers = useModifierGroups(store, allowed);
+  // undefined: closed; null: adding; a group: editing it.
+  const [editingGroup, setEditingGroup] = useState<ModifierGroup | null | undefined>(undefined);
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<string | null>(null);
   // undefined: closed; null: adding; an item: editing it.
@@ -197,6 +211,55 @@ export function ManageMenuTab({ store, onChanged }: ManageMenuTabProps) {
         </ul>
       )}
 
+      <section aria-labelledby="choices-heading" className="mt-6 border-t border-line/70 pt-4">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <h2 id="choices-heading" className="font-bold">
+              Choices
+            </h2>
+            <p className="text-caption text-muted">
+              Size, milk, add-ons: offered on the items you pick.
+            </p>
+          </div>
+          <Button variant="secondary" onClick={() => setEditingGroup(null)}>
+            <Plus className="h-4 w-4" aria-hidden />
+            Add choice
+          </Button>
+        </div>
+        {modifiers.error && !modifiers.groups ? (
+          <ErrorState
+            compact
+            className="mt-3"
+            title="Unable to load the choices."
+            message={modifiers.error.message}
+            onRetry={modifiers.retry}
+            unreachable={modifiers.error.isUnreachable}
+          />
+        ) : !modifiers.groups ? (
+          <Skeleton className="mt-3 h-12" />
+        ) : modifiers.groups.length > 0 ? (
+          <ul className="mt-2 divide-y divide-line/70">
+            {modifiers.groups.map((g) => (
+              <li key={g.id}>
+                <button
+                  type="button"
+                  onClick={() => setEditingGroup(g)}
+                  className="flex min-h-11 w-full items-center gap-2 rounded-control py-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-semibold">{g.name}</span>
+                    <span className="block truncate text-caption text-muted">
+                      {g.options.map((o) => o.name).join(', ')}
+                    </span>
+                  </span>
+                  <ChevronRight className="h-4 w-4 shrink-0 text-muted" aria-hidden />
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </section>
+
       {pushing && (
         <PushSheet
           brandId={store.brand.id}
@@ -212,8 +275,23 @@ export function ManageMenuTab({ store, onChanged }: ManageMenuTabProps) {
           storeId={store.id}
           item={editing}
           categories={categories}
-          onSave={(input) => menu.save(editing, input)}
+          modifierGroups={modifiers.groups ?? []}
+          groupIds={editing ? (modifiers.itemGroupIds[editing.id] ?? []) : []}
+          onSave={async (input, groupIds) => {
+            const saved = await menu.save(editing, input);
+            const before = editing ? (modifiers.itemGroupIds[editing.id] ?? []) : [];
+            if (groupIds.join() !== before.join())
+              await modifiers.setItemGroups(saved.id, groupIds);
+          }}
           onClose={() => setEditing(undefined)}
+        />
+      )}
+      {editingGroup !== undefined && (
+        <ModifierGroupEditor
+          group={editingGroup}
+          onSave={(input) => modifiers.save(editingGroup?.id ?? null, input)}
+          onArchive={editingGroup ? () => modifiers.archive(editingGroup.id) : undefined}
+          onClose={() => setEditingGroup(undefined)}
         />
       )}
     </div>

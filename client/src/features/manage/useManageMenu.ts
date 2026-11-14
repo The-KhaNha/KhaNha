@@ -137,16 +137,16 @@ export function useManageMenu(
         () => mutate(() => current),
       );
     },
-    /** Throws the ApiError so the editor can show its field errors. */
+    /** Throws the ApiError so the editor can show its field errors. Resolves with the saved item. */
     save: async (item: ManagedMenuItem | null, input: MenuItemInput) => {
-      if (item) {
-        const saved = await updateMenuItem(store.id, item.id, input);
-        mutate((items) => items.map((i) => (i.id === saved.id ? saved : i)));
-      } else {
-        const saved = await createMenuItem(store.id, input);
-        mutate((items) => [...items, saved]);
-      }
+      const saved = item
+        ? await updateMenuItem(store.id, item.id, input)
+        : await createMenuItem(store.id, input);
+      mutate((items) =>
+        item ? items.map((i) => (i.id === saved.id ? saved : i)) : [...items, saved],
+      );
       refresh();
+      return saved;
     },
     archive: (item: ManagedMenuItem) => attempt(() => archiveMenuItem(store.id, item.id)),
   };

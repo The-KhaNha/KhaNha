@@ -215,3 +215,41 @@ describe('ItemEditor', () => {
     expect(screen.getByRole('button', { name: 'Close' }).className).toContain('h-11');
   });
 });
+
+describe('the choices an item offers (P3.2)', () => {
+  const group = (id: string, name: string) => ({
+    id,
+    name,
+    minSelect: 0,
+    maxSelect: 1,
+    options: [],
+  });
+
+  it("saves the ticked choices in the store's order, whatever order they were ticked in", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ItemEditor
+        storeId="s1"
+        item={null}
+        categories={[]}
+        onSave={onSave}
+        onClose={vi.fn()}
+        modifierGroups={[group('size', 'Size'), group('milk', 'Milk'), group('add', 'Add-ons')]}
+        groupIds={['add']}
+      />,
+    );
+    expect(screen.getByRole('checkbox', { name: 'Add-ons' })).toBeChecked();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Size' }));
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Chai' } });
+    fireEvent.change(screen.getByLabelText('Price (₹)'), { target: { value: '50' } });
+    fireEvent.change(screen.getByLabelText('Category'), { target: { value: 'Hot' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add item' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0]?.[1]).toEqual(['size', 'add']);
+  });
+
+  it('shows no choices field while the store has none', () => {
+    show();
+    expect(screen.queryByText('Choices')).not.toBeInTheDocument();
+  });
+});

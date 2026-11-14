@@ -10,7 +10,7 @@ import { cn } from '../../lib/cn';
 import { useFocusTrap } from '../../lib/useFocusTrap';
 import { ApiError } from '../../services/api';
 import type { MenuItemInput } from '../../services/manageMenu';
-import type { Diet, ManagedMenuItem } from '../../types/api';
+import type { Diet, ManagedMenuItem, ModifierGroup } from '../../types/api';
 import { usePhotoUpload, type PhotoUploadStatus } from './usePhotoUpload';
 
 interface ItemEditorProps {
@@ -20,9 +20,13 @@ interface ItemEditorProps {
   item: ManagedMenuItem | null;
   /** The store's categories, offered while typing; a new name is allowed. */
   categories: string[];
-  /** Throws an ApiError on refusal; resolving closes the editor. */
-  onSave: (input: MenuItemInput) => Promise<void>;
+  /** Throws an ApiError on refusal; resolving closes the editor. `groupIds`: the item's choices, in order. */
+  onSave: (input: MenuItemInput, groupIds: string[]) => Promise<void>;
   onClose: () => void;
+  /** The store's choices (P3.2) the item may offer; none hides the field. */
+  modifierGroups?: ModifierGroup[];
+  /** The ones the item offers now. */
+  groupIds?: string[];
 }
 
 const { nameMax, descriptionMax, categoryMax } = VALIDATION.menuItem;
@@ -51,7 +55,15 @@ const PHOTO_BUSY: PhotoUploadStatus[] = ['preparing', 'sending', 'processing'];
  * from the API's `details.field`; any other refusal shows under the buttons. A new photo goes up as soon as it is
  * chosen (usePhotoUpload); saving attaches it once it is processed.
  */
-export function ItemEditor({ storeId, item, categories, onSave, onClose }: ItemEditorProps) {
+export function ItemEditor({
+  storeId,
+  item,
+  categories,
+  onSave,
+  onClose,
+  modifierGroups = [],
+  groupIds = [],
+}: ItemEditorProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const listId = useId();
   useFocusTrap(dialogRef, true);
@@ -64,6 +76,7 @@ export function ItemEditor({ storeId, item, categories, onSave, onClose }: ItemE
     isPopular: item?.isPopular ?? false,
   });
   const [busy, setBusy] = useState(false);
+  const [chosenGroups, setChosenGroups] = useState<string[]>(groupIds);
   const photo = usePhotoUpload(storeId);
   const photoBusy = PHOTO_BUSY.includes(photo.status);
   // The item's photo was taken off (saved as imageUploadId: null).
@@ -112,19 +125,26 @@ export function ItemEditor({ storeId, item, categories, onSave, onClose }: ItemE
     setFieldErrors({});
     setFormError(null);
     try {
-      await onSave({
-        name: form.name.trim(),
-        description: form.description.trim(),
-        price,
-        category: form.category.trim(),
-        diet: form.diet,
-        isPopular: form.isPopular,
-        ...(photo.uploadId
-          ? { imageUploadId: photo.uploadId }
-          : photoRemoved
-            ? { imageUploadId: null }
-            : {}),
-      });
+      // In the store's order, so the item offers them as the choices list shows them.
+      const orderedGroups = modifierGroups
+        .map((g) => g.id)
+        .filter((id) => chosenGroups.includes(id));
+      await onSave(
+        {
+          name: form.name.trim(),
+          description: form.description.trim(),
+          price,
+          category: form.category.trim(),
+          diet: form.diet,
+          isPopular: form.isPopular,
+          ...(photo.uploadId
+            ? { imageUploadId: photo.uploadId }
+            : photoRemoved
+              ? { imageUploadId: null }
+              : {}),
+        },
+        orderedGroups,
+      );
       if (mounted.current) onClose();
     } catch (err) {
       if (!mounted.current) return;
@@ -293,6 +313,29 @@ export function ItemEditor({ storeId, item, categories, onSave, onClose }: ItemE
               ))}
             </div>
           </fieldset>
+          {modifierGroups.length > 0 && (
+            <fieldset>
+              <legend className="mb-1.5 text-sm font-semibold text-ink">Choices</legend>
+              {modifierGroups.map((g) => (
+                <label
+                  key={g.id}
+                  className="flex min-h-11 items-center gap-3 text-sm font-semibold"
+                >
+                  <input
+                    type="checkbox"
+                    checked={chosenGroups.includes(g.id)}
+                    onChange={(e) =>
+                      setChosenGroups((ids) =>
+                        e.target.checked ? [...ids, g.id] : ids.filter((id) => id !== g.id),
+                      )
+                    }
+                    className="h-5 w-5 accent-brand-600"
+                  />
+                  {g.name}
+                </label>
+              ))}
+            </fieldset>
+          )}
           <label className="flex min-h-11 items-center gap-3 text-sm font-semibold">
             <input
               type="checkbox"
