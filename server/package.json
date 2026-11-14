@@ -23,7 +23,7 @@
     "db:stop": "supabase stop",
     "db:reset": "supabase db reset",
     "db:new": "supabase migration new",
-    "db:types": "supabase gen types typescript --local > src/types/database.ts && prettier --write src/types/database.ts",
+    "db:types": "supabase gen types typescript > src/types/database.ts && prettier --write src/types/database.ts",
     "db:push:staging": "./scripts/db-push.sh staging",
     "db:push:production": "./scripts/db-push.sh production",
     "lint": "eslint .",
