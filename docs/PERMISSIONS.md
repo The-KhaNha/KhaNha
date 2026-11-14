@@ -296,7 +296,7 @@ flowchart LR
 - `POST /api/auth/register` creates accounts with the secret key (`auth.admin.createUser`, already confirmed). It
   applies the zod rules in `server/src/schemas/auth.schema.ts`.
 - Direct sign-ups with the publishable key (`supabase.auth.signUp`) would skip those rules, so they are off: local
-  Supabase has `[auth] enable_signup = false` in `server/supabase/config.toml` (`[auth.email] enable_signup` stays
+  Supabase has `[auth] enable_signup = false` in `server/supabase/config.toml` (`[auth.email] enabled` stays
   `true`: it switches the email provider itself, sign-in included), and a hosted
   project must turn off "Allow new users to sign up" (a required step, see
   [DEPLOYMENT.md](DEPLOYMENT.md#production-first-time-setup)). `/auth/register` keeps working:

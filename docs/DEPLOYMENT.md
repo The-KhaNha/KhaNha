@@ -180,14 +180,20 @@ migration first, then deploy the new API.
 
 ### Applying migrations
 
-`server/scripts/db-push.sh <staging|production>`:
+`server/scripts/db-push.sh <staging|production> [flags]` (extra flags go to the CLI, e.g. `pnpm run db:push:staging --
+--dry-run` lists what it would apply):
 
 1. `staging` uses `STAGING_REF`, `production` uses `PRODUCTION_REF`. Any other argument prints the usage and exits 1.
 2. An empty ref (today: `PRODUCTION_REF`) stops with "PRODUCTION_REF is empty. Create the production project, then
    set it in server/scripts/db-push.sh."
 3. For `production` it asks you to type `production`; anything else prints "Cancelled." and exits 1.
-4. Runs `pnpm exec supabase db push --project-ref <ref>`. The CLI asks for the database password (or reads
-   `SUPABASE_DB_PASSWORD`), lists the migrations it will apply, and asks before applying them.
+4. Prints `Environment: <staging|production> (<ref>)`, then runs `pnpm exec supabase db push --remote=<ref>` (without
+   `--remote`, CLI 3 pushes to the local database). The CLI asks for the database password (or reads
+   `SUPABASE_DB_PASSWORD`), lists the migrations it will apply, and asks before applying them. Its own
+   `Target: … · production` line is Supabase's name for a project's main database, staging's included; the
+   `Environment:` line is ours.
+
+CI fails on any key or flag the Supabase CLI reports as deprecated (`ci.yml`, server-tests).
 
 One-time: `pnpm exec supabase login` (opens the browser).
 
