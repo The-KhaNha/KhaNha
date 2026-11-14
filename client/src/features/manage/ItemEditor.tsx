@@ -77,6 +77,15 @@ export function ItemEditor({
   });
   const [busy, setBusy] = useState(false);
   const [chosenGroups, setChosenGroups] = useState<string[]>(groupIds);
+  // The item's choices may arrive after the editor opened (a slow connection): take them then, unless the manager
+  // has already ticked something, so a save never sends the empty list it started with.
+  const groupKey = groupIds.join();
+  const [syncedKey, setSyncedKey] = useState(groupKey);
+  const [groupsTouched, setGroupsTouched] = useState(false);
+  if (groupKey !== syncedKey) {
+    setSyncedKey(groupKey);
+    if (!groupsTouched) setChosenGroups(groupIds);
+  }
   const photo = usePhotoUpload(storeId);
   const photoBusy = PHOTO_BUSY.includes(photo.status);
   // The item's photo was taken off (saved as imageUploadId: null).
@@ -324,11 +333,12 @@ export function ItemEditor({
                   <input
                     type="checkbox"
                     checked={chosenGroups.includes(g.id)}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      setGroupsTouched(true);
                       setChosenGroups((ids) =>
                         e.target.checked ? [...ids, g.id] : ids.filter((id) => id !== g.id),
-                      )
-                    }
+                      );
+                    }}
                     className="h-5 w-5 accent-brand-600"
                   />
                   {g.name}

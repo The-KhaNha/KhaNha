@@ -226,6 +226,17 @@ export function ManageMenuTab({ store, onChanged }: ManageMenuTabProps) {
             Add choice
           </Button>
         </div>
+        {modifiers.error && modifiers.groups && (
+          <ErrorState
+            compact
+            className="mt-3"
+            title="Showing the saved choices"
+            message="We couldn't refresh them just now."
+            retryLabel="Retry"
+            onRetry={modifiers.retry}
+            unreachable={modifiers.error.isUnreachable}
+          />
+        )}
         {modifiers.error && !modifiers.groups ? (
           <ErrorState
             compact
@@ -279,6 +290,10 @@ export function ManageMenuTab({ store, onChanged }: ManageMenuTabProps) {
           groupIds={editing ? (modifiers.itemGroupIds[editing.id] ?? []) : []}
           onSave={async (input, groupIds) => {
             const saved = await menu.save(editing, input);
+            // From here a retry edits this item: were the choices to fail, a second save must not create another.
+            if (!editing) setEditing(saved);
+            // Choices not loaded yet: the item's are unknown, so they are left as they are.
+            if (!modifiers.groups) return;
             const before = editing ? (modifiers.itemGroupIds[editing.id] ?? []) : [];
             if (groupIds.join() !== before.join())
               await modifiers.setItemGroups(saved.id, groupIds);

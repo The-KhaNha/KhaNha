@@ -248,6 +248,24 @@ describe('the choices an item offers (P3.2)', () => {
     expect(onSave.mock.calls[0]?.[1]).toEqual(['size', 'add']);
   });
 
+  it("takes the item's choices when they arrive after it opened, unless the manager already ticked", () => {
+    const props = {
+      storeId: 's1',
+      item: null,
+      categories: [],
+      onSave: vi.fn(),
+      onClose: vi.fn(),
+      modifierGroups: [group('size', 'Size'), group('add', 'Add-ons')],
+    };
+    const { rerender } = render(<ItemEditor {...props} groupIds={[]} />);
+    rerender(<ItemEditor {...props} groupIds={['add']} />);
+    expect(screen.getByRole('checkbox', { name: 'Add-ons' })).toBeChecked();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Size' }));
+    rerender(<ItemEditor {...props} groupIds={['add', 'size']} />);
+    rerender(<ItemEditor {...props} groupIds={[]} />);
+    expect(screen.getByRole('checkbox', { name: 'Size' })).toBeChecked();
+  });
+
   it('shows no choices field while the store has none', () => {
     show();
     expect(screen.queryByText('Choices')).not.toBeInTheDocument();
