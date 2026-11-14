@@ -31,31 +31,50 @@ export function defaultSelection(groups: ModifierGroup[]): Selection {
   );
 }
 
-/** A tap on an option: one-choice groups switch to it; others add it (while under maxSelect) or remove it. */
+/**
+ * A tap on an option: a one-choice group switches to it (an optional one also goes back to none on a second tap);
+ * others add it (while under maxSelect) or remove it.
+ */
 export function toggleOption(
   group: ModifierGroup,
   selection: Selection,
   optionId: string,
 ): Selection {
   const current = selection[group.id] ?? [];
-  if (group.maxSelect === 1) return { ...selection, [group.id]: [optionId] };
+  if (group.maxSelect === 1)
+    return {
+      ...selection,
+      [group.id]: group.minSelect === 0 && current.includes(optionId) ? [] : [optionId],
+    };
   if (current.includes(optionId))
     return { ...selection, [group.id]: current.filter((id) => id !== optionId) };
   if (current.length >= group.maxSelect) return selection;
   return { ...selection, [group.id]: [...current, optionId] };
 }
 
+/**
+ * A group's chosen options that the menu still offers and has: a choice made before the menu reloaded may be gone or
+ * sold out, and is then no answer (not counted, priced or sent).
+ */
+function liveChoices(group: ModifierGroup, selection: Selection) {
+  const chosen = selection[group.id] ?? [];
+  return group.options.filter((o) => o.isAvailable && chosen.includes(o.id));
+}
+
 /** The groups still short of their minimum, in order. */
 export function missingGroups(groups: ModifierGroup[], selection: Selection): ModifierGroup[] {
-  return groups.filter((g) => (selection[g.id] ?? []).length < g.minSelect);
+  return groups.filter((g) => liveChoices(g, selection).length < g.minSelect);
 }
 
 /** The chosen options as a cart line keeps them, in the groups' and options' order. */
 export function chosenOptions(groups: ModifierGroup[], selection: Selection): CartOption[] {
   return groups.flatMap((g) =>
-    g.options
-      .filter((o) => (selection[g.id] ?? []).includes(o.id))
-      .map((o) => ({ id: o.id, groupName: g.name, name: o.name, priceDelta: o.priceDelta })),
+    liveChoices(g, selection).map((o) => ({
+      id: o.id,
+      groupName: g.name,
+      name: o.name,
+      priceDelta: o.priceDelta,
+    })),
   );
 }
 

@@ -31,7 +31,12 @@ const addOns: ModifierGroup = {
   name: 'Add-ons',
   minSelect: 0,
   maxSelect: 2,
-  options: [opt('honey', 10, true), opt('ginger', 5, true, false), opt('cream', 15), opt('mint', 5)],
+  options: [
+    opt('honey', 10, true),
+    opt('ginger', 5, true, false),
+    opt('cream', 15),
+    opt('mint', 5),
+  ],
 };
 
 describe('modifierRules', () => {
@@ -55,6 +60,28 @@ describe('modifierRules', () => {
     expect(s.add).toEqual(['honey', 'cream']);
     s = toggleOption(addOns, s, 'honey');
     expect(s.add).toEqual(['cream']);
+  });
+
+  it('an optional one-choice group can go back to none; a required one cannot', () => {
+    const sugar: ModifierGroup = {
+      ...size,
+      id: 'sugar',
+      minSelect: 0,
+      options: [opt('less'), opt('none')],
+    };
+    expect(toggleOption(sugar, { sugar: ['less'] }, 'less').sugar).toEqual([]);
+    expect(toggleOption(sugar, { sugar: ['less'] }, 'none').sugar).toEqual(['none']);
+    expect(toggleOption(size, { size: ['large'] }, 'large').size).toEqual(['large']);
+  });
+
+  it('counts only options the menu still offers and has: a gone or sold-out choice is no answer', () => {
+    const now: ModifierGroup = {
+      ...size,
+      options: [opt('small', 0), opt('large', 20, false, false)],
+    };
+    expect(missingGroups([now], { size: ['large'] }).map((g) => g.id)).toEqual(['size']);
+    expect(missingGroups([now], { size: ['gone'] }).map((g) => g.id)).toEqual(['size']);
+    expect(chosenOptions([now], { size: ['large'] })).toEqual([]);
   });
 
   it('names the groups still short of their minimum', () => {

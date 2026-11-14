@@ -51,7 +51,10 @@ export function ItemDetailSheet({ item, onClose, groups }: ItemDetailSheetProps)
   const reducedMotion = useReducedMotion();
   const [quantity, setQuantity] = useState(1);
   const [phase, setPhase] = useState<Phase>('open');
-  const [selection, setSelection] = useState<Selection>({});
+  // The first item starts at its defaults too: the reset below runs only when the item changes.
+  const [selection, setSelection] = useState<Selection>(() =>
+    item ? defaultSelection(itemGroups(item, groups)) : {},
+  );
   // Set once the customer tries to add with a required choice still open: those groups then say so.
   const [tried, setTried] = useState(false);
   const holdTimer = useRef<number | undefined>(undefined);

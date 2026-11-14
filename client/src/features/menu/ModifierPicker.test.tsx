@@ -88,6 +88,24 @@ describe('ModifierPicker in the item sheet', () => {
     ]);
   });
 
+  it('starts the first item it opens with at its defaults', () => {
+    const add = vi.fn(() => true);
+    const withDefault = {
+      ...groups,
+      size: { ...groups.size!, options: [opt('small', 0, { isDefault: true }), opt('large', 20)] },
+    };
+    render(
+      <AddToCartContext.Provider value={add}>
+        <ItemDetailSheet item={item} groups={withDefault} onClose={() => {}} />
+      </AddToCartContext.Provider>,
+    );
+    expect(screen.getByRole('radio', { name: /small/i })).toBeChecked();
+    fireEvent.click(addButton());
+    expect(add).toHaveBeenCalledWith(item, 1, [
+      { id: 'small', groupName: 'Size', name: 'Small', priceDelta: 0 },
+    ]);
+  });
+
   it('switches the rest off once a group is at its maximum', () => {
     renderSheet();
     fireEvent.click(screen.getByRole('checkbox', { name: /honey/i }));

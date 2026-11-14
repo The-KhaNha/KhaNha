@@ -13,8 +13,9 @@ interface ModifierPickerProps {
 }
 
 /**
- * The item's choices in the item sheet (P3.2): radio buttons when a group takes one option, checkboxes otherwise
- * (the rest switch off at the group's maximum). Each row is a 44px label, so the whole row is the tap target, and the
+ * The item's choices in the item sheet (P3.2): radio buttons when a group takes exactly one required option, checkboxes
+ * otherwise (an optional one-choice group swaps its tick and a second tap clears it; in a larger group the rest
+ * switch off at the maximum). Each row is a 44px label, so the whole row is the tap target, and the
  * native inputs carry keyboard and screen-reader behaviour. A sold-out option stays listed, switched off.
  */
 export function ModifierPicker({
@@ -28,8 +29,9 @@ export function ModifierPicker({
     <div className="mt-5 space-y-5">
       {groups.map((group) => {
         const chosen = selection[group.id] ?? [];
-        const single = group.maxSelect === 1;
-        const full = !single && chosen.length >= group.maxSelect;
+        // Radios only where one answer is required: an optional one-choice group is a checkbox, so it can be cleared.
+        const single = group.maxSelect === 1 && group.minSelect > 0;
+        const full = group.maxSelect > 1 && chosen.length >= group.maxSelect;
         const hintId = `${itemId}-${group.id}-hint`;
         return (
           <fieldset key={group.id} aria-describedby={hintId} data-group={group.id}>
