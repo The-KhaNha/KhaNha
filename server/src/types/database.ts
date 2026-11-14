@@ -1229,7 +1229,10 @@ export type Database = {
         Args: { p_actor?: Json; p_request_id?: string; p_store_id: string; p_upload_id: string };
         Returns: boolean;
       };
-      copy_template_modifiers: { Args: { p_copy_item_ids: string[] }; Returns: string[] };
+      copy_template_modifiers: {
+        Args: { p_copy_item_ids: string[]; p_sync: boolean };
+        Returns: string[];
+      };
       create_store_from_template: {
         Args: {
           p_actor?: Json;

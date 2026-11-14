@@ -642,7 +642,7 @@ push: anyone else, a manager of a branch or an admin included, and a malformed o
 Body (unknown fields are 400): `itemIds` (1–1000 template item ids), `storeIds` (1–200 branch ids), `fields` (1–7 of
 `name`, `description`, `price`, `category`, `diet`, `photo`, `modifiers`); items × stores at most `TEMPLATE_PUSH_COPIES_MAX` (5000), else 400 on `itemIds`. Each chosen branch's copy of each chosen item, found by
 lineage, gets the chosen fields from the template; a branch without a live copy gets a new one, with the item's
-modifier groups. `modifiers` makes every chosen copy's groups and options match the template's (an option's
+modifier groups (a group copy the branch already has is reused as it is). `modifiers` makes every chosen copy's groups and options match the template's (an option's
 availability stays the branch's; a group the branch made itself is kept), and counts each copy it changed. Stock, availability,
 order and popularity are never pushed. An item that is not a live item of the brand's template, or a store that is not
 one of its live branches (another brand's, the template, a `SUSPENDED` or `ARCHIVED` one), is 404 `NOT_FOUND` "An item or a store is not part of this

@@ -14,14 +14,21 @@ create unique index modifier_groups_template_copy_idx
 create unique index modifier_options_template_copy_idx
   on public.modifier_options (group_id, template_option_id)
   where template_option_id is not null and archived_at is null;
+-- The foreign keys' own indexes, archived copies included: a deleted template row sets null through them.
+create index modifier_groups_template_group_idx on public.modifier_groups (template_group_id)
+  where template_group_id is not null;
+create index modifier_options_template_option_idx on public.modifier_options (template_option_id)
+  where template_option_id is not null;
 
--- Makes the modifiers of the given branch copies match their template items': the template's live groups and options
--- are copied where the branch has no live copy, and overwritten where it has one (name, bounds, deltas, defaults and
--- order; an option's availability is the branch's own, like an item's); an option the template archived is archived
--- in the copy; and each copy offers the copies of its template item's groups, in its order. A group the branch made
--- itself (no lineage) is never touched, nor its links. Returns the copies whose modifiers changed. The caller locks
--- the template items and sets app.actor and app.request_id.
-create function public.copy_template_modifiers(p_copy_item_ids uuid[])
+-- Gives the given branch copies their template items' modifiers: the template's live groups and options are copied
+-- where the branch has no live copy, and each copy offers the copies of its template item's groups, in its order.
+-- With p_sync (a push with `modifiers`) the branch's existing copies are also made to match: overwritten (name,
+-- bounds, deltas, defaults and order; an option's availability is the branch's own, like an item's), an option the
+-- template archived archived, a group the item no longer offers unlinked. Without it, a group copy the branch already
+-- has is reused as it is: it is shared with the branch's other items, which nobody chose to push. A group the branch
+-- made itself (no lineage) is never touched, nor its links. Returns the copies whose modifiers changed. The caller
+-- locks the template items and sets app.actor and app.request_id.
+create function public.copy_template_modifiers(p_copy_item_ids uuid[], p_sync boolean)
 returns uuid[]
 language plpgsql
 set search_path = ''
@@ -29,6 +36,7 @@ as $$
 declare
   v_stores uuid[] := '{}';
   v_changed uuid[];
+  v_new_groups uuid[];
 begin
   create temp table pg_temp.tm_copies on commit drop as
     select c.id as copy_id, c.store_id, c.template_item_id as template_item_id
@@ -53,16 +61,17 @@ begin
        select 1 from public.modifier_groups c
         where c.store_id = tg.store_id and c.template_group_id = g.id and c.archived_at is null
      )
-    returning store_id
+    returning id, store_id
   )
-  select v_stores || coalesce(array_agg(store_id), '{}') into v_stores from w;
+  select v_stores || coalesce(array_agg(store_id), '{}'), coalesce(array_agg(id), '{}')
+    into v_stores, v_new_groups from w;
 
   with w as (
     update public.modifier_groups c
        set name = g.name, min_select = g.min_select, max_select = g.max_select, sort_order = g.sort_order
       from pg_temp.tm_groups tg
       join public.modifier_groups g on g.id = tg.template_group_id
-     where c.store_id = tg.store_id and c.template_group_id = g.id and c.archived_at is null
+     where p_sync and c.store_id = tg.store_id and c.template_group_id = g.id and c.archived_at is null
        and (c.name, c.min_select, c.max_select, c.sort_order)
            is distinct from (g.name, g.min_select, g.max_select, g.sort_order)
     returning c.store_id
@@ -83,7 +92,8 @@ begin
     select gc.copy_group_id, o.name, o.price_delta_paise, o.is_default, o.is_available, o.sort_order, o.id
       from pg_temp.tm_group_copies gc
       join public.modifier_options o on o.group_id = gc.template_group_id and o.archived_at is null
-     where not exists (
+     where (p_sync or gc.copy_group_id = any(v_new_groups))
+       and not exists (
        select 1 from public.modifier_options c
         where c.group_id = gc.copy_group_id and c.template_option_id = o.id and c.archived_at is null
      )
@@ -99,7 +109,7 @@ begin
            archived_at = case when o.archived_at is null then null else now() end
       from pg_temp.tm_group_copies gc
       join public.modifier_options o on o.group_id = gc.template_group_id
-     where c.group_id = gc.copy_group_id and c.template_option_id = o.id and c.archived_at is null
+     where p_sync and c.group_id = gc.copy_group_id and c.template_option_id = o.id and c.archived_at is null
        and (
          (c.name, c.price_delta_paise, c.is_default, c.sort_order)
            is distinct from (o.name, o.price_delta_paise, o.is_default, o.sort_order)
@@ -115,7 +125,7 @@ begin
   with w as (
     delete from public.menu_item_modifier_groups l
      using pg_temp.tm_copies cp, public.modifier_groups c
-     where l.menu_item_id = cp.copy_id and c.id = l.group_id and c.template_group_id is not null
+     where p_sync and l.menu_item_id = cp.copy_id and c.id = l.group_id and c.template_group_id is not null
        and not exists (
          select 1
            from pg_temp.tm_group_copies gc
@@ -134,7 +144,7 @@ begin
       join public.menu_item_modifier_groups tl on tl.menu_item_id = cp.template_item_id
       join pg_temp.tm_group_copies gc on gc.store_id = cp.store_id and gc.template_group_id = tl.group_id
     on conflict (menu_item_id, group_id) do update set sort_order = excluded.sort_order
-      where public.menu_item_modifier_groups.sort_order is distinct from excluded.sort_order
+      where p_sync and public.menu_item_modifier_groups.sort_order is distinct from excluded.sort_order
     returning (select store_id from public.menu_items where id = menu_item_id) as store_id
   )
   select v_stores || coalesce(array_agg(store_id), '{}') into v_stores from w;
@@ -148,7 +158,7 @@ begin
 end;
 $$;
 
-revoke execute on function public.copy_template_modifiers(uuid[]) from public, anon, authenticated;
+revoke execute on function public.copy_template_modifiers(uuid[], boolean) from public, anon, authenticated;
 
 -- From the body in 20261112163716_menu_item_lifecycle.sql; new: the copies take their template items' modifiers.
 create or replace function public.create_store_from_template(
@@ -195,7 +205,7 @@ begin
     from public.menu_items
    where store_id = v_template.id and archived_at is null;
 
-  perform public.copy_template_modifiers(array(select id from public.menu_items where store_id = v_store));
+  perform public.copy_template_modifiers(array(select id from public.menu_items where store_id = v_store), false);
 
   perform public.emit_event(
     'store.created', 'store', v_store, v_store,
@@ -308,12 +318,13 @@ begin
   )
   select coalesce(array_agg(id), '{}') into v_inserted from w;
 
-  -- A new copy is a whole item, its modifiers included (announced by its insert). With `modifiers`, every copy's.
+  -- A new copy is a whole item, its modifiers included (announced by its insert), reusing the branch's group copies
+  -- as they are. With `modifiers`, every chosen copy's groups are made to match the template's.
   if 'modifiers' = any(v_fields) then
     v_modified := public.copy_template_modifiers(array(
       select id from public.menu_items
        where template_item_id = any(v_items) and store_id = any(v_stores) and archived_at is null
-    ));
+    ), true);
     for v_store in
       select store_id, jsonb_agg(id order by id) as item_ids
         from public.menu_items
@@ -326,7 +337,7 @@ begin
       );
     end loop;
   else
-    v_modified := public.copy_template_modifiers(v_inserted);
+    v_modified := public.copy_template_modifiers(v_inserted, false);
   end if;
 
   return (select count(*) from (select unnest(v_updated) union select unnest(v_inserted)

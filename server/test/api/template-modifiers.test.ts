@@ -292,13 +292,29 @@ describe('a push', () => {
     expect(events).toHaveLength(0);
   });
 
-  it("gives a branch's new copy of an item its groups, even without `modifiers`", async () => {
+  it("gives a branch's new copy its groups without `modifiers`, reusing the branch's group copies as they are", async () => {
+    // The template changes Size after the last push: chai's copy shares that group, and nobody pushed `modifiers`.
+    await supabaseAdmin
+      .from('modifier_options')
+      .update({ price_delta_paise: 3000 })
+      .eq('id', o.Large)
+      .throwOnError();
+    await supabaseAdmin
+      .from('modifier_options')
+      .insert({ group_id: g.Size, name: 'Soy', price_delta_paise: 1000, sort_order: 4 })
+      .throwOnError();
     const tea = await item('Tea');
     await link(tea, g.Size, 1);
     const res = await push({ itemIds: [tea], storeIds: [northId], fields: ['price'] });
     expect(res.body).toEqual({ updated: 1 });
     expect((await copied(northId, tea)).map((x) => x.name)).toEqual(['Cup']);
     expect(await groupCopies(northId, g.Size)).toHaveLength(1);
+    const size = (await copied(northId, chai))[0]!.modifier_options;
+    expect(size.map((x) => [x.name, x.price_delta_paise])).toEqual([
+      ['Large', 2500],
+      ['Oat', 1500],
+      ['Small', 0],
+    ]);
   });
 
   it('two pushes at once of items sharing a group leave one copy of it in a new branch', async () => {
