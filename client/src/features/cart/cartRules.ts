@@ -38,12 +38,32 @@ export function lineLimit(maxQuantity: number | null | undefined, limits: CartLi
 
 export type LineProblem = { kind: 'sold-out' } | { kind: 'over-limit'; available: number };
 
-/** Why a cart line cannot be ordered as it stands, or null when it is fine. */
-export function lineProblem(
-  line: Pick<CartLine, 'quantity' | 'maxQuantity'>,
+type ProblemLine = Pick<CartLine, 'lineKey' | 'menuItemId' | 'quantity' | 'maxQuantity'>;
+
+/** The most this line may hold: its item's limit less what the item's other lines in `lines` hold. */
+export function lineAllowance(
+  line: ProblemLine,
   limits: CartLimits,
+  lines: ProblemLine[] = [line],
+): number {
+  const others = lines.reduce(
+    (sum, l) =>
+      l.menuItemId === line.menuItemId && l.lineKey !== line.lineKey ? sum + l.quantity : sum,
+    0,
+  );
+  return lineLimit(line.maxQuantity, limits) - others;
+}
+
+/**
+ * Why a cart line cannot be ordered as it stands, or null when it is fine. The limit is the item's, shared by all its
+ * lines (`lines`, the whole cart): a line may hold what the item's other lines leave.
+ */
+export function lineProblem(
+  line: ProblemLine,
+  limits: CartLimits,
+  lines: ProblemLine[] = [line],
 ): LineProblem | null {
-  const limit = lineLimit(line.maxQuantity, limits);
+  const limit = lineAllowance(line, limits, lines);
   if (limit <= 0) return { kind: 'sold-out' };
   if (line.quantity > limit) return { kind: 'over-limit', available: limit };
   return null;
@@ -65,7 +85,7 @@ export function describeProblem(name: string, problem: LineProblem): string {
 export function describeProblems(lines: CartLine[], limits: CartLimits): string {
   return lines
     .flatMap((line) => {
-      const problem = lineProblem(line, limits);
+      const problem = lineProblem(line, limits, lines);
       return problem ? [describeProblem(line.name, problem)] : [];
     })
     .join(' ');
@@ -97,9 +117,14 @@ export function isItemErrorCode(code: string): boolean {
  * old persisted cart) sends none, so it is charged the database price as before, rather than a 400 on every retry.
  */
 export function orderItems(lines: CartLine[]): CreateOrderInput['items'] {
-  return lines.map(({ menuItemId, quantity, unitPrice }) => ({
+  return lines.map(({ menuItemId, quantity, unitPrice, options }) => ({
     menuItemId,
     quantity,
-    ...(Number.isInteger(unitPrice) && unitPrice > 0 ? { expectedUnitPrice: unitPrice } : {}),
+    // ₹0 only with options (Small −₹30 on a ₹30 item): an item alone is never free, so a plain ₹0 is an old cart's.
+    ...(Number.isInteger(unitPrice) && (unitPrice > 0 || (unitPrice === 0 && options.length > 0))
+      ? { expectedUnitPrice: unitPrice }
+      : {}),
+    // Only with options: a server or menu without modifiers never sees the field.
+    ...(options.length ? { modifierOptionIds: options.map((o) => o.id) } : {}),
   }));
 }

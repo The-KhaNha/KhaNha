@@ -33,7 +33,9 @@ beforeEach(() => {
     storeName: 'Cafe',
     lines: [
       {
+        lineKey: 'c1',
         menuItemId: 'c1',
+        options: [],
         name: 'Tea',
         unitPrice: 20,
         imageUrl: null,

@@ -283,3 +283,91 @@ describe('migration from version 1', () => {
     expect(useCartStore.getState().storeId).toBeNull();
   });
 });
+
+describe('lines with options (P3.2)', () => {
+  const large = { id: 'o-large', groupName: 'Size', name: 'Large', priceDelta: 20 };
+  const oat = { id: 'o-oat', groupName: 'Milk', name: 'Oat', priceDelta: 30 };
+
+  it('makes one line per choice of options, priced with their deltas, in any order the same line', () => {
+    const { add } = useCartStore.getState();
+    add(menuItem(), 1, cafe);
+    add(menuItem(), 1, cafe, [large, oat]);
+    add(menuItem(), 1, cafe, [oat, large]);
+    const lines = selectLines(useCartStore.getState());
+    expect(lines.map((l) => [l.lineKey, l.unitPrice, l.quantity])).toEqual([
+      ['item-1', 120, 1],
+      ['item-1:o-large,o-oat', 170, 2],
+    ]);
+    expect(selectQuantityOf('item-1')(useCartStore.getState())).toBe(3);
+    expect(selectTotal(useCartStore.getState())).toBe(120 + 170 * 2);
+  });
+
+  it("shares the item's limit across its lines", () => {
+    const { add, increment, fix } = useCartStore.getState();
+    const item = menuItem({ stockQuantity: 3 });
+    add(item, 2, cafe);
+    add(item, 5, cafe, [large]); // only 1 left for this line
+    expect(selectLines(useCartStore.getState()).map((l) => l.quantity)).toEqual([2, 1]);
+    increment('item-1:o-large');
+    increment('item-1');
+    expect(selectQuantityOf('item-1')(useCartStore.getState())).toBe(3);
+    // The shop now has 2: the line fixed first keeps what the other leaves.
+    useCartStore.getState().setAvailability('item-1', 2);
+    fix('item-1:o-large');
+    expect(selectLines(useCartStore.getState()).map((l) => l.lineKey)).toEqual(['item-1']);
+  });
+
+  it("syncs a line's price with its options' current deltas", () => {
+    useCartStore.getState().add(menuItem(), 1, cafe, [large]);
+    useCartStore.getState().syncPrices([menuItem({ price: 130 })], {
+      g: {
+        id: 'g',
+        name: 'Size',
+        minSelect: 1,
+        maxSelect: 1,
+        options: [{ ...large, isDefault: false, isAvailable: true, priceDelta: 25 }],
+      },
+    });
+    const [line] = selectLines(useCartStore.getState());
+    expect(line?.unitPrice).toBe(155);
+    expect(line?.options[0]?.priceDelta).toBe(25);
+  });
+});
+
+describe('migration from version 2', () => {
+  it("keeps the cart and its store; each line's key is its item", async () => {
+    localStorage.setItem(
+      'fp_cart',
+      JSON.stringify({
+        state: {
+          storeId: 's1',
+          storeSlug: 'cafe',
+          storeName: 'Cafe',
+          lines: [
+            {
+              menuItemId: 'item-1',
+              name: 'Cold Coffee',
+              unitPrice: 120,
+              imageUrl: null,
+              quantity: 2,
+              maxQuantity: null,
+            },
+          ],
+        },
+        version: 2,
+      }),
+    );
+    await useCartStore.persist.rehydrate();
+    expect(useCartStore.getState()).toMatchObject({ storeId: 's1', storeSlug: 'cafe' });
+    expect(selectLines(useCartStore.getState())).toEqual([
+      expect.objectContaining({
+        lineKey: 'item-1',
+        menuItemId: 'item-1',
+        options: [],
+        quantity: 2,
+      }),
+    ]);
+    useCartStore.getState().increment('item-1');
+    expect(selectQuantityOf('item-1')(useCartStore.getState())).toBe(3);
+  });
+});

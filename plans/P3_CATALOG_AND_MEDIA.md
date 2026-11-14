@@ -762,6 +762,10 @@ bundle check (the picker rides in the item sheet's chunk); `perf-auditor` on the
 
 Docs: `docs/COMPONENTS.md` (`ModifierPicker`), `docs/FRONTEND_STRUCTURE.md`. Intent: `--client minor`.
 
+Split seam: **15a** the cart's data (version 3: `lineKey`, `options`, the item's limit shared by its lines,
+`syncPrices` with deltas, `orderItems` sending `modifierOptionIds`), invisible while menus carry no groups; **15b** the
+picker, "Customisable", the cart and checkout showing options, and the `MODIFIER_*` recovery.
+
 ### PR 16 — Client: modifiers on orders, and their editor (P3.2)
 
 - [ ] Merged

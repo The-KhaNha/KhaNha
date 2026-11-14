@@ -86,8 +86,10 @@ describe('lineLimit', () => {
   });
 });
 
-function cartLine(overrides: Partial<CartLine> = {}): Pick<CartLine, 'quantity' | 'maxQuantity'> {
-  return { quantity: 1, maxQuantity: null, ...overrides };
+function cartLine(
+  overrides: Partial<CartLine> = {},
+): Pick<CartLine, 'lineKey' | 'menuItemId' | 'quantity' | 'maxQuantity'> {
+  return { lineKey: 'm1', menuItemId: 'm1', quantity: 1, maxQuantity: null, ...overrides };
 }
 
 describe('lineProblem', () => {
@@ -127,7 +129,9 @@ describe('describeProblems', () => {
   it('joins one sentence per flagged line and skips lines with no problem', () => {
     const lines: CartLine[] = [
       {
+        lineKey: '1',
         menuItemId: '1',
+        options: [],
         name: 'Cheese Toast',
         unitPrice: 130,
         imageUrl: null,
@@ -135,7 +139,9 @@ describe('describeProblems', () => {
         maxQuantity: 1,
       },
       {
+        lineKey: '2',
         menuItemId: '2',
+        options: [],
         name: 'Cold Coffee',
         unitPrice: 120,
         imageUrl: null,
@@ -143,7 +149,9 @@ describe('describeProblems', () => {
         maxQuantity: null,
       },
       {
+        lineKey: '3',
         menuItemId: '3',
+        options: [],
         name: 'Brownie',
         unitPrice: 110,
         imageUrl: null,
@@ -157,7 +165,9 @@ describe('describeProblems', () => {
   it('is empty when nothing is flagged', () => {
     const lines: CartLine[] = [
       {
+        lineKey: '1',
         menuItemId: '1',
+        options: [],
         name: 'Cold Coffee',
         unitPrice: 120,
         imageUrl: null,
@@ -200,7 +210,9 @@ describe('isItemErrorCode', () => {
 
 describe('orderItems', () => {
   const line = (unitPrice: number): CartLine => ({
+    lineKey: 'm1',
     menuItemId: 'm1',
+    options: [],
     name: 'Cheese Toast',
     unitPrice,
     imageUrl: null,
@@ -218,5 +230,41 @@ describe('orderItems', () => {
     for (const bad of [0, 49.5, -10, Number.NaN]) {
       expect(orderItems([line(bad)])).toEqual([{ menuItemId: 'm1', quantity: 2 }]);
     }
+  });
+});
+
+describe('lines of one item share its limit', () => {
+  const store = { ...LIMITS, maxQuantityPerItem: 10 };
+  it('flags the line past what the others leave', () => {
+    const a = cartLine({ lineKey: 'm1', quantity: 2, maxQuantity: 3 });
+    const b = cartLine({ lineKey: 'm1:o', quantity: 2, maxQuantity: 3 });
+    expect(lineProblem(a, store, [a, b])).toEqual({ kind: 'over-limit', available: 1 });
+    expect(
+      lineProblem(cartLine({ lineKey: 'm1:o', quantity: 1, maxQuantity: 2 }), store, [a, b]),
+    ).toEqual({
+      kind: 'sold-out',
+    });
+    expect(lineProblem(a, store)).toBeNull();
+  });
+});
+
+describe('orderItems with options', () => {
+  const base: CartLine = {
+    lineKey: 'm1:o1',
+    menuItemId: 'm1',
+    options: [{ id: 'o1', groupName: 'Size', name: 'Small', priceDelta: -30 }],
+    name: 'Chai',
+    unitPrice: 0,
+    imageUrl: null,
+    quantity: 1,
+    maxQuantity: null,
+  };
+  it("names the line's options, and sends a ₹0 price only when options made it", () => {
+    expect(orderItems([base])).toEqual([
+      { menuItemId: 'm1', quantity: 1, expectedUnitPrice: 0, modifierOptionIds: ['o1'] },
+    ]);
+    expect(orderItems([{ ...base, lineKey: 'm1', options: [] }])).toEqual([
+      { menuItemId: 'm1', quantity: 1 },
+    ]);
   });
 });
