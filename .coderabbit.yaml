@@ -15,6 +15,9 @@ reviews:
     # Pro trial until 17 November 2026 (no hourly limit): every push is reviewed on its own. From 18 November set this
     # back to false (the free plan's budget): a push is then reviewed only on `@coderabbitai review`.
     auto_incremental_review: true
+    # Without this, automatic reviews pause after 5 reviewed commits (the default). From 18 November remove this line
+    # and set auto_incremental_review above to false (not remove it: its default is true).
+    auto_pause_after_reviewed_commits: 0
     # release.yml's release and back-merge PRs bundle work already reviewed in its own PRs. Keywords match as
     # case-insensitive substrings anywhere in the title, so each one spells out the automated title ("release: client 1.2.0",
     # "Back-merge main (abc1234) into dev") and a hand-written "fix: prevent back-merge conflicts" is still reviewed.
