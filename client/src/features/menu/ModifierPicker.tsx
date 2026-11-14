@@ -1,6 +1,6 @@
 import type { ModifierGroup } from '../../types/api';
 import { cn } from '../../lib/cn';
-import { choiceHint, deltaLabel, toggleOption, type Selection } from './modifierRules';
+import { choiceHint, deltaLabel, liveChoices, toggleOption, type Selection } from './modifierRules';
 
 interface ModifierPickerProps {
   groups: ModifierGroup[];
@@ -28,7 +28,8 @@ export function ModifierPicker({
   return (
     <div className="mt-5 space-y-5">
       {groups.map((group) => {
-        const chosen = selection[group.id] ?? [];
+        // What counts is what the menu still has: a choice that sold out is shown unticked and frees its place.
+        const chosen = liveChoices(group, selection).map((o) => o.id);
         // Radios only where one answer is required: an optional one-choice group is a checkbox, so it can be cleared.
         const single = group.maxSelect === 1 && group.minSelect > 0;
         const full = group.maxSelect > 1 && chosen.length >= group.maxSelect;

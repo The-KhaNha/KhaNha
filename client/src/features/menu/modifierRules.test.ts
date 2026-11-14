@@ -84,6 +84,14 @@ describe('modifierRules', () => {
     expect(chosenOptions([now], { size: ['large'] })).toEqual([]);
   });
 
+  it('a sold-out choice frees its place: the cap counts live choices, and a tap drops the stale one', () => {
+    const now: ModifierGroup = {
+      ...addOns,
+      options: [opt('honey', 10), opt('cream', 15, false, false), opt('mint', 5)],
+    };
+    expect(toggleOption(now, { add: ['honey', 'cream'] }, 'mint').add).toEqual(['honey', 'mint']);
+  });
+
   it('names the groups still short of their minimum', () => {
     expect(missingGroups([size, addOns], { add: [] }).map((g) => g.id)).toEqual(['size']);
     expect(missingGroups([size], { size: ['large'] })).toEqual([]);

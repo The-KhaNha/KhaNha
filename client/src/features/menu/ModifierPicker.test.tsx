@@ -106,6 +106,30 @@ describe('ModifierPicker in the item sheet', () => {
     ]);
   });
 
+  it('a choice that sells out while the sheet is open frees its place', () => {
+    const add = vi.fn(() => true);
+    const ui = (g: Record<string, ModifierGroup>) => (
+      <AddToCartContext.Provider value={add}>
+        <ItemDetailSheet item={item} groups={g} onClose={() => {}} />
+      </AddToCartContext.Provider>
+    );
+    const { rerender } = render(ui(groups));
+    fireEvent.click(screen.getByRole('checkbox', { name: /honey/i }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /cream/i }));
+    const creamOut = {
+      ...groups,
+      add: {
+        ...groups.add!,
+        options: groups.add!.options.map((o) =>
+          o.id === 'cream' ? { ...o, isAvailable: false } : o,
+        ),
+      },
+    };
+    rerender(ui(creamOut));
+    expect(screen.getByRole('checkbox', { name: /cream/i })).not.toBeChecked();
+    expect(screen.getByRole('checkbox', { name: /mint/i })).toBeEnabled();
+  });
+
   it('switches the rest off once a group is at its maximum', () => {
     renderSheet();
     fireEvent.click(screen.getByRole('checkbox', { name: /honey/i }));

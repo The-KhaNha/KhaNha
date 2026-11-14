@@ -40,7 +40,8 @@ export function toggleOption(
   selection: Selection,
   optionId: string,
 ): Selection {
-  const current = selection[group.id] ?? [];
+  // Live choices only: a stale (gone or sold-out) one must not hold a place against the cap, and a tap drops it.
+  const current = liveChoices(group, selection).map((o) => o.id);
   if (group.maxSelect === 1)
     return {
       ...selection,
@@ -56,7 +57,7 @@ export function toggleOption(
  * A group's chosen options that the menu still offers and has: a choice made before the menu reloaded may be gone or
  * sold out, and is then no answer (not counted, priced or sent).
  */
-function liveChoices(group: ModifierGroup, selection: Selection) {
+export function liveChoices(group: ModifierGroup, selection: Selection) {
   const chosen = selection[group.id] ?? [];
   return group.options.filter((o) => o.isAvailable && chosen.includes(o.id));
 }
