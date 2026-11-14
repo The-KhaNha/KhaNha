@@ -232,6 +232,8 @@ export async function deleteTestStores(
   await supabaseAdmin.from('media_uploads').delete().in('store_id', storeIds).throwOnError();
   // After the orders and movements: both point at the items. Nothing cascades from a store to its menu.
   await supabaseAdmin.from('menu_items').delete().in('store_id', storeIds).throwOnError();
+  // A branch's groups are copied with its items (copy_template_modifiers); options and links cascade.
+  await supabaseAdmin.from('modifier_groups').delete().in('store_id', storeIds).throwOnError();
   await Promise.all(users.map((user) => deleteTestUser(user)));
   await supabaseAdmin.from('stores').delete().in('id', storeIds).throwOnError();
   await supabaseAdmin.from('brands').delete().in('id', brandIds).throwOnError();
