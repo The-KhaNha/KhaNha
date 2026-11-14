@@ -14,6 +14,8 @@ PRODUCTION_REF="" # set this after creating the production project (Project Sett
 
 env="${1:-}"
 shift || true
+# `pnpm run db:push:staging -- --dry-run` forwards the `--` too: drop it, or the CLI ignores the flags after it.
+[ "${1:-}" = "--" ] && shift
 case "$env" in
   staging) ref="$STAGING_REF" ;;
   production) ref="$PRODUCTION_REF" ;;
