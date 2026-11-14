@@ -207,7 +207,7 @@ export function MenuPage() {
         </div>
       </FoodPhotoGate>
 
-      <ItemDetailSheet item={selected} onClose={closeSheet} />
+      <ItemDetailSheet item={selected} onClose={closeSheet} groups={menu.modifierGroups} />
     </AddToCartProvider>
   );
 }

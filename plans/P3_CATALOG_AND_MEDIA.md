@@ -743,7 +743,7 @@ it.
 
 ### PR 15 — Client: the modifier picker and the cart (P3.2)
 
-- [ ] Merged
+- [x] Merged
 
 - `ModifierPicker` in `ItemDetailSheet`: radio buttons when a group allows one choice, checkboxes otherwise, a live
   price, "Choose one" inline, 44px targets, keyboard and screen-reader labels.
@@ -764,7 +764,11 @@ Docs: `docs/COMPONENTS.md` (`ModifierPicker`), `docs/FRONTEND_STRUCTURE.md`. Int
 
 Split seam: **15a** the cart's data (version 3: `lineKey`, `options`, the item's limit shared by its lines,
 `syncPrices` with deltas, `orderItems` sending `modifierOptionIds`), invisible while menus carry no groups; **15b** the
-picker, "Customisable", the cart and checkout showing options, and the `MODIFIER_*` recovery.
+picker, "Customisable", the cart and checkout showing options, and the `MODIFIER_*` recovery. As built in 15b: any item
+with groups is "Customisable" and its card's Add opens the sheet (decided from `modifierGroupIds`, so the memoised
+cards need no groups); every group starts at its available defaults; a `MODIFIER_*` refusal at checkout reloads the
+menu and shows the server's message, which names the group. The customise-pay-see-it e2e moves to PR 16, whose
+manager → customer → kitchen e2e covers it once orders show their options.
 
 ### PR 16 — Client: modifiers on orders, and their editor (P3.2)
 

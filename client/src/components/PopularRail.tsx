@@ -8,6 +8,7 @@ import { cardClasses } from './Card';
 import { AddControl } from './AddControl';
 import { FoodPhoto } from './FoodPhoto';
 import { Price } from './Price';
+import { isCustomisable } from '../features/menu/modifierRules';
 import { Skeleton } from './Skeleton';
 import { StockPill } from './StockPill';
 
@@ -113,6 +114,9 @@ function RailCard({ item, onOpen }: { item: MenuItem; onOpen: (item: MenuItem) =
           {item.name}
         </h3>
         {showStock && <StockPill item={item} className="ml-1 mt-1.5 self-start" />}
+        {isCustomisable(item) && !unavailable && (
+          <p className="ml-1 mt-1 text-caption text-muted">Customisable</p>
+        )}
         <div className="mt-auto flex items-start justify-between gap-2 pl-1 pt-1.5">
           <Price
             value={item.price}
@@ -121,7 +125,7 @@ function RailCard({ item, onOpen }: { item: MenuItem; onOpen: (item: MenuItem) =
               unavailable && 'text-muted',
             )}
           />
-          <AddControl item={item} photoRef={photoRef} />
+          <AddControl item={item} photoRef={photoRef} onCustomise={() => onOpen(item)} />
         </div>
       </article>
     </li>

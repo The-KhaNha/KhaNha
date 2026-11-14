@@ -1,6 +1,7 @@
 import { CircleAlert, UtensilsCrossed } from 'lucide-react';
 import { lineAllowance, lineProblem, problemLabel } from '../features/cart/cartRules';
 import { selectLimits, selectLines, useCartStore, type CartLine } from '../features/cart/cartStore';
+import { optionsLabel } from '../features/menu/modifierRules';
 import { cn } from '../lib/cn';
 import { FoodPhoto } from './FoodPhoto';
 import { Price } from './Price';
@@ -55,6 +56,11 @@ export function CartItem({ line }: CartItemProps) {
       </FoodPhoto>
       <div className="min-w-0 flex-[1_1_4.5rem]">
         <p className="line-clamp-2 wrap-anywhere text-base font-bold leading-[1.3]">{line.name}</p>
+        {line.options.length > 0 && (
+          <p className="mt-0.5 wrap-anywhere text-caption text-muted">
+            {optionsLabel(line.options)}
+          </p>
+        )}
         <p className="mt-0.5 text-caption text-muted">
           <Price value={line.unitPrice} /> each
         </p>

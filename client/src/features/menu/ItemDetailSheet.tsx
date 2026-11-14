@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type AnimationEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, ShoppingBag, X } from 'lucide-react';
-import type { MenuItem } from '../../types/api';
+import type { MenuItem, ModifierGroup } from '../../types/api';
 import { Button } from '../../components/Button';
 import { FoodPhoto } from '../../components/FoodPhoto';
 import { PopularBadge } from '../../components/PopularBadge';
@@ -11,14 +11,24 @@ import { StockPill } from '../../components/StockPill';
 import { IconButton } from '../../components/IconButton';
 import { cn } from '../../lib/cn';
 import { useFocusTrap } from '../../lib/useFocusTrap';
-import { useReducedMotion } from '../../lib/useReducedMotion';
+import { scrollBehavior, useReducedMotion } from '../../lib/useReducedMotion';
 import { useAddToCart } from '../cart/useAddToCart';
 import { availableQuantity, lineLimit } from '../cart/cartRules';
 import { selectLimits, selectQuantityOf, useCartStore } from '../cart/cartStore';
+import { ModifierPicker } from './ModifierPicker';
+import {
+  chosenOptions,
+  defaultSelection,
+  itemGroups,
+  missingGroups,
+  type Selection,
+} from './modifierRules';
 
 interface ItemDetailSheetProps {
   item: MenuItem | null;
   onClose: () => void;
+  /** The menu's modifier groups (`MenuResponse.modifierGroups`): the item's choices are picked here. */
+  groups?: Record<string, ModifierGroup>;
 }
 
 type Phase = 'open' | 'added' | 'closing';
@@ -34,13 +44,19 @@ const CLOSE_FALLBACK_MS = 400;
  * "Add to Cart" flips the CTA green, holds, then the sheet animates out before unmounting.
  * The local count can only go as high as what is left after what the cart already holds.
  */
-export function ItemDetailSheet({ item, onClose }: ItemDetailSheetProps) {
+export function ItemDetailSheet({ item, onClose, groups }: ItemDetailSheetProps) {
   const addToCart = useAddToCart();
   const inCart = useCartStore(selectQuantityOf(item?.id ?? ''));
   const limits = useCartStore(selectLimits);
   const reducedMotion = useReducedMotion();
   const [quantity, setQuantity] = useState(1);
   const [phase, setPhase] = useState<Phase>('open');
+  // The first item starts at its defaults too: the reset below runs only when the item changes.
+  const [selection, setSelection] = useState<Selection>(() =>
+    item ? defaultSelection(itemGroups(item, groups)) : {},
+  );
+  // Set once the customer tries to add with a required choice still open: those groups then say so.
+  const [tried, setTried] = useState(false);
   const holdTimer = useRef<number | undefined>(undefined);
   const fallbackTimer = useRef<number | undefined>(undefined);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -54,6 +70,8 @@ export function ItemDetailSheet({ item, onClose }: ItemDetailSheetProps) {
     setShownItem(item);
     setQuantity(1);
     setPhase('open');
+    setSelection(item ? defaultSelection(itemGroups(item, groups)) : {});
+    setTried(false);
   }
 
   useEffect(() => {
@@ -91,11 +109,22 @@ export function ItemDetailSheet({ item, onClose }: ItemDetailSheetProps) {
   const closing = phase === 'closing';
   const added = phase === 'added';
   const titleId = `item-${item.id}-title`;
+  const choices = itemGroups(item, groups);
+  const options = chosenOptions(choices, selection);
+  const unitPrice = options.reduce((sum, o) => sum + o.priceDelta, item.price);
+  const missing = missingGroups(choices, selection);
 
   function handleAdd() {
     if (!item || phase !== 'open' || !canAdd) return;
+    if (missing.length > 0) {
+      setTried(true);
+      dialogRef.current
+        ?.querySelector(`[data-group="${missing[0]?.id}"]`)
+        ?.scrollIntoView?.({ block: 'center', behavior: scrollBehavior() });
+      return;
+    }
     // Asked first (another store's cart): the replace sheet takes over, so this one just closes.
-    if (!addToCart(item, Math.min(quantity, room))) return requestClose();
+    if (!addToCart(item, Math.min(quantity, room), options)) return requestClose();
     setPhase('added');
     holdTimer.current = window.setTimeout(requestClose, ADDED_HOLD_MS);
   }
@@ -172,7 +201,7 @@ export function ItemDetailSheet({ item, onClose }: ItemDetailSheetProps) {
           <p className="mt-2 text-body leading-relaxed text-muted">{item.description}</p>
           <div className="mt-5 flex items-center justify-between gap-4">
             <div className="flex flex-col items-start">
-              <Price value={item.price} className="text-title font-extrabold leading-none" />
+              <Price value={unitPrice} className="text-title font-extrabold leading-none" />
               {!showNote && <StockPill item={item} className="mt-2.5" />}
             </div>
             {unavailable ? (
@@ -197,6 +226,16 @@ export function ItemDetailSheet({ item, onClose }: ItemDetailSheetProps) {
               </div>
             )}
           </div>
+          {choices.length > 0 && !unavailable && (
+            <ModifierPicker
+              groups={choices}
+              selection={selection}
+              onChange={setSelection}
+              missing={new Set(tried ? missing.map((g) => g.id) : [])}
+              itemId={item.id}
+            />
+          )}
+          <div className="h-4" aria-hidden />
         </div>
 
         <div className="shrink-0 border-t border-line/70 p-4 pb-safe animate-fade-up [animation-delay:80ms]">
@@ -228,7 +267,7 @@ export function ItemDetailSheet({ item, onClose }: ItemDetailSheetProps) {
               ) : (
                 <>
                   Add to Cart <span className="text-white/70">·</span>{' '}
-                  <Price value={item.price * Math.min(quantity, room)} />
+                  <Price value={unitPrice * Math.min(quantity, room)} />
                 </>
               )}
             </Button>

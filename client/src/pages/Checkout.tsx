@@ -40,6 +40,7 @@ import { createOrder } from '../services/orders';
 import { cn } from '../lib/cn';
 import { formatPrice } from '../lib/format';
 import { scrollBehavior } from '../lib/useReducedMotion';
+import { optionsLabel } from '../features/menu/modifierRules';
 
 /** The API's field names for the pickup inputs, which carry the same names, mapped to this form's error keys. */
 const FORM_FIELD = { customerName: 'name', customerPhone: 'phone', note: 'note' } as const;
@@ -181,6 +182,10 @@ export function CheckoutPage() {
       if (apiError.code === 'IDEMPOTENCY_KEY_REUSED') draft.dropKey();
       // Closed or paused since the menu was read: the cart stays; the refreshed menu shows the state.
       if (apiError.code === 'STORE_CLOSED' || apiError.code === 'STORE_PAUSED') reloadMenu();
+      // A line's options no longer fit the item (a group made required, an option switched off): the server's message
+      // names the group, and the fresh menu has the item's current choices for when the customer goes back to it.
+      if (apiError.code === 'MODIFIER_REQUIRED' || apiError.code === 'MODIFIER_INVALID')
+        reloadMenu();
       if (apiError.code === 'PRICE_CHANGED') {
         repriceOnLoad.current = true;
         setRepricing(true);
@@ -264,6 +269,11 @@ export function CheckoutPage() {
                     <span className="font-extrabold tabular-nums">{line.quantity} ×</span>{' '}
                     {line.name}
                   </span>
+                  {line.options.length > 0 && (
+                    <span className="block wrap-anywhere text-caption text-muted">
+                      {optionsLabel(line.options)}
+                    </span>
+                  )}
                   {problem && (
                     <span className="mt-0.5 inline-flex items-center gap-1 text-xs font-bold text-brand-700">
                       <CircleAlert className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden />
