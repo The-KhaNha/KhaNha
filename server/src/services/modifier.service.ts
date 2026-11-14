@@ -33,11 +33,13 @@ async function linksOf(storeId: string, ids: string[]) {
       .select(
         `menu_item_id, group_id, sort_order,
          modifier_groups!inner (id, name, min_select, max_select, sort_order, store_id, archived_at,
-           modifier_options (id, name, price_delta_paise, is_default, is_available, sort_order, archived_at))`,
+           modifier_options (id, name, price_delta_paise, is_default, is_available, sort_order))`,
       )
       .in('menu_item_id', ids)
       .eq('modifier_groups.store_id', storeId)
       .is('modifier_groups.archived_at', null)
+      // In the query, not after it: archived options grow with every edit and would count against max_rows.
+      .is('modifier_groups.modifier_options.archived_at', null)
       .order('menu_item_id')
       .order('group_id')
       .range(from, from + ROWS_PER_PAGE - 1)
@@ -78,7 +80,7 @@ export async function loadItemModifiers(
 
 // The editor (P3.2, PR 14): every write is one SQL function (a group is never half-saved), and drops the store's menu.
 
-/** A group row with its options, as read here, in pricing's shape (live options only, in order). */
+/** A group row with its live options (every read filters archived ones in the query), in pricing's shape and order. */
 function toPricingGroup(g: {
   id: string;
   name: string;
@@ -91,7 +93,6 @@ function toPricingGroup(g: {
     is_default: boolean;
     is_available: boolean;
     sort_order: number;
-    archived_at: string | null;
   }[];
 }): PricingGroup {
   return {
@@ -100,7 +101,6 @@ function toPricingGroup(g: {
     minSelect: g.min_select,
     maxSelect: g.max_select,
     options: g.modifier_options
-      .filter((o) => o.archived_at === null)
       .sort((a, b) => a.sort_order - b.sort_order || a.id.localeCompare(b.id))
       .map((o) => ({
         id: o.id,
@@ -113,7 +113,7 @@ function toPricingGroup(g: {
 }
 
 const GROUP_COLUMNS = `id, name, min_select, max_select, sort_order,
-  modifier_options (id, name, price_delta_paise, is_default, is_available, sort_order, archived_at)`;
+  modifier_options (id, name, price_delta_paise, is_default, is_available, sort_order)`;
 
 /**
  * The editor's read: the store's live groups in order, and which of them each item offers (archived items included,
@@ -127,6 +127,7 @@ export async function listStoreModifiers(
     .select(GROUP_COLUMNS)
     .eq('store_id', storeId)
     .is('archived_at', null)
+    .is('modifier_options.archived_at', null)
     .order('sort_order')
     .order('id')
     .throwOnError();
@@ -201,6 +202,7 @@ export async function saveModifierGroup(
     .from('modifier_groups')
     .select(GROUP_COLUMNS)
     .eq('id', id)
+    .is('modifier_options.archived_at', null)
     .single()
     .throwOnError();
   return toPricingGroup(data);

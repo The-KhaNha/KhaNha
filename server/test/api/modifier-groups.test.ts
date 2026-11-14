@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { MODIFIER_LIMITS } from '../../src/schemas/limits';
 import { loadItemModifiers } from '../../src/services/modifier.service';
-import { cached } from '../../src/utils/cache';
+import { cached, invalidate } from '../../src/utils/cache';
 import { supabaseAdmin } from '../../src/utils/supabase';
 import { api } from '../setup/api';
 import {
@@ -108,7 +108,10 @@ async function makeGroup(store: string) {
 
 /** Plants a stale menu under the store's cache key; true once a write has dropped it. */
 const menuKey = () => `menu:${storeId}`;
-const plantMenu = () => cached(menuKey(), 60 * 60 * 1000, () => Promise.resolve('stale'));
+const plantMenu = async () => {
+  invalidate(menuKey()); // an earlier check left 'fresh' there, which a plant would return instead
+  expect(await cached(menuKey(), 60 * 60 * 1000, () => Promise.resolve('stale'))).toBe('stale');
+};
 const menuDropped = async () =>
   (await cached(menuKey(), 60 * 60 * 1000, () => Promise.resolve('fresh'))) === 'fresh';
 

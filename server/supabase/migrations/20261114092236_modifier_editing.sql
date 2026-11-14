@@ -1,7 +1,5 @@
--- P3.2 PR 14: editing a store's modifier groups. A group is saved whole, with its options, in one function, so a menu
--- never offers a half-edited group; an item's groups are set in another. Each write that changed something emits one
--- menu.changed with the caller as actor (a repeat changes nothing and emits nothing). Bounds the API also checks
--- (MODIFIER_LIMITS) are checked here again where they depend on stored rows.
+-- P3.2 PR 14: the modifier editor. A group is saved whole, in one function (never half-edited); each write that
+-- changed something emits one menu.changed under the caller, and a repeat emits nothing.
 
 -- Creates (p_group_id null) or overwrites a live group of p_store_id. p_options is the whole list, in order:
 -- [{ id?, name, priceDeltaPaise, isDefault, isAvailable }]. An entry with an id updates that live option of this
