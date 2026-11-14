@@ -267,6 +267,24 @@ describe('ManageMenuTab with choices (P3.2)', () => {
     });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Add choice' }));
     expect(await screen.findByText('Showing the saved choices')).toBeInTheDocument();
+    expect(screen.getByText('offline')).toBeInTheDocument();
     expect(screen.getByText('Extra cheese')).toBeInTheDocument();
+  });
+
+  it('a new item saved after its editor was closed does not reopen it', async () => {
+    let finish: (value: ManagedMenuItem) => void = () => {};
+    api.createMenuItem.mockReturnValue(new Promise((resolve) => (finish = resolve)));
+    render(<ManageMenuTab store={store} />);
+    fireEvent.click(await screen.findByRole('button', { name: /Add item/ }));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: 'Chai' } });
+    fireEvent.change(within(dialog).getByLabelText('Price (₹)'), { target: { value: '50' } });
+    fireEvent.change(within(dialog).getByLabelText('Category'), { target: { value: 'Drinks' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add item' }));
+    fireEvent.keyDown(window, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    finish(item('n', 'Chai', 'Drinks'));
+    await waitFor(() => expect(api.fetchManagedMenu).toHaveBeenCalledTimes(2));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });
