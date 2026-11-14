@@ -1,3 +1,4 @@
+import { orderLineOptions } from '../features/menu/modifierRules';
 import { RotateCcw } from 'lucide-react';
 import type { Order } from '../types/api';
 import { isTerminal } from '../features/orders/orderStatus';
@@ -18,7 +19,12 @@ interface OrderCardProps {
 const MAX_THUMBS = 3;
 
 export function summarizeItems(order: Order): string {
-  return order.items.map((item) => `${item.quantity} × ${item.name}`).join(', ');
+  return order.items
+    .map((item) => {
+      const options = orderLineOptions(item);
+      return `${item.quantity} × ${item.name}${options ? ` (${options})` : ''}`;
+    })
+    .join(', ');
 }
 
 export function OrderCard({ order, onReorder, reordering = false }: OrderCardProps) {

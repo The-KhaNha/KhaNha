@@ -271,6 +271,7 @@ function toOrderItemDto(item: OrderItemRow): OrderItemDto {
     baseUnitPrice:
       item.base_unit_price_paise === null ? null : paiseToRupees(item.base_unit_price_paise),
     modifiers: item.order_item_modifiers.map((m) => ({
+      optionId: m.modifier_option_id,
       groupName: m.group_name,
       optionName: m.option_name,
       priceDelta: paiseToRupees(m.price_delta_paise),

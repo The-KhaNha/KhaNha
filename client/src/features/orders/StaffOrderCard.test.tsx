@@ -40,4 +40,23 @@ describe('StaffOrderCard', () => {
     expect(isolated).toEqual([order.customerName, order.note]);
     expect(screen.getByText(/9876543210/).closest('bdi')).toBeNull();
   });
+
+  it("names each line's options at full size, so the kitchen makes it right (P3.2)", () => {
+    const withOptions: Order = {
+      ...order,
+      items: [
+        {
+          ...order.items[0]!,
+          modifiers: [
+            { optionId: 'l', groupName: 'Size', optionName: 'Large', priceDelta: 20 },
+            { optionId: null, groupName: 'Add-ons', optionName: 'Extra cheese', priceDelta: 20 },
+          ],
+        },
+      ],
+    };
+    render(<StaffOrderCard order={withOptions} pending={false} onChangeStatus={() => {}} />);
+    const options = screen.getByText('Large, Extra cheese');
+    expect(options).toHaveClass('font-semibold');
+    expect(options).not.toHaveClass('text-muted');
+  });
 });

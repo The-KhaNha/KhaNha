@@ -211,8 +211,16 @@ export interface OrderItem {
   imageUrl?: string | null;
   /** The item's own price before its options (`unitPrice` includes them); null or absent on older orders. */
   baseUnitPrice?: number | null;
-  /** The options the line was made with (P3.2). Optional: absent from a server before them. */
-  modifiers?: { groupName: string; optionName: string; priceDelta: number }[];
+  /**
+   * The options the line was made with (P3.2). Optional: absent from a server before them. `optionId` (absent before
+   * it was added, null once the option was deleted) is what a reorder re-adds.
+   */
+  modifiers?: {
+    optionId?: string | null;
+    groupName: string;
+    optionName: string;
+    priceDelta: number;
+  }[];
 }
 
 export interface Order {

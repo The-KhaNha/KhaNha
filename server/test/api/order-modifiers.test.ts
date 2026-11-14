@@ -263,6 +263,8 @@ describe('ordering with options, beyond the table', () => {
     const oat = real.get('o-oat') ?? '';
     const placed = await order([{ menuItemId: item.id, options: [oat] }]);
     expect(placed.status).toBe(201);
+    // While the option exists the line names it, so a reorder can choose it again.
+    expect(placed.body.order.items[0].modifiers[0].optionId).toBe(oat);
     await supabaseAdmin
       .from('modifier_options')
       .update({ name: 'Oat (new)', price_delta_paise: 9900 })
@@ -274,7 +276,7 @@ describe('ordering with options, beyond the table', () => {
       .get(`/api/orders/${placed.body.order.id}`)
       .set({ Authorization: `Bearer ${customer.token}` });
     expect(read.body.order.items[0].modifiers).toEqual([
-      { groupName: 'Milk', optionName: 'Oat', priceDelta: 20 },
+      { optionId: null, groupName: 'Milk', optionName: 'Oat', priceDelta: 20 },
     ]);
   });
 
@@ -290,7 +292,7 @@ describe('ordering with options, beyond the table', () => {
     const first = await send(key);
     expect(first.status).toBe(201);
     expect(first.body.order.items[0].modifiers).toEqual([
-      { groupName: 'Size', optionName: 'Regular', priceDelta: 0 },
+      { optionId: real.get('o-regular'), groupName: 'Size', optionName: 'Regular', priceDelta: 0 },
     ]);
     const again = await send(key);
     expect(again.body.order.id).toBe(first.body.order.id);

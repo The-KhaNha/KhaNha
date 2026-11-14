@@ -1012,17 +1012,17 @@ required and nothing is chosen.
 
 `OrderItemDto`
 
-| Field           | Type                                      | Notes                                                                                                                            |
-| --------------- | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `id`            | string (uuid)                             |                                                                                                                                  |
-| `menuItemId`    | string (uuid)                             |                                                                                                                                  |
-| `name`          | string                                    | snapshot at order time                                                                                                           |
-| `unitPrice`     | number                                    | snapshot at order time                                                                                                           |
-| `quantity`      | number                                    |                                                                                                                                  |
-| `lineTotal`     | number                                    | `unitPrice × quantity`                                                                                                           |
-| `imageUrl`      | string \| null                            | the menu item's photo at order time                                                                                              |
-| `baseUnitPrice` | number \| null                            | the item's own price before its options (`unitPrice` includes them); null on orders before P3.2                                  |
-| `modifiers`     | `{ groupName, optionName, priceDelta }[]` | the options the line was made with, as they were then (a later rename or delete of the option changes nothing); `[]` without any |
+| Field           | Type                                                | Notes                                                                                                                                                                                                                                       |
+| --------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`            | string (uuid)                                       |                                                                                                                                                                                                                                             |
+| `menuItemId`    | string (uuid)                                       |                                                                                                                                                                                                                                             |
+| `name`          | string                                              | snapshot at order time                                                                                                                                                                                                                      |
+| `unitPrice`     | number                                              | snapshot at order time                                                                                                                                                                                                                      |
+| `quantity`      | number                                              |                                                                                                                                                                                                                                             |
+| `lineTotal`     | number                                              | `unitPrice × quantity`                                                                                                                                                                                                                      |
+| `imageUrl`      | string \| null                                      | the menu item's photo at order time                                                                                                                                                                                                         |
+| `baseUnitPrice` | number \| null                                      | the item's own price before its options (`unitPrice` includes them); null on orders before P3.2                                                                                                                                             |
+| `modifiers`     | `{ optionId, groupName, optionName, priceDelta }[]` | the options the line was made with, as they were then (a later rename or delete of the option changes nothing); `[]` without any. `optionId` is the option on the menu ("Order Again" re-adds it), `null` once it was deleted (P3.2, PR 16) |
 
 `MemberDto`
 

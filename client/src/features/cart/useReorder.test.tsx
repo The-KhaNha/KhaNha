@@ -77,3 +77,76 @@ describe('useReorder with another store in the cart', () => {
     expect(useCartStore.getState().lines).toHaveLength(1);
   });
 });
+
+describe('useReorder with options (P3.2)', () => {
+  const chai = { ...bun, id: 'chai', name: 'Chai', price: 50, modifierGroupIds: ['size', 'milk'] };
+  const opt = (id: string, priceDelta: number, isDefault = false) => ({
+    id,
+    name: id,
+    priceDelta,
+    isDefault,
+    isAvailable: true,
+  });
+  const optionsMenu = (sizeDefault: boolean) =>
+    ({
+      categories: [{ name: 'Hot', items: [chai] }],
+      modifierGroups: {
+        size: {
+          id: 'size',
+          name: 'Size',
+          minSelect: 1,
+          maxSelect: 1,
+          options: [opt('small', 0, sizeDefault), opt('large', 20)],
+        },
+        milk: { id: 'milk', name: 'Milk', minSelect: 0, maxSelect: 1, options: [opt('soy', 15)] },
+      },
+    }) as unknown as MenuResponse;
+  const reorderOf = (modifiers: { optionId: string | null; optionName: string }[]) =>
+    ({
+      id: 'o2',
+      store: { id: 's2', name: 'Bakery', slug: 'bakery' },
+      items: [
+        {
+          menuItemId: 'chai',
+          name: 'Chai',
+          quantity: 1,
+          modifiers: modifiers.map((m) => ({ ...m, groupName: 'x', priceDelta: 0 })),
+        },
+      ],
+    }) as Order;
+
+  beforeEach(() => {
+    useCartStore.setState({ storeId: null, storeSlug: null, storeName: null, lines: [] });
+  });
+
+  it('re-adds the options the menu still has, and drops a gone one', async () => {
+    fetchStoreMenu.mockResolvedValue(optionsMenu(false));
+    const { result } = renderHook(() => useReorder(), { wrapper });
+    await act(async () =>
+      result.current.reorder(
+        reorderOf([
+          { optionId: 'large', optionName: 'Large' },
+          { optionId: null, optionName: 'Oat' },
+        ]),
+      ),
+    );
+    await act(async () => {});
+    const [line] = useCartStore.getState().lines;
+    expect(line?.options.map((o) => o.id)).toEqual(['large']);
+    expect(line?.unitPrice).toBe(70);
+  });
+
+  it('fills a required group the old line lacks from its default, or skips the line without one', async () => {
+    fetchStoreMenu.mockResolvedValue(optionsMenu(true));
+    const { result } = renderHook(() => useReorder(), { wrapper });
+    await act(async () => result.current.reorder(reorderOf([])));
+    await act(async () => {});
+    expect(useCartStore.getState().lines[0]?.options.map((o) => o.id)).toEqual(['small']);
+
+    useCartStore.setState({ storeId: null, storeSlug: null, storeName: null, lines: [] });
+    fetchStoreMenu.mockResolvedValue(optionsMenu(false));
+    await act(async () => result.current.reorder(reorderOf([])));
+    await act(async () => {});
+    expect(useCartStore.getState().lines).toEqual([]);
+  });
+});

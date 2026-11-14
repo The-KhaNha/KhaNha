@@ -9,6 +9,7 @@ import {
   itemGroups,
   missingGroups,
   optionsLabel,
+  orderLineOptions,
   toggleOption,
 } from './modifierRules';
 
@@ -118,5 +119,17 @@ describe('modifierRules', () => {
   it('labels deltas and a line’s options', () => {
     expect([deltaLabel(20), deltaLabel(-20), deltaLabel(0)]).toEqual(['+₹20', '−₹20', '']);
     expect(optionsLabel([{ name: 'Large' }, { name: 'Oat milk' }])).toBe('Large, Oat milk');
+  });
+
+  it("lists an order line's options as ordered, or nothing", () => {
+    expect(
+      orderLineOptions({
+        modifiers: [
+          { groupName: 'Size', optionName: 'Large', priceDelta: 20 },
+          { groupName: 'Milk', optionName: 'Oat', priceDelta: 25 },
+        ],
+      }),
+    ).toBe('Large, Oat');
+    expect(orderLineOptions({})).toBe('');
   });
 });

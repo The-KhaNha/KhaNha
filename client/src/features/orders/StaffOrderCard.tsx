@@ -1,3 +1,4 @@
+import { orderLineOptions } from '../menu/modifierRules';
 import { useState, type AnimationEvent } from 'react';
 import { CircleAlert, MessageSquareText, UserRound } from 'lucide-react';
 import type { Order, OrderStatus } from '../../types/api';
@@ -96,6 +97,10 @@ export function StaffOrderCard({
             <li key={item.id} className="flex items-baseline justify-between gap-3">
               <span className="min-w-0 wrap-anywhere">
                 <span className="font-bold tabular-nums">{item.quantity} ×</span> {item.name}
+                {/* The kitchen makes the line from this: full size and weight, never a muted footnote. */}
+                {orderLineOptions(item) && (
+                  <span className="block font-semibold">{orderLineOptions(item)}</span>
+                )}
               </span>
               <Price value={item.lineTotal} className="shrink-0 text-muted" />
             </li>

@@ -258,8 +258,16 @@ export interface OrderItemDto {
   imageUrl: string | null;
   /** The item's own price, whole rupees, before its options (`unitPrice` includes them); null on older orders. */
   baseUnitPrice: number | null;
-  /** The options the line was made with, as they were then (P3.2): empty for a line without any. */
-  modifiers: { groupName: string; optionName: string; priceDelta: number }[];
+  /**
+   * The options the line was made with, as they were then (P3.2): empty for a line without any. `optionId` is the
+   * option still on the menu (a reorder re-adds it), null once the option was deleted.
+   */
+  modifiers: {
+    optionId: string | null;
+    groupName: string;
+    optionName: string;
+    priceDelta: number;
+  }[];
 }
 
 export interface OrderDto {
