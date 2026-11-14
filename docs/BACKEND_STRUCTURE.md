@@ -243,7 +243,7 @@ The layers, in the order a request passes them:
 | `db:start` / `db:stop`                   | `supabase start` / `supabase stop`                                                                                          |
 | `db:reset`                               | `supabase db reset` (rebuilds the local database from the migrations)                                                       |
 | `db:new <name>`                          | `supabase migration new`                                                                                                    |
-| `db:types`                               | `supabase gen types typescript --local > src/types/database.ts`                                                             |
+| `db:types`                               | `supabase gen types typescript > src/types/database.ts`                                                                     |
 | `db:push:staging` / `db:push:production` | `./scripts/db-push.sh staging` / `./scripts/db-push.sh production` (see [DEPLOYMENT.md](DEPLOYMENT.md#applying-migrations)) |
 
 `scripts/seed.ts` and `scripts/db-push.sh` are described in [DEPLOYMENT.md](DEPLOYMENT.md).

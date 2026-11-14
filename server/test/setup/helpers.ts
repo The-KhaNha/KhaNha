@@ -132,7 +132,7 @@ export function localSql<Row>(sql: string): Row[] {
     throw new Error('localSql reaches past the API: local only.');
   const out = execFileSync(
     'pnpm',
-    ['exec', 'supabase', 'db', 'query', '--local', '--output-format', 'json', sql],
+    ['exec', 'supabase', 'db', 'query', '--output-format', 'json', sql],
     {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],

@@ -207,7 +207,7 @@ schedule that purges by age calls a SQL function that takes `p_now timestamptz d
 
 ## Runbook
 
-Local: `cd server && pnpm exec supabase db query --local "<sql>"`. Staging: the dashboard's SQL editor. Production is the
+Local: `cd server && pnpm exec supabase db query "<sql>"`. Staging: the dashboard's SQL editor. Production is the
 user's.
 
 | To                                            | Run                                                                                                                                                            |

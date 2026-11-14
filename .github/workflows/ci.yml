@@ -130,9 +130,10 @@ jobs:
       - name: Nothing the Supabase CLI deprecated
         run: |
           out=$(pnpm exec supabase status 2>&1 || true)
-          if grep -i deprecated <<<"$out"; then exit 1; fi
-          if grep -n -- '--project-ref' scripts/*.sh package.json; then
-            echo '--project-ref is deprecated: use --remote=<ref>'; exit 1
+          if grep -iE 'deprecated|removed in v4' <<<"$out"; then exit 1; fi
+          # CLI 3: --project-ref became --remote=<ref>, and --local is the default (both go in v4).
+          if grep -nE -- '--project-ref|--local\b' scripts/*.sh package.json test/setup/*.ts; then
+            echo 'A deprecated Supabase CLI flag: --remote=<ref> for a project; nothing for local'; exit 1
           fi
       # Only the services the API and tests use: Postgres, GoTrue, PostgREST and Kong.
       - run: pnpm run db:start:ci
@@ -148,7 +149,15 @@ jobs:
       - run: pnpm run seed
       - run: pnpm test
       - name: Generated types match the migrations
-        run: pnpm run db:types && git diff --exit-code -- src/types/database.ts
+        # The CLI's warnings go to stderr: a deprecated flag or key fails here too, not only on the v4 upgrade.
+        run: |
+          # `|| status=$?`: the step runs under bash -e, which would exit before printing the CLI's error.
+          status=0
+          pnpm run db:types 2> "$RUNNER_TEMP/types.err" || status=$?
+          cat "$RUNNER_TEMP/types.err" >&2
+          [ $status -eq 0 ] || exit $status
+          if grep -iE 'deprecated|removed in v4' "$RUNNER_TEMP/types.err"; then exit 1; fi
+          git diff --exit-code -- src/types/database.ts
       - if: always()
         run: pnpm run db:stop
 
