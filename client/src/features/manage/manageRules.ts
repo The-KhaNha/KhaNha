@@ -2,7 +2,7 @@ import type { MyBrand, StoreRole, StoreStatus, StoreSummary, User } from '../../
 
 /**
  * Whether the account may open `/manage` for this store: the owner of its brand, a MANAGER member, or an ADMIN
- * (who holds the team and pause capabilities everywhere, docs/PERMISSIONS.md). The server enforces it again on
+ * (who holds the pause and audit capabilities everywhere, docs/PERMISSIONS.md). The server enforces it again on
  * every write; this only decides what the client offers.
  */
 export function canManage(user: User, store: Pick<StoreSummary, 'id' | 'brand'>): boolean {
@@ -30,7 +30,10 @@ export const MANAGE_TABS = [
   { path: 'team', label: 'Team' },
 ] as const;
 
-/** `settings.edit`: MANAGER and OWNER. An admin holds no store-settings capability, so is not offered the editor. */
+/**
+ * `settings.edit` and `team.manageStaff`: MANAGER and OWNER. An admin holds neither, so is offered neither the settings
+ * editor nor the team tab.
+ */
 export function canEditSettings(user: User, store: Pick<StoreSummary, 'id' | 'brand'>): boolean {
   return (
     user.ownedBrands.some((b) => b.id === store.brand.id) ||
@@ -38,9 +41,9 @@ export function canEditSettings(user: User, store: Pick<StoreSummary, 'id' | 'br
   );
 }
 
-/** `team.manageManagers`: OWNER and ADMIN. Everyone else on the team page deals with STAFF only. */
+/** `team.manageManagers`: the brand's OWNER. Everyone else on the team page deals with STAFF only. */
 export function canManageManagers(user: User, store: Pick<StoreSummary, 'brand'>): boolean {
-  return user.role === 'ADMIN' || user.ownedBrands.some((b) => b.id === store.brand.id);
+  return user.ownedBrands.some((b) => b.id === store.brand.id);
 }
 
 /** Whether the viewer may remove this person (a manager may leave: remove themselves). */

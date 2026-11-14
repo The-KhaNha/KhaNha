@@ -17,8 +17,8 @@ const EXPECTED: Record<Capability, Record<StoreAccess, boolean>> = {
   'menu.edit': { STAFF: false, MANAGER: true, OWNER: true, ADMIN: false },
   'store.profile': { STAFF: false, MANAGER: true, OWNER: true, ADMIN: false },
   'store.publish': { STAFF: false, MANAGER: false, OWNER: true, ADMIN: false },
-  'team.manageStaff': { STAFF: false, MANAGER: true, OWNER: true, ADMIN: true },
-  'team.manageManagers': { STAFF: false, MANAGER: false, OWNER: true, ADMIN: true },
+  'team.manageStaff': { STAFF: false, MANAGER: true, OWNER: true, ADMIN: false },
+  'team.manageManagers': { STAFF: false, MANAGER: false, OWNER: true, ADMIN: false },
   'audit.store': { STAFF: false, MANAGER: true, OWNER: true, ADMIN: true },
   // STAFF while the store lets staff edit stock (the default); the cell with the setting off is tested below.
   'stock.update': { STAFF: true, MANAGER: true, OWNER: true, ADMIN: false },
@@ -87,7 +87,8 @@ describe('accessFor', () => {
   it('an admin who also works the store keeps both powers', () => {
     const admin = user({ role: 'ADMIN', memberships: [{ storeId: 'store-a', role: 'STAFF' }] });
     expect(accessFor(admin, store, 'orders.view')).toBe('STAFF');
-    expect(accessFor(admin, store, 'team.manageManagers')).toBe('ADMIN');
+    expect(accessFor(admin, store, 'audit.store')).toBe('ADMIN');
+    expect(can(accessFor(admin, store, 'team.manageStaff'), 'team.manageStaff')).toBe(false);
     expect(accessFor(user({ role: 'ADMIN' }), store, 'store.pause')).toBe('ADMIN');
   });
 

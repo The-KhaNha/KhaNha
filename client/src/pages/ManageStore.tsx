@@ -110,7 +110,7 @@ export function ManageStorePage() {
 
   const allowed = (path: string) =>
     (!view.isTemplate || TEMPLATE_TABS.includes(path)) &&
-    (path !== 'settings' || canEditSettings(user, view)) &&
+    ((path !== 'settings' && path !== 'team') || canEditSettings(user, view)) &&
     ((path !== 'stock' && path !== 'profile') || canEditMenu(user, view));
   const tabs = MANAGE_TABS.filter((t) => allowed(t.path));
   const elements: Record<string, ReactNode> = {
