@@ -1,6 +1,6 @@
 import { CircleAlert, UtensilsCrossed } from 'lucide-react';
-import { lineLimit, lineProblem, problemLabel } from '../features/cart/cartRules';
-import { selectLimits, useCartStore, type CartLine } from '../features/cart/cartStore';
+import { lineAllowance, lineProblem, problemLabel } from '../features/cart/cartRules';
+import { selectLimits, selectLines, useCartStore, type CartLine } from '../features/cart/cartStore';
 import { cn } from '../lib/cn';
 import { FoodPhoto } from './FoodPhoto';
 import { Price } from './Price';
@@ -26,8 +26,10 @@ export function CartItem({ line }: CartItemProps) {
   const remove = useCartStore((s) => s.remove);
   const limits = useCartStore(selectLimits);
   const fix = useCartStore((s) => s.fix);
-  const limit = lineLimit(line.maxQuantity, limits);
-  const problem = lineProblem(line, limits);
+  const lines = useCartStore(selectLines);
+  // The item's limit is shared by its lines (one per choice of options).
+  const limit = lineAllowance(line, limits, lines);
+  const problem = lineProblem(line, limits, lines);
   const soldOut = problem?.kind === 'sold-out';
 
   return (
@@ -67,8 +69,8 @@ export function CartItem({ line }: CartItemProps) {
           removable
           quantity={line.quantity}
           max={limit}
-          onIncrement={() => increment(line.menuItemId)}
-          onDecrement={() => decrement(line.menuItemId)}
+          onIncrement={() => increment(line.lineKey)}
+          onDecrement={() => decrement(line.lineKey)}
           label={`${line.name} quantity`}
         />
         {problem ? (
@@ -89,7 +91,7 @@ export function CartItem({ line }: CartItemProps) {
           {problem && (
             <button
               type="button"
-              onClick={() => fix(line.menuItemId)}
+              onClick={() => fix(line.lineKey)}
               aria-label={
                 problem.kind === 'over-limit'
                   ? `Set ${line.name} to ${problem.available}`
@@ -110,7 +112,7 @@ export function CartItem({ line }: CartItemProps) {
           {!soldOut && (
             <button
               type="button"
-              onClick={() => remove(line.menuItemId)}
+              onClick={() => remove(line.lineKey)}
               aria-label={`Remove ${line.name}`}
               className={HIT_AREA}
             >

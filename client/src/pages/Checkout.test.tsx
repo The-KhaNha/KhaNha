@@ -36,7 +36,9 @@ describe('CheckoutPage when the key already placed a different order', () => {
     useCartStore.setState({
       lines: [
         {
+          lineKey: 'i1',
           menuItemId: 'i1',
+          options: [],
           name: 'Espresso',
           unitPrice: 90,
           imageUrl: null,
@@ -44,7 +46,9 @@ describe('CheckoutPage when the key already placed a different order', () => {
           maxQuantity: null,
         },
         {
+          lineKey: 'i2',
           menuItemId: 'i2',
+          options: [],
           name: 'Cold Coffee',
           unitPrice: 120,
           imageUrl: null,
@@ -96,7 +100,9 @@ describe('CheckoutPage when the server rejects one field', () => {
     useCartStore.setState({
       lines: [
         {
+          lineKey: 'i1',
           menuItemId: 'i1',
+          options: [],
           name: 'Espresso',
           unitPrice: 90,
           imageUrl: null,
@@ -199,7 +205,9 @@ describe('CheckoutPage when a price changed before the order was placed', () => 
     useCartStore.setState({
       lines: [
         {
+          lineKey: 'i1',
           menuItemId: 'i1',
+          options: [],
           name: 'Espresso',
           unitPrice: 90,
           imageUrl: null,

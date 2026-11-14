@@ -75,7 +75,10 @@ export function CheckoutPage() {
     if (!menu || !repriceOnLoad.current) return;
     repriceOnLoad.current = false;
     setRepricing(false);
-    syncPrices(menu.categories.flatMap((category) => category.items));
+    syncPrices(
+      menu.categories.flatMap((category) => category.items),
+      menu.modifierGroups,
+    );
   }, [menu, syncPrices]);
   // That load failed: the error card, already scrolled into view, says so and retries it.
   const repriceError = repricing ? menuError : null;
@@ -110,7 +113,7 @@ export function CheckoutPage() {
   const shownTotal = receipt?.total ?? total;
 
   // Lines the shop can't fulfil as they stand: flagged by the menu refresh or by the server's refusal.
-  const flagged = paid ? [] : lines.filter((line) => lineProblem(line, limits) !== null);
+  const flagged = paid ? [] : lines.filter((line) => lineProblem(line, limits, lines) !== null);
   const blocked = flagged.length > 0;
   // A paused store takes no orders: say why before Pay, not after. Opening hours are left to the server's answer.
   const paused = !paid && menu?.store.openState === 'PAUSED' ? menu.store : null;
@@ -209,7 +212,7 @@ export function CheckoutPage() {
 
   /** Trims every flagged line to what is left (or drops it), so the customer can pay again right here. */
   function fixCart() {
-    for (const line of flagged) fix(line.menuItemId);
+    for (const line of flagged) fix(line.lineKey);
     setError(null);
   }
 
@@ -246,10 +249,10 @@ export function CheckoutPage() {
         </h2>
         <ul className="mt-3 space-y-2.5 text-body font-medium">
           {shownLines.map((line) => {
-            const problem = paid ? null : lineProblem(line, limits);
+            const problem = paid ? null : lineProblem(line, limits, lines);
             return (
               <li
-                key={line.menuItemId}
+                key={line.lineKey}
                 data-flagged={problem ? true : undefined}
                 className={cn(
                   'flex items-baseline justify-between gap-3',

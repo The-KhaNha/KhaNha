@@ -201,7 +201,7 @@ Props: `state: OpenStateName`, `label?: string | null` (the server's `openLabel`
 ### Cart and orders
 
 **`CartItem`** (`CartItem.tsx`). One cart line as an `<li>`. Props: `line: CartLine`. Neutral removable stepper
-capped at `lineLimit(line.maxQuantity)`; a line with a `lineProblem` gets a paprika ring, a `problemLabel` and a Fix
+capped at `lineAllowance(line, limits, lines)` (the item's limit less its other lines); a line with a `lineProblem` gets a paprika ring, a `problemLabel` and a Fix
 (or Remove when sold out) button that calls `cartStore.fix`. Fix and Remove are each a 44px tap target (`HIT_AREA`)
 around a smaller 32px visible pill (`PILL`), so the row stays visually compact without shrinking the tap target.
 
@@ -291,24 +291,30 @@ on the order success screen. Props: `className?`. Every other icon is a named im
 
 **`cartRules.ts`**: the cart's business rules. Components call these instead of comparing numbers themselves.
 
-| Export                                              | Returns                                                                                                           |
-| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `CartLimits`                                        | `{ maxQuantityPerItem, lowStockThreshold }`: the store's limits (`MenuResponse.rules`), passed to the rules below |
-| `availableQuantity(item)`                           | `0` when unavailable, the stock when tracked, `null` when not tracked                                             |
-| `isLowStock(item, limits)`                          | available, tracked, and at most `lowStockThreshold` left (type guard)                                             |
-| `unavailableLabel(item)`                            | `"Sold out"` when stock is 0, else `"Unavailable"`                                                                |
-| `lineLimit(maxQuantity, limits)`                    | `min(cap, maxQuantity ?? cap)`, `cap` = `maxQuantityPerItem`                                                      |
-| `lineProblem(line, limits)` → `LineProblem \| null` | `{ kind: 'sold-out' }` when the limit is ≤ 0, `{ kind: 'over-limit', available }` when quantity exceeds it        |
-| `problemLabel(problem)`                             | `"Sold out"` / `"Only 1 left"`                                                                                    |
-| `describeProblem(name, problem)`                    | `"Cheese Toast is sold out."` / `"Only 1 Cheese Toast left."`                                                     |
-| `describeProblems(lines, limits)`                   | one sentence per flagged line, joined                                                                             |
-| `limitCaption(maxQuantity, limits)`                 | `"Only N available"` below the cap, else `"Max N per order"`                                                      |
-| `isItemErrorCode(code)`                             | true for `INSUFFICIENT_STOCK`, `ITEM_UNAVAILABLE`, `ITEM_NOT_FOUND`                                               |
-| `orderItems(lines)`                                 | `POST /orders` items; `expectedUnitPrice` only for a positive integer price (an old cart line sends none)         |
+| Export                                                      | Returns                                                                                                           |
+| ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `CartLimits`                                                | `{ maxQuantityPerItem, lowStockThreshold }`: the store's limits (`MenuResponse.rules`), passed to the rules below |
+| `availableQuantity(item)`                                   | `0` when unavailable, the stock when tracked, `null` when not tracked                                             |
+| `isLowStock(item, limits)`                                  | available, tracked, and at most `lowStockThreshold` left (type guard)                                             |
+| `unavailableLabel(item)`                                    | `"Sold out"` when stock is 0, else `"Unavailable"`                                                                |
+| `lineLimit(maxQuantity, limits)`                            | `min(cap, maxQuantity ?? cap)`, `cap` = `maxQuantityPerItem`                                                      |
+| `lineAllowance(line, limits, lines?)`                       | the line's own limit: `lineLimit` less the item's other lines in `lines` (P3.2)                                   |
+| `lineProblem(line, limits, lines?)` → `LineProblem \| null` | `{ kind: 'sold-out' }` when the limit is ≤ 0, `{ kind: 'over-limit', available }` when quantity exceeds it        |
+| `problemLabel(problem)`                                     | `"Sold out"` / `"Only 1 left"`                                                                                    |
+| `describeProblem(name, problem)`                            | `"Cheese Toast is sold out."` / `"Only 1 Cheese Toast left."`                                                     |
+| `describeProblems(lines, limits)`                           | one sentence per flagged line, joined                                                                             |
+| `limitCaption(maxQuantity, limits)`                         | `"Only N available"` below the cap, else `"Max N per order"`                                                      |
+| `isItemErrorCode(code)`                                     | true for `INSUFFICIENT_STOCK`, `ITEM_UNAVAILABLE`, `ITEM_NOT_FOUND`                                               |
+| `orderItems(lines)`                                         | `POST /orders` items; `expectedUnitPrice` only for a positive integer price (an old cart line sends none)         |
 
-**`cartStore.ts`**: `useCartStore` (persisted as `fp_cart`, version 2). One cart holds one store's items: `storeId`, `storeSlug` and `storeName` come from the first line. A version-1 cart is migrated to the store whose saved menu (`fp_cache:v2:menu*`) lists its first line, and emptied when none does. `CartLine { menuItemId, name, unitPrice, imageUrl,
+**`cartStore.ts`**: `useCartStore` (persisted as `fp_cart`, version 3). One cart holds one store's items: `storeId`, `storeSlug` and `storeName` come from the first line. A version-1 cart is migrated to the store whose saved menu (`fp_cache:v2:menu*`) lists its first line, and emptied when none does. `CartLine { lineKey, menuItemId, name, unitPrice, options, imageUrl,
 quantity, maxQuantity }`, where `maxQuantity` is `null` (no limit) or the units the shop can sell (0 = sold out or
-off the menu).
+off the menu). Version 3 (P3.2): a line is an item with its chosen options (`options: { id, groupName, name,
+priceDelta }[]`, `unitPrice` includes the deltas), addressed by `lineKey` (`lineKeyOf(menuItemId, optionIds)`: the
+item id alone without options, so a plain item's line is still addressed by its id). `increment`, `decrement`,
+`remove` and `fix` take a line key; `setAvailability` and `selectQuantityOf` are per item, across its lines; the
+item's limit is shared by its lines. A version-2 cart keeps its store and gives each line `lineKey = menuItemId`,
+`options = []`. `syncPrices(items, modifierGroups?)` refreshes the deltas too.
 
 | Action                           | Behaviour                                                                                                                                                                                                                   |
 | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

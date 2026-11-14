@@ -32,7 +32,7 @@ export function CartPage() {
   useMenu();
 
   const notice = readReorderNotice(location.state);
-  const flagged = lines.filter((line) => lineProblem(line, limits) !== null);
+  const flagged = lines.filter((line) => lineProblem(line, limits, lines) !== null);
   const dismissNotice = () => navigate(location.pathname, { replace: true, state: null });
 
   if (lines.length === 0) {
@@ -63,7 +63,7 @@ export function CartPage() {
       <Card padding="none" className="px-4">
         <ul className="divide-y divide-line/70">
           {lines.map((line) => (
-            <CartItem key={line.menuItemId} line={line} />
+            <CartItem key={line.lineKey} line={line} />
           ))}
         </ul>
       </Card>
