@@ -438,6 +438,7 @@ export type Database = {
           name: string;
           sort_order: number;
           store_id: string;
+          template_group_id: string | null;
         };
         ComputedFields: never;
         Insert: {
@@ -449,6 +450,7 @@ export type Database = {
           name: string;
           sort_order?: number;
           store_id: string;
+          template_group_id?: string | null;
         };
         Update: {
           archived_at?: string | null;
@@ -459,6 +461,7 @@ export type Database = {
           name?: string;
           sort_order?: number;
           store_id?: string;
+          template_group_id?: string | null;
         };
         Relationships: [
           {
@@ -466,6 +469,13 @@ export type Database = {
             columns: ['store_id'];
             isOneToOne: false;
             referencedRelation: 'stores';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'modifier_groups_template_group_id_fkey';
+            columns: ['template_group_id'];
+            isOneToOne: false;
+            referencedRelation: 'modifier_groups';
             referencedColumns: ['id'];
           },
         ];
@@ -480,6 +490,7 @@ export type Database = {
           name: string;
           price_delta_paise: number;
           sort_order: number;
+          template_option_id: string | null;
         };
         ComputedFields: never;
         Insert: {
@@ -491,6 +502,7 @@ export type Database = {
           name: string;
           price_delta_paise?: number;
           sort_order?: number;
+          template_option_id?: string | null;
         };
         Update: {
           archived_at?: string | null;
@@ -501,6 +513,7 @@ export type Database = {
           name?: string;
           price_delta_paise?: number;
           sort_order?: number;
+          template_option_id?: string | null;
         };
         Relationships: [
           {
@@ -508,6 +521,13 @@ export type Database = {
             columns: ['group_id'];
             isOneToOne: false;
             referencedRelation: 'modifier_groups';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'modifier_options_template_option_id_fkey';
+            columns: ['template_option_id'];
+            isOneToOne: false;
+            referencedRelation: 'modifier_options';
             referencedColumns: ['id'];
           },
         ];
@@ -1209,6 +1229,7 @@ export type Database = {
         Args: { p_actor?: Json; p_request_id?: string; p_store_id: string; p_upload_id: string };
         Returns: boolean;
       };
+      copy_template_modifiers: { Args: { p_copy_item_ids: string[] }; Returns: string[] };
       create_store_from_template: {
         Args: {
           p_actor?: Json;

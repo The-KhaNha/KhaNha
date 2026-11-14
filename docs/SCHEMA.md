@@ -57,6 +57,7 @@ a new file (see [DEPLOYMENT.md](DEPLOYMENT.md#schema-changes)).
 | `20261113142425_store_readiness.sql`               | `store_publish_missing()` (`service_role` only), the go-live checklist; `set_store_status` (same signature) reads it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `20261113183803_bundled_photos.sql`                | adds `bundled_photo_refs()`, `bundled_photo_row_count()` and `move_bundled_photo()` (`service_role` only): the bundled photos' move to the media store (P3.3)                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `20261113174022_media_sweep.sql`                   | subscribes `media.sweep` to `q_media`, adds `media_upload_shown()` and `media_sweep_candidates()` (`service_role` only), the partial index `order_items_media_image_idx` and the nightly `media-sweep` schedule (P3.3)                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `20261114083650_modifier_copies.sql`               | adds `modifier_groups.template_group_id` and `modifier_options.template_option_id` (lineage, one live copy each per branch) and `copy_template_modifiers()`; `create_store_from_template` and `push_template_items` (same signatures) copy an item's groups with it, and the push takes a `modifiers` field (P3.2, PR 13c)                                                                                                                                                                                                                                                                                                             |
 | `20261113195325_modifier_orders.sql`               | adds `price_order_line()` and `order_item_modifiers.position`, and replaces `place_order` with `p_modifiers_enabled` (dropped and created again: a second overload would make named calls ambiguous) pricing each line with its modifiers and writing the snapshots (P3.2)                                                                                                                                                                                                                                                                                                                                                             |
 | `20261113185201_modifiers.sql`                     | adds `modifier_groups`, `modifier_options`, `menu_item_modifier_groups`, `order_item_modifiers` (RLS on, revoked; groups and options audited), `order_items.base_unit_price_paise`, the `modifiers` flag (off), and `reset_demo_orders()` truncating the snapshots too (P3.2)                                                                                                                                                                                                                                                                                                                                                          |
 | `20261113170333_media_pipeline.sql`                | creates the `q_media` queue, subscribes `media.uploaded` to it, and adds `finish_media_upload()` (`service_role` only): the image pipeline (P3.3)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
@@ -254,21 +255,34 @@ existing brand; the seed runs it after a brand's first store.
 
 `create_store_from_template(p_brand_id, p_name, p_slug, p_area, p_address_line, p_actor, p_request_id) returns uuid`
 (same kind) inserts a `DRAFT` store with the template's settings, prep times, timezone, tagline, description and
-photo, copies the template's unarchived items with `template_item_id` set, and emits `store.created`
+photo, copies the template's unarchived items with `template_item_id` set and their modifier groups
+(`copy_template_modifiers`), and emits `store.created`
 (`{ brandId, templateStoreId }`). A taken slug fails the whole call (`23505`), leaving nothing behind. The seed opens
 each brand's later branches with it.
 
 `push_template_items(p_brand_id, p_template_item_ids uuid[], p_store_ids uuid[], p_fields text[], p_actor, p_request_id)
 returns integer` (same kind) is the template push (P3.1, D2). Every item must be a live item of the brand's template and
 every store one of its live branches (`DRAFT` or `ACTIVE`; never the template), or it raises `NOT_FOUND` and nothing changes; fields are a
-subset of `name`, `description`, `price`, `category`, `diet` and `photo` (`image_url` and `image_variants`), else
+subset of `name`, `description`, `price`, `category`, `diet`, `photo` (`image_url` and `image_variants`) and
+`modifiers` (the item's groups, `copy_template_modifiers`), else
 `VALIDATION_ERROR`. A branch's live copy, found by `template_item_id` (a renamed copy still matches), gets the chosen
 fields; a branch with no live copy gets a whole new one at the end of its menu, untracked. Stock, availability, sort
 order and popularity of an existing copy are never touched, and a copy that already matches in every chosen field is
 not written. The template is read from `brands.template_store_id`, and its chosen items are locked (`for update`): a
 second push of the same items waits, then sees the copies made here (no duplicates), and an archive of one waits too. The update and the insert are one statement each, so
 `menu_items_emit_changed` emits one `menu.changed` per changed store and every audit row carries the push's request
-id. Returns the copies changed or created (0 for a push that changed nothing, which leaves no event and no audit row).
+id. A new copy always takes its item's modifier groups (a whole item). With `modifiers`, every copy's groups are
+made to match, and a store whose modifiers changed with no item row changing gets its own `menu.changed`. Returns the
+distinct copies changed or created (0 for a push that changed nothing, which leaves no event and no audit row).
+
+`copy_template_modifiers(p_copy_item_ids uuid[]) returns uuid[]` (plpgsql, invoker, revoked; called by the two
+above) makes the given branch copies' modifiers match their template items': each live template group and option is
+copied where the branch has no live copy (found by `template_group_id` / `template_option_id`, never by name) and
+overwritten where it has one (name, bounds, deltas, default, order; an option's `is_available` stays the branch's
+own); an option the template archived is archived in the copy; and each copy offers exactly the copies of its template
+item's live groups in the template's order, plus any group of the branch's own (no lineage), which is never touched.
+It locks the template groups (`for update`, in id order) so two pushes sharing a group make one copy. Returns the
+copies in each store whose modifiers changed (per store: a group copy is shared by the branch's items).
 
 The store settings are edited through `PATCH /api/stores/:storeId/settings` ([API.md](API.md#patch-storesstoreidsettings)); their bounds are
 the check constraints (`stores_<column>_check`), mirrored by `STORE_SETTING_BOUNDS`. A new store takes the constant defaults
@@ -411,11 +425,15 @@ Item options ("Size", "Milk", "Extra cheese +₹20"), scoped to a store like its
 `authenticated` on all four tables.
 
 - **`modifier_groups`**: `id`, `store_id` → `stores`, `name` (1–40), `min_select` (0–20, 0 = optional), `max_select`
-  (1–20), `min_select ≤ max_select`, `sort_order`, `archived_at`, `created_at`. Index `(store_id)`. Audited
+  (1–20), `min_select ≤ max_select`, `sort_order`, `archived_at`, `created_at`, `template_group_id` → `modifier_groups`
+  on delete set null (a branch's copy: the template group it came from; one live copy per store,
+  `modifier_groups_template_copy_idx`). Index `(store_id)`. Audited
   (`modifier_group.changed`: name, min/max, archived).
 - **`modifier_options`**: `id`, `group_id` → `modifier_groups` on delete cascade, `name` (1–40), `price_delta_paise`
   (whole rupees, −₹10000 to ₹10000; a line still never goes below zero), `is_default` (applied when the group is
-  required and nothing is chosen), `is_available`, `sort_order`, `archived_at`. Index `(group_id)`. Audited
+  required and nothing is chosen), `is_available`, `sort_order`, `archived_at`, `template_option_id` →
+  `modifier_options` on delete set null (one live copy per group, `modifier_options_template_copy_idx`). Index
+  `(group_id)`. Audited
   (`modifier_option.changed`; no store on the audit row: the group's).
 - **`menu_item_modifier_groups`**: (`menu_item_id` → `menu_items`, `group_id` → `modifier_groups`, both on delete
   cascade) primary key, `sort_order`. Index `(group_id)`. Both sides are one store's: the functions that write links
@@ -629,42 +647,43 @@ All functions set `search_path = ''` and use schema-qualified names. Each call i
 raises leaves nothing behind. Expected failures are raised with `message` = an API error code and `detail` = a JSON
 object (SQLSTATE `P0001`). How the API maps them is in [API.md](API.md#database-errors-p0001).
 
-| Function                      | Language | Security | Returns             | Called by                                                                                                     | `EXECUTE` granted to |
-| ----------------------------- | -------- | -------- | ------------------- | ------------------------------------------------------------------------------------------------------------- | -------------------- |
-| `set_updated_at()`            | plpgsql  | invoker  | trigger             | `orders_set_updated_at`, `site_settings_set_updated_at`, `feature_flags_set_updated_at`                       | nobody               |
-| `handle_new_user()`           | plpgsql  | definer  | trigger             | `on_auth_user_created`                                                                                        | nobody               |
-| `handle_user_email_change()`  | plpgsql  | definer  | trigger             | `on_auth_user_email_changed`                                                                                  | nobody               |
-| `profile_name(text, text)`    | plpgsql  | invoker  | text                | `handle_new_user()`, `20261103173300_profile_name_bounds.sql`                                                 | nobody               |
-| `profile_phone(text)`         | sql      | invoker  | text                | `handle_new_user()`, `20261103173300_profile_name_bounds.sql`                                                 | nobody               |
-| `price_order_line(...)`       | plpgsql  | invoker  | jsonb               | `place_order` (each line)                                                                                     | `service_role`       |
-| `place_order(...)`            | plpgsql  | invoker  | uuid                | `order.service.createOrder`                                                                                   | `service_role`       |
-| `update_order_status(...)`    | plpgsql  | invoker  | boolean             | `order.service.updateOrderStatus`                                                                             | `service_role`       |
-| `reset_demo_orders()`         | sql      | definer  | void                | `server/scripts/seed.ts`                                                                                      | `service_role`       |
-| `emit_event(...)`             | plpgsql  | definer  | uuid                | `place_order`, `update_order_status`, `accept_store_invite`, `menu_items_emit_changed`, `stores_emit_changed` | `service_role`       |
-| `accept_store_invite(...)`    | plpgsql  | invoker  | `store_memberships` | `team.service.acceptInvite`                                                                                   | `service_role`       |
-| `set_store_hours(...)`        | plpgsql  | definer  | boolean             | `storeHours.service.setStoreHours`                                                                            | `service_role`       |
-| `lock_store_menu(...)`        | plpgsql  | invoker  | void                | `reorder_menu`, `set_menu_availability`                                                                       | `service_role`       |
-| `reorder_menu(...)`           | plpgsql  | invoker  | void                | `menu.service.reorderMenu`                                                                                    | `service_role`       |
-| `set_menu_availability(...)`  | plpgsql  | invoker  | integer             | `menu.service.setAvailability`                                                                                | `service_role`       |
-| `adjust_stock(...)`           | plpgsql  | invoker  | integer             | `stock.service.adjustStock`                                                                                   | `service_role`       |
-| `push_template_items(...)`    | plpgsql  | invoker  | integer             | `brand.service.pushTemplate`                                                                                  | `service_role`       |
-| `set_store_status(...)`       | plpgsql  | invoker  | `text[]`            | `store.service.setStoreStatus`                                                                                | `service_role`       |
-| `store_publish_missing(uuid)` | sql      | invoker  | `text[]`            | `store.service.getManagedStore`, `set_store_status`                                                           | `service_role`       |
-| `media_upload_shown(...)`     | sql      | invoker  | boolean             | `media.service.uploadShown` (the sweep's re-check)                                                            | `service_role`       |
-| `media_sweep_candidates(...)` | sql      | invoker  | table               | `media.service.sweepCandidates` (the worker's sweep)                                                          | `service_role`       |
-| `finish_media_upload(...)`    | plpgsql  | invoker  | boolean             | `media.service.finishUpload` (the worker)                                                                     | `service_role`       |
-| `complete_media_upload(...)`  | plpgsql  | invoker  | boolean             | `media.service.completeUpload`                                                                                | `service_role`       |
-| `stores_emit_changed()`       | plpgsql  | invoker  | trigger             | `stores_changed`                                                                                              | nobody               |
-| `pause_store(...)`            | plpgsql  | invoker  | boolean             | `storePause.service.pauseStore`                                                                               | `service_role`       |
-| `resume_store(...)`           | plpgsql  | invoker  | boolean             | `storePause.service.resumeStore`                                                                              | `service_role`       |
-| `queue_read(...)`             | plpgsql  | definer  | table               | the worker (P1 PR 03)                                                                                         | `service_role`       |
-| `queue_delete(...)`           | sql      | definer  | boolean             | the worker                                                                                                    | `service_role`       |
-| `queue_retry(...)`            | sql      | definer  | void                | the worker                                                                                                    | `service_role`       |
-| `queue_dead_letter(...)`      | sql      | definer  | boolean             | the worker                                                                                                    | `service_role`       |
-| `queue_metrics(text)`         | sql      | definer  | table               | the worker's health report                                                                                    | `service_role`       |
-| `purge_domain_events(...)`    | sql      | invoker  | integer             | pg_cron `purge-domain-events`                                                                                 | `service_role`       |
-| `audit_row_change()`          | plpgsql  | definer  | trigger             | the `*_audit` triggers                                                                                        | nobody               |
-| `audit_log_append_only()`     | plpgsql  | invoker  | trigger             | `audit_log_no_change`, `_no_truncate`                                                                         | nobody               |
+| Function                          | Language | Security | Returns             | Called by                                                                                                     | `EXECUTE` granted to |
+| --------------------------------- | -------- | -------- | ------------------- | ------------------------------------------------------------------------------------------------------------- | -------------------- |
+| `set_updated_at()`                | plpgsql  | invoker  | trigger             | `orders_set_updated_at`, `site_settings_set_updated_at`, `feature_flags_set_updated_at`                       | nobody               |
+| `handle_new_user()`               | plpgsql  | definer  | trigger             | `on_auth_user_created`                                                                                        | nobody               |
+| `handle_user_email_change()`      | plpgsql  | definer  | trigger             | `on_auth_user_email_changed`                                                                                  | nobody               |
+| `profile_name(text, text)`        | plpgsql  | invoker  | text                | `handle_new_user()`, `20261103173300_profile_name_bounds.sql`                                                 | nobody               |
+| `profile_phone(text)`             | sql      | invoker  | text                | `handle_new_user()`, `20261103173300_profile_name_bounds.sql`                                                 | nobody               |
+| `price_order_line(...)`           | plpgsql  | invoker  | jsonb               | `place_order` (each line)                                                                                     | `service_role`       |
+| `place_order(...)`                | plpgsql  | invoker  | uuid                | `order.service.createOrder`                                                                                   | `service_role`       |
+| `update_order_status(...)`        | plpgsql  | invoker  | boolean             | `order.service.updateOrderStatus`                                                                             | `service_role`       |
+| `reset_demo_orders()`             | sql      | definer  | void                | `server/scripts/seed.ts`                                                                                      | `service_role`       |
+| `emit_event(...)`                 | plpgsql  | definer  | uuid                | `place_order`, `update_order_status`, `accept_store_invite`, `menu_items_emit_changed`, `stores_emit_changed` | `service_role`       |
+| `accept_store_invite(...)`        | plpgsql  | invoker  | `store_memberships` | `team.service.acceptInvite`                                                                                   | `service_role`       |
+| `set_store_hours(...)`            | plpgsql  | definer  | boolean             | `storeHours.service.setStoreHours`                                                                            | `service_role`       |
+| `lock_store_menu(...)`            | plpgsql  | invoker  | void                | `reorder_menu`, `set_menu_availability`                                                                       | `service_role`       |
+| `reorder_menu(...)`               | plpgsql  | invoker  | void                | `menu.service.reorderMenu`                                                                                    | `service_role`       |
+| `set_menu_availability(...)`      | plpgsql  | invoker  | integer             | `menu.service.setAvailability`                                                                                | `service_role`       |
+| `adjust_stock(...)`               | plpgsql  | invoker  | integer             | `stock.service.adjustStock`                                                                                   | `service_role`       |
+| `push_template_items(...)`        | plpgsql  | invoker  | integer             | `brand.service.pushTemplate`                                                                                  | `service_role`       |
+| `copy_template_modifiers(uuid[])` | plpgsql  | invoker  | `uuid[]`            | `create_store_from_template`, `push_template_items`                                                           | none                 |
+| `set_store_status(...)`           | plpgsql  | invoker  | `text[]`            | `store.service.setStoreStatus`                                                                                | `service_role`       |
+| `store_publish_missing(uuid)`     | sql      | invoker  | `text[]`            | `store.service.getManagedStore`, `set_store_status`                                                           | `service_role`       |
+| `media_upload_shown(...)`         | sql      | invoker  | boolean             | `media.service.uploadShown` (the sweep's re-check)                                                            | `service_role`       |
+| `media_sweep_candidates(...)`     | sql      | invoker  | table               | `media.service.sweepCandidates` (the worker's sweep)                                                          | `service_role`       |
+| `finish_media_upload(...)`        | plpgsql  | invoker  | boolean             | `media.service.finishUpload` (the worker)                                                                     | `service_role`       |
+| `complete_media_upload(...)`      | plpgsql  | invoker  | boolean             | `media.service.completeUpload`                                                                                | `service_role`       |
+| `stores_emit_changed()`           | plpgsql  | invoker  | trigger             | `stores_changed`                                                                                              | nobody               |
+| `pause_store(...)`                | plpgsql  | invoker  | boolean             | `storePause.service.pauseStore`                                                                               | `service_role`       |
+| `resume_store(...)`               | plpgsql  | invoker  | boolean             | `storePause.service.resumeStore`                                                                              | `service_role`       |
+| `queue_read(...)`                 | plpgsql  | definer  | table               | the worker (P1 PR 03)                                                                                         | `service_role`       |
+| `queue_delete(...)`               | sql      | definer  | boolean             | the worker                                                                                                    | `service_role`       |
+| `queue_retry(...)`                | sql      | definer  | void                | the worker                                                                                                    | `service_role`       |
+| `queue_dead_letter(...)`          | sql      | definer  | boolean             | the worker                                                                                                    | `service_role`       |
+| `queue_metrics(text)`             | sql      | definer  | table               | the worker's health report                                                                                    | `service_role`       |
+| `purge_domain_events(...)`        | sql      | invoker  | integer             | pg_cron `purge-domain-events`                                                                                 | `service_role`       |
+| `audit_row_change()`              | plpgsql  | definer  | trigger             | the `*_audit` triggers                                                                                        | nobody               |
+| `audit_log_append_only()`         | plpgsql  | invoker  | trigger             | `audit_log_no_change`, `_no_truncate`                                                                         | nobody               |
 
 ### set_updated_at
 

@@ -656,7 +656,7 @@ staging can only migrate once it has a bucket.
 
 ### PR 13 — Modifiers: schema, pricing, orders (P3.2)
 
-- [ ] Merged
+- [x] Merged
 
 `/before-write`: schema-guard, NEW TABLE ×4. Skill: `agent-skills:test` (rules first, as failing tests).
 
@@ -707,7 +707,10 @@ As built, in three: **13a** the tables, the flag row, the menu payload, `domain/
 (500 ids overflow the request URL). The menu budget became two numbers: the modifiers add under 9 KB raw to 60 items
 sharing three groups, and the whole menu goes out under 8 KB gzipped (nginx); the plain 60-item menu of the test is
 already ~22 KB raw, so a 25 KB raw total measured content, not modifiers. The link table is not audited
-(`audit_log.entity_id` needs an id); its writes are events.
+(`audit_log.entity_id` needs an id); its writes are events. 13c copies by lineage (`template_group_id`, `template_option_id`) in
+`copy_template_modifiers`; a push carries the item's groups when it has the new `modifiers` field, and a branch's new
+copy of an item always does. A branch's own groups and its options' availability are never pushed. The push sheet's
+`modifiers` checkbox is PR 16's (the editor).
 
 13b as built: `price_order_line()` is the SQL half of `priceLine`; `place_order` is dropped and created again with
 `p_modifiers_enabled` (an added defaulted parameter would be a second overload, and named calls ambiguous);

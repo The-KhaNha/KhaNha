@@ -94,7 +94,10 @@ export const reorderMenuSchema = z.strictObject({ itemIds });
 export type BulkAvailabilityInput = z.infer<typeof bulkAvailabilitySchema>;
 export type ReorderMenuInput = z.infer<typeof reorderMenuSchema>;
 
-/** What a template push may overwrite (P3.1, D2); stock, availability, order and popularity are never pushed. */
+/**
+ * What a template push may overwrite (P3.1, D2); stock, availability, order and popularity are never pushed.
+ * `modifiers`: the item's template groups and options (P3.2, push_template_items).
+ */
 export const TEMPLATE_PUSH_FIELDS = [
   'name',
   'description',
@@ -102,6 +105,7 @@ export const TEMPLATE_PUSH_FIELDS = [
   'category',
   'diet',
   'photo',
+  'modifiers',
 ] as const;
 
 /** POST /brands/:brandId/template/push: chosen template items, to chosen branches, chosen fields only. */
