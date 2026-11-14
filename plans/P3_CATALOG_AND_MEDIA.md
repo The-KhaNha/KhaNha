@@ -722,7 +722,7 @@ groups are known); advisory.
 
 ### PR 14 — Modifiers: editing API (P3.2)
 
-- [ ] Merged
+- [x] Merged
 
 `GET/POST/PATCH/DELETE /api/stores/:storeId/modifier-groups[/:groupId]` (a group with its options in one body;
 delete archives) and `PUT /api/stores/:storeId/menu-items/:itemId/modifier-groups { groupIds }`, all `menu.edit`.
@@ -735,6 +735,11 @@ above the number of available options is refused; archiving a group leaves old o
 the menu, after the invalidation).
 
 Docs: `docs/API.md`, `docs/SCHEMA.md`, `docs/CONFIGURATION.md`. Intent: `--server minor`.
+
+As built: archive is its own function too (`archive_modifier_group`), so every write emits its `menu.changed` under the
+caller; `GET` also answers `itemGroupIds` (the editor's one read); `groupsPerStore` reaches the function as
+`p_max_groups` (one copy of the number). The client mirror of `MODIFIER_LIMITS` waits for PR 16, the editor that reads
+it.
 
 ### PR 15 — Client: the modifier picker and the cart (P3.2)
 

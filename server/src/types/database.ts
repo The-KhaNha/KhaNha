@@ -1215,6 +1215,10 @@ export type Database = {
         };
         Returns: number;
       };
+      archive_modifier_group: {
+        Args: { p_actor?: Json; p_group_id: string; p_request_id?: string; p_store_id: string };
+        Returns: undefined;
+      };
       bundled_photo_refs: {
         Args: Record<PropertyKey, never>;
         Returns: {
@@ -1384,6 +1388,30 @@ export type Database = {
       reset_demo_orders: { Args: Record<PropertyKey, never>; Returns: undefined };
       resume_store: {
         Args: { p_actor?: Json; p_now?: string; p_request_id?: string; p_store_id: string };
+        Returns: boolean;
+      };
+      save_modifier_group: {
+        Args: {
+          p_actor?: Json;
+          p_group_id?: string;
+          p_max_groups: number;
+          p_max_select: number;
+          p_min_select: number;
+          p_name: string;
+          p_options: Json;
+          p_request_id?: string;
+          p_store_id: string;
+        };
+        Returns: string;
+      };
+      set_item_modifier_groups: {
+        Args: {
+          p_actor?: Json;
+          p_group_ids: string[];
+          p_item_id: string;
+          p_request_id?: string;
+          p_store_id: string;
+        };
         Returns: boolean;
       };
       set_menu_availability: {
