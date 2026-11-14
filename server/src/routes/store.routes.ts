@@ -2,6 +2,7 @@ import express, { Router } from 'express';
 import * as admin from '../controllers/admin.controller';
 import * as media from '../controllers/media.controller';
 import * as menu from '../controllers/menu.controller';
+import * as modifiers from '../controllers/modifier.controller';
 import * as orders from '../controllers/order.controller';
 import * as store from '../controllers/store.controller';
 import * as stock from '../controllers/stock.controller';
@@ -12,6 +13,7 @@ import { validate } from '../middleware/validate';
 import { auditQuerySchema } from '../schemas/admin.schema';
 import { MEDIA_UPLOAD } from '../schemas/limits';
 import { createUploadSchema } from '../schemas/media.schema';
+import { saveModifierGroupSchema, setItemModifierGroupsSchema } from '../schemas/modifier.schema';
 import {
   bulkAvailabilitySchema,
   createMenuItemSchema,
@@ -186,6 +188,44 @@ storesRouter.delete(
   requireStore('menu.edit'),
   writeLimiter,
   menu.archiveMenuItem,
+);
+// Modifier groups (P3.2): whoever edits the menu. A group is saved whole, with its options.
+storesRouter.get(
+  '/:storeId/modifier-groups',
+  requireAuth,
+  requireStore('menu.edit'),
+  modifiers.listModifierGroups,
+);
+storesRouter.post(
+  '/:storeId/modifier-groups',
+  requireAuth,
+  requireStore('menu.edit'),
+  writeLimiter,
+  validate(saveModifierGroupSchema),
+  modifiers.createModifierGroup,
+);
+storesRouter.patch(
+  '/:storeId/modifier-groups/:groupId',
+  requireAuth,
+  requireStore('menu.edit'),
+  writeLimiter,
+  validate(saveModifierGroupSchema),
+  modifiers.updateModifierGroup,
+);
+storesRouter.delete(
+  '/:storeId/modifier-groups/:groupId',
+  requireAuth,
+  requireStore('menu.edit'),
+  writeLimiter,
+  modifiers.archiveModifierGroup,
+);
+storesRouter.put(
+  '/:storeId/menu-items/:itemId/modifier-groups',
+  requireAuth,
+  requireStore('menu.edit'),
+  writeLimiter,
+  validate(setItemModifierGroupsSchema),
+  modifiers.setItemModifierGroups,
 );
 // Stock (P3.4, P3.5): managers and the owner, and staff while the store lets them (stock.update).
 storesRouter.patch(

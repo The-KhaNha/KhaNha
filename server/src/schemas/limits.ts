@@ -79,3 +79,17 @@ export const MEDIA_VARIANTS = {
   maxSide: 6000,
   webpQuality: 80,
 } as const;
+
+/**
+ * A store's modifier groups (P3.2, PR 14; docs/CONFIGURATION.md, platform constants). The name and select bounds match
+ * the CHECK constraints on public.modifier_groups and modifier_options; groupsPerStore reaches save_modifier_group as
+ * p_max_groups. Deltas are whole rupees (the column allows ±₹10,000).
+ */
+export const MODIFIER_LIMITS = {
+  groupsPerStore: 20,
+  optionsPerGroup: 20,
+  groupsPerItem: 20,
+  nameMax: 40,
+  selectMax: 20,
+  deltaMax: 10000,
+} as const;
