@@ -1,5 +1,5 @@
 import { formatPrice } from '../../lib/format';
-import type { MenuItem, ModifierGroup } from '../../types/api';
+import type { MenuItem, ModifierGroup, OrderItem } from '../../types/api';
 import type { CartOption } from '../cart/cartStore';
 
 /** The options chosen in each of an item's groups, by group id. */
@@ -96,4 +96,9 @@ export function optionsLabel(options: Pick<CartOption, 'name'>[]): string {
 export function deltaLabel(priceDelta: number): string {
   if (priceDelta === 0) return '';
   return priceDelta > 0 ? `+${formatPrice(priceDelta)}` : `−${formatPrice(-priceDelta)}`;
+}
+
+/** "Large, Oat milk" for an order line (its options as they were when ordered), or '' for a line without any. */
+export function orderLineOptions(item: Pick<OrderItem, 'modifiers'>): string {
+  return (item.modifiers ?? []).map((m) => m.optionName).join(', ');
 }

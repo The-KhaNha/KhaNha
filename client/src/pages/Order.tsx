@@ -1,3 +1,4 @@
+import { orderLineOptions } from '../features/menu/modifierRules';
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { MessageSquareText } from 'lucide-react';
@@ -112,6 +113,9 @@ export function OrderPage() {
             >
               <span className="min-w-0 wrap-anywhere">
                 <span className="font-bold tabular-nums">{item.quantity} ×</span> {item.name}
+                {orderLineOptions(item) && (
+                  <span className="block text-caption text-muted">{orderLineOptions(item)}</span>
+                )}
               </span>
               <Price value={item.lineTotal} className="shrink-0 font-semibold" />
             </li>
