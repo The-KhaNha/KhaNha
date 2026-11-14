@@ -133,6 +133,7 @@ export async function mockApi(page: Page): Promise<void> {
           staffCanEditStock: true,
         },
       });
+    if (path === '/api/stores/s1/modifier-groups') return json({ groups: [], itemGroupIds: {} });
     // The manage screen reads its own store and hours at any status (GET /manage, /manage/hours).
     if (path === '/api/stores/s1/manage')
       return json({ store: managed(store), brand: store.brand, missing: [] });

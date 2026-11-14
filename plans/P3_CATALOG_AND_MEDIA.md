@@ -772,7 +772,7 @@ manager → customer → kitchen e2e covers it once orders show their options.
 
 ### PR 16 — Client: modifiers on orders, and their editor (P3.2)
 
-- [ ] Merged
+- [x] Merged
 
 - `OrderCard`, the order page and `StaffOrderCard` list each line's options (the kitchen must see them: the staff
   card shows them at full size, not as a footnote).
@@ -884,3 +884,9 @@ branch, publishes it from a phone, and a customer orders from it.
 - **Cart version 3** follows P2's version 2. Each `migrate` step is tested from every older version.
 - **Free tier.** `q_media` messages carry ids only; originals are deleted after processing; `media_uploads` and
   `stock_movements` are purged or small. Watch `pg_total_relation_size` as the `docs/JOBS.md` runbook says.
+
+As built, in two: **16a** orders, the order page and the kitchen card show each line's options (the server adds
+`modifiers[].optionId`), and Order Again re-adds the options the menu still has; **16b** the editor: "Choices" on the
+menu tab (`ModifierGroupEditor`, `useModifierGroups`) and the item's choices in `ItemEditor`, with
+`e2e/modifiers.spec.ts` (the manager adds "Extra cheese +₹20", a customer orders it and Pay sends it, the kitchen ticket
+names it), which also covers PR 15's customise-and-pay e2e.

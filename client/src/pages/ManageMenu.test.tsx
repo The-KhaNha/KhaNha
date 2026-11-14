@@ -11,6 +11,23 @@ const api = vi.hoisted(() => ({
   reorderMenu: vi.fn(),
 }));
 vi.mock('../services/manageMenu', () => api);
+const mods = vi.hoisted(() => ({
+  fetchModifierGroups: vi.fn(),
+  createModifierGroup: vi.fn(),
+  updateModifierGroup: vi.fn(),
+  archiveModifierGroup: vi.fn(),
+  setItemModifierGroups: vi.fn(),
+}));
+vi.mock('../services/manageModifiers', () => mods);
+const addOns = {
+  id: 'g1',
+  name: 'Add-ons',
+  minSelect: 0,
+  maxSelect: 1,
+  options: [
+    { id: 'o1', name: 'Extra cheese', priceDelta: 20, isDefault: false, isAvailable: true },
+  ],
+};
 const state = vi.hoisted(() => ({ user: null as User | null }));
 vi.mock('../features/auth/authStore', () => ({
   useAuthStore: (select: (s: typeof state) => unknown) => select(state),
@@ -52,6 +69,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   state.user = manager;
   api.fetchManagedMenu.mockResolvedValue(list());
+  mods.fetchModifierGroups.mockResolvedValue({ groups: [addOns], itemGroupIds: {} });
 });
 
 describe('ManageMenuTab', () => {
@@ -208,5 +226,65 @@ describe('ManageMenuTab', () => {
     render(<ManageMenuTab store={store} />);
     expect(screen.getByText(/Only the store's manager or owner/)).toBeInTheDocument();
     expect(api.fetchManagedMenu).not.toHaveBeenCalled();
+  });
+});
+
+describe('ManageMenuTab with choices (P3.2)', () => {
+  it('a retry after the choices failed updates the new item, never creates a second one', async () => {
+    state.user = manager;
+    api.createMenuItem.mockResolvedValue(item('n', 'Chai', 'Drinks'));
+    api.updateMenuItem.mockResolvedValue(item('n', 'Chai', 'Drinks'));
+    mods.setItemModifierGroups
+      .mockRejectedValueOnce(new ApiError(0, 'UNKNOWN', 'Could not save the choices.'))
+      .mockResolvedValue({ groupIds: ['g1'] });
+    render(<ManageMenuTab store={store} />);
+    fireEvent.click(await screen.findByRole('button', { name: /Add item/ }));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: 'Chai' } });
+    fireEvent.change(within(dialog).getByLabelText('Price (₹)'), { target: { value: '50' } });
+    fireEvent.change(within(dialog).getByLabelText('Category'), { target: { value: 'Drinks' } });
+    fireEvent.click(await within(dialog).findByRole('checkbox', { name: 'Add-ons' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add item' }));
+    expect(await screen.findByText('Could not save the choices.')).toBeInTheDocument();
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: /Save changes|Add item/ }),
+    );
+    await waitFor(() => expect(mods.setItemModifierGroups).toHaveBeenCalledTimes(2));
+    expect(api.createMenuItem).toHaveBeenCalledTimes(1);
+    expect(api.updateMenuItem).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the saved choices on screen after a failed refresh, and says so with a retry', async () => {
+    mods.createModifierGroup.mockResolvedValue(addOns);
+    render(<ManageMenuTab store={store} />);
+    expect(await screen.findByText('Extra cheese')).toBeInTheDocument();
+    mods.fetchModifierGroups.mockRejectedValue(new ApiError(0, 'UNKNOWN', 'offline'));
+    fireEvent.click(screen.getByRole('button', { name: 'Add choice' }));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: 'Size' } });
+    fireEvent.change(within(dialog).getByLabelText('Option 1', { exact: true }), {
+      target: { value: 'Large' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add choice' }));
+    expect(await screen.findByText('Showing the saved choices')).toBeInTheDocument();
+    expect(screen.getByText('offline')).toBeInTheDocument();
+    expect(screen.getByText('Extra cheese')).toBeInTheDocument();
+  });
+
+  it('a new item saved after its editor was closed does not reopen it', async () => {
+    let finish: (value: ManagedMenuItem) => void = () => {};
+    api.createMenuItem.mockReturnValue(new Promise((resolve) => (finish = resolve)));
+    render(<ManageMenuTab store={store} />);
+    fireEvent.click(await screen.findByRole('button', { name: /Add item/ }));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: 'Chai' } });
+    fireEvent.change(within(dialog).getByLabelText('Price (₹)'), { target: { value: '50' } });
+    fireEvent.change(within(dialog).getByLabelText('Category'), { target: { value: 'Drinks' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add item' }));
+    fireEvent.keyDown(window, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    finish(item('n', 'Chai', 'Drinks'));
+    await waitFor(() => expect(api.fetchManagedMenu).toHaveBeenCalledTimes(2));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });
