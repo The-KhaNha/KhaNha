@@ -24,7 +24,7 @@ The principle is in `CLAUDE.md` §2c; the client side is in `.claude/rules/front
 - Every write through the API that changes cached data calls `invalidate(key)` in the same service, as
   `order.service.ts` does after an order is placed or cancelled. A new cached read ships with its invalidation, and a
   test that fails without it (`server/test/api/menu-cache.test.ts`). Keys: `menu`, `store` (old single-store routes),
-  `stores:list`, `store:<id>`, `store_settings:<id>`, `store_ref:<slug>`, `menu:<storeId>`; stock changes call `invalidateMenus(storeId)`, which
+  `stores:list`, `store:<id>`, `store_settings:<id>`, `store_hours:<id>`, `store_ref:<slug>`, `menu:<storeId>`; stock changes call `invalidateMenus(storeId)`, which
   drops `menu` and `menu:<storeId>` (`server/test/api/store-cache.test.ts`).
 - Write paths never read through the cache (`createOrder` checks `is_open` with the uncached `getStore()`).
   Nothing user-specific ever goes into `cached()`.
@@ -38,7 +38,8 @@ gzip on. See `docs/DEPLOYMENT.md` "Containers".
 
 `routes/*.routes.ts` → `middleware/validate.ts` (zod) → `controllers/*.controller.ts` → `services/*.service.ts` →
 `utils/serializers.ts`. Pure rules with no I/O live in `domain/` (`permissions.ts`: the capability map, `can`,
-`accessFor`). Controllers are thin and have no try/catch: Express 5 forwards rejected promises to
+`accessFor`; `pricing.ts`: an order line's price with its modifiers). An outside dependency sits behind a port in
+`integrations/` (`media/`: the `MediaStore`, local or S3). Controllers are thin and have no try/catch: Express 5 forwards rejected promises to
 `middleware/errorHandler.ts`. `src/app.ts` builds the app (`createApp()`); `src/server.ts` only listens.
 `src/worker.ts`, the second entry point, runs the queue consumers in `jobs/` (`docs/JOBS.md`). The map is
 `docs/BACKEND_STRUCTURE.md`.
@@ -67,7 +68,11 @@ gzip on. See `docs/DEPLOYMENT.md` "Containers".
   `audit_row_change` trigger in the migration that creates it.
 - **Money is paise in the database** (`bigint`, `…_paise`), whole rupees in the API's existing fields; `utils/money.ts`
   is the only converter (`money-boundary.safe.test.ts`), and `place_order` prices every line from `menu_items` itself
-  and refuses one whose charged `unit_price_paise` is no longer the price, `PRICE_CHANGED` (ADR-004).
+  and refuses one whose charged `unit_price_paise` is no longer the price, `PRICE_CHANGED` (ADR-004). A line's
+  modifiers are priced there too (`price_order_line`); `domain/pricing.ts` only answers early with the same rules.
+- **Stock moves only in SQL:** a sale or cancellation in the order functions, a manual change through
+  `adjust_stock` (its `stock_movements` trail). A service writes `menu_items.stock_quantity` only as a new item's
+  starting stock (`createMenuItem`), never to change it.
 - **Trust nothing from the client:** prices and totals come from the database. Someone else's resource is 404, never 403. The role is read from `profiles` on every request, never from the token, with the caller's memberships and owned brands in the same read.
 - **Store routes** take `/:storeId` and run `requireAuth, requireStore(capability)`: a store the caller may not know
   about (not `ACTIVE`, no access there) is 404, a visible one without the capability is 403. A new capability is a
