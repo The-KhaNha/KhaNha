@@ -151,7 +151,9 @@ jobs:
       - name: Generated types match the migrations
         # The CLI's warnings go to stderr: a deprecated flag or key fails here too, not only on the v4 upgrade.
         run: |
-          pnpm run db:types 2> "$RUNNER_TEMP/types.err"; status=$?
+          # `|| status=$?`: the step runs under bash -e, which would exit before printing the CLI's error.
+          status=0
+          pnpm run db:types 2> "$RUNNER_TEMP/types.err" || status=$?
           cat "$RUNNER_TEMP/types.err" >&2
           [ $status -eq 0 ] || exit $status
           if grep -iE 'deprecated|removed in v4' "$RUNNER_TEMP/types.err"; then exit 1; fi
