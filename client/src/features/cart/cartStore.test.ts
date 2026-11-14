@@ -346,6 +346,45 @@ describe('lines with options (P3.2)', () => {
   });
 });
 
+describe('an old line of an item that now has a required choice (P3.2)', () => {
+  const size = {
+    id: 'size',
+    name: 'Size',
+    minSelect: 1,
+    maxSelect: 1,
+    options: [
+      { id: 'reg', name: 'Regular', priceDelta: 20, isDefault: true, isAvailable: true },
+      { id: 'big', name: 'Big', priceDelta: 40, isDefault: false, isAvailable: true },
+    ],
+  };
+  const withSize = menuItem({ modifierGroupIds: ['size'] });
+
+  it('takes the default the server would apply, priced, when the cart reprices', () => {
+    useCartStore.getState().add(menuItem(), 2, cafe); // saved before the item had choices
+    useCartStore.getState().syncPrices([withSize], { size });
+    const [line] = selectLines(useCartStore.getState());
+    expect(line).toMatchObject({ lineKey: 'item-1:reg', unitPrice: 140, quantity: 2 });
+    expect(line?.options.map((o) => o.id)).toEqual(['reg']);
+  });
+
+  it('merges into the line it now matches', () => {
+    const regular = { id: 'reg', groupName: 'Size', name: 'Regular', priceDelta: 20 };
+    useCartStore.getState().add(menuItem(), 1, cafe);
+    useCartStore.getState().add(withSize, 2, cafe, [regular]);
+    useCartStore.getState().syncPrices([withSize], { size });
+    expect(selectLines(useCartStore.getState()).map((l) => [l.lineKey, l.quantity])).toEqual([
+      ['item-1:reg', 3],
+    ]);
+  });
+
+  it('leaves a line that already chose in the group alone', () => {
+    const big = { id: 'big', groupName: 'Size', name: 'Big', priceDelta: 40 };
+    useCartStore.getState().add(withSize, 1, cafe, [big]);
+    useCartStore.getState().syncPrices([withSize], { size });
+    expect(selectLines(useCartStore.getState())[0]?.options.map((o) => o.id)).toEqual(['big']);
+  });
+});
+
 describe('migration from version 2', () => {
   it("keeps the cart and its store; each line's key is its item", async () => {
     localStorage.setItem(

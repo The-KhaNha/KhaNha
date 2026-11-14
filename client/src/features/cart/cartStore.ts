@@ -49,6 +49,23 @@ function otherQuantity(lines: CartLine[], line: Pick<CartLine, 'menuItemId' | 'l
   );
 }
 
+/** A required group of `item` that `chosen` has nothing in gets its available defaults, at most maxSelect. */
+function requiredDefaults(
+  item: MenuItem,
+  groups: Record<string, ModifierGroup>,
+  chosen: CartOption[],
+): CartOption[] {
+  return (item.modifierGroupIds ?? []).flatMap((id) => {
+    const group = groups[id];
+    if (!group || group.minSelect === 0) return [];
+    if (group.options.some((o) => chosen.some((c) => c.id === o.id))) return [];
+    return group.options
+      .filter((o) => o.isDefault && o.isAvailable)
+      .slice(0, group.maxSelect)
+      .map((o) => ({ id: o.id, groupName: group.name, name: o.name, priceDelta: o.priceDelta }));
+  });
+}
+
 /** The store a cart belongs to: one cart holds one store's items (P2). */
 export interface CartStoreRef {
   id: string;
@@ -288,27 +305,49 @@ export const useCartStore = create<CartState>()(
 
       syncPrices(items, groups = {}) {
         set((state) => {
-          const prices = new Map(items.map((item) => [item.id, item.price]));
+          const byId = new Map(items.map((item) => [item.id, item]));
           const deltas = new Map(
             Object.values(groups).flatMap((g) =>
               g.options.map((o) => [o.id, o.priceDelta] as const),
             ),
           );
           let changed = false;
-          const lines = state.lines.map((line) => {
-            const base = prices.get(line.menuItemId);
-            if (base === undefined) return line;
-            const options = line.options.map((o) => {
+          const repriced = state.lines.map((line) => {
+            const item = byId.get(line.menuItemId);
+            if (!item) return line;
+            const kept = line.options.map((o) => {
               const priceDelta = deltas.get(o.id) ?? o.priceDelta;
               return priceDelta === o.priceDelta ? o : { ...o, priceDelta };
             });
-            const price = options.reduce((sum, o) => sum + o.priceDelta, base);
-            if (price === line.unitPrice && options.every((o, i) => o === line.options[i]))
+            // A required group the line chose nothing in (a line saved before the item had choices) takes the
+            // defaults place_order would apply (priceLine's rule), so the price shown is the price charged.
+            const filled = requiredDefaults(item, groups, kept);
+            const options = [...kept, ...filled];
+            const price = options.reduce((sum, o) => sum + o.priceDelta, item.price);
+            if (
+              filled.length === 0 &&
+              price === line.unitPrice &&
+              options.every((o, i) => o === line.options[i])
+            )
               return line;
             changed = true;
-            return { ...line, unitPrice: price, options };
+            const lineKey = filled.length
+              ? lineKeyOf(
+                  item.id,
+                  options.map((o) => o.id),
+                )
+              : line.lineKey;
+            return { ...line, lineKey, unitPrice: price, options };
           });
-          return changed ? { lines } : state;
+          if (!changed) return state;
+          // A re-keyed line may now match another: one line per key, quantities summed.
+          const lines: CartLine[] = [];
+          for (const line of repriced) {
+            const same = lines.findIndex((l) => l.lineKey === line.lineKey);
+            if (same < 0) lines.push(line);
+            else lines[same] = { ...lines[same]!, quantity: lines[same]!.quantity + line.quantity };
+          }
+          return { lines };
         });
       },
     }),

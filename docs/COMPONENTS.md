@@ -318,7 +318,7 @@ priceDelta }[]`, `unitPrice` includes the deltas), addressed by `lineKey` (`line
 item id alone without options, so a plain item's line is still addressed by its id). `increment`, `decrement`,
 `remove` and `fix` take a line key; `setAvailability` and `selectQuantityOf` are per item, across its lines; the
 item's limit is shared by its lines. A version-2 cart keeps its store and gives each line `lineKey = menuItemId`,
-`options = []`. `syncPrices(items, modifierGroups?)` refreshes the deltas too.
+`options = []`. `syncPrices(items, modifierGroups?)` refreshes the deltas too, and gives a line with nothing in a required group that group's available defaults (as `place_order` would; the line is re-keyed and merged into a matching one), so an old cart reprices to what the server charges.
 
 | Action                           | Behaviour                                                                                                                                                                                                                   |
 | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
