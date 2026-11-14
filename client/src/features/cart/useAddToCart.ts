@@ -1,8 +1,9 @@
 import { createContext, useContext } from 'react';
 import type { MenuItem } from '../../types/api';
+import type { CartOption } from './cartStore';
 
 /** Adds to the cart; false when the customer is being asked first (see AddToCartProvider). */
-export type AddToCart = (item: MenuItem, quantity?: number) => boolean;
+export type AddToCart = (item: MenuItem, quantity?: number, options?: CartOption[]) => boolean;
 
 export const AddToCartContext = createContext<AddToCart | null>(null);
 

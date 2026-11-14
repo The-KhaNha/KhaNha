@@ -8,6 +8,7 @@ import { AddControl } from './AddControl';
 import { FoodPhoto } from './FoodPhoto';
 import { PopularBadge } from './PopularBadge';
 import { Price } from './Price';
+import { isCustomisable } from '../features/menu/modifierRules';
 import { Skeleton } from './Skeleton';
 import { StockPill } from './StockPill';
 
@@ -85,6 +86,9 @@ export const FoodCard = memo(function FoodCard({
         </button>
 
         {showStock && <StockPill item={item} className="mt-1.5 self-start" />}
+        {isCustomisable(item) && !unavailable && (
+          <p className="mt-1 text-caption text-muted">Customisable</p>
+        )}
 
         {/* items-start + a 44px price box keeps the price centred on the stepper even when a note hangs below it. */}
         <div className="mt-2 flex flex-wrap items-start justify-between gap-2">
@@ -95,7 +99,7 @@ export const FoodCard = memo(function FoodCard({
               unavailable && 'text-muted',
             )}
           />
-          <AddControl item={item} photoRef={photoRef} />
+          <AddControl item={item} photoRef={photoRef} onCustomise={() => onOpen(item)} />
         </div>
       </div>
     </article>
