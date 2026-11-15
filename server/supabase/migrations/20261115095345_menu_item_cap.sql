@@ -4,8 +4,10 @@
 -- could never succeed. One trigger covers every way an item is made: the API's insert (createMenuItem), a new branch
 -- (create_store_from_template, ensure_brand_template) and a template push (push_template_items).
 
--- Holds to the end of this transaction: no insert can commit between the ranking below and the trigger's creation. It
--- blocks writes to menu_items only for the migration's own few milliseconds (reads and place_order's row locks go on).
+-- One transaction (the Supabase CLI adds none), so the lock below holds to the end: no insert can commit between the
+-- ranking and the trigger's creation. It blocks writes to menu_items only for the migration's own few milliseconds
+-- (reads go on).
+begin;
 lock table public.menu_items in share row exclusive mode;
 
 -- 1. A store already past the cap keeps the 500 its customers see (the public menu's order: sort_order, then id) and
@@ -184,3 +186,5 @@ begin
                                 union select unnest(v_modified)) as changed);
 end;
 $$;
+
+commit;
