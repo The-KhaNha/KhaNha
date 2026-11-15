@@ -106,6 +106,7 @@ interface CartState {
   setAvailability: (menuItemId: string, available: number | null) => void;
   /** Refreshes every line's limit from a freshly loaded menu. Prices, names and photos are left alone. */
   syncAvailability: (items: MenuItem[], groups?: Record<string, ModifierGroup>) => void;
+  syncOptions: (items: MenuItem[], groups?: Record<string, ModifierGroup>) => void;
   /**
    * Sets every line's price to the menu's, its options' deltas included (an option gone from `groups` keeps its
    * delta). Only after the server refused an order over a price change (PRICE_CHANGED).
@@ -313,6 +314,23 @@ export const useCartStore = create<CartState>()(
         });
       },
 
+      // Only `optionsStale`: stock (maxQuantity) is left alone so a checkout correction survives a later lines change.
+      syncOptions(items, groups) {
+        set((state) => {
+          const byId = new Map(items.map((item) => [item.id, item]));
+          let changed = false;
+          const lines = state.lines.map((line) => {
+            const item = byId.get(line.menuItemId);
+            const optionsStale =
+              item && groups ? optionsUnorderable(item, groups, line.options) : line.optionsStale;
+            if (!!optionsStale === !!line.optionsStale) return line;
+            changed = true;
+            return { ...line, optionsStale };
+          });
+          return changed ? { lines } : state;
+        });
+      },
+
       syncPrices(items, groups = {}) {
         set((state) => {
           const byId = new Map(items.map((item) => [item.id, item]));
@@ -414,8 +432,15 @@ export const useCartStore = create<CartState>()(
 // event fires only in the other tabs; `key` is null when storage was cleared.
 window.addEventListener('storage', (e) => {
   if (e.key !== 'fp_cart' && e.key !== null) return;
-  // Removed or cleared: rehydrate() finds nothing and would keep this tab's stale lines, so empty explicitly.
-  if (e.newValue === null) useCartStore.getState().clear();
+  // Removed or cleared: rehydrate() finds nothing and would keep this tab's stale lines, so empty explicitly. Decide
+  // from what is stored now, not e.newValue: a queued removal can arrive after the other tab wrote a new cart.
+  let current: string | null = null;
+  try {
+    current = localStorage.getItem('fp_cart');
+  } catch {
+    // Storage unreadable: treat as absent.
+  }
+  if (current === null) useCartStore.getState().clear();
   else void useCartStore.persist.rehydrate();
 });
 

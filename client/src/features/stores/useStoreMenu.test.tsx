@@ -58,4 +58,15 @@ describe('useStoreMenu', () => {
     act(() => useCartStore.setState({ lines: [line] }));
     expect(useCartStore.getState().lines[0]?.optionsStale).toBe(true);
   });
+
+  it('keeps a checkout stock correction when the lines change later with the same menu', () => {
+    renderHook(() => useStoreMenu('cafe'));
+    act(() => useCartStore.setState({ lines: [{ ...line, lineKey: 't1', options: [] }] }));
+    act(() => useCartStore.getState().setAvailability('t1', 1));
+    expect(useCartStore.getState().lines[0]?.maxQuantity).toBe(1);
+    act(() =>
+      useCartStore.setState((s) => ({ lines: s.lines.map((l) => ({ ...l, quantity: 1 })) })),
+    );
+    expect(useCartStore.getState().lines[0]?.maxQuantity).toBe(1);
+  });
 });

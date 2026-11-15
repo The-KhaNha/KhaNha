@@ -260,6 +260,36 @@ describe('another tab', () => {
     expect(useCartStore.getState().storeId).toBeNull();
   });
 
+  it('keeps a replacement cart when a queued removal arrives after it was written', async () => {
+    useCartStore.getState().add(menuItem(), 1, cafe);
+    const replacement = JSON.stringify({
+      state: {
+        storeId: cafe.id,
+        storeSlug: cafe.slug,
+        storeName: cafe.name,
+        lines: [
+          {
+            lineKey: 'item-9',
+            menuItemId: 'item-9',
+            name: 'Tea',
+            unitPrice: 20,
+            options: [],
+            imageUrl: null,
+            quantity: 3,
+            maxQuantity: null,
+          },
+        ],
+        limits: { maxQuantityPerItem: CAP, lowStockThreshold: 5 },
+      },
+      version: 3,
+    });
+    localStorage.setItem('fp_cart', replacement);
+    window.dispatchEvent(new StorageEvent('storage', { key: 'fp_cart', newValue: null }));
+    await vi.waitFor(() =>
+      expect(useCartStore.getState().lines.map((l) => l.menuItemId)).toEqual(['item-9']),
+    );
+  });
+
   it.each([
     ['removes fp_cart', 'fp_cart'],
     ['clears storage', null],
