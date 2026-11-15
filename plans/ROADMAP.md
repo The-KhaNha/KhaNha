@@ -75,7 +75,7 @@ deliver it.
   5. Run `/post-change` for major changes; every product step here is one.
   6. Record a version intent ([P0.3](#p03-semantic-versioning-with-change-intents)) and update the owning docs in
      the same change (CLAUDE.md §6).
-- **Branches.** Feature branches → PR into `dev` (CI required; `dev` deploys staging) → a release PR into `main`
+- **Branches.** Feature branches → PR into `dev` (CI required; staging is the Supabase staging project, nothing deploys from `dev` until the AWS staging exists) → a release PR into `main`
   (production, merged by the user) → a back-merge PR into `dev`. Hotfixes branch off `main`. Details in
   [P0.2](#p02-continuous-integration), [P0.3](#p03-semantic-versioning-with-change-intents) and
   [P8.5](#p85-continuous-deployment).
@@ -808,7 +808,7 @@ a temp file and a script applies the bump.
 
   Docs-only changes need no intent.
 
-- **Branches.** Feature branches → PR into `dev` (CI required; `dev` deploys staging, P8.5) → a release PR into
+- **Branches.** Feature branches → PR into `dev` (CI required; staging is the Supabase staging project, nothing deploys from `dev` until the AWS staging exists, P8.5) → a release PR into
   `main` (production) → a back-merge PR into `dev`. Hotfixes branch off `main` as `hotfix/*`, carry their own intent
   and their own release run, and are back-merged the same way. Only the user merges into `main`. Migrations are
   immutable once merged into `dev`.

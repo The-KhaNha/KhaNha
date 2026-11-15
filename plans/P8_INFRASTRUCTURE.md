@@ -352,7 +352,7 @@ Manager shell on the host shows docker running, `free -m` shows the swap, and th
 
 - [ ] Merged
 
-- `modules/media`: `food-pickup-media-production`, private, encrypted, versioned; CORS for a form post from the
+- `modules/media`: `food-pickup-media-production-<account-id>`, private, encrypted, versioned; CORS for a form post from the
   app's origin; lifecycle rules (unprocessed originals expire after a day, old versions after 30). This is the
   bucket [P3 PR 09](P3_CATALOG_AND_MEDIA.md#pr-09--media-s3-and-minio-p33) points `MEDIA_BUCKET` at in production.
 - `modules/cdn`: one distribution with HTTP/3. The default behaviour and `/api/*` go to the host (`/api/*`
@@ -588,8 +588,9 @@ answered, or have a default the plan follows.
 - **Moving accounts.** Kept cheap by design: the state and media buckets' names end in the account ID (bucket names
   are global); no account ID is hard-coded; the CloudFront hostname (`dxxxx.cloudfront.net`) is registered nowhere
   (not in Supabase's redirect URLs, not in `CLIENT_ORIGIN`), only the domain is; the certificate is requested anew
-  in the new account. A move is: bootstrap, apply, re-enter the secret and parameters, copy the media bucket, deploy
-  the last release, move DNS.
+  in the new account. A move is: bootstrap, apply without the alias, re-enter the secret and parameters, copy the
+  media bucket, deploy the last release, then at cutover remove the alias from the old distribution, add it to the
+  new one, and move DNS.
 - **The VPC origin is bound to the instance.** A replaced instance needs an apply (up to 15 minutes) before
   CloudFront reaches it again, and the distribution stays on pay-as-you-go: CloudFront's flat-rate Free plan does
   not take VPC origins.
