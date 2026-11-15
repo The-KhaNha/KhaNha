@@ -9,7 +9,7 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
         node-version-file: .node-version
     # After setup-node, so it is Node 24's corepack: the runner's default Node ships an older corepack that cannot run
@@ -18,7 +18,7 @@ runs:
       run: corepack enable
     # Again, now that pnpm exists: cache: pnpm asks pnpm for its store path. The Node download is a tool-cache hit.
     - if: inputs.cache-dependency-path != ''
-      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
         node-version-file: .node-version
         cache: pnpm
