@@ -11,6 +11,7 @@ import { StockPill } from '../../components/StockPill';
 import { IconButton } from '../../components/IconButton';
 import { cn } from '../../lib/cn';
 import { useFocusTrap } from '../../lib/useFocusTrap';
+import { useBackToClose } from '../../lib/useBackToClose';
 import { scrollBehavior, useReducedMotion } from '../../lib/useReducedMotion';
 import { useAddToCart } from '../cart/useAddToCart';
 import { availableQuantity, lineLimit } from '../cart/cartRules';
@@ -61,6 +62,7 @@ export function ItemDetailSheet({ item, onClose, groups }: ItemDetailSheetProps)
   const fallbackTimer = useRef<number | undefined>(undefined);
   const dialogRef = useRef<HTMLDivElement>(null);
   useFocusTrap(dialogRef, item !== null);
+  useBackToClose(item !== null, onClose);
 
   const requestClose = useCallback(() => setPhase('closing'), []);
 

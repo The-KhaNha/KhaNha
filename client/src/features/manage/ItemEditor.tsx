@@ -8,10 +8,12 @@ import { IconButton } from '../../components/IconButton';
 import { Input, Textarea } from '../../components/Input';
 import { cn } from '../../lib/cn';
 import { useFocusTrap } from '../../lib/useFocusTrap';
+import { useBackToClose } from '../../lib/useBackToClose';
 import { ApiError } from '../../services/api';
 import type { MenuItemInput } from '../../services/manageMenu';
 import type { Diet, ManagedMenuItem, ModifierGroup } from '../../types/api';
 import { usePhotoUpload, type PhotoUploadStatus } from './usePhotoUpload';
+import { useLeaveWarning } from '../../lib/useLeaveWarning';
 
 interface ItemEditorProps {
   /** The store the item belongs to: its photo is uploaded there. */
@@ -67,6 +69,7 @@ export function ItemEditor({
   const dialogRef = useRef<HTMLDivElement>(null);
   const listId = useId();
   useFocusTrap(dialogRef, true);
+  useBackToClose(true, onClose);
   const [form, setForm] = useState({
     name: item?.name ?? '',
     description: item?.description ?? '',
@@ -95,6 +98,14 @@ export function ItemEditor({
   // failed upload shows what stays (its error says why).
   const newPhoto = photoBusy || photo.status === 'ready';
   const shownPhoto = newPhoto ? photo.preview : photoRemoved ? null : (item?.imageUrl ?? null);
+  // What was there when the editor opened: anything else is an edit a reload would lose.
+  const [opened] = useState(form);
+  useLeaveWarning(
+    groupsTouched ||
+      newPhoto ||
+      photoRemoved ||
+      (Object.keys(form) as (keyof typeof form)[]).some((key) => form[key] !== opened[key]),
+  );
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
 

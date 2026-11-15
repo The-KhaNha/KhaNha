@@ -5,6 +5,7 @@ import { Button } from '../../components/Button';
 import { IconButton } from '../../components/IconButton';
 import { Input } from '../../components/Input';
 import { useFocusTrap } from '../../lib/useFocusTrap';
+import { useBackToClose } from '../../lib/useBackToClose';
 import { ApiError } from '../../services/api';
 import type { ModifierGroupInput } from '../../services/manageModifiers';
 import type { ModifierGroup } from '../../types/api';
@@ -57,6 +58,7 @@ export function ModifierGroupEditor({
 }: ModifierGroupEditorProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   useFocusTrap(dialogRef, true);
+  useBackToClose(true, onClose);
   const [name, setName] = useState(group?.name ?? '');
   const [minSelect, setMinSelect] = useState(String(group?.minSelect ?? 1));
   const [maxSelect, setMaxSelect] = useState(String(group?.maxSelect ?? 1));
