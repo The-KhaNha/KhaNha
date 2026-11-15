@@ -5,10 +5,11 @@ import { logger } from '../../src/utils/logger';
 import { supabaseAdmin } from '../../src/utils/supabase';
 import { api } from '../setup/api';
 import { MENU } from '../../scripts/seed-data';
-import { menuPath, resetDemoData } from '../setup/helpers';
+import { localExec, menuPath, resetDemoData } from '../setup/helpers';
 
-// Destructive: inserts a category of throwaway items past the menu cap, PostgREST's 1000-row response cap and the
-// length a list of their ids can take in a URL, then checks the demo reset removes every one of them.
+// Destructive: gives the oldest store a category of throwaway items past the menu cap (as a store from before the
+// cap's trigger could have), PostgREST's 1000-row response cap and the length a list of their ids can take in a URL,
+// then checks the demo reset removes every one of them.
 const EXTRA_ITEMS = 1100;
 const CATEGORY = 'Cap test';
 let storeId: string;
@@ -24,16 +25,15 @@ beforeAll(async () => {
     .single()
     .throwOnError();
   storeId = store.id;
-  const rows = Array.from({ length: EXTRA_ITEMS }, (_, i) => ({
-    store_id: storeId,
-    category: CATEGORY,
-    name: `Cap item ${i}`,
-    description: '',
-    price_paise: 1000,
-    image_url: '/images/cold-coffee.jpg',
-    sort_order: 10_000 + i,
-  }));
-  await supabaseAdmin.from('menu_items').insert(rows).throwOnError();
+  // A store from before the cap (menu_items_enforce_cap refuses this now; menu-item-cap.test.ts tests the cap). One
+  // statement, so the trigger is off only inside its own transaction: no other test file can see it off.
+  localExec(`do $$ begin
+    alter table public.menu_items disable trigger menu_items_enforce_cap;
+    insert into public.menu_items (store_id, category, name, description, price_paise, image_url, sort_order)
+      select '${storeId}', '${CATEGORY}', 'Cap item ' || g, '', 1000, '/images/cold-coffee.jpg', 10000 + g
+        from generate_series(0, ${EXTRA_ITEMS - 1}) as g;
+    alter table public.menu_items enable trigger menu_items_enforce_cap;
+  end $$`);
   invalidate();
 }, 30_000);
 
@@ -54,6 +54,61 @@ describe('GET /api/stores/:ref/menu with a menu larger than the cap', () => {
     expect(res.body.categories[0].name).not.toBe(CATEGORY);
     expect(Date.now() - started).toBeLessThan(5_000);
   });
+});
+
+describe('GET /api/stores/:ref/menu with modifiers on every item of a menu past the cap', () => {
+  it('every item keeps its groups: no link is lost to the 1000-row response cap', async () => {
+    const groups = await Promise.all(
+      Array.from({ length: 11 }, (_, i) => `Group ${i}`).map(async (name) => {
+        const { data } = await supabaseAdmin
+          .from('modifier_groups')
+          .insert({ store_id: storeId, name, min_select: 0, max_select: 1 })
+          .select('id')
+          .single()
+          .throwOnError();
+        return data.id;
+      }),
+    );
+    // The items the menu serves (the lowest sort orders), 11 groups each: every 100-item query finds 1100 links, past
+    // the 1000-row cap, so only reading in pages keeps them all.
+    const { data: items } = await supabaseAdmin
+      .from('menu_items')
+      .select('id')
+      .eq('store_id', storeId)
+      .is('archived_at', null)
+      .order('sort_order')
+      .order('id')
+      .limit(MENU_ITEMS_MAX)
+      .throwOnError();
+    await supabaseAdmin
+      .from('menu_item_modifier_groups')
+      .insert(
+        items.flatMap((item) => groups.map((group_id) => ({ menu_item_id: item.id, group_id }))),
+      )
+      .throwOnError();
+    await supabaseAdmin
+      .from('feature_flags')
+      .update({ enabled: true, rules: { storeIds: [storeId] } })
+      .eq('key', 'modifiers')
+      .throwOnError();
+    invalidate();
+    try {
+      const res = await api().get(await menuPath());
+      const served = (res.body.categories as { items: { modifierGroupIds: string[] }[] }[]).flatMap(
+        (c) => c.items,
+      );
+      expect(served).toHaveLength(MENU_ITEMS_MAX);
+      for (const item of served) expect(item.modifierGroupIds).toHaveLength(11);
+    } finally {
+      await supabaseAdmin
+        .from('feature_flags')
+        .update({ enabled: false, rules: {} })
+        .eq('key', 'modifiers')
+        .throwOnError();
+      await supabaseAdmin.from('modifier_groups').delete().in('id', groups).throwOnError();
+      invalidate();
+    }
+  }, 30_000);
 });
 
 describe('GET /api/stores/:ref/menu when the cap bites', () => {

@@ -14,7 +14,8 @@ trap '[ ${#started[@]} -eq 0 ] || docker rm -f "${started[@]}" >/dev/null 2>&1 |
 docker run -d --name api -p 8000:8000 -e APP_ENV=local -e SUPABASE_URL=http://127.0.0.1:1 \
   -e SUPABASE_SECRET_KEY=sb_secret_ci fp-api:ci
 started+=(api)
-docker run -d --name web -p 8080:8080 -e API_UPSTREAM=http://127.0.0.1:1 \
+docker run -d --name web -p 8080:8080 -e API_UPSTREAM=http://127.0.0.1:1 -e MEDIA_UPSTREAM=http://127.0.0.1:1 \
+  -e MEDIA_UPLOAD_ORIGIN=https://media.ci.example \
   -e SUPABASE_URL=https://ci.supabase.co -e SUPABASE_PUBLISHABLE_KEY=sb_publishable_ci fp-web:ci
 started+=(web)
 
@@ -24,6 +25,10 @@ for url in localhost:8000/api/health localhost:8080/healthz localhost:8080/runti
 done
 curl -fsS localhost:8000/api/health | grep -q "\"commit\":\"$commit\"" ||
   { echo "/api/health does not report commit $commit"; exit 1; }
+
+# The worker's image pipeline: sharp's prebuilt libvips must load and encode in the plain-Alpine runtime.
+docker run --rm fp-api:ci node -e "require('sharp')({create:{width:8,height:8,channels:3,background:'#fff'}}).webp().toBuffer().then(()=>console.log('sharp ok'))" |
+  grep -q 'sharp ok' || { echo "sharp does not load in fp-api"; exit 1; }
 
 # The web manifest goes out as a manifest (nginx's own MIME table says octet-stream).
 curl -fsSI localhost:8080/manifest.webmanifest | grep -qi '^content-type: application/manifest+json' ||
@@ -36,6 +41,12 @@ code=$(curl -s -o "$tmp/413.json" -w '%{http_code}' -X POST -H 'Content-Type: ap
 if [ "$code" != 413 ] || ! grep -q '"PAYLOAD_TOO_LARGE"' "$tmp/413.json"; then
   echo "nginx body limit: got $code"; cat "$tmp/413.json"; exit 1
 fi
+
+# The CSP lets the browser post uploads to the bucket, and photos still load only from this origin.
+csp=$(curl -fsSI localhost:8080/healthz | grep -i '^content-security-policy')
+echo "$csp" | grep -q "connect-src 'self' https://ci.supabase.co https://media.ci.example;" ||
+  { echo "CSP connect-src lacks the upload origin: $csp"; exit 1; }
+echo "$csp" | grep -q "img-src 'self' data:;" || { echo "CSP img-src changed: $csp"; exit 1; }
 
 # Both images send the browser-hardening headers (server/src/middleware/securityHeaders.ts, client/nginx/).
 for url in localhost:8000/api/health localhost:8080/healthz; do

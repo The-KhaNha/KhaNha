@@ -9,7 +9,15 @@ const { useCartStore } = await import('../cart/cartStore');
 const { MenuRedirect } = await import('./MenuRedirect');
 
 it("/menu goes to the cart's own store, not the only active one, when the cart has lines", () => {
-  const line = { menuItemId: 'x', name: 'x', unitPrice: 1, imageUrl: null, quantity: 1 };
+  const line = {
+    lineKey: 'x',
+    menuItemId: 'x',
+    options: [],
+    name: 'x',
+    unitPrice: 1,
+    imageUrl: null,
+    quantity: 1,
+  };
   useCartStore.setState({ storeSlug: 'bakery', lines: [{ ...line, maxQuantity: null }] });
   render(
     <MemoryRouter initialEntries={['/menu']}>

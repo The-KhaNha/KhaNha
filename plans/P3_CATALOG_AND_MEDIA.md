@@ -6,18 +6,23 @@ are copied from. The roadmap says what P3 builds and why; this file says in whic
 which files, tests, docs and checks, and where P3 deliberately builds something different from the roadmap's text
 (each with its reason and the phase that picks it up). When a PR merges, tick its box here and in the roadmap.
 
-> **Status: proposal** (11 November 2026). P3 starts when [P2](P2_MULTI_STORE.md) is in `dev`. The roadmap's P3.1
+> **Status: in progress** (12 November 2026): P2 is in `dev` (#75), `feat/P3` was cut from it, and the user answered
+> every [decision](#decisions) (D6 differs from the default: owners open branches, PRs 01b and 07b).
+>
+> Written as a proposal (11 November 2026). The roadmap's P3.1
 > ("a brand catalog with per-store listings and price overrides") was rejected in
 > [ADR-001](../docs/adr/001-brands-own-stores.md) as amended: a store is a **copy** of its brand's template and then
 > changes freely. This plan follows the ADR; [P2's PR 00](P2_MULTI_STORE.md#pr-00--the-roadmap-says-what-adr-001-decided)
-> rewrites the roadmap's P3.1 from [the model below](#the-model-p3-builds). The [decisions](#decisions) are open;
-> each has a default, and the plan is written for the defaults.
+> rewrites the roadmap's P3.1 from [the model below](#the-model-p3-builds).
 
 ## How the team works P3
 
 The P2 rules stand ([P2 plan](P2_MULTI_STORE.md#how-the-team-works-p2), CLAUDE.md §13–§21), with `feat/P3` as the
 phase branch (cut from `dev` once `feat/P2` is merged, and covered by the `ci-ok required` ruleset's `feat/P[0-9]` pattern),
-work branches `feat/p3-<NN>-<slug>`, PR titles `P3 PR <NN> — <title>`, and the same size limit. Two additions:
+work branches `feat/p3-<NN>-<slug>`, PR titles `P3 PR <NN> — <title>`. Changes from P2 (the user, 12 November 2026):
+the size limit is **50 changed files or 1000 changed lines** (`.claude/rules/workflow.md` "PR size"); the agent merges
+each PR into `feat/P3` once `ci-ok` is green and CodeRabbit is clear, and the user merges `feat/P3` into `dev`; PRs run
+in parallel worktrees as late P2 did, with at most one schema-changing PR in flight. Two additions:
 
 - **Every menu write invalidates `menu:<storeId>`** and ships the cache test that fails without it (CLAUDE.md §2c).
 - **Every store route ships `testStoreIsolation`** (P2 PR 04); every upload path ships its refusal cases.
@@ -43,12 +48,14 @@ What the code has when P2 is done (P1 and P2 as planned), and what P3 adds.
 | #   | PR                                                  | Step       | Depends on | Size (files / lines) |
 | --- | --------------------------------------------------- | ---------- | ---------- | -------------------- |
 | 01  | The brand template and its lineage                  | P3.1       | –          | 12 / 560             |
+| 01b | Owner opens a branch: create, profile, publish      | P3.1       | 01         | 16 / 700             |
 | 02  | Menu editing API                                    | P3.4       | 01         | 16 / 640             |
 | 03  | Quick edits: availability, bulk, order              | P3.4       | 02         | 10 / 380             |
 | 04  | Stock: one function, its trail, the staff setting   | P3.4, P3.5 | 02         | 14 / 560             |
 | 05  | Client: the menu screen and the item editor         | P3.4       | 02, 03     | 20 / 720             |
 | 06  | Client: stock in `/manage` and on the staff board   | P3.4, P3.5 | 04, 05     | 14 / 520             |
 | 07  | Template push                                       | P3.1       | 05         | 14 / 560             |
+| 07b | Client: open a branch, its profile, publish         | P3.1       | 01b, 05    | 14 / 600             |
 | 08  | Media: the port, local storage, the uploads API     | P3.3       | 02         | 16 / 620             |
 | 09  | Media: S3 and MinIO                                 | P3.3       | 08         | 14 / 480             |
 | 10  | Media: the image pipeline in the worker             | P3.3       | 09         | 14 / 600             |
@@ -128,6 +135,11 @@ snapshot. `stock_movements` and `media_uploads` are given with their PRs.
 | `menu.edit` (items, photos, modifiers) | ✗                           | ✓       | ✓     | ✗              |
 | `stock.update`                         | when `staff_can_edit_stock` | ✓       | ✓     | ✗              |
 | `template.push`                        | ✗                           | ✗       | ✓     | ✗              |
+| `store.profile` (name, address, phone) | ✗                           | ✓       | ✓     | ✗              |
+| `store.publish` (publish, unpublish)   | ✗                           | ✗       | ✓     | ✗              |
+
+Opening a branch is a brand-level right, not a store capability: only the brand's owner (`ownedBrandIds`) may, and
+anyone else gets 404 on the brand (D6).
 
 A template store has no members: only its brand's owner reaches it, and an invite to it is refused.
 
@@ -151,6 +163,7 @@ PR 00 for P3.1.
 | P3.4 `stock_movements` rows for every stock change, sales included                                                           | manual changes only (`MANUAL_SET`, `MANUAL_ADJUST`, `WASTE`); sales and cancels are in `order_items.reserved_quantity`                                                                                     | P7.1, if its reports need one table                   |
 | P3.4, P3.5 stock changes in the audit log **and** in `stock_movements`                                                       | `stock_movements` is the trail (who, when, how much, why); no second row in `audit_log`                                                                                                                    | –                                                     |
 | P3.4 routes `/deals`, `/analytics`, `/payouts`, `/reviews`, `/policy` under `/manage`                                        | Menu and Stock only                                                                                                                                                                                        | P5.8, P5.6, P7.3, P7.5, and P3.6 when built           |
+| P7.4 the admin console creates stores                                                                                        | the brand's owner opens a branch (a copy of the template, `DRAFT`) and publishes it after a checklist (D6); brands are still created by the seed                                                           | P7.4 creates brands and owners                        |
 | P3.4 drag to reorder                                                                                                         | up and down buttons (accessible, and no drag library in the bundle)                                                                                                                                        | a measured need                                       |
 | P3.5 "Mark sold out" on an order line                                                                                        | not built: it lives in the order detail of staff dashboard v2                                                                                                                                              | P6.4                                                  |
 | P3.6 surplus lots and deals                                                                                                  | deferred whole (D4)                                                                                                                                                                                        | after P5.9 ([below](#deferred-p36-surplus-and-deals)) |
@@ -163,7 +176,7 @@ PR 00 for P3.1.
 
 ### PR 01 — The brand template and its lineage (P3.1)
 
-- [ ] Merged
+- [x] Merged (#77, f313ff5)
 
 `/before-write`: schema-guard, expected EXTEND (`stores`, `brands`, `menu_items`), no new table.
 
@@ -172,11 +185,10 @@ Migration `<ts>_brand_template.sql`:
 - the `stores`, `brands` and `menu_items.template_item_id` changes [above](#the-model-p3-builds), and
   `menu_items.archived_at`, because the copy below filters on it (nothing sets it until PR 02);
 - backfill, per brand: a template store (`<brand slug>-template`, `DRAFT`, `is_template`) whose menu and
-  `store_settings` are copied from the brand's oldest store; that store's items get `template_item_id`, and the
-  brand's other stores' items get it by matching name (the seed's branches share names; an unmatched item stays
-  null, which is correct: it has no template ancestor);
+  settings columns are copied from the brand's oldest store; that store's items get `template_item_id`, and the
+  brand's other existing stores get no lineage (as built: a name match could link an item that was never copied, and the push in PR 07 would then overwrite it; staging's existing second Brew Lane branch is therefore not linked, and new branches are)
 - `create_store_from_template(p_brand_id, p_name, p_slug, p_area, p_address_line, p_actor, p_request_id) returns
-uuid`: inserts the store (`DRAFT`), overwrites its `store_settings` row with the template's, and copies the
+uuid`: inserts the store (`DRAFT`), copies the template's settings columns (P2 keeps them on `stores`), and copies the
   template's unarchived items with `template_item_id` set; emits `store.created`. Hours are not copied (a new
   branch sets its own). Granted to `service_role` only.
 
@@ -193,9 +205,56 @@ Docs: `docs/SCHEMA.md`, `docs/ARCHITECTURE.md` (template, copy, lineage), `docs/
 change here: the user amended [ADR-001](../docs/adr/001-brands-own-stores.md) on 11 November 2026 to store the
 template as a never-public store row (D1). Intent: `--server minor`.
 
+### PR 01b — Owner opens a branch: create, profile, publish (P3.1, D6)
+
+- [x] Merged (#79, 6ed58df)
+
+`/before-write`: reuse-scout, expected EXTEND (`store.service.ts`, `requireStore`, `toStoreDto`); schema-guard,
+expected REUSE (`stores`, `store_hours`, `menu_items`), one new function. Skill: `/new-endpoint`. The main agent
+implements it (permissions and who may make a store public).
+
+Migration `<ts>_store_publish.sql`: `set_store_status(p_store_id, p_status, p_actor, p_request_id) returns text[]`
+moves `DRAFT` → `ACTIVE` (publish) or `ACTIVE` → `DRAFT` (unpublish) under a row lock, sets `app.actor` and
+`app.request_id`, and emits `store.changed`. Publish checks, in the same transaction, that the store is not a
+template, has an `address_line`, at least one `store_hours` row and at least one available, unarchived item; it
+returns what is missing (`{address, hours, menu}`) and changes nothing when any is. `SUSPENDED` and `ARCHIVED` stay
+operator states (no route). A repeat is a no-op with no event. Granted to `service_role` only.
+
+Server:
+
+| Method + path                         | Guard                           | Does                                                                                                                                                   |
+| ------------------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /api/brands/mine`                | `requireAuth`                   | the brands the caller owns, each with its stores (all statuses) and its template; `[]` for anyone else                                                 |
+| `POST /api/brands/:brandId/stores`    | owner of the brand, else 404    | `create_store_from_template` (PR 01): `name`, `slug?` (from the name), `area?`, `addressLine?`; the store is `DRAFT`; a taken slug is 409 `SLUG_TAKEN` |
+| `PATCH /api/stores/:storeId/profile`  | `requireStore('store.profile')` | `name`, `tagline`, `description`, `area`, `addressLine`, `contactPhone`; never `slug` or `status`                                                      |
+| `POST /api/stores/:storeId/publish`   | `requireStore('store.publish')` | publish; 409 `STORE_NOT_READY` with `details.missing`                                                                                                  |
+| `POST /api/stores/:storeId/unpublish` | `requireStore('store.publish')` | back to `DRAFT`: it leaves the store list and refuses new orders; orders already placed are still served on the staff board                            |
+
+Writes use `writeLimiter`, and invalidate `stores:list` and `store:<id>`. Bounds go in `schemas/limits.ts` with their
+check constraints and the parity test (name 2–60, slug `^[a-z0-9-]{3,48}$`, address ≤ 200, phone as P2's). The
+client `StoreDto` copy and `docs/API.md` error codes are updated in the same change.
+
+Tests: `test/api/store-lifecycle.test.ts`: create as the owner, as a manager of the brand's store, as another
+brand's owner and as an admin (only the first succeeds; the rest 404); the copy is the template's menu; a taken slug
+leaves nothing behind; each missing checklist item blocks publish alone; publish then shows the store in
+`GET /api/stores` (seen failing without the invalidation); unpublish hides it, refuses a new order, and an order
+placed before it can still move PLACED → COLLECTED; a template cannot be published; profile edits by staff are 403
+and by another store's manager 404 (`testStoreIsolation`); every change leaves one `store.changed` event and a repeat
+leaves none.
+
+Docs: `docs/API.md`, `docs/PERMISSIONS.md`, `docs/SCHEMA.md` (the function), `docs/ARCHITECTURE.md` (a store's life:
+draft, published, unpublished). Intent: `--server minor --client patch`.
+
+As built: `store.changed` comes from a row trigger on `stores` (`stores_changed`), not from `set_store_status` itself,
+so a profile edit, a publish, an unpublish and an operator's status change in SQL each emit one, and a write of the
+same values none; its payload names the changed fields and the status, never their values. The store name's bound is
+2–80, not 60, because a template takes its brand's name (`brands.name` allows 80). Tagline (≤ 120), description
+(≤ 300) and area (≤ 60) are bounded in zod only. A suspended or archived store answers 409
+`INVALID_STATUS_TRANSITION`.
+
 ### PR 02 — Menu editing API (P3.4)
 
-- [ ] Merged
+- [x] Merged (#78, bb61db4)
 
 `/before-write`: reuse-scout, expected EXTEND (`menu.service.ts`, `toMenuItemDto`); schema-guard, EXTEND
 (`menu_items`). Skills: `/new-endpoint`, `agent-skills:api-and-interface-design`.
@@ -210,14 +269,20 @@ Server, all under `requireStore('menu.edit')`, never cached:
 | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
 | `GET /api/stores/:storeId/menu-items`            | every item of the store, archived ones included, with stock                                                               |
 | `POST /api/stores/:storeId/menu-items`           | create (`name`, `description`, `price`, `category`, `diet?`, `isPopular?`, `stockQuantity?`); placed last in its category |
-| `PATCH /api/stores/:storeId/menu-items/:itemId`  | edit any of those, and `isAvailable`                                                                                      |
+| `PATCH /api/stores/:storeId/menu-items/:itemId`  | edit any of those except `stockQuantity`, and `isAvailable`                                                               |
 | `DELETE /api/stores/:storeId/menu-items/:itemId` | archive (the row stays: order history and lineage point at it); a repeat is 204                                           |
+
+As built: `place_order` is unchanged. A check constraint (`archived_at is null or not is_available`) keeps an archived
+item switched off, and `place_order` already refuses an unavailable item. `menu.changed` comes from statement triggers
+on `menu_items` (one event per store per statement; stock moves emit none), so direct table writes emit it in their own
+transaction. The editor's list is `ManagedMenuItemDto` (`isEnabled`, `archivedAt`). PATCH takes no `stockQuantity`: PR 04's
+stock function owns stock edits; create still sets the starting stock. The seed still matches its items by
+name, which stays safe because it wipes orders and deletes duplicates.
 
 `price` is whole rupees at the API and paise in the row (`utils/money.ts`). Bounds live in `schemas/limits.ts`
 (name 2–80, description ≤ 300, category 1–40, price 1–100000) with their check constraints and the parity test. The
 public menu skips archived items; `MenuItemDto` gains `diet`. Every write invalidates `menu:<storeId>` and emits
-`menu.changed`. A second item with the same name in a store is allowed (the seed's upsert-by-name moves to a seed
-key).
+`menu.changed`. A second item with the same name in a store is allowed.
 
 Tests: `test/api/menu-items.test.ts` (the edge-case matrix on four routes; auth and isolation matrices; an item of
 another store is 404; an archived item leaves the public menu, stays in an old order, and cannot be ordered; a
@@ -229,7 +294,7 @@ Docs: `docs/API.md`, `docs/SCHEMA.md`, `docs/PERMISSIONS.md`, `docs/CONFIGURATIO
 
 ### PR 03 — Quick edits: availability, bulk, order (P3.4)
 
-- [ ] Merged
+- [x] Merged (#80, c655244)
 
 Migration `<ts>_reorder_menu.sql`: `reorder_menu(p_store_id, p_item_ids uuid[], p_actor, p_request_id)` sets
 `sort_order` to each id's position, refuses a list that is not exactly the store's unarchived items
@@ -243,17 +308,26 @@ concurrent reorders leave one complete order, never a mix; bulk by category touc
 
 Docs: `docs/API.md`, `docs/SCHEMA.md`. Intent: `--server minor`.
 
+As built: both quick edits are SQL functions (`reorder_menu`, `set_menu_availability`) that take the store's menu
+lock (`lock_store_menu`, a transaction advisory lock: they queue and never deadlock; `place_order` takes no such lock,
+but its stock update waits on an item row a quick edit holds until it commits) and
+leave the event to the PR 02 statement trigger (none when nothing changed). An id that is not the store's item is
+`NOT_FOUND` (404, as for any other store's resource); a stale reorder list is `VALIDATION_ERROR`. Bulk answers
+`{ updated }`; a list with another store's or an archived item, or a category with no live item, is 404 and changes
+nothing. `MANAGED_ITEMS_MAX` moved to `schemas/limits.ts`. Not handled: an item created while a reorder runs may tie
+on `sort_order` (ties fall back to id).
+
 ### PR 04 — Stock: one function, its trail, the staff setting (P3.4, P3.5)
 
-- [ ] Merged
+- [x] Merged (#82, 1ec75d2)
 
-`/before-write`: schema-guard, NEW TABLE (`stock_movements`), EXTEND (`store_settings`).
+`/before-write`: schema-guard, NEW TABLE (`stock_movements`), EXTEND (`stores`, whose columns hold the settings since P2).
 
 Migration `<ts>_adjust_stock.sql`:
 
 - `stock_reason` enum (`MANUAL_SET`, `MANUAL_ADJUST`, `WASTE`) and `stock_movements` as in the roadmap, minus
   `order_id`; index `(menu_item_id, created_at desc)`;
-- `store_settings.staff_can_edit_stock boolean not null default true` (roadmap decision 16);
+- `stores.staff_can_edit_stock boolean not null default true` (roadmap decision 16);
 - `adjust_stock(p_store_id, p_menu_item_id, p_set integer, p_delta integer, p_untracked boolean, p_reason, p_actor,
 p_request_id) returns integer`: exactly one of set, delta or untracked; one conditional update that can never go
   below zero (`INSUFFICIENT_STOCK` otherwise); writes the movement with the resulting quantity; emits
@@ -271,9 +345,18 @@ orders' reserved quantities account for every unit; "set to N" while orders are 
 Docs: `docs/API.md`, `docs/SCHEMA.md`, `docs/PERMISSIONS.md`, `docs/CONFIGURATION.md` (the setting). Intent:
 `--server minor`.
 
+As built: `stock_movements.delta` is nullable (null when tracking starts or stops: one side has no number), and the
+function locks the item's row before its update. A change that leaves the stock as it was writes no movement and
+emits nothing. An archived item is 404; an adjustment of an untracked item is `VALIDATION_ERROR` on `adjust`; below
+zero is `INSUFFICIENT_STOCK` with its own staff-facing message (`stockBelowZero`). `can(access, capability, rules)`
+denies STAFF `stock.update` unless `rules.staffCanEditStock` is true. A new branch starts with the setting on: the
+copy functions do not carry it (redefining both for one flag was not worth it). The client settings form keeps to the
+numeric settings; the staff-stock switch belongs to PR 06, which also needs a way for staff to learn the setting (the
+settings route is `settings.edit`): add it to their membership in `/auth/me` there.
+
 ### PR 05 — Client: the menu screen and the item editor (P3.4)
 
-- [ ] Merged
+- [x] Merged (#81, 94bd8d2)
 
 `frontend-design:frontend-design` for the direction, then `agent-skills:frontend-ui-engineering`. `/before-write`:
 reuse-scout (`ItemDetailSheet`'s sheet pattern, `Input`, `QuantityStepper`, `StockPill`, `Skeleton`, `EmptyState`,
@@ -297,9 +380,14 @@ Docs: `docs/FRONTEND_STRUCTURE.md`, `docs/COMPONENTS.md` (`ItemEditor`). Intent:
 
 Split seam: the list as 05a, the editor as 05b.
 
+As built: one PR (no split). The Menu tab is the first `/manage` tab; the tab row wraps at large text sizes. Archived
+items are not listed (read-only), and archiving has no button yet. The editor's bounds come from
+`VALIDATION.menuItem`. The template in the owner's store picker moved to PR 07b, which adds the `/brands/mine` client
+the picker needs (the store page reads the public store route, which never serves a template).
+
 ### PR 06 — Client: stock in `/manage` and on the staff board (P3.4, P3.5)
 
-- [ ] Merged
+- [x] Merged (06a #83, 1f09d6e; 06b #84, 58621c3)
 
 One `StockList` component (quick −/+, "Set", "Sold out", low-stock highlight from the store's
 `low_stock_threshold`, the item's last movements on demand), used at `/manage/:storeSlug/stock` and as a Stock view
@@ -310,9 +398,18 @@ Tests: `StockList.test.tsx` (each control, a refused adjustment rolls back and s
 
 Docs: `docs/COMPONENTS.md` (`StockList`), `docs/FRONTEND_STRUCTURE.md`. Intent: `--client minor`.
 
+As built: split in two for size: 06a (#83, 1f09d6e) the server read and the setting in `/auth/me` (and the demo seed
+now wipes `stock_movements`, whose rows blocked it), 06b the client. Both views read a new `GET /stores/:storeId/stock` (`stock.update`: the live items and the threshold, never
+cached). Staff cannot read the editor's list (`menu.edit`), and the public menu is cached and never serves a draft
+branch. `/auth/me` memberships carry `staffCanEditStock`, so the board offers its Stock view only where staff may use it
+(a manager always). Staff learn a change of the setting on their next load; meanwhile the server's 403 shows as an
+error. The "Staff can change stock" switch sits at the top of the `/manage` Stock tab, not on the Settings form. The
+menu tab's switch became the shared `Switch` atom. An open history refetches after every write made on the screen.
+Intent: 06a `--server minor`, 06b `--client minor`.
+
 ### PR 07 — Template push (P3.1)
 
-- [ ] Merged
+- [x] Merged (#85, 44dfa98)
 
 Migration `<ts>_push_template_items.sql`: `push_template_items(p_brand_id, p_template_item_ids uuid[], p_store_ids
 uuid[], p_fields text[], p_actor, p_request_id) returns integer`. For each chosen store: an item whose
@@ -334,9 +431,54 @@ one request id); `PushSheet.test.tsx`.
 Docs: `docs/API.md`, `docs/SCHEMA.md`, `docs/PERMISSIONS.md`, `docs/ARCHITECTURE.md`. Intent:
 `--server minor --client minor`.
 
+As built: server only. The push sheet moves to PR 07b: `/manage` reads the public store route, which never serves a
+template, so the template's item editor is not reachable until 07b adds the template to the store picker. No
+`requireBrandOwner` and no `template.push` capability: like `POST /brands/:brandId/stores`, the service checks the brand
+is in `ownedBrandIds`, and a manager or an admin gets 404 (not 403: a brand route is someone else's resource). A
+branch whose copy was archived gets a new copy. Review round: the template items are locked `for update` (concurrent
+pushes made duplicate copies, seen in the test), only copies that differ are written (`updated` counts real changes),
+targets are `DRAFT` or `ACTIVE` branches, the template comes from `brands.template_store_id`, and one push reaches at
+most `TEMPLATE_PUSH_COPIES_MAX` (5000) copies.
+
+### PR 07b — Client: open a branch, its profile, publish (P3.1, D6)
+
+- [x] Merged (07b-1 #86, 88344a9; 07b-2a #87, e649b36; 07b-2b #88, 8360bb0; 07c #89, 7899060)
+
+Depends on PR 05 too: the checklist links to the menu screen. `/before-write`: reuse-scout (the `/manage` shell and store picker from P2 PR 14a, the Settings form from PR 15,
+`Input`, `Button`, `Skeleton`, `EmptyState`, `ErrorState`).
+
+- The owner's store picker lists the brand template first, labelled "Brand template" (moved from PR 05).
+- The owner's store picker gains "Open a branch": a form (name, area, address; the slug shown, editable) that
+  lands on the new store's `/manage` page.
+- `/manage/:storeSlug/profile` (lazy): the profile form for managers and owners.
+- A "Go live" card on the store's `/manage` home for the owner of a `DRAFT` store: the three checklist items, each
+  linking to the screen that fixes it, and Publish (enabled once all pass; the server still decides). A published
+  store shows Unpublish behind a confirm dialog that says new orders stop.
+- `services/manageStores.ts`; every mutation reloads the picker's brands, the store, and the public store list.
+
+Tests: `OpenBranch.test.tsx` (field errors from the API, a taken slug), `GoLive.test.tsx` (each checklist state,
+`STORE_NOT_READY` from the server, the unpublish confirm), e2e: the owner opens a branch, adds hours and an item,
+publishes it, and a customer finds it. Visual gate at 390px throttled and 1280px.
+
+Docs: `docs/FRONTEND_STRUCTURE.md`, `docs/COMPONENTS.md` for any new component. Intent: `--client minor`.
+
+As built: split in three. 07b-1 (server): `/manage` read the store and its hours through the public routes, which
+serve only `ACTIVE` stores, so a `DRAFT` branch could not be managed at all. `GET /stores/:storeId/manage`
+(`store.profile`: the store at any status, its brand, and `missing`, the go-live checklist) and
+`GET /stores/:storeId/manage/hours` (`hours.edit`, uncached). `store_publish_missing` is the one checklist: the
+manage screen reads it and `set_store_status` (redefined, same signature) publishes only when it is empty. 07b-2
+(client): this section's screens on those reads. 07c (client): PR 07's push sheet, once the template is reachable.
+07b-2 split again for size: 07b-2a the picker (template first, branches at every status, "Open a branch", which
+lands on the new branch's page) and the store shell on the manage reads (the hours editor too); 07b-2b the Profile
+tab and the Go live card (a new branch then lands on its Profile tab, where the address the checklist asks for
+is filled in).
+07c: the push sheet opens from a "Push to branches" button on each row of the template's Menu tab (not from inside
+the item editor). Its preview reads each chosen branch's list fresh and finds the copy by lineage, so
+`ManagedMenuItemDto` gained `templateItemId` (server, additive).
+
 ### PR 08 — Media: the port, local storage, the uploads API (P3.3)
 
-- [ ] Merged
+- [x] Merged (#90, 823ac2b)
 
 `/before-write`: schema-guard, NEW TABLE (`media_uploads`); reuse-scout, NO MATCH (`integrations/` is new). Skill:
 `agent-skills:security-and-hardening` (the PR accepts files).
@@ -368,9 +510,16 @@ Docs: `docs/API.md`, `docs/SCHEMA.md`, `docs/DEPLOYMENT.md` and `server/.env.exa
 `docs/BACKEND_STRUCTURE.md` (`integrations/`), `docs/CONFIGURATION.md`, `.claude/hooks/major-change-gate.js` and
 CLAUDE.md §17 (`server/src/integrations/` is a major-change path). Intent: `--server minor`.
 
+As built: `MEDIA_STORAGE` defaults to `local` when `APP_ENV` is local and `s3` elsewhere (not `s3` everywhere: the S3
+store arrives in PR 09, so a developer and the test suite would have no store at all); until PR 09 the `s3` store is a
+placeholder that answers 503 to an upload. The major-change path list lives in `.claude/rules/workflow.md` §17, not
+CLAUDE.md. `complete` is a SQL function (`complete_media_upload`: the transition and `media.uploaded` in one
+transaction). The local PUT also checks the magic bytes, and the route is matched in `app.ts` to lift the 100 KB JSON
+limit for it alone. `MEDIA_UPLOAD` is its own constant (not in `LIMITS`, which the client mirrors).
+
 ### PR 09 — Media: S3 and MinIO (P3.3)
 
-- [ ] Merged
+- [x] Merged (#92)
 
 - `src/integrations/media/s3.ts` with `@aws-sdk/client-s3` and `@aws-sdk/s3-presigned-post`: a presigned POST that
   pins the exact key, the content type and a `content-length-range`, valid for five minutes. Env: `MEDIA_BUCKET`,
@@ -390,9 +539,16 @@ Docs: `docs/DEPLOYMENT.md` (MinIO, the variables, the web image's new variable),
 CLAUDE.md §9 (the upload host is the one new runtime host), `docs/TESTING.md`. Intent: `--server minor --client
 patch`.
 
+As built: **RustFS** (`rustfs/rustfs:1.0.4`) instead of MinIO, which no longer publishes images (Docker Hub and quay
+refuse the pull); it passed the same checks (the POST policy's size, key and type; `If-None-Match` write-once; no
+anonymous read; bucket CORS). The policy pins the exact declared size, not only a maximum. Without `MEDIA_BUCKET` the
+`s3` store answers 503 and the API still starts (staging has no bucket until P8). `pnpm run media:bucket` makes the
+local bucket and its CORS rule (refused on production). nginx's `/media/` upstream is the web image's required
+`MEDIA_UPSTREAM` (the API in compose by default); the bucket is private, so serving variants publicly is PR 10's.
+
 ### PR 10 — Media: the image pipeline in the worker (P3.3)
 
-- [ ] Merged
+- [x] Merged (10a #93, 6c37a09; 10b #94, 30027a6)
 
 Migration `<ts>_q_media.sql`: `select pgmq.create('q_media')`; subscription `('media.*', 'q_media')`;
 a nightly schedule calls `emit_event('media.sweep', …)`, because the sweep below deletes objects from the store,
@@ -404,7 +560,8 @@ Server:
 - `src/jobs/media.ts`, added to `worker.ts`'s handler list: first read the upload row; `PROCESSED` means
   acknowledge and return, so a redelivered message after a completed run never reads the store. Otherwise read the
   original (a missing original for an upload that is not `PROCESSED` is a `PermanentError` that marks it `FAILED`);
-  `sharp` checks the real type from the bytes (anything but JPEG, PNG or WebP, or larger than 6000×6000, is a
+  the original is untrusted even after `complete` (its presigned form stays valid for five minutes and can replace
+  the bytes at the same size), so `sharp` checks the real type from the bytes (anything but JPEG, PNG or WebP, or larger than 6000×6000, is a
   `PermanentError` that marks the upload `FAILED`); auto-rotate, strip metadata, write 400w and 900w WebP under
   `stores/<storeId>/<sha256 prefix>-<width>.webp` with `public, max-age=31536000, immutable`; mark the upload
   `PROCESSED` with its variants; delete the original last. A crash before the mark reruns the whole handler and
@@ -437,9 +594,19 @@ and the image stays under its 300 MB budget.
 Docs: `docs/JOBS.md` (the queue, the handler, the sweep), `docs/SCHEMA.md`, `docs/API.md` (`imageSrcSet`,
 `imageUploadId`), `docs/LOGGING.md`. Intent: `--server minor --client patch`.
 
+As built, in two PRs. **10a**: the queue (`media.uploaded` only, not `media.*`, so the handler's own
+`media.processed` / `media.failed` do not come back), `finish_media_upload` (the transition and its event, actor
+`WORKER`), the handler with `sharp` 0.35 (the variants are `{ width, height, key }` under
+`stores/<store>/variants/`, inside `MEDIA_KEY`), the S3 write's immutable `Cache-Control`, and the `images` job's
+sharp check (the API image is 284 MB of its 300). **10b**: `imageUploadId` and `imageSrcSet` on the item routes, the
+nightly `media.sweep`, and its tests.
+10b as built: the candidates are chosen in SQL (`media_sweep_candidates`), since the reference checks span
+`menu_items`, `order_items` and `media_uploads`, which only their owners may query; a processed upload's row stays while
+anything shows it, so a replaced photo is found and swept later. The sweep reads its time from the event.
+
 ### PR 11 — Client: photo upload, and `FoodPhoto` with variants (P3.3)
 
-- [ ] Merged
+- [x] Merged (#95)
 
 - `features/manage/usePhotoUpload.ts`: redraw the chosen file on a canvas at 2000px on its longer side and encode a
   JPEG (saves upload data on a metered connection, and turns any format the browser can show into one the server
@@ -459,7 +626,7 @@ Docs: `docs/COMPONENTS.md` (`FoodPhoto`'s `srcSet`), `docs/FRONTEND_STRUCTURE.md
 
 ### PR 12 — The bundled photos move to media (P3.3)
 
-- [ ] Merged
+- [ ] Merged (12a #96, 1c17be0; 12b waits for P8: staging has no bucket, so the bundled photos cannot leave yet, D7)
 
 - `server/scripts/migrate-media.ts`: for one environment per run, push every photo under `client/public/images/`
   through the same pipeline and rewrite `menu_items.image_url`, `image_variants` and `stores.image_url`, and also rewrite the
@@ -480,9 +647,16 @@ Docs: `docs/DEPLOYMENT.md` (the migration, replacing "Compressing photos"), `.cl
 
 Split seam: the script and seed as 12a, the removal as 12b after staging has migrated.
 
+12a as built: `scripts/media-migration.ts` (shared by `migrate:media` and the seed) runs each (store, photo) through
+the worker's `makeVariants`, and two SQL functions find and repoint the rows (`bundled_photo_refs`,
+`move_bundled_photo`: the items and the order lines in one transaction). Store covers are not moved yet: the cover
+stays bundled until a store can upload its own, which 12b brings with the settings screen's cover upload. The seed
+leaves the photos bundled where no media store is available (staging has no bucket until P8), so **12b waits for P8**:
+staging can only migrate once it has a bucket.
+
 ### PR 13 — Modifiers: schema, pricing, orders (P3.2)
 
-- [ ] Merged
+- [x] Merged (13a #97, 11f5b04; 13b #98, b2e1599; 13c #100, 94dea64)
 
 `/before-write`: schema-guard, NEW TABLE ×4. Skill: `agent-skills:test` (rules first, as failing tests).
 
@@ -526,9 +700,29 @@ Docs: `docs/SCHEMA.md`, `docs/API.md` (request, menu, order, two error codes), `
 
 Split seam: the schema and menu payload as 13a, `place_order` and the order DTO as 13b.
 
+As built, in three: **13a** the tables, the flag row, the menu payload, `domain/pricing.ts` with the shared case table
+(`test/setup/modifierCases.ts`); **13b** `place_order` and the order DTO; **13c** the copies in
+`create_store_from_template` and `push_template_items`. 13a also makes `reset_demo_orders` truncate the snapshots
+(the seed failed on the new foreign key), and filters the menu's links by the groups' store rather than `in(itemIds)`
+(500 ids overflow the request URL). The menu budget became two numbers: the modifiers add under 9 KB raw to 60 items
+sharing three groups, and the whole menu goes out under 8 KB gzipped (nginx); the plain 60-item menu of the test is
+already ~22 KB raw, so a 25 KB raw total measured content, not modifiers. The link table is not audited
+(`audit_log.entity_id` needs an id); its writes are events. 13c copies by lineage (`template_group_id`, `template_option_id`) in
+`copy_template_modifiers`; a push carries the item's groups when it has the new `modifiers` field, and a branch's new
+copy of an item always does. A branch's own groups and its options' availability are never pushed. The push sheet's
+`modifiers` checkbox is PR 16's (the editor).
+
+13b as built: `price_order_line()` is the SQL half of `priceLine`; `place_order` is dropped and created again with
+`p_modifiers_enabled` (an added defaulted parameter would be a second overload, and named calls ambiguous);
+`order_item_modifiers.position` keeps the snapshots in the order applied. The replay check compares line by line, each requested line matching a stored line of the same item, quantity and requested options
+(`order_items.requested_modifier_option_ids`, as named, without the defaults applied). **The flag stays off until PR 15's client ships with a
+`min_client_version` bump**: an older client prices a required group's default at the item's base price and would
+loop on `PRICE_CHANGED`. A line naming a default and one leaving it out stay two lines (the merge happens before the
+groups are known); advisory.
+
 ### PR 14 — Modifiers: editing API (P3.2)
 
-- [ ] Merged
+- [x] Merged (#101, 3cb0570)
 
 `GET/POST/PATCH/DELETE /api/stores/:storeId/modifier-groups[/:groupId]` (a group with its options in one body;
 delete archives) and `PUT /api/stores/:storeId/menu-items/:itemId/modifier-groups { groupIds }`, all `menu.edit`.
@@ -542,9 +736,14 @@ the menu, after the invalidation).
 
 Docs: `docs/API.md`, `docs/SCHEMA.md`, `docs/CONFIGURATION.md`. Intent: `--server minor`.
 
+As built: archive is its own function too (`archive_modifier_group`), so every write emits its `menu.changed` under the
+caller; `GET` also answers `itemGroupIds` (the editor's one read); `groupsPerStore` reaches the function as
+`p_max_groups` (one copy of the number). The client mirror of `MODIFIER_LIMITS` waits for PR 16, the editor that reads
+it.
+
 ### PR 15 — Client: the modifier picker and the cart (P3.2)
 
-- [ ] Merged
+- [x] Merged (15a #102, 16642a5; 15b #103, d14eecd)
 
 - `ModifierPicker` in `ItemDetailSheet`: radio buttons when a group allows one choice, checkboxes otherwise, a live
   price, "Choose one" inline, 44px targets, keyboard and screen-reader labels.
@@ -563,9 +762,17 @@ bundle check (the picker rides in the item sheet's chunk); `perf-auditor` on the
 
 Docs: `docs/COMPONENTS.md` (`ModifierPicker`), `docs/FRONTEND_STRUCTURE.md`. Intent: `--client minor`.
 
+Split seam: **15a** the cart's data (version 3: `lineKey`, `options`, the item's limit shared by its lines,
+`syncPrices` with deltas, `orderItems` sending `modifierOptionIds`), invisible while menus carry no groups; **15b** the
+picker, "Customisable", the cart and checkout showing options, and the `MODIFIER_*` recovery. As built in 15b: any item
+with groups is "Customisable" and its card's Add opens the sheet (decided from `modifierGroupIds`, so the memoised
+cards need no groups); every group starts at its available defaults; a `MODIFIER_*` refusal at checkout reloads the
+menu and shows the server's message, which names the group. The customise-pay-see-it e2e moves to PR 16, whose
+manager → customer → kitchen e2e covers it once orders show their options.
+
 ### PR 16 — Client: modifiers on orders, and their editor (P3.2)
 
-- [ ] Merged
+- [x] Merged (16a #106, 6e78c7a; 16b #107, 412fad0)
 
 - `OrderCard`, the order page and `StaffOrderCard` list each line's options (the kitchen must see them: the staff
   card shows them at full size, not as a footnote).
@@ -619,18 +826,18 @@ Only the user accepts or amends an ADR, and an accepted decision is never rewrit
 
 ## Decisions
 
-Open. The plan is written for the defaults; a different answer changes the PRs named.
+Answered by the user on 12 November 2026 (D1 on 11 November). Every answer is the default except D6.
 
-| #   | Decision                                                         | Default                                                                                                                               | Applies to |
-| --- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| D1  | How the brand template is stored                                 | **answered (the user, 11 November 2026):** as a never-public store row (`is_template`), sharing every menu table (ADR-001 as amended) | 01, 07, 13 |
-| D2  | What a push may overwrite                                        | name, description, price, category, diet and photo; never stock, availability, order or popularity                                    | 07         |
-| D3  | Where stock changes are recorded                                 | `stock_movements` for manual changes only; sales stay on the order lines; no duplicate in `audit_log`                                 | 04         |
-| D4  | P3.6 (surplus and deals) in P3, or after P5.9                    | after P5.9, whole                                                                                                                     | –          |
-| D5  | HEIC uploads                                                     | not accepted by the server; the editor converts what the browser can show                                                             | 08, 11     |
-| D6  | Who creates a brand's next store before the admin console (P7.4) | the seed and `create_store_from_template` through SQL; no endpoint in P3                                                              | 01         |
-| D7  | When the bundled photos are deleted                              | after local and staging have migrated (PR 12b); production starts on media, since it first deploys in P8                              | 12         |
-| D8  | Staff may edit stock by default (roadmap decision 16)            | yes                                                                                                                                   | 04         |
+| #   | Decision                                                         | Default                                                                                                                                                                                                                                                      | Applies to   |
+| --- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------ |
+| D1  | How the brand template is stored                                 | **answered (the user, 11 November 2026):** as a never-public store row (`is_template`), sharing every menu table (ADR-001 as amended)                                                                                                                        | 01, 07, 13   |
+| D2  | What a push may overwrite                                        | **answered:** name, description, price, category, diet and photo; never stock, availability, order or popularity                                                                                                                                             | 07           |
+| D3  | Where stock changes are recorded                                 | **answered:** `stock_movements` for manual changes only; sales stay on the order lines; no duplicate in `audit_log`                                                                                                                                          | 04           |
+| D4  | P3.6 (surplus and deals) in P3, or after P5.9                    | **answered:** after P5.9, whole                                                                                                                                                                                                                              | –            |
+| D5  | HEIC uploads                                                     | **answered:** not accepted by the server; the editor converts what the browser can show                                                                                                                                                                      | 08, 11       |
+| D6  | Who creates a brand's next store before the admin console (P7.4) | **answered (not the default):** the brand's owner, through the API and `/manage`; the store starts `DRAFT` and the owner publishes it once it has an address, weekly hours and an available item, and may unpublish it. Brands are still created by the seed | 01, 01b, 07b |
+| D7  | When the bundled photos are deleted                              | **answered:** after local and staging have migrated (PR 12b); production starts on media, since it first deploys in P8                                                                                                                                       | 12           |
+| D8  | Staff may edit stock by default (roadmap decision 16)            | **answered:** yes                                                                                                                                                                                                                                            | 04           |
 
 ## Closing P3
 
@@ -639,18 +846,22 @@ WebKit smoke, and `/break` (P3 changes how orders are priced and adds file uploa
 `feat/P3`. Then the PR `feat/P3` → `dev` ("P3 — catalog and media", exempt from the size limit,
 `@coderabbitai ignore`, listing its migrations in order); the user merges it. The milestone check (M3) on staging: a
 manager edits an item, its photo and its stock from a phone; a customer orders a customised item and the kitchen
-sees the options; the owner pushes a price from the template to one branch and not the other.
+sees the options; the owner pushes a price from the template to one branch and not the other; the owner opens a new
+branch, publishes it from a phone, and a customer orders from it.
 
 ## User steps (cannot be done from the repository)
 
-- Answer the [decisions](#decisions), or accept the defaults.
-- Create `feat/P3` from `dev` once P2 is merged (the `ci-ok required` ruleset's `feat/P[0-9]` pattern already covers it).
-- Merge each PR into `feat/P3`; push its migrations to staging (`pnpm run db:push:staging`).
+- ~~Answer the [decisions](#decisions)~~ (done 12 November 2026).
+- ~~Create `feat/P3` from `dev`~~ (cut by the agent from 7b53c34 on 12 November 2026).
+- Merge `feat/P3` into `dev` when P3 closes; push its migrations to staging (`pnpm run db:push:staging`).
 - Photos on staging: staging is not hosted on AWS until after the first release
   ([P8 plan](P8_INFRASTRUCTURE.md#later-staging-on-aws)), so a local stack pointed at staging uses
   `MEDIA_STORAGE=local`, and the presigned flow is exercised against MinIO locally and in CI. Production's bucket
   and its CloudFront route come from [P8 PR 05](P8_INFRASTRUCTURE.md#build-order).
 - Run `migrate-media` for staging after PR 12a; for production, with `--production`, at P8's first release.
+- Before `modifiers` goes on anywhere: raise `min_client_version` (Admin → site settings) to the client version with
+  PR 15. An older client sends an item's base price, so with a priced default option every checkout of that item
+  fails `PRICE_CHANGED`, and it cannot show or send options.
 - Turn `modifiers` on per store with `PATCH /api/admin/flags/modifiers` and an admin token.
 
 ## Risks and gotchas
@@ -676,3 +887,16 @@ sees the options; the owner pushes a price from the template to one branch and n
 - **Cart version 3** follows P2's version 2. Each `migrate` step is tested from every older version.
 - **Free tier.** `q_media` messages carry ids only; originals are deleted after processing; `media_uploads` and
   `stock_movements` are purged or small. Watch `pg_total_relation_size` as the `docs/JOBS.md` runbook says.
+
+As built, in two: **16a** orders, the order page and the kitchen card show each line's options (the server adds
+`modifiers[].optionId`), and Order Again re-adds the options the menu still has; **16b** the editor: "Choices" on the
+menu tab (`ModifierGroupEditor`, `useModifierGroups`) and the item's choices in `ItemEditor`, with
+`e2e/modifiers.spec.ts` (the manager adds "Extra cheese +₹20", a customer orders it and Pay sends it, the kitchen ticket
+names it), which also covers PR 15's customise-and-pay e2e.
+
+**The `/break` round at the P3 close** (PRs #112 to #116, into `feat/P3`) changed four things, each recorded in its
+owner doc: a store holds at most 500 live items (`MENU_ITEMS_MAX`; the overflow of an existing store is archived, not
+deleted, and a create past the cap is 409 `MENU_FULL`, [SCHEMA.md](../docs/SCHEMA.md), [API.md](../docs/API.md)); a
+site `ADMIN` has no team power ([PERMISSIONS.md](../docs/PERMISSIONS.md)); a brand's owner opens the board of any of
+their branches; and the cart follows another tab's write to `fp_cart`
+([FRONTEND_STRUCTURE.md](../docs/FRONTEND_STRUCTURE.md)).

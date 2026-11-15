@@ -40,4 +40,35 @@ describe('StaffOrderCard', () => {
     expect(isolated).toEqual([order.customerName, order.note]);
     expect(screen.getByText(/9876543210/).closest('bdi')).toBeNull();
   });
+
+  it("names each line's options at full size, so the kitchen makes it right (P3.2)", () => {
+    const withOptions: Order = {
+      ...order,
+      items: [
+        {
+          ...order.items[0]!,
+          modifiers: [
+            { optionId: 'l', groupName: 'Size', optionName: 'Large', priceDelta: 20 },
+            { optionId: null, groupName: 'Add-ons', optionName: 'Extra cheese', priceDelta: 20 },
+          ],
+        },
+      ],
+    };
+    render(<StaffOrderCard order={withOptions} pending={false} onChangeStatus={() => {}} />);
+    const options = screen.getByText('Large, Extra cheese');
+    expect(options).toHaveClass('font-semibold');
+    expect(options).not.toHaveClass('text-muted');
+  });
+});
+
+describe('StaffOrderCard on a long board', () => {
+  // Hundreds of orders scrolled and polled at 4x CPU dropped frames: a card off screen skips rendering (/break).
+  it('skips rendering while off screen, with a size estimate that grows with its lines', () => {
+    const { container } = render(
+      <StaffOrderCard order={order} pending={false} onChangeStatus={() => {}} />,
+    );
+    const card = container.querySelector('article')!;
+    expect(card.className).toContain('[content-visibility:auto]');
+    expect(card.getAttribute('style')).toMatch(/contain-intrinsic-size:\s*auto [\d.]+rem/);
+  });
 });

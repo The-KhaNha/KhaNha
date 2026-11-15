@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import budget from '../perf-budget.json' with { type: 'json' };
 import type { OrderStatus, Role, User } from '../src/types/api';
-import { mockApi, seedCart, signIn, store } from './fixtures';
+import { mockApi, seedCart, signIn, store, summary } from './fixtures';
 
 // Every route fits a 320px screen and 200% text with 44px controls, and loading or a late web font moves nothing.
 
@@ -133,13 +133,36 @@ async function textCutOff(page: Page): Promise<string[]> {
   });
 }
 
+const manager: Partial<User> = {
+  memberships: [
+    { storeId: store.id, storeSlug: store.slug, storeName: store.name, role: 'MANAGER' },
+  ],
+};
+
 const LAYOUT_ROUTES: {
   path: string;
   role?: Role;
   status?: OrderStatus;
   account?: Partial<User>;
+  /** Answers this route needs beyond mockApi's. */
+  setup?: (page: Page) => Promise<unknown>;
 }[] = [
-  // The store's page: with the fixtures' one store, `/` itself redirects here.
+  // The store list: two stores, so `/` stays the list (with one it redirects to the store).
+  {
+    path: '/',
+    setup: (page) =>
+      page.route('**/api/stores', (route) =>
+        route.fulfill({
+          json: {
+            stores: [
+              summary(store),
+              summary({ ...store, id: 's2', slug: 'north-gate', name: 'Campus Cafe North Gate' }),
+            ],
+          },
+        }),
+      ),
+  },
+  // The store's page.
   { path: '/s/cafe' },
   { path: '/s/cafe/menu' },
   { path: '/cart' },
@@ -158,9 +181,9 @@ const LAYOUT_ROUTES: {
   { path: '/staff/cafe', role: 'STAFF' },
   // An account on no store's team: the switcher's empty state.
   { path: '/staff', role: 'CUSTOMER' },
-  // The hours editor of a manager, with a day that has hours (its Add and Copy row).
+  // The stock screen of a manager: the staff switch, a row with a count and a low one.
   {
-    path: '/manage/cafe/hours',
+    path: '/manage/cafe/stock',
     role: 'CUSTOMER',
     account: {
       memberships: [
@@ -168,6 +191,10 @@ const LAYOUT_ROUTES: {
       ],
     },
   },
+  // The hours editor of a manager, with a day that has hours (its Add and Copy row).
+  { path: '/manage/cafe/hours', role: 'CUSTOMER', account: manager },
+  // The menu editor of a manager: each row's name, move buttons and switch, and the Choices heading's Add choice.
+  { path: '/manage/cafe/menu', role: 'CUSTOMER', account: manager },
 ];
 
 /**
@@ -192,6 +219,24 @@ async function fitsScreen(page: Page, when: string): Promise<void> {
   expect(await overflowingPastScreen(page), `elements past the right edge ${when}`).toEqual([]);
   expect(await labelsWiderThanControl(page), `labels past their button ${when}`).toEqual([]);
   expect(await textCutOff(page), `text cut off ${when}`).toEqual([]);
+  // An ellipsis is meant, but not on a label squeezed to nothing: at 200% text every store name once measured 0px.
+  expect(
+    await page.evaluate(() =>
+      Array.from(document.querySelectorAll<HTMLElement>('body *'))
+        .filter((el) => {
+          const style = getComputedStyle(el);
+          if (style.textOverflow !== 'ellipsis' || !el.textContent?.trim()) return false;
+          if (el.getClientRects().length === 0) return false;
+          return el.getBoundingClientRect().width < parseFloat(style.fontSize) * 1.5;
+        })
+        .map(
+          (el) =>
+            `"${el.textContent?.trim().slice(0, 30)}" ${Math.round(el.getBoundingClientRect().width)}px`,
+        )
+        .slice(0, 5),
+    ),
+    `labels squeezed to under 3 characters ${when}`,
+  ).toEqual([]);
   // A page title says where you are: it wraps rather than ending in "…" ("Orde…" told nobody anything).
   expect(
     await page.evaluate(() =>
@@ -211,12 +256,13 @@ async function fitsScreen(page: Page, when: string): Promise<void> {
   ).toBeLessThanOrEqual(page.viewportSize()?.width ?? 0);
 }
 
-for (const { path, role, status, account } of LAYOUT_ROUTES) {
+for (const { path, role, status, account, setup } of LAYOUT_ROUTES) {
   test(`${path}${role ? ` (${role}${status ? `, ${status}` : ''})` : ''}: every control is at least 44px, and it reflows at 320px and at 200% text`, async ({
     page,
   }) => {
     if (role) await signIn(page, role, status, account);
     await seedCart(page);
+    await setup?.(page);
     await page.goto(path);
     await expect(page).toHaveURL(new RegExp(`${path}$`));
     await expect(page.locator('main, #root > *').first()).toBeVisible();
@@ -244,6 +290,8 @@ for (const { path, role, status, account } of LAYOUT_ROUTES) {
 for (const { name, width, height } of [
   { name: 'a phone on its side', width: 640, height: 360 },
   { name: 'a narrow landscape window', width: 500, height: 300 },
+  // Upright with a cart: a cart bar that wrapped to four lines once left a 3px strip of menu to tap.
+  { name: 'a phone upright', width: 360, height: 640 },
 ]) {
   test(`/s/cafe/menu on ${name} at 200% text: an item can still be added`, async ({ page }) => {
     await seedCart(page);

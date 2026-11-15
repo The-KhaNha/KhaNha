@@ -8,6 +8,7 @@ import { validate } from '../middleware/validate';
 import { clientErrorsSchema } from '../schemas/clientErrors.schema';
 import { adminRouter } from './admin.routes';
 import { authRouter } from './auth.routes';
+import { brandRouter } from './brand.routes';
 import { meRouter } from './me.routes';
 import { orderRouter } from './order.routes';
 import { storesRouter } from './store.routes';
@@ -35,6 +36,7 @@ apiRouter.use(clientVersionGate);
 
 apiRouter.use('/auth', authRouter);
 apiRouter.use('/stores', storesRouter);
+apiRouter.use('/brands', brandRouter);
 apiRouter.use('/me', meRouter);
 apiRouter.use('/orders', orderRouter);
 apiRouter.use('/admin', adminRouter);

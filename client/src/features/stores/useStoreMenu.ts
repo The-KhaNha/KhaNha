@@ -15,14 +15,30 @@ export function useStoreMenu(storeRef: string, enabled = true) {
     enabled,
   });
 
+  // Stock is synced once per menu load: a later lines change must not undo a checkout correction (setAvailability).
   useEffect(() => {
     if (!data) return;
     const cart = useCartStore.getState();
     if (cartHoldsOtherStore(cart, data.store.id)) return;
-    const items = data.categories.flatMap((category) => category.items);
     cart.setLimits(data.rules);
-    cart.syncAvailability(items);
+    cart.syncAvailability(
+      data.categories.flatMap((category) => category.items),
+      data.modifierGroups,
+    );
   }, [data]);
+
+  // Lines that arrive later (another tab's cart rehydrated into this one) get only their choices checked.
+  // syncOptions sets nothing (and so writes nothing) when no line changed, so this settles after one pass.
+  const lines = useCartStore((s) => s.lines);
+  useEffect(() => {
+    if (!data) return;
+    const cart = useCartStore.getState();
+    if (cartHoldsOtherStore(cart, data.store.id)) return;
+    cart.syncOptions(
+      data.categories.flatMap((category) => category.items),
+      data.modifierGroups,
+    );
+  }, [data, lines]);
 
   return { menu: data, isLoading, error, retry: reload };
 }

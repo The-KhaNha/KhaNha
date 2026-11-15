@@ -113,6 +113,8 @@ export async function oldestStoreId(): Promise<string> {
   const { data } = await supabaseAdmin
     .from('stores')
     .select('id')
+    // A brand template (P3.1) is never orderable, so it is never "the" store.
+    .eq('is_template', false)
     .order('created_at')
     .order('id')
     .limit(1)
@@ -130,7 +132,7 @@ export function localSql<Row>(sql: string): Row[] {
     throw new Error('localSql reaches past the API: local only.');
   const out = execFileSync(
     'pnpm',
-    ['exec', 'supabase', 'db', 'query', '--local', '--output-format', 'json', sql],
+    ['exec', 'supabase', 'db', 'query', '--output-format', 'json', sql],
     {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -142,6 +144,15 @@ export function localSql<Row>(sql: string): Row[] {
   const rows = Array.isArray(parsed) ? parsed : parsed.rows;
   if (!rows) throw new Error(`localSql: no rows in the CLI's output: ${out.slice(0, 200)}`);
   return rows;
+}
+
+/** Runs one statement that returns no rows (a `do` block) on the local database as `postgres`. Local only. */
+export function localExec(sql: string): void {
+  if (resolveTestTarget() !== 'local')
+    throw new Error('localExec reaches past the API: local only.');
+  execFileSync('pnpm', ['exec', 'supabase', 'db', 'query', sql], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
 }
 
 /** Deletes an account created through `POST /api/auth/register` (not `createTestUser`), by email. */
@@ -215,7 +226,7 @@ export function testAuthMatrix(
 
 /**
  * Removes what a test made on its own stores: their events and orders, the users (with their orders at any store),
- * then the stores and brands. Nothing cascades from a store to its orders or events.
+ * the stores' menus, then the stores and brands. Nothing cascades from a store to its orders or events.
  */
 export async function deleteTestStores(
   storeIds: string[],
@@ -226,6 +237,12 @@ export async function deleteTestStores(
   await supabaseAdmin.from('orders').delete().in('store_id', storeIds).throwOnError();
   const userIds = users.map((user) => user.id);
   await supabaseAdmin.from('orders').delete().in('user_id', userIds).throwOnError();
+  await supabaseAdmin.from('stock_movements').delete().in('store_id', storeIds).throwOnError();
+  await supabaseAdmin.from('media_uploads').delete().in('store_id', storeIds).throwOnError();
+  // After the orders and movements: both point at the items. Nothing cascades from a store to its menu.
+  await supabaseAdmin.from('menu_items').delete().in('store_id', storeIds).throwOnError();
+  // A branch's groups are copied with its items (copy_template_modifiers); options and links cascade.
+  await supabaseAdmin.from('modifier_groups').delete().in('store_id', storeIds).throwOnError();
   await Promise.all(users.map((user) => deleteTestUser(user)));
   await supabaseAdmin.from('stores').delete().in('id', storeIds).throwOnError();
   await supabaseAdmin.from('brands').delete().in('id', brandIds).throwOnError();

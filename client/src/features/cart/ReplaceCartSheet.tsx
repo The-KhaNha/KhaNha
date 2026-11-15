@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Button } from '../../components/Button';
 import { useFocusTrap } from '../../lib/useFocusTrap';
+import { useBackToClose } from '../../lib/useBackToClose';
 
 interface ReplaceCartSheetProps {
   /** The store the cart holds now, and the one the customer is adding from. */
@@ -19,6 +20,8 @@ interface ReplaceCartSheetProps {
 export function ReplaceCartSheet({ fromName, toName, onReplace, onKeep }: ReplaceCartSheetProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   useFocusTrap(dialogRef, true);
+  // Back keeps the cart, as dismissing the question does.
+  useBackToClose(true, onKeep);
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;

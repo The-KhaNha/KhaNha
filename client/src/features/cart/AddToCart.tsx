@@ -1,7 +1,7 @@
 import { useCallback, useState, type ReactNode } from 'react';
 import type { MenuItem, MenuResponse } from '../../types/api';
 import { cartHoldsOtherStore } from '../stores/storeRules';
-import { useCartStore, type CartStoreRef } from './cartStore';
+import { useCartStore, type CartOption, type CartStoreRef } from './cartStore';
 import { ReplaceCartSheet } from './ReplaceCartSheet';
 import { AddToCartContext, type AddToCart } from './useAddToCart';
 
@@ -17,17 +17,21 @@ interface AddToCartProviderProps {
  * another store's items is replaced (the sheet is rendered here, once, whichever card was tapped).
  */
 export function AddToCartProvider({ store, rules, children }: AddToCartProviderProps) {
-  const [pending, setPending] = useState<{ item: MenuItem; quantity: number } | null>(null);
+  const [pending, setPending] = useState<{
+    item: MenuItem;
+    quantity: number;
+    options: CartOption[];
+  } | null>(null);
   const fromName = useCartStore((s) => s.storeName);
 
   const addToCart = useCallback<AddToCart>(
-    (item, quantity = 1) => {
+    (item, quantity = 1, options = []) => {
       const cart = useCartStore.getState();
       if (cartHoldsOtherStore(cart, store.id)) {
-        setPending({ item, quantity });
+        setPending({ item, quantity, options });
         return false;
       }
-      cart.add(item, quantity, store);
+      cart.add(item, quantity, store, options);
       return true;
     },
     [store],
@@ -38,7 +42,7 @@ export function AddToCartProvider({ store, rules, children }: AddToCartProviderP
     const cart = useCartStore.getState();
     cart.clear();
     cart.setLimits(rules);
-    cart.add(pending.item, pending.quantity, store);
+    cart.add(pending.item, pending.quantity, store, pending.options);
     setPending(null);
   }, [pending, rules, store]);
   const keep = useCallback(() => setPending(null), []);

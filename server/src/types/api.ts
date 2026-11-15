@@ -10,7 +10,14 @@ export interface UserDto {
   role: Role;
   createdAt: string;
   /** The stores this account works at (P2.2); the brand's owner has no rows here. */
-  memberships: { storeId: string; storeSlug: string; storeName: string; role: StoreRole }[];
+  memberships: {
+    storeId: string;
+    storeSlug: string;
+    storeName: string;
+    role: StoreRole;
+    /** The store's setting: whether its STAFF may change stock (a manager may change it at any time). */
+    staffCanEditStock: boolean;
+  }[];
   /** The brands this account owns: OWNER of every store of each (ADR-001). */
   ownedBrands: { id: string; name: string; slug: string }[];
 }
@@ -51,6 +58,43 @@ export type StoreSummaryDto = Pick<
   | 'openLabel'
 >;
 
+export type StoreStatus = 'DRAFT' | 'ACTIVE' | 'SUSPENDED' | 'ARCHIVED';
+
+/** A store as its brand's owner and managers edit it (P3.1): any status, with its contact phone. */
+export interface ManagedStoreDto {
+  id: string;
+  slug: string;
+  name: string;
+  status: StoreStatus;
+  isTemplate: boolean;
+  area: string | null;
+  address: string | null;
+  contactPhone: string | null;
+  tagline: string;
+  description: string;
+  imageUrl: string | null;
+  createdAt: string;
+}
+
+/** What a branch still lacks before it can be published (store_publish_missing); empty: ready. */
+export type PublishMissing = 'address' | 'hours' | 'menu';
+
+/** GET /api/stores/:storeId/manage: the store as its managers see it, whatever its status, and its go-live checklist. */
+export interface ManageStoreResponseDto {
+  store: ManagedStoreDto;
+  brand: { id: string; name: string; slug: string };
+  missing: PublishMissing[];
+}
+
+/** One brand of GET /api/brands/mine: its branches (every status) and its template, which branches copy. */
+export interface MyBrandDto {
+  id: string;
+  name: string;
+  slug: string;
+  template: ManagedStoreDto | null;
+  stores: ManagedStoreDto[];
+}
+
 /** One weekly interval of GET /api/stores/:storeRef/hours; `HH:MM`, `closesAt` before `opensAt` runs past midnight. */
 export interface StoreHoursDto {
   /** ISO weekday: 1 = Monday ... 7 = Sunday. */
@@ -82,13 +126,31 @@ export interface MenuItemDto {
   name: string;
   description: string;
   price: number;
-  imageUrl: string;
+  /** null: no photo yet (an item made in the editor before its upload). */
+  imageUrl: string | null;
+  /** An uploaded photo's WebP sizes, for `<img srcset>` ("/media/… 400w, /media/… 900w"); null for a bundled photo. */
+  imageSrcSet: string | null;
+  /** The item's modifier groups, in order, as keys of MenuResponse.modifierGroups; empty while `modifiers` is off. */
+  modifierGroupIds: string[];
+  /** null: not marked. */
+  diet: Diet | null;
   /** Effective availability: false when the item is switched off OR its tracked stock has run out. */
   isAvailable: boolean;
   isPopular: boolean;
   sortOrder: number;
   /** Units left when the item tracks stock; null = not tracked (only the per-order cap applies). */
   stockQuantity: number | null;
+}
+
+export type Diet = 'VEG' | 'NON_VEG' | 'EGG';
+
+/** An item in the menu editor (`GET /api/stores/:storeId/menu-items`): archived ones too, with the raw switch. */
+export interface ManagedMenuItemDto extends MenuItemDto {
+  /** The switch alone; `isAvailable` also counts stock. Always false once archived. */
+  isEnabled: boolean;
+  archivedAt: string | null;
+  /** The brand template item this one was copied from (its lineage, P3.1); null for a branch's own item or a template's. */
+  templateItemId: string | null;
 }
 
 export interface MenuCategoryDto {
@@ -102,6 +164,26 @@ export interface MenuResponse {
   store: StoreDto;
   popular: MenuItemDto[];
   categories: MenuCategoryDto[];
+  /** Every modifier group the menu's items offer, once (items name them by id); empty while `modifiers` is off. */
+  modifierGroups: Record<string, ModifierGroupDto>;
+}
+
+/** A choice on an item (P3.2): "Size" (choose 1), "Add-ons" (up to 3). */
+export interface ModifierGroupDto {
+  id: string;
+  name: string;
+  /** 0: optional. */
+  minSelect: number;
+  maxSelect: number;
+  options: {
+    id: string;
+    name: string;
+    /** Whole rupees, may be negative ("Small −₹20"). */
+    priceDelta: number;
+    /** Applied when the group is required and nothing is chosen. */
+    isDefault: boolean;
+    isAvailable: boolean;
+  }[];
 }
 
 /** A store's own limits (GET/PATCH /api/stores/:storeId/settings), edited by its manager or owner. */
@@ -111,6 +193,22 @@ export interface StoreSettingsDto {
   staffOrderListLimit: number;
   /** Minutes before closing at which the store stops taking orders; 0 = until it closes. */
   lastOrderMinutesBeforeClose: number;
+  /** Whether STAFF may change stock here (P3.5); managers and the owner always may. */
+  staffCanEditStock: boolean;
+}
+
+/** One hand-made stock change (GET /api/stores/:storeId/stock-movements). Sales are not movements. */
+export interface StockMovementDto {
+  id: number;
+  menuItemId: string;
+  /** Units added (negative: removed); null when tracking started or stopped. */
+  delta: number | null;
+  /** Stock after the change; null: no longer tracked. */
+  resultingQuantity: number | null;
+  reason: 'MANUAL_SET' | 'MANUAL_ADJUST' | 'WASTE';
+  /** Who made it; null for a system change or a deleted account. */
+  actor: { id: string; name: string } | null;
+  createdAt: string;
 }
 
 /** One person on a store's team (GET /api/stores/:storeId/members). The brand's owner is not a member. */
@@ -157,7 +255,19 @@ export interface OrderItemDto {
   quantity: number;
   lineTotal: number;
   /** The menu item's photo when the order was placed, so order screens need no menu lookup for thumbnails. */
-  imageUrl: string;
+  imageUrl: string | null;
+  /** The item's own price, whole rupees, before its options (`unitPrice` includes them); null on older orders. */
+  baseUnitPrice: number | null;
+  /**
+   * The options the line was made with, as they were then (P3.2): empty for a line without any. `optionId` is the
+   * option still on the menu (a reorder re-adds it), null once the option was deleted.
+   */
+  modifiers: {
+    optionId: string | null;
+    groupName: string;
+    optionName: string;
+    priceDelta: number;
+  }[];
 }
 
 export interface OrderDto {
@@ -231,4 +341,18 @@ export interface FeatureFlagDto {
   updatedAt: string;
   /** The admin who last changed it; null for a migration or a deleted account. */
   updatedBy: string | null;
+}
+
+/** One photo upload (P3.3): its progress and, once the pipeline has run, its variants. */
+export interface MediaUploadDto {
+  id: string;
+  status: 'PENDING' | 'UPLOADED' | 'PROCESSED' | 'FAILED';
+  contentType: string;
+  byteSize: number;
+  /** Where the photo is served from: the largest variant once PROCESSED, the original before. */
+  url: string;
+  /** The WebP copies, narrowest first, once PROCESSED; null before. */
+  variants: { width: number; height: number; url: string }[] | null;
+  failure: string | null;
+  createdAt: string;
 }

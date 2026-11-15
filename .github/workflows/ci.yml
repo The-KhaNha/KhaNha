@@ -130,14 +130,39 @@ jobs:
         with:
           cache-dependency-path: server/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
+      # A key or flag the Supabase CLI has deprecated is removed in its next major: fail now, not on that upgrade.
+      # The config is read by any command; the push script's flags only when it runs against a project.
+      - name: Nothing the Supabase CLI deprecated
+        run: |
+          out=$(pnpm exec supabase status 2>&1 || true)
+          if grep -iE 'deprecated|removed in v4' <<<"$out"; then exit 1; fi
+          # CLI 3: --project-ref became --remote=<ref>, and --local is the default (both go in v4).
+          if grep -nE -- '--project-ref|--local\b' scripts/*.sh package.json test/setup/*.ts; then
+            echo 'A deprecated Supabase CLI flag: --remote=<ref> for a project; nothing for local'; exit 1
+          fi
       # Only the services the API and tests use: Postgres, GoTrue, PostgREST and Kong.
       - run: pnpm run db:start:ci
+      # The S3 store's suite (test/api/media-s3.test.ts) runs against RustFS, as compose's `media` service does locally.
+      - name: Start the media bucket server
+        run: |
+          docker run -d --name media -p 9000:9000 -e RUSTFS_ACCESS_KEY=rustfsadmin -e RUSTFS_SECRET_KEY=rustfsadmin \
+            rustfs/rustfs:1.0.4
+          for _ in $(seq 1 30); do curl -fs -o /dev/null http://127.0.0.1:9000/health && exit 0; sleep 1; done
+          echo "RustFS did not start"; docker logs media; exit 1
       # server/.env.example holds the local CLI's default keys and URL, so the test-target guard sees APP_ENV=local.
       - run: cp .env.example .env
       - run: pnpm run seed
       - run: pnpm test
       - name: Generated types match the migrations
-        run: pnpm run db:types && git diff --exit-code -- src/types/database.ts
+        # The CLI's warnings go to stderr: a deprecated flag or key fails here too, not only on the v4 upgrade.
+        run: |
+          # `|| status=$?`: the step runs under bash -e, which would exit before printing the CLI's error.
+          status=0
+          pnpm run db:types 2> "$RUNNER_TEMP/types.err" || status=$?
+          cat "$RUNNER_TEMP/types.err" >&2
+          [ $status -eq 0 ] || exit $status
+          if grep -iE 'deprecated|removed in v4' "$RUNNER_TEMP/types.err"; then exit 1; fi
+          git diff --exit-code -- src/types/database.ts
       - if: always()
         run: pnpm run db:stop
 

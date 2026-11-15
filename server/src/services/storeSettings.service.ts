@@ -7,7 +7,7 @@ import type { UpdateStoreSettingsInput } from '../schemas/storeSettings.schema';
 import { invalidateMenus } from './menu.service';
 
 const SETTINGS_SELECT =
-  'max_quantity_per_item, low_stock_threshold, staff_order_list_limit, last_order_minutes_before_close';
+  'max_quantity_per_item, low_stock_threshold, staff_order_list_limit, last_order_minutes_before_close, staff_can_edit_stock';
 
 /**
  * One store's settings (columns of its `stores` row), cached under `store_settings:<id>`. Read for the staff list and
@@ -27,23 +27,19 @@ export function getStoreSettings(storeId: string): Promise<StoreSettings> {
   });
 }
 
-const COLUMN: { [K in keyof UpdateStoreSettingsInput]-?: keyof StoreSettings } = {
-  maxQuantityPerItem: 'max_quantity_per_item',
-  lowStockThreshold: 'low_stock_threshold',
-  staffOrderListLimit: 'staff_order_list_limit',
-  lastOrderMinutesBeforeClose: 'last_order_minutes_before_close',
-};
-
 export async function updateStoreSettings(
   storeId: string,
   input: UpdateStoreSettingsInput,
   ctx: RequestContext,
 ): Promise<StoreSettings> {
-  const update: Partial<StoreSettings> = {};
-  for (const [field, column] of Object.entries(COLUMN)) {
-    const value = input[field as keyof UpdateStoreSettingsInput];
-    if (value !== undefined) update[column as keyof StoreSettings] = value;
-  }
+  // Undefined fields are left out of the JSON body, so only the settings sent change.
+  const update: Partial<StoreSettings> = {
+    max_quantity_per_item: input.maxQuantityPerItem,
+    low_stock_threshold: input.lowStockThreshold,
+    staff_order_list_limit: input.staffOrderListLimit,
+    last_order_minutes_before_close: input.lastOrderMinutesBeforeClose,
+    staff_can_edit_stock: input.staffCanEditStock,
+  };
   const { data } = await supabaseAdmin
     .from('stores')
     .update(update)

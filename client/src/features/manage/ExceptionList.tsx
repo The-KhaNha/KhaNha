@@ -5,6 +5,7 @@ import { IconButton } from '../../components/IconButton';
 import { Input } from '../../components/Input';
 import type { NewException } from '../../services/stores';
 import type { ScheduleException } from '../../types/api';
+import { useLeaveWarning } from '../../lib/useLeaveWarning';
 import { PRESETS, localToday, presetDraft, timeInputClass } from './hoursRules';
 
 const range = (e: ScheduleException) =>
@@ -22,6 +23,8 @@ interface ExceptionListProps {
 export function ExceptionList({ exceptions, onAdd, onRemove, busy }: ExceptionListProps) {
   const [draft, setDraft] = useState<NewException | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // An open draft is unsaved typing: a reload asks first.
+  useLeaveWarning(draft !== null);
   const patch = (p: Partial<NewException>) => setDraft((d) => d && { ...d, ...p });
 
   const add = async () => {

@@ -245,7 +245,13 @@ describe('GET /api/auth/me', () => {
       const res = await api().get('/api/auth/me').set('Authorization', `Bearer ${user.token}`);
       expect(res.status).toBe(200);
       expect(res.body.user.memberships).toEqual([
-        { storeId: store.id, storeSlug: slug, storeName: 'Me Test Store', role: 'MANAGER' },
+        {
+          storeId: store.id,
+          storeSlug: slug,
+          storeName: 'Me Test Store',
+          role: 'MANAGER',
+          staffCanEditStock: true,
+        },
       ]);
       expect(res.body.user.ownedBrands).toEqual([{ id: brand.id, name: 'Me Test', slug }]);
     } finally {

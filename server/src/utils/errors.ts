@@ -15,6 +15,12 @@ export type ErrorCode =
   | 'IDEMPOTENCY_KEY_REUSED'
   | 'MEMBERSHIP_EXISTS'
   | 'PRICE_CHANGED'
+  | 'MODIFIER_REQUIRED'
+  | 'MODIFIER_INVALID'
+  | 'SLUG_TAKEN'
+  | 'MENU_FULL'
+  | 'STORE_NOT_READY'
+  | 'UPLOAD_INVALID'
   | 'CLIENT_OUTDATED'
   | 'RATE_LIMITED'
   | 'UPSTREAM_UNAVAILABLE'
@@ -63,13 +69,43 @@ export interface StorePausedDetails {
   pausedUntil: string | null;
 }
 
+/** What a store still needs before it can be published (P3.1): `address`, `hours`, `menu`. */
+export interface StoreNotReadyDetails {
+  kind: 'storeNotReady';
+  missing: string[];
+}
+
+/** Why a photo upload was refused (P3.3), so the client can say which rule it broke. */
+export interface UploadInvalidDetails {
+  kind: 'uploadInvalid';
+  reason: 'type' | 'sizeMismatch' | 'content' | 'notUploaded' | 'state';
+}
+
+/** A menu at its cap (MENU_FULL): the most live items a store may have. */
+export interface MenuFullDetails {
+  kind: 'menuFull';
+  max: number;
+}
+
+/** Which cart line's options were refused (P3.2), and the group when the refusal is about one. */
+export interface ModifierErrorDetails {
+  kind: 'modifier';
+  menuItemId: string;
+  name: string;
+  group: string | null;
+}
+
 export type ErrorDetails =
+  | ModifierErrorDetails
   | ItemErrorDetails
   | ReplayedOrderDetails
   | FieldErrorDetails
   | RateLimitDetails
   | StoreClosedDetails
-  | StorePausedDetails;
+  | StorePausedDetails
+  | StoreNotReadyDetails
+  | UploadInvalidDetails
+  | MenuFullDetails;
 
 /**
  * A dependency (Supabase's database or Auth, later the payment provider) failed or could not be reached. The error
@@ -200,6 +236,42 @@ export const insufficientStock = (menuItemId: string, name: string, available: n
     { menuItemId, name, available },
   );
 
+/** A stock adjustment would take an item below zero (adjust_stock): names what is left so staff can correct it. */
+export const stockBelowZero = (menuItemId: string, name: string, available: number): AppError =>
+  new AppError(
+    400,
+    'INSUFFICIENT_STOCK',
+    `Only ${available} ${name} left: you cannot remove more than that.`,
+    { menuItemId, name, available },
+  );
+
+/** A required choice was left empty (and the group has no default): "Choose your Size for Cold Coffee." */
+export const modifierRequired = (
+  menuItemId: string,
+  name: string,
+  group: string | null,
+): AppError =>
+  new AppError(
+    400,
+    'MODIFIER_REQUIRED',
+    group ? `Choose your ${group} for ${name}.` : `Choose the options for ${name}.`,
+    { kind: 'modifier', menuItemId, name, group },
+  );
+
+/**
+ * The options chosen for an item cannot be ordered: one is sold out or no longer offered, a group got too many, or
+ * (with options switched off for the store) any option at all. The client asks the customer to choose again.
+ */
+export const modifierInvalid = (menuItemId: string, name: string, group: string | null): AppError =>
+  new AppError(
+    400,
+    'MODIFIER_INVALID',
+    group
+      ? `The ${group} chosen for ${name} can't be ordered. Please choose again.`
+      : `The options chosen for ${name} can't be ordered. Please choose again.`,
+    { kind: 'modifier', menuItemId, name, group },
+  );
+
 /** An item switched off, by the API's check or by place_order's when it was switched off in between. */
 export const itemUnavailable = (menuItemId: string, name: string): AppError =>
   new AppError(
@@ -212,6 +284,37 @@ export const itemUnavailable = (menuItemId: string, name: string): AppError =>
       available: 0,
     },
   );
+
+/**
+ * The store already has the most live items it may (MENU_ITEMS_MAX, enforced by the menu_items_enforce_cap trigger):
+ * from a new item, a new branch copying a template, or a template push. Nothing is created.
+ */
+export const menuFull = (max: number): AppError =>
+  new AppError(
+    409,
+    'MENU_FULL',
+    `A menu can have at most ${max} items. Archive one before adding another.`,
+    { kind: 'menuFull', max },
+  );
+
+/** Another store already has the slug a new branch asked for (or was given from its name). */
+export const slugTaken = (): AppError =>
+  new AppError(409, 'SLUG_TAKEN', 'Another store already uses that web address. Choose another.', {
+    field: 'slug',
+  });
+
+/** A publish refused because the store is not ready; `missing` says what to add. */
+export const storeNotReady = (missing: string[]): AppError =>
+  new AppError(
+    409,
+    'STORE_NOT_READY',
+    'Add an address, weekly hours and at least one available item before publishing.',
+    { kind: 'storeNotReady', missing },
+  );
+
+/** A photo upload refused: a type, size or content the API does not take, or a step out of order. */
+export const uploadInvalid = (message: string, reason: UploadInvalidDetails['reason']): AppError =>
+  new AppError(400, 'UPLOAD_INVALID', message, { kind: 'uploadInvalid', reason });
 
 /** The email already works at the store, or already has an open invite there (P2.2). */
 export const membershipExists = (): AppError =>

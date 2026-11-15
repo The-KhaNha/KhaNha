@@ -49,6 +49,8 @@ export const AUDIT_ENTITY_TYPES = [
   'store_hours',
   'schedule_exception',
   'invite',
+  'modifier_group',
+  'modifier_option',
 ] as const;
 
 const timestamp = (name: string) =>

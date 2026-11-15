@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import { CARD_GROUP } from './lib/chunked';
 import type { MenuItem, MenuResponse } from './types/api';
 
 // jsdom has neither; the menu's category chips and photos observe layout.
@@ -33,6 +34,7 @@ const item = (i: number): MenuItem => ({
   description: 'Tasty',
   price: 100 + i,
   imageUrl: '/images/cold-coffee.jpg',
+  diet: null,
   isAvailable: true,
   isPopular: false,
   sortOrder: i,
@@ -83,15 +85,59 @@ describe('menu re-renders', () => {
   });
 
   // The React side above is half of it: 500 cards on the page still cost 130-250 ms per tap in style, layout and paint.
-  // A category off screen skips all three, with a rem size estimate until it is first drawn.
-  it('lets a category off screen skip rendering', () => {
+  // Groups of cards off screen skip all three (below). A section must not be contained too: WebKit could not scroll a
+  // group inside a contained section into view to tap it.
+  it('contains no menu section, only its groups of cards', () => {
     window.history.pushState({}, '', '/s/cafe/menu');
     const { container } = render(<App />);
     const sections = container.querySelectorAll<HTMLElement>('section[id^="section-"]');
     expect(sections.length).toBe(2);
-    for (const section of sections) {
-      expect(section.className).toContain('[content-visibility:auto]');
-      expect(section.getAttribute('style')).toMatch(/contain-intrinsic-size:\s*auto [\d.]+rem/);
+    for (const section of sections) expect(section.className).not.toContain('content-visibility');
+  });
+
+  // One category of hundreds fills the screen, so its section never skips: its cards do, in groups (/break, P3
+  // close). Never per card: WebKit could not scroll a contained card into view to tap it (6 e2e failures).
+  it('lets a group of cards off screen skip rendering, inside one long category too, but never a single card', () => {
+    window.history.pushState({}, '', '/s/cafe/menu');
+    const { container } = render(<App />);
+    const groups = container.querySelectorAll<HTMLElement>('section[id^="section-"] > div[style]');
+    expect(groups.length).toBeGreaterThan(0);
+    for (const group of groups) {
+      expect(group.className).toContain('[content-visibility:auto]');
+      expect(group.className).toContain('[contain-intrinsic-size:auto_calc(var(--cards)*9.25rem)]');
+      expect(group.querySelectorAll('article').length).toBeLessThanOrEqual(CARD_GROUP);
+    }
+    for (const card of container.querySelectorAll<HTMLElement>('article'))
+      expect(card.className).not.toContain('content-visibility');
+  });
+
+  // content-visibility skips layout and paint, not React's mount: a menu of hundreds mounted every card at load, one
+  // 180-240 ms task on a cheap phone (perf-auditor, P3 close). Only the groups near the screen mount.
+  it('mounts only the first groups of a long menu until the rest near the screen', () => {
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        observe() {}
+        disconnect() {}
+      },
+    );
+    const categories = menu.categories;
+    menu.categories = [
+      {
+        name: 'Coffee',
+        items: Array.from({ length: 60 }, (_, i) => ({ ...item(100 + i), category: 'Coffee' })),
+      },
+    ];
+    try {
+      window.history.pushState({}, '', '/s/cafe/menu');
+      const { container } = render(<App />);
+      const cards = container.querySelectorAll('article').length;
+      expect(cards).toBeGreaterThan(0);
+      expect(cards).toBeLessThanOrEqual(2 * CARD_GROUP);
+      expect(container.querySelectorAll('[data-lazy-group="waiting"]').length).toBeGreaterThan(0);
+    } finally {
+      menu.categories = categories;
+      vi.unstubAllGlobals();
     }
   });
 });

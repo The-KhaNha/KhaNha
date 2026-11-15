@@ -112,3 +112,11 @@ export const inviteAcceptLimiter = createRateLimiter({
   limit: env.RATE_LIMIT_INVITE_ACCEPT_MAX,
   keyBy: 'user',
 });
+
+/** Photo uploads started, per signed-in account (RATE_LIMIT_UPLOAD_MAX): each may be 8 MB of storage. */
+export const uploadLimiter = createRateLimiter({
+  name: 'upload',
+  windowMs: env.RATE_LIMIT_WINDOW_MS,
+  limit: env.RATE_LIMIT_UPLOAD_MAX,
+  keyBy: 'user',
+});

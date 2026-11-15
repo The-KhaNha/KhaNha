@@ -28,6 +28,7 @@ export const updateStoreSettingsSchema = z
       'Last-order cutoff',
       STORE_SETTING_BOUNDS.lastOrderMinutesBeforeClose,
     ),
+    staffCanEditStock: z.boolean('staffCanEditStock must be true or false.').optional(),
   })
   .refine((input) => Object.values(input).some((value) => value !== undefined), {
     message: 'Send at least one setting to change.',

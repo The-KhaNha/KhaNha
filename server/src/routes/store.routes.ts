@@ -1,18 +1,39 @@
-import { Router } from 'express';
+import express, { Router } from 'express';
 import * as admin from '../controllers/admin.controller';
+import * as media from '../controllers/media.controller';
+import * as menu from '../controllers/menu.controller';
+import * as modifiers from '../controllers/modifier.controller';
 import * as orders from '../controllers/order.controller';
 import * as store from '../controllers/store.controller';
+import * as stock from '../controllers/stock.controller';
 import * as team from '../controllers/team.controller';
 import { requireAuth, requireStore } from '../middleware/auth';
-import { writeLimiter } from '../middleware/rateLimit';
+import { uploadLimiter, writeLimiter } from '../middleware/rateLimit';
 import { validate } from '../middleware/validate';
 import { auditQuerySchema } from '../schemas/admin.schema';
+import { MEDIA_UPLOAD } from '../schemas/limits';
+import { createUploadSchema } from '../schemas/media.schema';
+import { saveModifierGroupSchema, setItemModifierGroupsSchema } from '../schemas/modifier.schema';
+import {
+  bulkAvailabilitySchema,
+  createMenuItemSchema,
+  reorderMenuSchema,
+  updateMenuItemSchema,
+} from '../schemas/menuItem.schema';
 import { listOrdersQuerySchema, updateOrderStatusSchema } from '../schemas/order.schema';
 import { updateStoreSettingsSchema } from '../schemas/storeSettings.schema';
-import { storeListQuerySchema, storeRefParamsSchema } from '../schemas/store.schema';
+import {
+  storeListQuerySchema,
+  storeRefParamsSchema,
+  updateStoreProfileSchema,
+} from '../schemas/store.schema';
 import { createExceptionSchema, setStoreHoursSchema } from '../schemas/storeHours.schema';
+import { adjustStockSchema, stockMovementsQuerySchema } from '../schemas/stock.schema';
 import { createInviteSchema } from '../schemas/team.schema';
 import { pauseStoreSchema } from '../schemas/storePause.schema';
+
+/** The local-mode upload route (its path is matched in app.ts to lift the JSON body limit). */
+export const MEDIA_FILE_ROUTE = '/:storeId/media/uploads/:uploadId/file';
 
 export const storesRouter = Router();
 
@@ -121,4 +142,173 @@ storesRouter.post(
   requireStore('store.pause'),
   writeLimiter,
   store.resumeStore,
+);
+// The menu editor (P3.4): managers and the owner; the brand's owner also edits the template's menu.
+storesRouter.get(
+  '/:storeId/menu-items',
+  requireAuth,
+  requireStore('menu.edit'),
+  menu.listMenuItems,
+);
+storesRouter.post(
+  '/:storeId/menu-items',
+  requireAuth,
+  requireStore('menu.edit'),
+  writeLimiter,
+  validate(createMenuItemSchema),
+  menu.createMenuItem,
+);
+storesRouter.post(
+  '/:storeId/menu-items/bulk',
+  requireAuth,
+  requireStore('menu.edit'),
+  writeLimiter,
+  validate(bulkAvailabilitySchema),
+  menu.setAvailability,
+);
+storesRouter.put(
+  '/:storeId/menu-items/order',
+  requireAuth,
+  requireStore('menu.edit'),
+  writeLimiter,
+  validate(reorderMenuSchema),
+  menu.reorderMenu,
+);
+storesRouter.patch(
+  '/:storeId/menu-items/:itemId',
+  requireAuth,
+  requireStore('menu.edit'),
+  writeLimiter,
+  validate(updateMenuItemSchema),
+  menu.updateMenuItem,
+);
+storesRouter.delete(
+  '/:storeId/menu-items/:itemId',
+  requireAuth,
+  requireStore('menu.edit'),
+  writeLimiter,
+  menu.archiveMenuItem,
+);
+// Modifier groups (P3.2): whoever edits the menu. A group is saved whole, with its options.
+storesRouter.get(
+  '/:storeId/modifier-groups',
+  requireAuth,
+  requireStore('menu.edit'),
+  modifiers.listModifierGroups,
+);
+storesRouter.post(
+  '/:storeId/modifier-groups',
+  requireAuth,
+  requireStore('menu.edit'),
+  writeLimiter,
+  validate(saveModifierGroupSchema),
+  modifiers.createModifierGroup,
+);
+storesRouter.patch(
+  '/:storeId/modifier-groups/:groupId',
+  requireAuth,
+  requireStore('menu.edit'),
+  writeLimiter,
+  validate(saveModifierGroupSchema),
+  modifiers.updateModifierGroup,
+);
+storesRouter.delete(
+  '/:storeId/modifier-groups/:groupId',
+  requireAuth,
+  requireStore('menu.edit'),
+  writeLimiter,
+  modifiers.archiveModifierGroup,
+);
+storesRouter.put(
+  '/:storeId/menu-items/:itemId/modifier-groups',
+  requireAuth,
+  requireStore('menu.edit'),
+  writeLimiter,
+  validate(setItemModifierGroupsSchema),
+  modifiers.setItemModifierGroups,
+);
+// Stock (P3.4, P3.5): managers and the owner, and staff while the store lets them (stock.update).
+storesRouter.patch(
+  '/:storeId/menu-items/:itemId/stock',
+  requireAuth,
+  requireStore('stock.update'),
+  writeLimiter,
+  validate(adjustStockSchema),
+  stock.adjustStock,
+);
+storesRouter.get('/:storeId/stock', requireAuth, requireStore('stock.update'), stock.listStock);
+storesRouter.get(
+  '/:storeId/stock-movements',
+  requireAuth,
+  requireStore('stock.update'),
+  validate(stockMovementsQuerySchema, 'query'),
+  stock.listStockMovements,
+);
+// A branch's profile and whether it is public (P3.1, D6): managers edit the profile; only the owner publishes.
+// The manage screen's own reads: the public ones serve only ACTIVE stores, and a DRAFT branch is managed too.
+storesRouter.get(
+  '/:storeId/manage',
+  requireAuth,
+  requireStore('store.profile'),
+  store.getManagedStore,
+);
+storesRouter.get(
+  '/:storeId/manage/hours',
+  requireAuth,
+  requireStore('hours.edit'),
+  store.getManagedHours,
+);
+storesRouter.patch(
+  '/:storeId/profile',
+  requireAuth,
+  requireStore('store.profile'),
+  writeLimiter,
+  validate(updateStoreProfileSchema),
+  store.updateStoreProfile,
+);
+storesRouter.post(
+  '/:storeId/publish',
+  requireAuth,
+  requireStore('store.publish'),
+  writeLimiter,
+  store.publishStore,
+);
+storesRouter.post(
+  '/:storeId/unpublish',
+  requireAuth,
+  requireStore('store.publish'),
+  writeLimiter,
+  store.unpublishStore,
+);
+
+// Photo uploads (P3.3): whoever edits the menu (the template's owner too). The bytes go straight to storage; in local
+// mode to the PUT below, the one route whose body may exceed the JSON limit (app.ts exempts it by path).
+storesRouter.post(
+  '/:storeId/media/uploads',
+  requireAuth,
+  requireStore('menu.edit'),
+  uploadLimiter,
+  validate(createUploadSchema),
+  media.createUpload,
+);
+storesRouter.put(
+  MEDIA_FILE_ROUTE,
+  requireAuth,
+  requireStore('menu.edit'),
+  writeLimiter,
+  express.raw({ type: () => true, limit: MEDIA_UPLOAD.maxBytes }),
+  media.putFile,
+);
+storesRouter.post(
+  '/:storeId/media/uploads/:uploadId/complete',
+  requireAuth,
+  requireStore('menu.edit'),
+  writeLimiter,
+  media.completeUpload,
+);
+storesRouter.get(
+  '/:storeId/media/uploads/:uploadId',
+  requireAuth,
+  requireStore('menu.edit'),
+  media.getUpload,
 );

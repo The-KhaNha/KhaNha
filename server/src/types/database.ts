@@ -10,12 +10,7 @@ export type Database = {
     };
     Functions: {
       graphql: {
-        Args: {
-          extensions?: Json;
-          operationName?: string;
-          query?: string;
-          variables?: Json;
-        };
+        Args: { extensions?: Json; operationName?: string; query?: string; variables?: Json };
         Returns: Json;
       };
     };
@@ -43,6 +38,7 @@ export type Database = {
           request_id: string | null;
           store_id: string | null;
         };
+        ComputedFields: never;
         Insert: {
           action: string;
           actor_id?: string | null;
@@ -83,8 +79,10 @@ export type Database = {
           owner_id: string | null;
           slug: string;
           status: Database['public']['Enums']['store_status'];
+          template_store_id: string | null;
           updated_at: string;
         };
+        ComputedFields: never;
         Insert: {
           created_at?: string;
           description?: string;
@@ -94,6 +92,7 @@ export type Database = {
           owner_id?: string | null;
           slug: string;
           status?: Database['public']['Enums']['store_status'];
+          template_store_id?: string | null;
           updated_at?: string;
         };
         Update: {
@@ -105,6 +104,7 @@ export type Database = {
           owner_id?: string | null;
           slug?: string;
           status?: Database['public']['Enums']['store_status'];
+          template_store_id?: string | null;
           updated_at?: string;
         };
         Relationships: [
@@ -113,6 +113,13 @@ export type Database = {
             columns: ['owner_id'];
             isOneToOne: false;
             referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'brands_template_store_id_fkey';
+            columns: ['template_store_id'];
+            isOneToOne: true;
+            referencedRelation: 'stores';
             referencedColumns: ['id'];
           },
         ];
@@ -124,18 +131,19 @@ export type Database = {
           aggregate_type: string;
           id: string;
           occurred_at: string;
-          payload: Json;
+          payload: NonNullable<Json>;
           request_id: string | null;
           store_id: string | null;
           type: string;
         };
+        ComputedFields: never;
         Insert: {
           actor?: Json | null;
           aggregate_id: string;
           aggregate_type: string;
           id?: string;
           occurred_at?: string;
-          payload: Json;
+          payload: NonNullable<Json>;
           request_id?: string | null;
           store_id?: string | null;
           type: string;
@@ -146,7 +154,7 @@ export type Database = {
           aggregate_type?: string;
           id?: string;
           occurred_at?: string;
-          payload?: Json;
+          payload?: NonNullable<Json>;
           request_id?: string | null;
           store_id?: string | null;
           type?: string;
@@ -166,6 +174,7 @@ export type Database = {
           event_type: string;
           queue_name: string;
         };
+        ComputedFields: never;
         Insert: {
           event_type: string;
           queue_name: string;
@@ -182,16 +191,17 @@ export type Database = {
           description: string;
           enabled: boolean;
           key: string;
-          rules: Json;
+          rules: NonNullable<Json>;
           updated_at: string;
           updated_by: string | null;
         };
+        ComputedFields: never;
         Insert: {
           client_visible?: boolean;
           description: string;
           enabled?: boolean;
           key: string;
-          rules?: Json;
+          rules?: NonNullable<Json>;
           updated_at?: string;
           updated_by?: string | null;
         };
@@ -200,7 +210,7 @@ export type Database = {
           description?: string;
           enabled?: boolean;
           key?: string;
-          rules?: Json;
+          rules?: NonNullable<Json>;
           updated_at?: string;
           updated_by?: string | null;
         };
@@ -220,17 +230,18 @@ export type Database = {
           failed_at: string;
           id: number;
           last_error: string;
-          message: Json;
+          message: NonNullable<Json>;
           queue_name: string;
           resolved_at: string | null;
           resolved_by: string | null;
         };
+        ComputedFields: never;
         Insert: {
           attempts: number;
           failed_at?: string;
           id?: never;
           last_error: string;
-          message: Json;
+          message: NonNullable<Json>;
           queue_name: string;
           resolved_at?: string | null;
           resolved_by?: string | null;
@@ -240,7 +251,7 @@ export type Database = {
           failed_at?: string;
           id?: never;
           last_error?: string;
-          message?: Json;
+          message?: NonNullable<Json>;
           queue_name?: string;
           resolved_at?: string | null;
           resolved_by?: string | null;
@@ -255,12 +266,107 @@ export type Database = {
           },
         ];
       };
+      media_uploads: {
+        Row: {
+          byte_size: number;
+          content_type: string;
+          created_at: string;
+          created_by: string | null;
+          failure: string | null;
+          id: string;
+          original_key: string;
+          processed_at: string | null;
+          status: Database['public']['Enums']['media_upload_status'];
+          store_id: string;
+          variants: Json | null;
+        };
+        ComputedFields: never;
+        Insert: {
+          byte_size: number;
+          content_type: string;
+          created_at?: string;
+          created_by?: string | null;
+          failure?: string | null;
+          id?: string;
+          original_key: string;
+          processed_at?: string | null;
+          status?: Database['public']['Enums']['media_upload_status'];
+          store_id: string;
+          variants?: Json | null;
+        };
+        Update: {
+          byte_size?: number;
+          content_type?: string;
+          created_at?: string;
+          created_by?: string | null;
+          failure?: string | null;
+          id?: string;
+          original_key?: string;
+          processed_at?: string | null;
+          status?: Database['public']['Enums']['media_upload_status'];
+          store_id?: string;
+          variants?: Json | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'media_uploads_created_by_fkey';
+            columns: ['created_by'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'media_uploads_store_id_fkey';
+            columns: ['store_id'];
+            isOneToOne: false;
+            referencedRelation: 'stores';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      menu_item_modifier_groups: {
+        Row: {
+          group_id: string;
+          menu_item_id: string;
+          sort_order: number;
+        };
+        ComputedFields: never;
+        Insert: {
+          group_id: string;
+          menu_item_id: string;
+          sort_order?: number;
+        };
+        Update: {
+          group_id?: string;
+          menu_item_id?: string;
+          sort_order?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'menu_item_modifier_groups_group_id_fkey';
+            columns: ['group_id'];
+            isOneToOne: false;
+            referencedRelation: 'modifier_groups';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'menu_item_modifier_groups_menu_item_id_fkey';
+            columns: ['menu_item_id'];
+            isOneToOne: false;
+            referencedRelation: 'menu_items';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       menu_items: {
         Row: {
+          archived_at: string | null;
           category: string;
           description: string;
+          diet: Database['public']['Enums']['diet_marker'] | null;
           id: string;
-          image_url: string;
+          image_url: string | null;
+          image_variants: Json | null;
           is_available: boolean;
           is_popular: boolean;
           name: string;
@@ -268,12 +374,17 @@ export type Database = {
           sort_order: number;
           stock_quantity: number | null;
           store_id: string;
+          template_item_id: string | null;
         };
+        ComputedFields: never;
         Insert: {
+          archived_at?: string | null;
           category: string;
           description: string;
+          diet?: Database['public']['Enums']['diet_marker'] | null;
           id?: string;
-          image_url: string;
+          image_url?: string | null;
+          image_variants?: Json | null;
           is_available?: boolean;
           is_popular?: boolean;
           name: string;
@@ -281,12 +392,16 @@ export type Database = {
           sort_order?: number;
           stock_quantity?: number | null;
           store_id: string;
+          template_item_id?: string | null;
         };
         Update: {
+          archived_at?: string | null;
           category?: string;
           description?: string;
+          diet?: Database['public']['Enums']['diet_marker'] | null;
           id?: string;
-          image_url?: string;
+          image_url?: string | null;
+          image_variants?: Json | null;
           is_available?: boolean;
           is_popular?: boolean;
           name?: string;
@@ -294,6 +409,7 @@ export type Database = {
           sort_order?: number;
           stock_quantity?: number | null;
           store_id?: string;
+          template_item_id?: string | null;
         };
         Relationships: [
           {
@@ -303,45 +419,209 @@ export type Database = {
             referencedRelation: 'stores';
             referencedColumns: ['id'];
           },
+          {
+            foreignKeyName: 'menu_items_template_item_id_fkey';
+            columns: ['template_item_id'];
+            isOneToOne: false;
+            referencedRelation: 'menu_items';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      modifier_groups: {
+        Row: {
+          archived_at: string | null;
+          created_at: string;
+          id: string;
+          max_select: number;
+          min_select: number;
+          name: string;
+          sort_order: number;
+          store_id: string;
+          template_group_id: string | null;
+        };
+        ComputedFields: never;
+        Insert: {
+          archived_at?: string | null;
+          created_at?: string;
+          id?: string;
+          max_select?: number;
+          min_select?: number;
+          name: string;
+          sort_order?: number;
+          store_id: string;
+          template_group_id?: string | null;
+        };
+        Update: {
+          archived_at?: string | null;
+          created_at?: string;
+          id?: string;
+          max_select?: number;
+          min_select?: number;
+          name?: string;
+          sort_order?: number;
+          store_id?: string;
+          template_group_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'modifier_groups_store_id_fkey';
+            columns: ['store_id'];
+            isOneToOne: false;
+            referencedRelation: 'stores';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'modifier_groups_template_group_id_fkey';
+            columns: ['template_group_id'];
+            isOneToOne: false;
+            referencedRelation: 'modifier_groups';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      modifier_options: {
+        Row: {
+          archived_at: string | null;
+          group_id: string;
+          id: string;
+          is_available: boolean;
+          is_default: boolean;
+          name: string;
+          price_delta_paise: number;
+          sort_order: number;
+          template_option_id: string | null;
+        };
+        ComputedFields: never;
+        Insert: {
+          archived_at?: string | null;
+          group_id: string;
+          id?: string;
+          is_available?: boolean;
+          is_default?: boolean;
+          name: string;
+          price_delta_paise?: number;
+          sort_order?: number;
+          template_option_id?: string | null;
+        };
+        Update: {
+          archived_at?: string | null;
+          group_id?: string;
+          id?: string;
+          is_available?: boolean;
+          is_default?: boolean;
+          name?: string;
+          price_delta_paise?: number;
+          sort_order?: number;
+          template_option_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'modifier_options_group_id_fkey';
+            columns: ['group_id'];
+            isOneToOne: false;
+            referencedRelation: 'modifier_groups';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'modifier_options_template_option_id_fkey';
+            columns: ['template_option_id'];
+            isOneToOne: false;
+            referencedRelation: 'modifier_options';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      order_item_modifiers: {
+        Row: {
+          group_name: string;
+          id: string;
+          modifier_option_id: string | null;
+          option_name: string;
+          order_item_id: string;
+          position: number;
+          price_delta_paise: number;
+        };
+        ComputedFields: never;
+        Insert: {
+          group_name: string;
+          id?: string;
+          modifier_option_id?: string | null;
+          option_name: string;
+          order_item_id: string;
+          position?: number;
+          price_delta_paise: number;
+        };
+        Update: {
+          group_name?: string;
+          id?: string;
+          modifier_option_id?: string | null;
+          option_name?: string;
+          order_item_id?: string;
+          position?: number;
+          price_delta_paise?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'order_item_modifiers_modifier_option_id_fkey';
+            columns: ['modifier_option_id'];
+            isOneToOne: false;
+            referencedRelation: 'modifier_options';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'order_item_modifiers_order_item_id_fkey';
+            columns: ['order_item_id'];
+            isOneToOne: false;
+            referencedRelation: 'order_items';
+            referencedColumns: ['id'];
+          },
         ];
       };
       order_items: {
         Row: {
+          base_unit_price_paise: number | null;
           category: string;
           id: string;
-          image_url: string;
+          image_url: string | null;
           line_number: number;
           line_total_paise: number;
           menu_item_id: string;
           name: string;
           order_id: string;
           quantity: number;
+          requested_modifier_option_ids: string[];
           reserved_quantity: number;
           unit_price_paise: number;
         };
+        ComputedFields: never;
         Insert: {
+          base_unit_price_paise?: number | null;
           category: string;
           id?: string;
-          image_url: string;
+          image_url?: string | null;
           line_number: number;
           line_total_paise: number;
           menu_item_id: string;
           name: string;
           order_id: string;
           quantity: number;
+          requested_modifier_option_ids?: string[];
           reserved_quantity: number;
           unit_price_paise: number;
         };
         Update: {
+          base_unit_price_paise?: number | null;
           category?: string;
           id?: string;
-          image_url?: string;
+          image_url?: string | null;
           line_number?: number;
           line_total_paise?: number;
           menu_item_id?: string;
           name?: string;
           order_id?: string;
           quantity?: number;
+          requested_modifier_option_ids?: string[];
           reserved_quantity?: number;
           unit_price_paise?: number;
         };
@@ -380,6 +660,7 @@ export type Database = {
           updated_at: string;
           user_id: string;
         };
+        ComputedFields: never;
         Insert: {
           created_at?: string;
           customer_name: string;
@@ -440,6 +721,7 @@ export type Database = {
           phone: string | null;
           role: Database['public']['Enums']['user_role'];
         };
+        ComputedFields: never;
         Insert: {
           created_at?: string;
           email: string;
@@ -464,6 +746,7 @@ export type Database = {
           session_id: string;
           user_id: string;
         };
+        ComputedFields: never;
         Insert: {
           last_seen_at: string;
           session_id: string;
@@ -497,6 +780,7 @@ export type Database = {
           updated_at: string;
           updated_by: string | null;
         };
+        ComputedFields: never;
         Insert: {
           client_error_sample_percent?: number;
           customer_order_history_limit?: number;
@@ -531,6 +815,62 @@ export type Database = {
           },
         ];
       };
+      stock_movements: {
+        Row: {
+          actor_id: string | null;
+          created_at: string;
+          delta: number | null;
+          id: number;
+          menu_item_id: string;
+          reason: Database['public']['Enums']['stock_reason'];
+          resulting_quantity: number | null;
+          store_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          actor_id?: string | null;
+          created_at?: string;
+          delta?: number | null;
+          id?: never;
+          menu_item_id: string;
+          reason: Database['public']['Enums']['stock_reason'];
+          resulting_quantity?: number | null;
+          store_id: string;
+        };
+        Update: {
+          actor_id?: string | null;
+          created_at?: string;
+          delta?: number | null;
+          id?: never;
+          menu_item_id?: string;
+          reason?: Database['public']['Enums']['stock_reason'];
+          resulting_quantity?: number | null;
+          store_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'stock_movements_actor_id_fkey';
+            columns: ['actor_id'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'stock_movements_menu_item_id_fkey';
+            columns: ['menu_item_id'];
+            isOneToOne: false;
+            referencedRelation: 'menu_items';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'stock_movements_store_id_fkey';
+            columns: ['store_id'];
+            isOneToOne: false;
+            referencedRelation: 'stores';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       store_hours: {
         Row: {
           closes_at: string;
@@ -540,6 +880,7 @@ export type Database = {
           opens_at: string;
           store_id: string;
         };
+        ComputedFields: never;
         Insert: {
           closes_at: string;
           created_at?: string;
@@ -580,6 +921,7 @@ export type Database = {
           store_id: string;
           token_hash: string;
         };
+        ComputedFields: never;
         Insert: {
           accepted_at?: string | null;
           accepted_by?: string | null;
@@ -639,6 +981,7 @@ export type Database = {
           store_id: string;
           user_id: string;
         };
+        ComputedFields: never;
         Insert: {
           created_at?: string;
           created_by?: string | null;
@@ -691,6 +1034,7 @@ export type Database = {
           starts_on: string;
           store_id: string;
         };
+        ComputedFields: never;
         Insert: {
           closes_at?: string | null;
           created_at?: string;
@@ -735,6 +1079,7 @@ export type Database = {
           id: string;
           image_url: string | null;
           is_open: boolean;
+          is_template: boolean;
           last_order_minutes_before_close: number;
           low_stock_threshold: number;
           max_quantity_per_item: number;
@@ -745,12 +1090,14 @@ export type Database = {
           prep_time_max_minutes: number;
           prep_time_min_minutes: number;
           slug: string;
+          staff_can_edit_stock: boolean;
           staff_order_list_limit: number;
           status: Database['public']['Enums']['store_status'];
           tagline: string;
           timezone: string;
           updated_at: string;
         };
+        ComputedFields: never;
         Insert: {
           accepting_orders?: boolean;
           address_line?: string | null;
@@ -762,6 +1109,7 @@ export type Database = {
           id?: string;
           image_url?: string | null;
           is_open?: boolean;
+          is_template?: boolean;
           last_order_minutes_before_close?: number;
           low_stock_threshold?: number;
           max_quantity_per_item?: number;
@@ -772,6 +1120,7 @@ export type Database = {
           prep_time_max_minutes?: number;
           prep_time_min_minutes?: number;
           slug: string;
+          staff_can_edit_stock?: boolean;
           staff_order_list_limit?: number;
           status?: Database['public']['Enums']['store_status'];
           tagline: string;
@@ -789,6 +1138,7 @@ export type Database = {
           id?: string;
           image_url?: string | null;
           is_open?: boolean;
+          is_template?: boolean;
           last_order_minutes_before_close?: number;
           low_stock_threshold?: number;
           max_quantity_per_item?: number;
@@ -799,6 +1149,7 @@ export type Database = {
           prep_time_max_minutes?: number;
           prep_time_min_minutes?: number;
           slug?: string;
+          staff_can_edit_stock?: boolean;
           staff_order_list_limit?: number;
           status?: Database['public']['Enums']['store_status'];
           tagline?: string;
@@ -851,6 +1202,53 @@ export type Database = {
           isSetofReturn: false;
         };
       };
+      adjust_stock: {
+        Args: {
+          p_actor?: Json;
+          p_delta?: number;
+          p_menu_item_id: string;
+          p_reason?: Database['public']['Enums']['stock_reason'];
+          p_request_id?: string;
+          p_set?: number;
+          p_store_id: string;
+          p_untracked?: boolean;
+        };
+        Returns: number;
+      };
+      archive_modifier_group: {
+        Args: { p_actor?: Json; p_group_id: string; p_request_id?: string; p_store_id: string };
+        Returns: undefined;
+      };
+      bundled_photo_refs: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          image_url: string;
+          menu_rows: number;
+          order_rows: number;
+          store_id: string;
+        }[];
+      };
+      bundled_photo_row_count: { Args: Record<PropertyKey, never>; Returns: number };
+      complete_media_upload: {
+        Args: { p_actor?: Json; p_request_id?: string; p_store_id: string; p_upload_id: string };
+        Returns: boolean;
+      };
+      copy_template_modifiers: {
+        Args: { p_copy_item_ids: string[]; p_sync: boolean };
+        Returns: string[];
+      };
+      create_store_from_template: {
+        Args: {
+          p_actor?: Json;
+          p_address_line?: string;
+          p_area?: string;
+          p_brand_id: string;
+          p_name: string;
+          p_request_id?: string;
+          p_slug: string;
+        };
+        Returns: string;
+      };
       emit_event: {
         Args: {
           p_actor: Json;
@@ -862,6 +1260,42 @@ export type Database = {
           p_type: string;
         };
         Returns: string;
+      };
+      ensure_brand_template: {
+        Args: { p_actor?: Json; p_brand_id: string; p_request_id?: string };
+        Returns: string;
+      };
+      finish_media_upload: {
+        Args: {
+          p_actor?: Json;
+          p_failure?: string;
+          p_request_id?: string;
+          p_status: Database['public']['Enums']['media_upload_status'];
+          p_upload_id: string;
+          p_variants?: Json;
+        };
+        Returns: boolean;
+      };
+      lock_store_menu: { Args: { p_store_id: string }; Returns: undefined };
+      media_sweep_candidates: {
+        Args: { p_limit?: number; p_now?: string };
+        Returns: {
+          original_key: string;
+          remove_keys: string[];
+          upload_id: string;
+        }[];
+      };
+      media_upload_shown: { Args: { p_upload_id: string }; Returns: boolean };
+      move_bundled_photo: {
+        Args: {
+          p_actor?: Json;
+          p_from: string;
+          p_request_id?: string;
+          p_store_id: string;
+          p_to: string;
+          p_variants: Json;
+        };
+        Returns: number;
       };
       pause_store: {
         Args: {
@@ -881,6 +1315,7 @@ export type Database = {
           p_customer_phone?: string;
           p_idempotency_key?: string;
           p_lines: Json;
+          p_modifiers_enabled?: boolean;
           p_note?: string;
           p_payment_status: Database['public']['Enums']['payment_status'];
           p_request_id?: string;
@@ -889,16 +1324,32 @@ export type Database = {
         };
         Returns: string;
       };
-      profile_name: {
-        Args: { p_email: string; p_name: string };
-        Returns: string;
+      price_order_line: {
+        Args: {
+          p_base_paise: number;
+          p_enabled: boolean;
+          p_item_name: string;
+          p_menu_item_id: string;
+          p_option_ids: string[];
+          p_store_id: string;
+        };
+        Returns: Json;
       };
+      profile_name: { Args: { p_email: string; p_name: string }; Returns: string };
       profile_phone: { Args: { p_phone: string }; Returns: string };
-      purge_domain_events: {
-        Args: { p_keep?: string; p_now?: string };
+      purge_domain_events: { Args: { p_keep?: string; p_now?: string }; Returns: number };
+      purge_session_activity: { Args: Record<PropertyKey, never>; Returns: number };
+      push_template_items: {
+        Args: {
+          p_actor?: Json;
+          p_brand_id: string;
+          p_fields: string[];
+          p_request_id?: string;
+          p_store_ids: string[];
+          p_template_item_ids: string[];
+        };
         Returns: number;
       };
-      purge_session_activity: { Args: never; Returns: number };
       queue_dead_letter: {
         Args: {
           p_attempts: number;
@@ -909,10 +1360,7 @@ export type Database = {
         };
         Returns: boolean;
       };
-      queue_delete: {
-        Args: { p_msg_id: number; p_queue: string };
-        Returns: boolean;
-      };
+      queue_delete: { Args: { p_msg_id: number; p_queue: string }; Returns: boolean };
       queue_metrics: {
         Args: { p_queue: string };
         Returns: {
@@ -921,12 +1369,7 @@ export type Database = {
         }[];
       };
       queue_read: {
-        Args: {
-          p_poll_seconds: number;
-          p_qty: number;
-          p_queue: string;
-          p_vt_seconds: number;
-        };
+        Args: { p_poll_seconds: number; p_qty: number; p_queue: string; p_vt_seconds: number };
         Returns: {
           enqueued_at: string;
           message: Json;
@@ -938,32 +1381,66 @@ export type Database = {
         Args: { p_delay_seconds: number; p_msg_id: number; p_queue: string };
         Returns: undefined;
       };
-      reset_demo_orders: { Args: never; Returns: undefined };
+      reorder_menu: {
+        Args: { p_actor?: Json; p_item_ids: string[]; p_request_id?: string; p_store_id: string };
+        Returns: undefined;
+      };
+      reset_demo_orders: { Args: Record<PropertyKey, never>; Returns: undefined };
       resume_store: {
+        Args: { p_actor?: Json; p_now?: string; p_request_id?: string; p_store_id: string };
+        Returns: boolean;
+      };
+      save_modifier_group: {
         Args: {
           p_actor?: Json;
-          p_now?: string;
+          p_group_id?: string;
+          p_max_groups: number;
+          p_max_select: number;
+          p_min_select: number;
+          p_name: string;
+          p_options: Json;
+          p_request_id?: string;
+          p_store_id: string;
+        };
+        Returns: string;
+      };
+      set_item_modifier_groups: {
+        Args: {
+          p_actor?: Json;
+          p_group_ids: string[];
+          p_item_id: string;
           p_request_id?: string;
           p_store_id: string;
         };
         Returns: boolean;
+      };
+      set_menu_availability: {
+        Args: {
+          p_actor?: Json;
+          p_category?: string;
+          p_is_available: boolean;
+          p_item_ids?: string[];
+          p_request_id?: string;
+          p_store_id: string;
+        };
+        Returns: number;
       };
       set_store_hours: {
-        Args: {
-          p_actor?: Json;
-          p_hours: Json;
-          p_request_id?: string;
-          p_store_id: string;
-        };
+        Args: { p_actor?: Json; p_hours: Json; p_request_id?: string; p_store_id: string };
         Returns: boolean;
       };
-      touch_session: {
+      set_store_status: {
         Args: {
-          p_idle: string;
-          p_now?: string;
-          p_session_id: string;
-          p_user_id: string;
+          p_actor?: Json;
+          p_request_id?: string;
+          p_status: Database['public']['Enums']['store_status'];
+          p_store_id: string;
         };
+        Returns: string[];
+      };
+      store_publish_missing: { Args: { p_store_id: string }; Returns: string[] };
+      touch_session: {
+        Args: { p_idle: string; p_now?: string; p_session_id: string; p_user_id: string };
         Returns: boolean;
       };
       update_order_status: {
@@ -979,9 +1456,12 @@ export type Database = {
     };
     Enums: {
       actor_type: 'USER' | 'WORKER' | 'RECONCILER' | 'WEBHOOK' | 'SCHEDULER' | 'SYSTEM';
+      diet_marker: 'VEG' | 'NON_VEG' | 'EGG';
+      media_upload_status: 'PENDING' | 'UPLOADED' | 'PROCESSED' | 'FAILED';
       order_status: 'PLACED' | 'PREPARING' | 'READY' | 'COLLECTED' | 'CANCELLED';
       payment_status: 'PENDING' | 'PAID';
       schedule_exception_kind: 'CLOSED' | 'SPECIAL_HOURS';
+      stock_reason: 'MANUAL_SET' | 'MANUAL_ADJUST' | 'WASTE';
       store_role: 'MANAGER' | 'STAFF';
       store_status: 'DRAFT' | 'ACTIVE' | 'SUSPENDED' | 'ARCHIVED';
       user_role: 'CUSTOMER' | 'STAFF' | 'ADMIN';
@@ -1006,9 +1486,7 @@ export type Tables<
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Views'])
     : never) = never,
-> = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals;
-}
+> = DefaultSchemaTableNameOrOptions extends { schema: keyof DatabaseWithoutInternals }
   ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'] &
       DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Views'])[TableName] extends {
       Row: infer R;
@@ -1031,9 +1509,7 @@ export type TablesInsert<
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables']
     : never) = never,
-> = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals;
-}
+> = DefaultSchemaTableNameOrOptions extends { schema: keyof DatabaseWithoutInternals }
   ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'][TableName] extends {
       Insert: infer I;
     }
@@ -1055,9 +1531,7 @@ export type TablesUpdate<
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables']
     : never) = never,
-> = DefaultSchemaTableNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals;
-}
+> = DefaultSchemaTableNameOrOptions extends { schema: keyof DatabaseWithoutInternals }
   ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'][TableName] extends {
       Update: infer U;
     }
@@ -1079,9 +1553,7 @@ export type Enums<
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions['schema']]['Enums']
     : never) = never,
-> = DefaultSchemaEnumNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals;
-}
+> = DefaultSchemaEnumNameOrOptions extends { schema: keyof DatabaseWithoutInternals }
   ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions['schema']]['Enums'][EnumName]
   : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema['Enums']
     ? DefaultSchema['Enums'][DefaultSchemaEnumNameOrOptions]
@@ -1095,9 +1567,7 @@ export type CompositeTypes<
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions['schema']]['CompositeTypes']
     : never) = never,
-> = PublicCompositeTypeNameOrOptions extends {
-  schema: keyof DatabaseWithoutInternals;
-}
+> = PublicCompositeTypeNameOrOptions extends { schema: keyof DatabaseWithoutInternals }
   ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions['schema']]['CompositeTypes'][CompositeTypeName]
   : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema['CompositeTypes']
     ? DefaultSchema['CompositeTypes'][PublicCompositeTypeNameOrOptions]
@@ -1110,9 +1580,12 @@ export const Constants = {
   public: {
     Enums: {
       actor_type: ['USER', 'WORKER', 'RECONCILER', 'WEBHOOK', 'SCHEDULER', 'SYSTEM'],
+      diet_marker: ['VEG', 'NON_VEG', 'EGG'],
+      media_upload_status: ['PENDING', 'UPLOADED', 'PROCESSED', 'FAILED'],
       order_status: ['PLACED', 'PREPARING', 'READY', 'COLLECTED', 'CANCELLED'],
       payment_status: ['PENDING', 'PAID'],
       schedule_exception_kind: ['CLOSED', 'SPECIAL_HOURS'],
+      stock_reason: ['MANUAL_SET', 'MANUAL_ADJUST', 'WASTE'],
       store_role: ['MANAGER', 'STAFF'],
       store_status: ['DRAFT', 'ACTIVE', 'SUSPENDED', 'ARCHIVED'],
       user_role: ['CUSTOMER', 'STAFF', 'ADMIN'],

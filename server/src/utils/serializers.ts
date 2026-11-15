@@ -1,3 +1,5 @@
+import type { PricingGroup } from '../domain/pricing';
+import { mediaStore } from '../integrations/media';
 import type { QueryData } from '@supabase/supabase-js';
 import type { Tables } from '../types/database';
 import type { StoreRole } from '../types/enums';
@@ -6,12 +8,17 @@ import type {
   FeatureFlagDto,
   InviteDto,
   MemberDto,
+  ManagedMenuItemDto,
+  ManagedStoreDto,
+  MediaUploadDto,
+  ModifierGroupDto,
   MenuItemDto,
   OrderDto,
   OrderItemDto,
   SiteSettingsDto,
   StoreDto,
   StoreSettingsDto,
+  StockMovementDto,
   StoreSummaryDto,
   UserDto,
 } from '../types/api';
@@ -32,9 +39,12 @@ export function selectOrders() {
       `id, order_number, status, payment_status, total_paise, customer_name, customer_phone, note,
        estimated_ready_at, created_at, updated_at, user_id, store_id, store_name,
        store:stores!inner (slug, brand_id),
-       order_items (id, line_number, menu_item_id, name, unit_price_paise, quantity, line_total_paise, image_url)`,
+       order_items (id, line_number, menu_item_id, name, unit_price_paise, base_unit_price_paise, quantity,
+         line_total_paise, image_url, requested_modifier_option_ids,
+         order_item_modifiers (modifier_option_id, group_name, option_name, price_delta_paise, position))`,
     )
-    .order('line_number', { referencedTable: 'order_items' });
+    .order('line_number', { referencedTable: 'order_items' })
+    .order('position', { referencedTable: 'order_items.order_item_modifiers' });
 }
 
 export type OrderWithDetails = QueryData<ReturnType<typeof selectOrders>>[number];
@@ -46,7 +56,10 @@ const toIso = (timestamp: string): string => new Date(timestamp).toISOString();
 
 /** A profile with its store memberships and owned brands embedded (auth.service.getProfile). */
 export type ProfileWithStanding = Tables<'profiles'> & {
-  memberships: { role: StoreRole; store: { id: string; slug: string; name: string } }[];
+  memberships: {
+    role: StoreRole;
+    store: { id: string; slug: string; name: string; staff_can_edit_stock: boolean };
+  }[];
   brands: { id: string; name: string; slug: string }[];
 };
 
@@ -63,6 +76,7 @@ export function toUserDto(profile: ProfileWithStanding): UserDto {
       storeSlug: store.slug,
       storeName: store.name,
       role,
+      staffCanEditStock: store.staff_can_edit_stock,
     })),
     ownedBrands: profile.brands.map(({ id, name, slug }) => ({ id, name, slug })),
   };
@@ -75,6 +89,7 @@ export type StoreSettings = Pick<
   | 'low_stock_threshold'
   | 'staff_order_list_limit'
   | 'last_order_minutes_before_close'
+  | 'staff_can_edit_stock'
 >;
 
 export function toStoreSettingsDto(settings: StoreSettings): StoreSettingsDto {
@@ -83,6 +98,25 @@ export function toStoreSettingsDto(settings: StoreSettings): StoreSettingsDto {
     lowStockThreshold: settings.low_stock_threshold,
     staffOrderListLimit: settings.staff_order_list_limit,
     lastOrderMinutesBeforeClose: settings.last_order_minutes_before_close,
+    staffCanEditStock: settings.staff_can_edit_stock,
+  };
+}
+
+/** A stock_movements row with its actor embedded (stock.service.listStockMovements). */
+export type StockMovementRow = Pick<
+  Tables<'stock_movements'>,
+  'id' | 'menu_item_id' | 'delta' | 'resulting_quantity' | 'reason' | 'created_at'
+> & { actor: Pick<Tables<'profiles'>, 'id' | 'name'> | null };
+
+export function toStockMovementDto(row: StockMovementRow): StockMovementDto {
+  return {
+    id: row.id,
+    menuItemId: row.menu_item_id,
+    delta: row.delta,
+    resultingQuantity: row.resulting_quantity,
+    reason: row.reason,
+    actor: row.actor ? { id: row.actor.id, name: row.actor.name } : null,
+    createdAt: row.created_at,
   };
 }
 
@@ -151,6 +185,23 @@ export function toStoreDto(store: StoreWithBrand, open: OpenFields): StoreDto {
   };
 }
 
+export function toManagedStoreDto(store: Tables<'stores'>): ManagedStoreDto {
+  return {
+    id: store.id,
+    slug: store.slug,
+    name: store.name,
+    status: store.status,
+    isTemplate: store.is_template,
+    area: store.area,
+    address: store.address_line,
+    contactPhone: store.contact_phone,
+    tagline: store.tagline,
+    description: store.description,
+    imageUrl: store.image_url,
+    createdAt: toIso(store.created_at),
+  };
+}
+
 export function toStoreSummaryDto(store: StoreWithBrand, open: OpenFields): StoreSummaryDto {
   return {
     id: store.id,
@@ -171,6 +222,15 @@ export function isPurchasable(
   return item.is_available && (item.stock_quantity === null || item.stock_quantity > 0);
 }
 
+/** "/media/<key> 400w, /media/<key> 900w" from an item's uploaded-photo variants; null without them. */
+function srcSet(variants: Tables<'menu_items'>['image_variants']): string | null {
+  if (!Array.isArray(variants) || variants.length === 0) return null;
+  const store = mediaStore();
+  return (variants as { width: number; key: string }[])
+    .map(({ width, key }) => `${store.publicPath(key)} ${width}w`)
+    .join(', ');
+}
+
 export function toMenuItemDto(item: Tables<'menu_items'>): MenuItemDto {
   return {
     id: item.id,
@@ -179,10 +239,23 @@ export function toMenuItemDto(item: Tables<'menu_items'>): MenuItemDto {
     description: item.description,
     price: paiseToRupees(item.price_paise),
     imageUrl: item.image_url,
+    imageSrcSet: srcSet(item.image_variants),
+    // Filled by the public menu (loadMenu) from the item's groups; empty elsewhere.
+    modifierGroupIds: [],
+    diet: item.diet,
     isAvailable: isPurchasable(item),
     isPopular: item.is_popular,
     sortOrder: item.sort_order,
     stockQuantity: item.stock_quantity,
+  };
+}
+
+export function toManagedMenuItemDto(item: Tables<'menu_items'>): ManagedMenuItemDto {
+  return {
+    ...toMenuItemDto(item),
+    isEnabled: item.is_available,
+    archivedAt: item.archived_at,
+    templateItemId: item.template_item_id,
   };
 }
 
@@ -195,6 +268,14 @@ function toOrderItemDto(item: OrderItemRow): OrderItemDto {
     quantity: item.quantity,
     lineTotal: paiseToRupees(item.line_total_paise),
     imageUrl: item.image_url,
+    baseUnitPrice:
+      item.base_unit_price_paise === null ? null : paiseToRupees(item.base_unit_price_paise),
+    modifiers: item.order_item_modifiers.map((m) => ({
+      optionId: m.modifier_option_id,
+      groupName: m.group_name,
+      optionName: m.option_name,
+      priceDelta: paiseToRupees(m.price_delta_paise),
+    })),
   };
 }
 
@@ -244,5 +325,47 @@ export function toFeatureFlagDto(flag: Tables<'feature_flags'>): FeatureFlagDto 
     rules: flag.rules as FeatureFlagDto['rules'],
     updatedAt: toIso(flag.updated_at),
     updatedBy: flag.updated_by,
+  };
+}
+
+/**
+ * A media_uploads row. `publicPath` is the store's (integrations/media): the original is deleted once processed, so a
+ * PROCESSED upload is served by its largest variant.
+ */
+export function toMediaUploadDto(
+  row: Tables<'media_uploads'>,
+  publicPath: (key: string) => string,
+): MediaUploadDto {
+  const variants = Array.isArray(row.variants)
+    ? (row.variants as { width: number; height: number; key: string }[]).map(
+        ({ width, height, key }) => ({ width, height, url: publicPath(key) }),
+      )
+    : null;
+  return {
+    id: row.id,
+    status: row.status,
+    contentType: row.content_type,
+    byteSize: row.byte_size,
+    url: variants?.at(-1)?.url ?? publicPath(row.original_key),
+    variants,
+    failure: row.failure,
+    createdAt: toIso(row.created_at),
+  };
+}
+
+/** One modifier group as the menu offers it (P3.2): deltas in whole rupees, like every price at the API. */
+export function toModifierGroupDto(group: PricingGroup): ModifierGroupDto {
+  return {
+    id: group.id,
+    name: group.name,
+    minSelect: group.minSelect,
+    maxSelect: group.maxSelect,
+    options: group.options.map((o) => ({
+      id: o.id,
+      name: o.name,
+      priceDelta: paiseToRupees(o.priceDeltaPaise),
+      isDefault: o.isDefault,
+      isAvailable: o.isAvailable,
+    })),
   };
 }

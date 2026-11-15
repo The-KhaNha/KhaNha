@@ -36,7 +36,9 @@ describe('CheckoutPage when the key already placed a different order', () => {
     useCartStore.setState({
       lines: [
         {
+          lineKey: 'i1',
           menuItemId: 'i1',
+          options: [],
           name: 'Espresso',
           unitPrice: 90,
           imageUrl: null,
@@ -44,7 +46,9 @@ describe('CheckoutPage when the key already placed a different order', () => {
           maxQuantity: null,
         },
         {
+          lineKey: 'i2',
           menuItemId: 'i2',
+          options: [],
           name: 'Cold Coffee',
           unitPrice: 120,
           imageUrl: null,
@@ -96,7 +100,9 @@ describe('CheckoutPage when the server rejects one field', () => {
     useCartStore.setState({
       lines: [
         {
+          lineKey: 'i1',
           menuItemId: 'i1',
+          options: [],
           name: 'Espresso',
           unitPrice: 90,
           imageUrl: null,
@@ -153,6 +159,7 @@ describe('CheckoutPage when a price changed before the order was placed', () => 
       description: '',
       price,
       imageUrl: '',
+      diet: null,
       isAvailable: true,
       isPopular: false,
       sortOrder: 1,
@@ -198,7 +205,9 @@ describe('CheckoutPage when a price changed before the order was placed', () => 
     useCartStore.setState({
       lines: [
         {
+          lineKey: 'i1',
           menuItemId: 'i1',
+          options: [],
           name: 'Espresso',
           unitPrice: 90,
           imageUrl: null,
@@ -388,5 +397,90 @@ describe('CheckoutPage when a price changed before the order was placed', () => 
     expect(await screen.findByText(message)).toBeInTheDocument();
     expect(useCartStore.getState().lines).toHaveLength(1);
     await waitFor(() => expect(fetchMenu).toHaveBeenCalledTimes(2));
+  });
+
+  it('flags the line whose options were refused (MODIFIER_INVALID) and keeps Pay off until it is fixed', async () => {
+    const withGroups = (shotOn: boolean): MenuResponse => {
+      const menu = menuAt(90);
+      menu.categories[0]!.items[0]!.modifierGroupIds = ['size', 'extras'];
+      menu.modifierGroups = {
+        size: {
+          id: 'size',
+          name: 'Size',
+          minSelect: 1,
+          maxSelect: 1,
+          options: [
+            { id: 'reg', name: 'Regular', priceDelta: 0, isDefault: true, isAvailable: true },
+            { id: 'lg', name: 'Large', priceDelta: 30, isDefault: false, isAvailable: true },
+          ],
+        },
+        extras: {
+          id: 'extras',
+          name: 'Extras',
+          minSelect: 0,
+          maxSelect: 2,
+          options: [
+            { id: 'shot', name: 'Shot', priceDelta: 20, isDefault: false, isAvailable: shotOn },
+          ],
+        },
+      };
+      return menu;
+    };
+    const option = (id: string, groupName: string, name: string, priceDelta: number) => ({
+      id,
+      groupName,
+      name,
+      priceDelta,
+    });
+    useCartStore.setState({
+      lines: [
+        {
+          lineKey: 'i1:lg,shot',
+          menuItemId: 'i1',
+          options: [option('lg', 'Size', 'Large', 30), option('shot', 'Extras', 'Shot', 20)],
+          name: 'Espresso',
+          unitPrice: 140,
+          imageUrl: null,
+          quantity: 1,
+          maxQuantity: null,
+        },
+        {
+          lineKey: 'i1:reg',
+          menuItemId: 'i1',
+          options: [option('reg', 'Size', 'Regular', 0)],
+          name: 'Espresso',
+          unitPrice: 90,
+          imageUrl: null,
+          quantity: 1,
+          maxQuantity: null,
+        },
+      ],
+    });
+    fetchMenu.mockResolvedValueOnce(withGroups(true)).mockResolvedValue(withGroups(false));
+    createOrder.mockRejectedValueOnce(
+      new ApiError(
+        400,
+        'MODIFIER_INVALID',
+        "The Extras chosen for Espresso can't be ordered. Please choose again.",
+        {
+          menuItemId: 'i1',
+        },
+      ),
+    );
+    renderCheckout();
+    await waitFor(() => expect(fetchMenu).toHaveBeenCalledTimes(1));
+    fireEvent.click(await screen.findByRole('button', { name: /Pay ₹230/ }));
+    await waitFor(() => expect(fetchMenu).toHaveBeenCalledTimes(2));
+
+    // The line with the Shot is the one flagged, not the other Espresso, and Pay is off: no second refused order.
+    await waitFor(() => expect(document.querySelectorAll('[data-flagged]')).toHaveLength(1));
+    expect(document.querySelector('[data-flagged]')).toHaveTextContent('Shot');
+    expect(screen.getByRole('button', { name: /Pay ₹/ })).toBeDisabled();
+    submitForm();
+    expect(createOrder).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Fix cart' }));
+    expect(useCartStore.getState().lines.map((l) => l.lineKey)).toEqual(['i1:reg']);
+    expect(screen.getByRole('button', { name: /Pay ₹90/ })).toBeEnabled();
   });
 });

@@ -1,5 +1,5 @@
-import type { CreateOrderInput, MenuItem, MenuResponse } from '../../types/api';
-import type { CartLine } from './cartStore';
+import type { CreateOrderInput, MenuItem, MenuResponse, ModifierGroup } from '../../types/api';
+import type { CartLine, CartOption } from './cartStore';
 
 /** The store's limits as the menu serves them (`MenuResponse.rules`): the per-line cap and the "Only N left" point. */
 export type CartLimits = NonNullable<MenuResponse['rules']>;
@@ -36,26 +36,81 @@ export function lineLimit(maxQuantity: number | null | undefined, limits: CartLi
   return Math.min(limits.maxQuantityPerItem, maxQuantity ?? limits.maxQuantityPerItem);
 }
 
-export type LineProblem = { kind: 'sold-out' } | { kind: 'over-limit'; available: number };
+export type LineProblem =
+  { kind: 'sold-out' } | { kind: 'over-limit'; available: number } | { kind: 'choose-again' };
 
-/** Why a cart line cannot be ordered as it stands, or null when it is fine. */
-export function lineProblem(
-  line: Pick<CartLine, 'quantity' | 'maxQuantity'>,
+type ProblemLine = Pick<CartLine, 'lineKey' | 'menuItemId' | 'quantity' | 'maxQuantity'> &
+  Partial<Pick<CartLine, 'optionsStale'>>;
+
+/**
+ * Whether a line's options can no longer be ordered as chosen, by place_order's rules: an option gone or switched
+ * off, a group past its most, or a required group short with no default left to fill it (the server fills a
+ * default), or a price that would come out below zero. Checked on every menu load so the line is flagged before Pay,
+ * not after a refusal.
+ */
+export function optionsUnorderable(
+  item: Pick<MenuItem, 'modifierGroupIds' | 'price'>,
+  groups: Record<string, ModifierGroup>,
+  options: Pick<CartOption, 'id'>[],
+): boolean {
+  const itemGroups = (item.modifierGroupIds ?? []).flatMap((id) => groups[id] ?? []);
+  const chosen = new Set(options.map((o) => o.id));
+  const offered = itemGroups.flatMap((g) => g.options.filter((o) => o.isAvailable));
+  if (options.some((o) => !offered.some((x) => x.id === o.id))) return true;
+  // The price place_order would charge: base plus each group's picks, a required group left empty taking its defaults.
+  let price = item.price;
+  const short = itemGroups.some((g) => {
+    let picked = g.options.filter((o) => chosen.has(o.id));
+    if (picked.length > g.maxSelect) return true;
+    if (picked.length === 0 && g.minSelect > 0)
+      picked = g.options.filter((o) => o.isDefault && o.isAvailable).slice(0, g.maxSelect);
+    price += picked.reduce((sum, o) => sum + o.priceDelta, 0);
+    return picked.length < g.minSelect;
+  });
+  // A negative price is refused by priceLine (MODIFIER_INVALID), so the line must be chosen again.
+  return short || price < 0;
+}
+
+/** The most this line may hold: its item's limit less what the item's other lines in `lines` hold. */
+export function lineAllowance(
+  line: ProblemLine,
   limits: CartLimits,
+  lines: ProblemLine[] = [line],
+): number {
+  const others = lines.reduce(
+    (sum, l) =>
+      l.menuItemId === line.menuItemId && l.lineKey !== line.lineKey ? sum + l.quantity : sum,
+    0,
+  );
+  return lineLimit(line.maxQuantity, limits) - others;
+}
+
+/**
+ * Why a cart line cannot be ordered as it stands, or null when it is fine. The limit is the item's, shared by all its
+ * lines (`lines`, the whole cart): a line may hold what the item's other lines leave.
+ */
+export function lineProblem(
+  line: ProblemLine,
+  limits: CartLimits,
+  lines: ProblemLine[] = [line],
 ): LineProblem | null {
-  const limit = lineLimit(line.maxQuantity, limits);
+  const limit = lineAllowance(line, limits, lines);
   if (limit <= 0) return { kind: 'sold-out' };
+  if (line.optionsStale) return { kind: 'choose-again' };
   if (line.quantity > limit) return { kind: 'over-limit', available: limit };
   return null;
 }
 
 /** Short chip text for a flagged line: "Sold out" / "Only 1 left". */
 export function problemLabel(problem: LineProblem): string {
+  if (problem.kind === 'choose-again') return 'Choose again';
   return problem.kind === 'sold-out' ? 'Sold out' : `Only ${problem.available} left`;
 }
 
 /** Full sentence naming the item, matching the server's wording: "Only 1 Cheese Toast left." */
 export function describeProblem(name: string, problem: LineProblem): string {
+  if (problem.kind === 'choose-again')
+    return `The options chosen for ${name} have changed: add it again.`;
   return problem.kind === 'sold-out'
     ? `${name} is sold out.`
     : `Only ${problem.available} ${name} left.`;
@@ -65,7 +120,7 @@ export function describeProblem(name: string, problem: LineProblem): string {
 export function describeProblems(lines: CartLine[], limits: CartLimits): string {
   return lines
     .flatMap((line) => {
-      const problem = lineProblem(line, limits);
+      const problem = lineProblem(line, limits, lines);
       return problem ? [describeProblem(line.name, problem)] : [];
     })
     .join(' ');
@@ -97,9 +152,14 @@ export function isItemErrorCode(code: string): boolean {
  * old persisted cart) sends none, so it is charged the database price as before, rather than a 400 on every retry.
  */
 export function orderItems(lines: CartLine[]): CreateOrderInput['items'] {
-  return lines.map(({ menuItemId, quantity, unitPrice }) => ({
+  return lines.map(({ menuItemId, quantity, unitPrice, options }) => ({
     menuItemId,
     quantity,
-    ...(Number.isInteger(unitPrice) && unitPrice > 0 ? { expectedUnitPrice: unitPrice } : {}),
+    // ₹0 only with options (Small −₹30 on a ₹30 item): an item alone is never free, so a plain ₹0 is an old cart's.
+    ...(Number.isInteger(unitPrice) && (unitPrice > 0 || (unitPrice === 0 && options.length > 0))
+      ? { expectedUnitPrice: unitPrice }
+      : {}),
+    // Only with options: a server or menu without modifiers never sees the field.
+    ...(options.length ? { modifierOptionIds: options.map((o) => o.id) } : {}),
   }));
 }

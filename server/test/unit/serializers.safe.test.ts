@@ -49,10 +49,12 @@ function store(overrides: Partial<StoreWithBrand> = {}): StoreWithBrand {
     low_stock_threshold: 5,
     staff_order_list_limit: 100,
     last_order_minutes_before_close: 0,
+    staff_can_edit_stock: true,
     accepting_orders: true,
     paused_until: null,
     pause_reason: null,
     paused_by: null,
+    is_template: false,
     ...overrides,
   };
 }
@@ -70,6 +72,10 @@ function menuItem(overrides: Partial<Tables<'menu_items'>> = {}): Tables<'menu_i
     is_popular: true,
     sort_order: 1,
     stock_quantity: null,
+    template_item_id: null,
+    archived_at: null,
+    diet: 'VEG',
+    image_variants: null,
     ...overrides,
   };
 }
@@ -101,6 +107,9 @@ function orderWithDetails(overrides: Partial<OrderWithDetails> = {}): OrderWithD
         quantity: 2,
         line_total_paise: 24000,
         image_url: '/images/cold-coffee.jpg',
+        base_unit_price_paise: null,
+        order_item_modifiers: [],
+        requested_modifier_option_ids: [],
       },
     ],
     ...overrides,
@@ -124,12 +133,23 @@ describe('toUserDto', () => {
   it('maps the embedded memberships and owned brands', () => {
     const dto = toUserDto(
       profile({
-        memberships: [{ role: 'MANAGER', store: { id: 's-1', slug: 'north', name: 'North' } }],
+        memberships: [
+          {
+            role: 'MANAGER',
+            store: { id: 's-1', slug: 'north', name: 'North', staff_can_edit_stock: false },
+          },
+        ],
         brands: [{ id: 'b-1', name: 'Brew', slug: 'brew' }],
       }),
     );
     expect(dto.memberships).toEqual([
-      { storeId: 's-1', storeSlug: 'north', storeName: 'North', role: 'MANAGER' },
+      {
+        storeId: 's-1',
+        storeSlug: 'north',
+        storeName: 'North',
+        role: 'MANAGER',
+        staffCanEditStock: false,
+      },
     ]);
     expect(dto.ownedBrands).toEqual([{ id: 'b-1', name: 'Brew', slug: 'brew' }]);
   });
@@ -195,6 +215,9 @@ describe('toMenuItemDto', () => {
       description: 'Creamy chilled coffee',
       price: 120,
       imageUrl: '/images/cold-coffee.jpg',
+      imageSrcSet: null,
+      modifierGroupIds: [],
+      diet: 'VEG',
       isAvailable: false,
       isPopular: true,
       sortOrder: 1,
@@ -204,6 +227,19 @@ describe('toMenuItemDto', () => {
 
   it('reports untracked stock as null', () => {
     expect(toMenuItemDto(menuItem()).stockQuantity).toBeNull();
+  });
+
+  it("offers an uploaded photo's variants as a srcset", () => {
+    const key = (w: number) => `stores/s/variants/abc-${w}.webp`;
+    const dto = toMenuItemDto(
+      menuItem({
+        image_variants: [
+          { width: 400, height: 300, key: key(400) },
+          { width: 900, height: 675, key: key(900) },
+        ],
+      }),
+    );
+    expect(dto.imageSrcSet).toBe(`/media/${key(400)} 400w, /media/${key(900)} 900w`);
   });
 });
 
@@ -232,6 +268,8 @@ describe('toOrderDto', () => {
           quantity: 2,
           lineTotal: 240,
           imageUrl: '/images/cold-coffee.jpg',
+          baseUnitPrice: null,
+          modifiers: [],
         },
       ],
     });
@@ -256,6 +294,9 @@ describe('toOrderDto', () => {
             quantity: 1,
             line_total_paise: 9000,
             image_url: '/images/espresso.jpg',
+            base_unit_price_paise: null,
+            order_item_modifiers: [],
+            requested_modifier_option_ids: [],
           },
           {
             id: 'oi-1',
@@ -266,6 +307,9 @@ describe('toOrderDto', () => {
             quantity: 2,
             line_total_paise: 24000,
             image_url: '/images/cold-coffee.jpg',
+            base_unit_price_paise: null,
+            order_item_modifiers: [],
+            requested_modifier_option_ids: [],
           },
         ] as OrderWithDetails['order_items'],
       }),

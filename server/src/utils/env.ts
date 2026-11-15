@@ -4,6 +4,17 @@ import { z } from 'zod';
 const seedPassword = (name: string) =>
   z.string().min(12, `${name} must be at least 12 characters.`).optional();
 
+/**
+ * The media store for an environment: the setting, or `local` on a developer's machine and `s3` elsewhere. null:
+ * refused (`local` in production, where photos must outlive the container).
+ */
+export function resolveMediaStorage(
+  appEnv: 'local' | 'staging' | 'production',
+  setting: 's3' | 'local' | undefined,
+): 's3' | 'local' {
+  return setting ?? (appEnv === 'local' ? 'local' : 's3');
+}
+
 const envSchema = z
   .object({
     /** Which Supabase project this process talks to. `pnpm run seed` refuses to wipe `production`. */
@@ -48,6 +59,23 @@ const envSchema = z
     RATE_LIMIT_REGISTER_MAX: z.coerce.number().int().min(0).default(10),
     RATE_LIMIT_CLIENT_ERRORS_MAX: z.coerce.number().int().min(0).default(30),
     RATE_LIMIT_INVITE_ACCEPT_MAX: z.coerce.number().int().min(0).default(10),
+    /** Photo uploads started per signed-in account per window (P3.3). */
+    RATE_LIMIT_UPLOAD_MAX: z.coerce.number().int().min(0).default(20),
+    /**
+     * Where uploaded photos live (P3.3): `s3` (S3 behind CloudFront, ADR-006) or `local`, a folder on this machine for
+     * development. Unset: `local` when APP_ENV is local, else `s3`. `local` is refused in production.
+     */
+    MEDIA_STORAGE: z.enum(['s3', 'local'], 'MEDIA_STORAGE must be s3 or local.').optional(),
+    /** The folder `local` media lives in (created on first write). */
+    MEDIA_LOCAL_DIR: z.string().min(1).default('.media'),
+    /** The `s3` store's bucket. Unset: every media call is a 503 (the API still starts). */
+    MEDIA_BUCKET: z.string().min(1).optional(),
+    /** The bucket's region; ignored by RustFS. */
+    AWS_REGION: z.string().min(1).default('ap-south-1'),
+    /** An S3-compatible server instead of AWS (RustFS in compose and CI). Unset on AWS. */
+    MEDIA_S3_ENDPOINT: z.string().url('MEDIA_S3_ENDPOINT must be a URL.').optional(),
+    /** The browser's view of MEDIA_S3_ENDPOINT when it differs from the API's (compose). */
+    MEDIA_UPLOAD_ORIGIN: z.string().url('MEDIA_UPLOAD_ORIGIN must be a URL.').optional(),
     CLIENT_ORIGIN: z
       .string()
       .url('CLIENT_ORIGIN must be a URL such as http://localhost:5173.')
@@ -74,6 +102,7 @@ const envSchema = z
   .transform((env) => ({
     ...env,
     LOG_LEVEL: env.LOG_LEVEL ?? (env.APP_ENV === 'local' ? 'debug' : 'info'),
+    MEDIA_STORAGE: resolveMediaStorage(env.APP_ENV, env.MEDIA_STORAGE),
   }));
 
 type Env = z.infer<typeof envSchema>;
@@ -104,7 +133,7 @@ export const env = loadEnv();
  * schema: `pnpm run seed --production` runs from a laptop with APP_ENV=production, a localhost origin and no commit.
  */
 export function productionProblems(
-  e: Pick<Env, 'APP_ENV' | 'CLIENT_ORIGIN' | 'GIT_COMMIT' | 'TRUST_PROXY_HOPS'>,
+  e: Pick<Env, 'APP_ENV' | 'CLIENT_ORIGIN' | 'GIT_COMMIT' | 'TRUST_PROXY_HOPS' | 'MEDIA_STORAGE'>,
 ): string[] {
   if (e.APP_ENV !== 'production') return [];
   const problems: string[] = [];
@@ -118,6 +147,8 @@ export function productionProblems(
     problems.push(
       "TRUST_PROXY_HOPS must be at least 1 in production, or every request shares the proxy's address in the rate limits.",
     );
+  if (e.MEDIA_STORAGE === 'local')
+    problems.push('MEDIA_STORAGE=local is for development: production stores photos in S3.');
   return problems;
 }
 

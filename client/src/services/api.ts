@@ -38,6 +38,10 @@ interface RequestOptions {
   auth?: boolean;
   signal?: AbortSignal;
   keepalive?: boolean;
+  /** Sent as is, with its own type, in place of a JSON `body` (a photo's bytes). */
+  blob?: Blob;
+  /** Longer than REQUEST_TIMEOUT_MS for a request that carries a file on a slow connection. */
+  timeoutMs?: number;
 }
 
 function isErrorEnvelope(value: unknown): value is ApiErrorEnvelope {
@@ -82,7 +86,7 @@ async function currentAccessToken(): Promise<string | undefined> {
 }
 
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { method = 'GET', body, auth = true, signal, keepalive } = options;
+  const { method = 'GET', body, auth = true, signal, keepalive, blob, timeoutMs } = options;
   // supabase-js hands out the current access token, refreshing it first when it has expired. Public requests
   // (auth: false) never load it.
   const token = auth ? await currentAccessToken() : undefined;
@@ -92,7 +96,8 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     Accept: 'application/json',
     'X-Client-Version': APP_VERSION,
   };
-  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  if (blob) headers['Content-Type'] = blob.type;
+  else if (body !== undefined) headers['Content-Type'] = 'application/json';
   if (token) headers.Authorization = `Bearer ${token}`;
 
   // A stalled connection must end in the unreachable state, never an endless skeleton. The timer covers the body
@@ -101,7 +106,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   const abort = () => controller.abort();
   if (signal?.aborted) abort();
   signal?.addEventListener('abort', abort, { once: true });
-  const timer = setTimeout(abort, REQUEST_TIMEOUT_MS);
+  const timer = setTimeout(abort, timeoutMs ?? REQUEST_TIMEOUT_MS);
 
   let response: Response;
   let payload: unknown;
@@ -109,7 +114,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     response = await fetch(`${BASE_URL}${path}`, {
       method,
       headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: blob ?? (body === undefined ? undefined : JSON.stringify(body)),
       signal: controller.signal,
       keepalive,
     });

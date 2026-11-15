@@ -10,6 +10,8 @@ import {
   forbidden,
   idempotencyKeyReused,
   insufficientStock,
+  menuFull,
+  modifierRequired,
   notFound,
   payloadTooLarge,
   rateLimited,
@@ -264,5 +266,27 @@ describe('errorHandler mapping', () => {
 
   it('does not treat an ordinary TypeError as a transport failure', () => {
     expect(run(new TypeError('x is not a function')).status).toBe(500);
+  });
+});
+
+describe('modifier messages', () => {
+  // A customer reads these at checkout: "Choose a Extras" read wrong (/break, P3 close).
+  it('read as English whatever the group is called', () => {
+    expect(modifierRequired('i1', 'Cold Coffee', 'Extras').message).toBe(
+      'Choose your Extras for Cold Coffee.',
+    );
+    expect(modifierRequired('i1', 'Cold Coffee', null).message).toBe(
+      'Choose the options for Cold Coffee.',
+    );
+  });
+});
+
+describe('menuFull', () => {
+  it('is 409 MENU_FULL with the cap as { kind, max } (the client reads exactly these)', () => {
+    const err = menuFull(500);
+    expect(err.status).toBe(409);
+    expect(err.code).toBe('MENU_FULL');
+    expect(err.message).toContain('500');
+    expect(err.details).toEqual({ kind: 'menuFull', max: 500 });
   });
 });

@@ -8,6 +8,7 @@ import {
   localSql,
   resetDemoData,
   type TestUser,
+  oldestStoreId,
 } from '../setup/helpers';
 import { api } from '../setup/api';
 import { resolveTestTarget } from '../setup/target';
@@ -24,6 +25,8 @@ beforeAll(async () => {
   const { data: rows } = await supabaseAdmin
     .from('menu_items')
     .select('id, name, store_id')
+    // One store: brand templates (P3.1) hold copies of the same names.
+    .eq('store_id', await oldestStoreId())
     .in('name', ['Cold Coffee', 'Blueberry Muffin'])
     .throwOnError();
   const byName = new Map(rows.map((row) => [row.name, row]));

@@ -14,7 +14,9 @@ const item = {
 } as unknown as MenuItem;
 const bakery = { id: 's2', slug: 'bakery', name: 'Bakery' };
 const cafeLine = {
+  lineKey: 'c1',
   menuItemId: 'c1',
+  options: [],
   name: 'Tea',
   unitPrice: 20,
   imageUrl: null,

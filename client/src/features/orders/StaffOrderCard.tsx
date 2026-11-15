@@ -1,4 +1,5 @@
-import { useState, type AnimationEvent } from 'react';
+import { orderLineOptions } from '../menu/modifierRules';
+import { memo, useState, type AnimationEvent } from 'react';
 import { CircleAlert, MessageSquareText, UserRound } from 'lucide-react';
 import type { Order, OrderStatus } from '../../types/api';
 import { Button } from '../../components/Button';
@@ -26,7 +27,7 @@ interface StaffOrderCardProps {
  * always paprika so staff can hit it without reading. The total + actions sit at the bottom of the
  * card (mt-auto) so buttons line up across a grid row whatever the ticket length.
  */
-export function StaffOrderCard({
+function OrderCard({
   order,
   pending,
   error,
@@ -54,7 +55,11 @@ export function StaffOrderCard({
         finished ? 'border-line/50 opacity-60' : 'border-line/70',
         order.status === 'READY' && 'ring-2 ring-success-500/40',
         leaving ? 'animate-card-leave' : entering && 'ring-flash',
+        // A card off screen skips style, layout and paint: a board of hundreds of orders scrolled and polled at 4x
+        // CPU dropped frames (/break, P3 close). Its ring and shadow are its own, so the containment clips nothing.
+        '[content-visibility:auto]',
       )}
+      style={{ containIntrinsicSize: `auto ${10 + order.items.length * 1.75}rem` }}
     >
       <span
         aria-hidden
@@ -96,6 +101,10 @@ export function StaffOrderCard({
             <li key={item.id} className="flex items-baseline justify-between gap-3">
               <span className="min-w-0 wrap-anywhere">
                 <span className="font-bold tabular-nums">{item.quantity} ×</span> {item.name}
+                {/* The kitchen makes the line from this: full size and weight, never a muted footnote. */}
+                {orderLineOptions(item) && (
+                  <span className="block font-semibold">{orderLineOptions(item)}</span>
+                )}
               </span>
               <Price value={item.lineTotal} className="shrink-0 text-muted" />
             </li>
@@ -174,6 +183,25 @@ export function StaffOrderCard({
     </article>
   );
 }
+
+/**
+ * Re-renders only when what it shows changed: a poll that finds any change parses the whole list into new objects,
+ * and a board scrolled through keeps hundreds of cards mounted (LazyGroup), so re-rendering them all on every poll
+ * cost 160-245 ms long tasks on a cheap phone (/break re-run, P3 close). `updatedAt` moves with every server change.
+ */
+export const StaffOrderCard = memo(
+  OrderCard,
+  (a, b) =>
+    a.order.id === b.order.id &&
+    a.order.status === b.order.status &&
+    a.order.updatedAt === b.order.updatedAt &&
+    a.order.estimatedReadyAt === b.order.estimatedReadyAt &&
+    a.pending === b.pending &&
+    a.error === b.error &&
+    a.fresh === b.fresh &&
+    a.leaving === b.leaving &&
+    a.onChangeStatus === b.onChangeStatus,
+);
 
 export function StaffOrderCardSkeleton() {
   return (

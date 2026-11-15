@@ -14,7 +14,14 @@ export interface User {
   role: Role;
   createdAt: string; // ISO
   /** The stores this account works at. */
-  memberships: { storeId: string; storeSlug: string; storeName: string; role: StoreRole }[];
+  memberships: {
+    storeId: string;
+    storeSlug: string;
+    storeName: string;
+    role: StoreRole;
+    /** Whether the store lets its STAFF change stock. Optional: a profile saved before the field lacks it. */
+    staffCanEditStock?: boolean;
+  }[];
   /** The brands this account owns: OWNER of every store of each. */
   ownedBrands: { id: string; name: string; slug: string }[];
 }
@@ -57,6 +64,43 @@ export type StoreSummary = Pick<
   | 'openLabel'
 >;
 
+export type StoreStatus = 'DRAFT' | 'ACTIVE' | 'SUSPENDED' | 'ARCHIVED';
+
+/** A store as its brand's owner and managers edit it (P3.1): any status, with its contact phone. */
+export interface ManagedStore {
+  id: string;
+  slug: string;
+  name: string;
+  status: StoreStatus;
+  isTemplate: boolean;
+  area: string | null;
+  address: string | null;
+  contactPhone: string | null;
+  tagline: string;
+  description: string;
+  imageUrl: string | null;
+  createdAt: string;
+}
+
+/** What a branch still lacks before it can be published; empty: ready. */
+export type PublishMissing = 'address' | 'hours' | 'menu';
+
+/** GET /api/stores/:storeId/manage: the store at any status, its brand and its go-live checklist. */
+export interface ManageStoreResponse {
+  store: ManagedStore;
+  brand: { id: string; name: string; slug: string };
+  missing: PublishMissing[];
+}
+
+/** One brand of GET /api/brands/mine: its branches (every status) and its template. */
+export interface MyBrand {
+  id: string;
+  name: string;
+  slug: string;
+  template: ManagedStore | null;
+  stores: ManagedStore[];
+}
+
 /** One weekly interval of GET /api/stores/:storeRef/hours; `HH:MM`, `closesAt` before `opensAt` runs past midnight. */
 export interface StoreHours {
   /** ISO weekday: 1 = Monday ... 7 = Sunday. */
@@ -88,13 +132,37 @@ export interface MenuItem {
   name: string;
   description: string;
   price: number; // whole rupees
-  imageUrl: string;
+  /** null: no photo yet (an item made in the editor before its upload). */
+  imageUrl: string | null;
+  /**
+   * An uploaded photo's WebP sizes for `<img srcset>`; null for a bundled photo. Optional: a menu persisted before the
+   * field existed (fp_cache) lacks it.
+   */
+  imageSrcSet?: string | null;
+  /** The item's modifier groups, keys of MenuResponse.modifierGroups. Optional: a menu persisted before (fp_cache). */
+  modifierGroupIds?: string[];
+  /**
+   * null: not marked. Optional because a menu persisted before the field existed (fp_cache) lacks it; read it as
+   * `item.diet ?? null`.
+   */
+  diet?: Diet | null;
   /** Effective availability: false when the shop switched the item off OR its tracked stock ran out. */
   isAvailable: boolean;
   isPopular: boolean;
   sortOrder: number;
   /** Units left when the item tracks stock; null = not tracked (only the per-order cap applies). */
   stockQuantity: number | null;
+}
+
+export type Diet = 'VEG' | 'NON_VEG' | 'EGG';
+
+/** An item in the menu editor (GET /api/stores/:storeId/menu-items): archived ones too, with the raw switch. */
+export interface ManagedMenuItem extends MenuItem {
+  /** The switch alone; `isAvailable` also counts stock. */
+  isEnabled: boolean;
+  archivedAt: string | null;
+  /** The template item this one was copied from (lineage); null for a branch's own. Optional: older answers lack it. */
+  templateItemId?: string | null;
 }
 
 export interface MenuCategory {
@@ -111,6 +179,25 @@ export interface MenuResponse {
   store: Store;
   popular: MenuItem[];
   categories: MenuCategory[];
+  /** Every modifier group the items offer, once. Optional: a menu persisted before the field existed. */
+  modifierGroups?: Record<string, ModifierGroup>;
+}
+
+/** A choice on an item (server ModifierGroupDto): "Size" (choose 1), "Add-ons" (up to 3). */
+export interface ModifierGroup {
+  id: string;
+  name: string;
+  /** 0: optional. */
+  minSelect: number;
+  maxSelect: number;
+  options: {
+    id: string;
+    name: string;
+    /** Whole rupees, may be negative. */
+    priceDelta: number;
+    isDefault: boolean;
+    isAvailable: boolean;
+  }[];
 }
 
 export interface OrderItem {
@@ -122,6 +209,18 @@ export interface OrderItem {
   lineTotal: number;
   /** Photo of the menu item. Optional so orders served before the API added it still render (cream placeholder). */
   imageUrl?: string | null;
+  /** The item's own price before its options (`unitPrice` includes them); null or absent on older orders. */
+  baseUnitPrice?: number | null;
+  /**
+   * The options the line was made with (P3.2). Optional: absent from a server before them. `optionId` (absent before
+   * it was added, null once the option was deleted) is what a reorder re-adds.
+   */
+  modifiers?: {
+    optionId?: string | null;
+    groupName: string;
+    optionName: string;
+    priceDelta: number;
+  }[];
 }
 
 export interface Order {
@@ -152,11 +251,18 @@ export interface ApiErrorDetails {
   orderId?: string;
   orderNumber?: number;
   /** Shapes added since P1 carry a `kind`; the ones above predate it and are told apart by `code`. */
-  kind?: 'rateLimit' | 'storeClosed' | 'storePaused';
+  kind?:
+    'rateLimit' | 'storeClosed' | 'storePaused' | 'storeNotReady' | 'uploadInvalid' | 'menuFull';
+  /** MENU_FULL: the most live items a store may have. */
+  max?: number;
   /** STORE_CLOSED: when the store next opens, when known. */
   nextChangeAt?: string;
   /** STORE_PAUSED: when the pause ends, or null when it lasts until someone resumes. */
   pausedUntil?: string | null;
+  /** UPLOAD_INVALID: which rule a photo upload broke. */
+  reason?: 'type' | 'sizeMismatch' | 'content' | 'notUploaded' | 'state';
+  /** STORE_NOT_READY: what a store still needs before it can be published: 'address', 'hours', 'menu'. */
+  missing?: string[];
   /** RATE_LIMITED: seconds until the window resets, the same number as the Retry-After header. */
   retryAfterSeconds?: number;
 }
@@ -191,6 +297,28 @@ export interface StoreSettings {
   staffOrderListLimit: number;
   /** Minutes before closing at which the store stops taking orders; 0 = until it closes. */
   lastOrderMinutesBeforeClose: number;
+  /** Whether STAFF may change stock here (P3.5); managers and the owner always may. */
+  staffCanEditStock: boolean;
+}
+
+/** GET /api/stores/:storeId/stock: the live items and the store's low-stock threshold. */
+export interface StockList {
+  items: ManagedMenuItem[];
+  lowStockThreshold: number;
+}
+
+/** One hand-made stock change (GET /api/stores/:storeId/stock-movements). Sales are not movements. */
+export interface StockMovement {
+  id: number;
+  menuItemId: string;
+  /** Units added (negative: removed); null when tracking started or stopped. */
+  delta: number | null;
+  /** Stock after the change; null: no longer tracked. */
+  resultingQuantity: number | null;
+  reason: 'MANUAL_SET' | 'MANUAL_ADJUST' | 'WASTE';
+  /** Who made it; null for a system change or a deleted account. */
+  actor: { id: string; name: string } | null;
+  createdAt: string;
 }
 
 /** Site-wide limits edited on the admin dashboard. */
@@ -213,7 +341,13 @@ export interface CreateOrderInput {
   /** The store the cart belongs to; without it the API picks the one active store. */
   storeId?: string;
   /** `expectedUnitPrice`: the rupee price the cart shows; a different current price is 409 PRICE_CHANGED. */
-  items: { menuItemId: string; quantity: number; expectedUnitPrice?: number }[];
+  items: {
+    menuItemId: string;
+    quantity: number;
+    expectedUnitPrice?: number;
+    /** The options chosen for the line (P3.2). */
+    modifierOptionIds?: string[];
+  }[];
   customerName: string;
   customerPhone?: string;
   note?: string;
@@ -266,4 +400,28 @@ export interface FeatureFlag {
   rules: { storeIds?: string[]; roles?: Role[]; percent?: number };
   updatedAt: string;
   updatedBy: string | null;
+}
+
+/** How to send a photo's bytes (POST …/media/uploads): a form for the bucket, or a PUT to the API (local storage). */
+export interface UploadTarget {
+  method: 'POST' | 'PUT';
+  url: string;
+  /** The bucket form's fields, sent before the file. */
+  fields?: Record<string, string>;
+  /** Headers the PUT must carry. */
+  headers?: Record<string, string>;
+}
+
+/** A photo upload (server MediaUploadDto): processed by the worker into WebP variants. */
+export interface MediaUpload {
+  id: string;
+  status: 'PENDING' | 'UPLOADED' | 'PROCESSED' | 'FAILED';
+  contentType: string;
+  byteSize: number;
+  /** The largest variant once PROCESSED; the original before. */
+  url: string;
+  variants: { width: number; height: number; url: string }[] | null;
+  /** Why it FAILED, ready to show ("not a photo"). */
+  failure: string | null;
+  createdAt: string;
 }

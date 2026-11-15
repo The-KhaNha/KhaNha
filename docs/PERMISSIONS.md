@@ -46,7 +46,7 @@ Consequence: a person's standing is per store; `profiles.role` is only `CUSTOMER
 The caller's standings at a store are `OWNER` (owns the store's brand), their membership role and `ADMIN` (profile
 role), in that order. `accessFor` picks the first standing that holds the requested capability, else the first standing
 it has (so a visible store answers 403), else none. An ADMIN who is also a STAFF member therefore uses STAFF for
-`orders.view` and ADMIN for `team.manageManagers`. The map is `MATRIX` in `server/src/domain/permissions.ts` (`can(access, capability)`,
+`orders.view` and ADMIN for `audit.store`. The map is `MATRIX` in `server/src/domain/permissions.ts` (`can(access, capability)`,
 `accessFor(user, store)`); a capability is added with the route that checks it.
 
 | Capability            | STAFF | MANAGER | OWNER | ADMIN |
@@ -56,13 +56,23 @@ it has (so a visible store answers 403), else none. An ADMIN who is also a STAFF
 | `store.pause`         | yes   | yes     | yes   | yes   |
 | `hours.edit`          |       | yes     | yes   |       |
 | `settings.edit`       |       | yes     | yes   |       |
-| `team.manageStaff`    |       | yes     | yes   | yes   |
-| `team.manageManagers` |       |         | yes   | yes   |
+| `menu.edit`           |       | yes     | yes   |       |
+| `store.profile`       |       | yes     | yes   |       |
+| `store.publish`       |       |         | yes   |       |
+| `team.manageStaff`    |       | yes     | yes   |       |
+| `team.manageManagers` |       |         | yes   |       |
 | `audit.store`         |       | yes     | yes   | yes   |
+| `stock.update`        | yes¹  | yes     | yes   |       |
 
-`ADMIN` holds only `store.pause`, `team.*` and `audit.store`: no kitchen power of its own (an ADMIN with a store membership still has that membership's kitchen access).
+`ADMIN` holds only `store.pause` and `audit.store`: no kitchen power of its own (an ADMIN with a store membership still has that membership's kitchen access), and no team power either, since an admin who could invite could make itself STAFF or MANAGER of any store (dropped at the P3 close after `/break` showed it).
 
 `store.pause` guards `POST /stores/:storeId/pause` and `POST /stores/:storeId/resume` ([API.md](API.md#post-storesstoreidpause)); STAFF, MANAGER, OWNER and ADMIN may pause.
+
+`menu.edit` guards the menu editor, `GET`, `POST`, `PATCH` and `DELETE /stores/:storeId/menu-items` ([API.md](API.md#get-storesstoreidmenu-items)); STAFF get 403.
+
+`stock.update` guards `PATCH /stores/:storeId/menu-items/:itemId/stock`, `GET /stores/:storeId/stock` and `GET /stores/:storeId/stock-movements` ([API.md](API.md#patch-storesstoreidmenu-itemsitemidstock)). ¹ STAFF hold it only while the store's `staff_can_edit_stock` setting is on (the default); a manager or the owner turns it off in the store's settings, and staff then get 403. It is the one cell that depends on a store setting: `can(access, capability, rules)` takes the store's rules, `requireStore` passes them from the store row, and a caller that passes none gets the stricter answer. A brand template has no stock, so `stock.update` is not a template capability.
+
+`store.profile` guards `PATCH /stores/:storeId/profile` ([API.md](API.md#patch-storesstoreidprofile)) and the manage screen's read of the store, `GET /stores/:storeId/manage` (`hours.edit` guards its hours read, `GET /stores/:storeId/manage/hours`); STAFF get 403. `store.publish` guards `POST /stores/:storeId/publish` and `/unpublish` ([API.md](API.md#post-storesstoreidpublish)) and is the OWNER's alone: making a store public or taking it down is the brand's call, so a MANAGER or an ADMIN cannot. `store.profile` is also a template capability (the owner edits the tagline and description new branches copy); `store.publish` is not. A published store cannot have its address cleared (400 on `addressLine`): unpublish first. Opening a branch (`POST /brands/:brandId/stores`) and pushing template items to branches (`POST /brands/:brandId/template/push`) are not store capabilities: the route checks that the brand is in the caller's `ownedBrandIds`, and everyone else, an admin included, gets 404.
 
 `hours.edit` guards `PUT /stores/:storeId/hours` and the schedule-exception POST and DELETE ([API.md](API.md#put-storesstoreidhours)); STAFF get 403.
 
@@ -71,6 +81,10 @@ it has (so a visible store answers 403), else none. An ADMIN who is also a STAFF
 - A malformed or unknown store id is 404 `NOT_FOUND`, and so is a store that is not `ACTIVE` when the caller has no
   access to it (a draft store does not exist to outsiders).
 - A store the caller can see but lacks the capability for is 403 `FORBIDDEN`.
+- A brand template (`stores.is_template`, [SCHEMA.md](SCHEMA.md#stores)) is 404 to everyone but the brand's owner,
+  and to the owner too for any capability a copy does not inherit: only `settings.edit`, `menu.edit`, `store.profile` and `audit.store` reach it
+  (`canAtTemplate` in `domain/permissions.ts`). A template has no kitchen and no team, so its orders, pause and team
+  routes are 404, and no invite to it can be made.
 - It sets `req.store` and `req.storeAccess`; `requestContext` then records `storeRole` in the actor, which the audit row
   stores as `actor_role` ([SCHEMA.md](SCHEMA.md#audit_row_change)).
 
@@ -81,15 +95,15 @@ it has (so a visible store answers 403), else none. An ADMIN who is also a STAFF
 ## Team invites and removals
 
 Code: `server/src/controllers/team.controller.ts`, `server/src/services/team.service.ts`. Every team route is behind
-`requireStore('team.manageStaff')` (MANAGER, OWNER, ADMIN; STAFF get 403). The routes are in
+`requireStore('team.manageStaff')` (MANAGER, OWNER; STAFF and a site ADMIN get 403). The routes are in
 [API.md](API.md#get-storesstoreidmembers).
 
 - **Inviting or revoking an invite for a `STAFF`** needs only `team.manageStaff`. For a **`MANAGER`** it also needs
-  `team.manageManagers` (OWNER, ADMIN), else 403.
+  `team.manageManagers` (OWNER), else 403.
 - **Removing a `STAFF` member** needs `team.manageStaff`. Removing a **`MANAGER`** needs `team.manageManagers`, except
   that a manager may remove themselves (leave the team).
 - `team.controller.managesManagers` re-checks `accessFor(user, store, 'team.manageManagers')` instead of reusing
-  `req.storeAccess`, so an ADMIN who is also a MANAGER member is judged by the standing that holds the capability.
+  `req.storeAccess`, so a caller with two standings at the store (the brand's owner who is also a member) is judged by the one that holds the capability.
 - The brand's owner has no membership, so no route can remove them. Removal takes effect on the person's next request.
 - Accepting (`POST /api/me/invites/accept`) needs only a signed-in account whose email is the invite's, plus the
   token. Every refusal is 404 ([API.md](API.md#post-meinvitesaccept)); the role comes from the invite, never from the
@@ -118,18 +132,18 @@ band, and it is shown once, stored only as a hash and never logged. Follow-up: v
 | `PATCH /api/stores/:storeId/orders/:orderId/status` | 401        | `orders.transition` there; another store's order 404         | `orders.transition` there; another store's order 404 | `orders.transition` there; another store's order 404 | `requireAuth` + `requireStore('orders.transition')` + `order.service.updateOrderStatus` |
 | `GET /api/admin/settings`                           | 401        | 403                                                          | 403                                                  | yes                                                  | `requireAuth` + `requireAdmin`                                                          |
 | `PATCH /api/admin/settings`                         | 401        | 403                                                          | 403                                                  | yes                                                  | `requireAuth` + `requireAdmin`                                                          |
-| `GET /api/stores/:storeId/audit`                    | 401        | 403                                                          | `audit.store` there (MANAGER, OWNER), else 403       | 403 unless a MANAGER/OWNER/ADMIN standing there      | `requireAuth` + `requireStore('audit.store')`                                           |
+| `GET /api/stores/:storeId/audit`                    | 401        | 403 unless a MANAGER or OWNER standing there                 | `audit.store` there (MANAGER, OWNER), else 403       | 403 unless a MANAGER/OWNER/ADMIN standing there      | `requireAuth` + `requireStore('audit.store')`                                           |
 | `POST /api/stores/:storeId/pause`                   | 401        | `store.pause` there, else 403 (404 if not visible)           | `store.pause` there, else 403 (404 if not visible)   | `store.pause` (ADMIN), else 403 (404 if not visible) | `requireAuth` + `requireStore('store.pause')` + `writeLimiter`; `storePause.service`    |
 | `POST /api/stores/:storeId/resume`                  | 401        | `store.pause` there, else 403 (404 if not visible)           | `store.pause` there, else 403 (404 if not visible)   | `store.pause` (ADMIN), else 403 (404 if not visible) | `requireAuth` + `requireStore('store.pause')` + `writeLimiter`; `storePause.service`    |
-| `GET /api/stores/:storeId/members`                  | 401        | 403                                                          | `team.manageStaff` there (MANAGER, OWNER), else 403  | `team.manageStaff` (ADMIN), else 403                 | `requireAuth` + `requireStore('team.manageStaff')`                                      |
-| `POST /api/stores/:storeId/invites`                 | 401        | 403                                                          | `team.manageStaff` there (MANAGER, OWNER), else 403  | `team.manageStaff` (ADMIN), else 403                 | same + `writeLimiter`; a `MANAGER` invite also needs `team.manageManagers`              |
-| `DELETE /api/stores/:storeId/invites/:inviteId`     | 401        | 403                                                          | `team.manageStaff` there (MANAGER, OWNER), else 403  | `team.manageStaff` (ADMIN), else 403                 | same; a `MANAGER` invite also needs `team.manageManagers`                               |
-| `DELETE /api/stores/:storeId/members/:membershipId` | 401        | 403                                                          | `team.manageStaff` there (MANAGER, OWNER), else 403  | `team.manageStaff` (ADMIN), else 403                 | same; a `MANAGER` member needs `team.manageManagers`, or is the caller                  |
+| `GET /api/stores/:storeId/members`                  | 401        | 403 unless a MANAGER or OWNER standing there                 | `team.manageStaff` there (MANAGER, OWNER), else 403  | 403 unless a MANAGER/OWNER standing there            | `requireAuth` + `requireStore('team.manageStaff')`                                      |
+| `POST /api/stores/:storeId/invites`                 | 401        | 403 unless a MANAGER or OWNER standing there                 | `team.manageStaff` there (MANAGER, OWNER), else 403  | 403 unless a MANAGER/OWNER standing there            | same + `writeLimiter`; a `MANAGER` invite also needs `team.manageManagers`              |
+| `DELETE /api/stores/:storeId/invites/:inviteId`     | 401        | 403 unless a MANAGER or OWNER standing there                 | `team.manageStaff` there (MANAGER, OWNER), else 403  | 403 unless a MANAGER/OWNER standing there            | same; a `MANAGER` invite also needs `team.manageManagers`                               |
+| `DELETE /api/stores/:storeId/members/:membershipId` | 401        | 403 unless a MANAGER or OWNER standing there                 | `team.manageStaff` there (MANAGER, OWNER), else 403  | 403 unless a MANAGER/OWNER standing there            | same; a `MANAGER` member needs `team.manageManagers`, or is the caller                  |
 | `POST /api/me/invites/accept`                       | 401        | yes, with the invite's token and email                       | yes, with the invite's token and email               | yes, with the invite's token and email               | `requireAuth` + `inviteAcceptLimiter`; every refusal 404                                |
 | `GET /api/admin/audit`                              | 401        | 403                                                          | 403                                                  | yes                                                  | `requireAuth` + `requireAdmin`                                                          |
 | `PATCH /api/admin/flags/:key`                       | 401        | 403                                                          | 403                                                  | yes (unknown key 404)                                | `requireAuth` + `requireAdmin`                                                          |
 | `/staff` (client route, the switcher)               | → `/login` | the switcher (an account with no store sees how to join one) | the switcher                                         | the switcher                                         | `RequireMembership` (signed in only)                                                    |
-| `/staff/:storeSlug` (client route, the board)       | → `/login` | → `/` (no membership at that store)                          | the board of the store                               | → `/` unless a member                                | `RequireMembership` (client only; the API checks `orders.view` per store)               |
+| `/staff/:storeSlug` (client route, the board)       | → `/login` | → `/` unless a member there or the brand's owner             | the board of the store                               | → `/` unless a member                                | `RequireMembership` (client only; the API checks `orders.view` per store)               |
 | `/admin` (client route)                             | → `/login` | → `/`                                                        | → `/`                                                | renders `AdminPage`                                  | `RequireRole role="ADMIN"` (client only)                                                |
 
 The STAFF column of the two store routes means a store standing (a membership or the brand's owner, whatever the
@@ -179,11 +193,11 @@ Code: `client/src/features/auth/RequireAuth.tsx`, `RequireRole.tsx`, `useAuthRed
 | Guard                                       | No token                               | Signed in, wrong role                                                                         | Matching role |
 | ------------------------------------------- | -------------------------------------- | --------------------------------------------------------------------------------------------- | ------------- |
 | `RequireAuth`                               | redirect to `/login?next=<path+query>` | render                                                                                        | render        |
-| `RequireMembership` (`/staff[/:storeSlug]`) | redirect to `/login?next=<path+query>` | `/staff`: render; `/staff/:storeSlug`: redirect to `/` unless a membership matches that store | render        |
+| `RequireMembership` (`/staff[/:storeSlug]`) | redirect to `/login?next=<path+query>` | `/staff`: render; `/staff/:storeSlug`: to `/` unless a member there or an owner (board check) | render        |
 | `RequireRole role="ADMIN"`                  | redirect to `/login?next=<path+query>` | redirect to `/`                                                                               | render        |
 
 `RequireStaff.tsx` was replaced by the generic `RequireRole.tsx` (one role prop instead of one component per role);
-`/staff` renders `<RequireMembership>` (a store role from `user.memberships`, at the route's store) and `/admin` renders `<RequireRole role="ADMIN">`.
+`/staff` renders `<RequireMembership>` (a store role from `user.memberships`, at the route's store) and `/admin` renders `<RequireRole role="ADMIN">`. The guard does not know brands: `StaffDashboard` sends a brand owner home when the slug is not one of their branches.
 
 - Guards read `token` (and `user.role` for a role guard) from `authStore`, which mirrors the supabase-js session so
   the check is synchronous.
@@ -282,7 +296,7 @@ flowchart LR
 - `POST /api/auth/register` creates accounts with the secret key (`auth.admin.createUser`, already confirmed). It
   applies the zod rules in `server/src/schemas/auth.schema.ts`.
 - Direct sign-ups with the publishable key (`supabase.auth.signUp`) would skip those rules, so they are off: local
-  Supabase has `[auth] enable_signup = false` in `server/supabase/config.toml` (`[auth.email] enable_signup` stays
+  Supabase has `[auth] enable_signup = false` in `server/supabase/config.toml` (`[auth.email] enabled` stays
   `true`: it switches the email provider itself, sign-in included), and a hosted
   project must turn off "Allow new users to sign up" (a required step, see
   [DEPLOYMENT.md](DEPLOYMENT.md#production-first-time-setup)). `/auth/register` keeps working:

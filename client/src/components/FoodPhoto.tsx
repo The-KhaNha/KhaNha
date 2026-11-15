@@ -17,6 +17,11 @@ interface FoodPhotoProps {
    * thumbnail; pass the real width for anything larger (the rail, the item sheet).
    */
   sizes?: string;
+  /**
+   * An uploaded photo's sizes (`MenuItem.imageSrcSet`, "/media/… 400w, /media/… 900w"). Without it a bundled photo
+   * gets its 400px thumbnail from lib/photo.ts.
+   */
+  srcSet?: string | null;
   /** Only the gold Popular badge is allowed on top of a food photo. */
   children?: ReactNode;
 }
@@ -46,6 +51,7 @@ export const FoodPhoto = forwardRef<HTMLSpanElement, FoodPhotoProps>(function Fo
     muted = false,
     eager = false,
     sizes = '112px',
+    srcSet,
     children,
   },
   ref,
@@ -64,7 +70,7 @@ export const FoodPhoto = forwardRef<HTMLSpanElement, FoodPhotoProps>(function Fo
       {src && !held && (
         <img
           src={src}
-          srcSet={photoSrcSet(src)}
+          srcSet={srcSet ?? photoSrcSet(src)}
           sizes={sizes}
           alt={alt}
           loading={eager ? 'eager' : 'lazy'}

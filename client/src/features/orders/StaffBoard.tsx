@@ -1,3 +1,5 @@
+import { LazyGroup } from '../../components/LazyGroup';
+import { CARD_GROUP } from '../../lib/chunked';
 import { Inbox, RefreshCw } from 'lucide-react';
 import type { Order, OrderStatus } from '../../types/api';
 import { Button } from '../../components/Button';
@@ -102,17 +104,29 @@ export function StaffBoard({
           <RefreshCw className="h-3.5 w-3.5 animate-spin" aria-hidden /> Connection lost — retrying…
         </p>
       )}
+      {/* Every card under this one grid, each mounting only as it nears the screen: a board of hundreds of orders
+          mounted every card at load (perf-auditor, P3 close). One parent, keyed by order, so a card keeps its state
+          (an open "Cancel order" confirmation, focus) when orders before it leave. The first rows are on screen. */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {visible.map((order) => (
-          <StaffOrderCard
+        {visible.map((order, at) => (
+          <LazyGroup
             key={order.id}
-            order={order}
-            pending={pendingIds.has(order.id)}
-            error={actionErrors[order.id]}
-            fresh={freshIds.has(order.id)}
-            leaving={leavingIds.has(order.id)}
-            onChangeStatus={onChangeStatus}
-          />
+            eager={at < CARD_GROUP}
+            // The grid item now: min-w-0, or a long word in the card widens the page at large text.
+            className="min-w-0"
+            placeholderClassName="h-48"
+          >
+            {() => (
+              <StaffOrderCard
+                order={order}
+                pending={pendingIds.has(order.id)}
+                error={actionErrors[order.id]}
+                fresh={freshIds.has(order.id)}
+                leaving={leavingIds.has(order.id)}
+                onChangeStatus={onChangeStatus}
+              />
+            )}
+          </LazyGroup>
         ))}
       </div>
     </>

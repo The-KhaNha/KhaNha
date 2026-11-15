@@ -6,7 +6,10 @@ P2 builds and why; this file says in which order, in which pull requests, with w
 and where P2 deliberately builds something different from the roadmap's text (each with its reason and the phase that
 picks it up). When a PR merges, tick its box here and in the roadmap.
 
-> **Status: proposal** (11 November 2026). P1 is in `dev` (#40). The roadmap's P2 section predates
+> **Status: done** (12 November 2026): every PR below merged into `feat/P2`, and `feat/P2` merged into `dev` as #75
+> (7b53c34). P3 continues in [P3_CATALOG_AND_MEDIA.md](P3_CATALOG_AND_MEDIA.md).
+>
+> Written as a proposal (11 November 2026) when P1 was in `dev` (#40). The roadmap's P2 section predates
 > [ADR-001](../docs/adr/001-brands-own-stores.md) as amended (24 October 2026): where they disagree **the ADR wins**,
 > this plan follows the ADR, and [PR 00](#pr-00--the-roadmap-says-what-adr-001-decided) rewrites the roadmap. The
 > user decided D1 on 11 November 2026 (the single-store API is removed inside the phase) and amended ADR-001 to
@@ -25,7 +28,7 @@ The P1 rules stand ([P1 plan](P1_PLATFORM_CORE.md#how-the-team-works-p1), CLAUDE
 - **One agent, one PR at a time,** in the [build order](#build-order). Each PR branches as `feat/p2-<NN>-<slug>` from
   a fresh `origin/feat/P2`, is finished (gate, `/post-change`, intent, owning docs, its box ticked here), opened as
   `P2 PR <NN> — <title>`, and then the agent merges it into `feat/P2` itself once `ci-ok` is green and CodeRabbit is
-  clear (D7; this applies to P2 only, P3 PRs are merged by the user).
+  clear (D7; the user extended it to P3 on 12 November 2026).
 - **Migrations.** A new migration is newer than the newest on `feat/P2`. Staging takes migrations from `feat/P2`
   while P2 is open (`pnpm run db:push:staging`, a user step). When `dev` moves, merge `dev` into `feat/P2` before
   the next PR.
@@ -402,7 +405,7 @@ The owning services filter by store explicitly, and `testStoreIsolation` proves 
 
 ### PR 05 — Store settings (P2.3)
 
-- [ ] Merged
+- [x] Merged
 
 `/before-write`: schema-guard, NEW TABLE (`store_settings`).
 
@@ -440,7 +443,7 @@ client half (`cartRules.ts`, `useMenu`, `fallbacks.json`) is PR 05c.
 
 ### PR 05c — Client: the store's limits (P2.3)
 
-- [ ] Merged
+- [x] Merged
 
 Split from PR 05 for size. `cartRules.ts` takes the limits as arguments instead of `MAX_LINE_QUANTITY` and
 `LOW_STOCK_MAX`; `useMenu` hands `rules` to the cart and the stock pill; the fallback when no menu is loaded lives in
@@ -455,7 +458,7 @@ defaults in `limits-parity.safe.test.ts`.
 
 ### PR 06 — Opening hours: the rule and the reads (P2.4)
 
-- [ ] Merged
+- [x] Merged
 
 As built: `store_hours` and `store_schedule_exceptions` with the roadmap's checks plus `< 24:00` bounds; `openState` is computed per read from a cached schedule (`store_hours:<id>`), `createOrder` reads it uncached (`loadSchedule`); the menu attaches its open fields after its cache read; `getSchedules` loads the list's schedules in two paged queries (past the Data API's 1000-row cap), exceptions from the UTC date two days back; the place_order `is_open` check is unchanged.
 
@@ -487,7 +490,7 @@ Docs: `docs/SCHEMA.md`, `docs/API.md` (the states, the route, the `STORE_CLOSED`
 
 ### PR 07 — Opening hours: editing (P2.4)
 
-- [ ] Merged
+- [x] Merged
 
 Migration `<ts>_set_store_hours.sql`: `set_store_hours(p_store_id, p_hours jsonb, p_actor, p_request_id)` replaces
 the week in one transaction (overlapping intervals on a day are refused with `P0001` `VALIDATION_ERROR`), sets the
@@ -512,7 +515,7 @@ security definer because `service_role` cannot insert into `audit_log`. The boun
 
 ### PR 08 — Pause and resume (P2.5)
 
-- [ ] Merged
+- [x] Merged
 
 Migration `<ts>_store_pause.sql`: the four pause columns; `pause_store(p_store_id, p_until, p_reason, p_actor,
 p_request_id, p_now default now())` and `resume_store(...)`, each setting the actor and emitting `store.paused` /
@@ -547,7 +550,7 @@ resume of a pause that already ran out clears the columns without an event.
 
 ### PR 09 — Team: members and invites (P2.2)
 
-- [ ] Merged
+- [x] Merged
 
 `/before-write`: schema-guard, NEW TABLE (`store_invites`).
 
@@ -584,7 +587,7 @@ Shipped in two PRs for size: 09a (the table, the team list and its writes) and 0
 
 ### PR 10 — The store's audit trail (P1.3, deferred)
 
-- [ ] Merged
+- [x] Merged
 
 `/before-write`: reuse-scout, expected EXTEND (`audit.service.ts`, `auditQuerySchema`).
 
@@ -602,7 +605,7 @@ As built: `audit.service.listAudit(query, storeId?)` gains the optional store fi
 
 ### PR 11 — Client: the store list and store pages (P2.6)
 
-- [ ] Merged
+- [x] Merged
 
 `/before-write`: reuse-scout, expected EXTEND (`StoreCard`, `OpenPill`, `useStore`, `useMenu`). Skill:
 `agent-skills:frontend-ui-engineering`; the store list is a new screen, so `frontend-design:frontend-design` first,
@@ -629,7 +632,7 @@ Docs: `docs/FRONTEND_STRUCTURE.md` (routes, `features/stores/`), `docs/COMPONENT
 
 ### PR 12 — Client: one cart per store (P2.6)
 
-- [ ] Merged
+- [x] Merged
 
 - `cartStore` version 2: `{ storeId, storeSlug, storeName, lines }`; `migrate` gives a version-1 cart the store its
   first line belongs to, found through the menu it was added from, and empties it if that cannot be resolved (a
@@ -648,7 +651,7 @@ Docs: `docs/FRONTEND_STRUCTURE.md`, `docs/COMPONENTS.md` (`ReplaceCartSheet`). I
 
 ### PR 13 — Client: the staff board per store (P2.2, P2.5)
 
-- [ ] Merged
+- [x] Merged
 
 - `features/auth/roles.ts`: `homeFor(user)` → `/admin` for an admin, `/manage` for an owner or manager, `/staff`
   for staff, `/` otherwise. `RequireMembership` (a store role at the route's store) replaces `RequireRole
@@ -668,7 +671,7 @@ Docs: `docs/FRONTEND_STRUCTURE.md`, `docs/PERMISSIONS.md` (the client section), 
 
 ### PR 14 — Client: `/manage` with the hours editor (P2.4)
 
-- [ ] Merged
+- [x] Merged
 
 `frontend-design:frontend-design` for the direction (a new area), then `agent-skills:frontend-ui-engineering`.
 
@@ -689,7 +692,7 @@ Split seam: the `/manage` shell and store picker as PR 14a, the editor as 14b.
 
 ### PR 15 — Client: `/manage` settings and team (P2.2, P2.3)
 
-- [ ] Merged
+- [x] Merged
 
 - `/manage/:storeSlug/settings`: the four store settings, with `settingsRules.ts`'s pattern from the admin page
   (bounds from the API's validation errors, not copied).
@@ -709,7 +712,7 @@ Docs: `docs/FRONTEND_STRUCTURE.md`, `docs/COMPONENTS.md`, `README.md` (the two-s
 
 ### PR 16 — Contract: the single-store API and `STAFF` go (P2.7)
 
-- [ ] Merged
+- [x] Merged
 
 Branch `feat/p2-16-contract`, last into `feat/P2`.
 

@@ -2,7 +2,7 @@ import type { Request, RequestHandler } from 'express';
 import type { Logger } from 'pino';
 import { verifyCredentials } from '@supabase/server/core';
 import { isAuthSessionMissingError } from '@supabase/supabase-js';
-import { accessFor, can, type Capability } from '../domain/permissions';
+import { accessFor, can, canAtTemplate, type Capability } from '../domain/permissions';
 import { getStoreById } from '../services/store.service';
 import type { AuthUser, RequestContext, StoreContext } from '../types/auth';
 import { env } from '../utils/env';
@@ -190,9 +190,11 @@ export function requireStore(capability: Capability): RequestHandler {
     const storeId = req.params.storeId;
     if (typeof storeId !== 'string' || !isUuid(storeId)) throw notFound('Store not found.');
     const store = await getStoreById(storeId.toLowerCase());
-    const access = accessFor(user, { id: store.id, brandId: store.brand_id }, capability);
+    const rules = { staffCanEditStock: store.staff_can_edit_stock };
+    const access = accessFor(user, { id: store.id, brandId: store.brand_id, ...rules }, capability);
     if (store.status !== 'ACTIVE' && access === null) throw notFound('Store not found.');
-    if (!can(access, capability)) throw forbidden('You cannot do that at this store.');
+    if (store.is_template && !canAtTemplate(access, capability)) throw notFound('Store not found.');
+    if (!can(access, capability, rules)) throw forbidden('You cannot do that at this store.');
     req.store = {
       id: store.id,
       brandId: store.brand_id,

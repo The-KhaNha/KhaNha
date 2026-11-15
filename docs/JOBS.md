@@ -41,22 +41,69 @@ the change: a transition that raises (a stock refusal, an invalid move) leaves n
 
 ## Store events
 
-Emitted by `pause_store` and `resume_store` ([SCHEMA.md](SCHEMA.md#stores)) in the same transaction as the change.
+Emitted by `pause_store` and `resume_store`, `create_store_from_template` and the `stores_changed` trigger ([SCHEMA.md](SCHEMA.md#stores)) in the same transaction as the change.
 `aggregateId` and `storeId` are the store id. Nothing subscribes to them yet.
 
-| Type            | Emitted when                            | Payload           |
-| --------------- | --------------------------------------- | ----------------- |
-| `store.paused`  | a store is paused, or its pause changes | `{ pausedUntil }` |
-| `store.resumed` | a paused store is resumed               | `{}`              |
+| Type            | Emitted when                                                                                                                                             | Payload                                                                  |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `store.paused`  | a store is paused, or its pause changes                                                                                                                  | `{ pausedUntil }`                                                        |
+| `store.resumed` | a paused store is resumed                                                                                                                                | `{}`                                                                     |
+| `store.created` | a branch is opened from the template                                                                                                                     | `{ brandId, templateStoreId }`                                           |
+| `store.changed` | a store's name, tagline, description, area, address, contact phone or status really changes (a profile edit, a publish, an unpublish, an operator's SQL) | `{ fields, status }`: the changed column names, sorted; never the values |
 
 A repeated pause or resume emits nothing, and neither does a resume of a pause that already ran out. A pause that ends
 by itself emits nothing either: it is derived, and a sweep comes with the first consumer.
 
+## Menu events
+
+`menu.changed` (`aggregateId` and `storeId`: the store; payload `{ itemIds }`) is emitted by the `menu_items_emit_changed`
+statement triggers ([SCHEMA.md](SCHEMA.md#triggers)) in the transaction of any write that changed what a menu shows:
+an insert, or an update of anything but `stock_quantity` and `template_item_id`. One statement is one event per store,
+so a copy or a bulk edit is one event, and a stock move by an order is none; a stock change by hand (`adjust_stock`) emits its own one. The actor and request id come from
+`app.actor` or the Data API's `x-actor` and `x-request-id` headers. Nothing subscribes to it yet (P7.7).
+
+## Media events
+
+`media.uploaded` (`aggregateId`: the upload; payload `{ key, contentType, byteSize }`) is emitted by
+`complete_media_upload` when an upload's bytes are in storage, and subscribed to `q_media`. `mediaHandler`
+(`jobs/media.ts`) reads the upload row first: anything but `UPLOADED` (or a row that is gone) is acknowledged without
+touching the store, so a redelivery after a completed run costs one row read. Otherwise it reads the original, which it
+treats as untrusted even after `complete` (a presigned form can replace it at the same size for five minutes): `sharp`
+decides the real format (JPEG, PNG or WebP) and refuses more than 6000 pixels on a side (`MEDIA_VARIANTS`). It decodes once
+(rotated by the EXIF orientation, cut to the widest variant, kept raw), drops all metadata and writes WebP at 400 and
+900 px wide (never enlarged) under
+`stores/<store>/variants/<sha256 prefix>-<width>.webp`, content-addressed, so a rerun writes the same keys. Then
+`finish_media_upload` marks the upload `PROCESSED` with its variants and emits `media.processed`, and the original is
+deleted last; a redelivery of a finished upload removes it again (idempotent, no read), so a crash or a store failure
+between the mark and the removal leaves nothing behind. A photo that can never be processed (not an image, too large,
+the original missing) is marked `FAILED` with a short reason the manager sees (the decoder's own message is logged
+only), its original is removed (`media.failed`), and the job ends normally: nothing is dead-lettered. A store failure
+that may pass (a 5xx, a 409 conflict, no answer) is retried; one that will not (a denied role) dead-letters and leaves the upload
+`UPLOADED` for the sweep. Variants are content-addressed, so two uploads of the same photo share them: whatever
+removes a variant first checks that nothing still points at it (the sweep, PR 10b).
+`sharp` runs with its cache off and one thread, one photo at a time: the production host has 1 GB. The test drives a
+6000×6000 photo through it under a 400 MB peak.
+
+`media.sweep` (nightly, from the `media-sweep` schedule, actor `SCHEDULER`) goes to the same handler, because only the
+worker can reach the store: `media_sweep_candidates(p_now)` names the uploads to delete, each with the variant keys it
+may remove, and `sweepMedia` checks once more that nothing shows the upload (`media_upload_shown`: an item may have
+taken it since the batch was read), removes those keys and the original, then deletes the row. A failure on one upload
+is logged (`warn` "Media sweep skipped an upload") and leaves its row for the next night; the others go on. It reads
+batches of 50 while full ones come back, for at most 60 seconds (inside the 120 s visibility timeout) and until
+shutdown; what is left waits for the next night. `p_now` is the event's `occurredAt`, so a late delivery sweeps by the time it was asked for
+(tests pass their own). Swept: an upload `PENDING`, `UPLOADED` or `FAILED` started more than 24 hours earlier, and a
+`PROCESSED` one older than 24 hours that no menu item and no order line shows. A processed upload stays while anything
+shows it, so a photo replaced later is swept the night after the 24 hours run out. A variant key is removed only when
+no upload that stays lists it (two uploads of one photo share keys), checked again for each key just before it
+goes, since one of a batch may be kept that night. On S3 the bucket's lifecycle rule (originals
+expire after a day, P8) is the backstop. Log line: `info` "Media swept" with `uploads` and `failed`.
+
 ## Queues and subscriptions
 
-| Queue             | Subscribed to | Consumer                           | Added by                    |
-| ----------------- | ------------- | ---------------------------------- | --------------------------- |
-| `q_notifications` | `order.*`     | `notifyHandler` (`jobs/notify.ts`) | `20261024181904_outbox.sql` |
+| Queue             | Subscribed to                                                                                                         | Consumer                           | Added by                            |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------- | ---------------------------------- | ----------------------------------- |
+| `q_notifications` | `order.*`                                                                                                             | `notifyHandler` (`jobs/notify.ts`) | `20261024181904_outbox.sql`         |
+| `q_media`         | `media.uploaded`, `media.sweep` (not `media.*`: the handler's own `media.processed` / `media.failed` would come back) | `mediaHandler` (`jobs/media.ts`)   | `20261113170333_media_pipeline.sql` |
 
 A queue is created with its first consumer, never ahead of it, in one migration: `select pgmq.create('q_<name>')`,
 then its `event_subscriptions` rows. A subscription naming a queue that does not exist makes `emit_event` raise, and
@@ -100,9 +147,10 @@ would stay hidden for its whole visibility timeout with no one to handle it. A f
 message simply comes back. A message never read, or one that is not a domain event, is an `InvariantError`:
 dead-lettered, logged with `invariant: true`. Log lines: [LOGGING.md](LOGGING.md#jobs).
 
-| Handler         | Queue             | Concurrency | Visibility | Attempts | Backoff     | Does (until P6.3)                        |
-| --------------- | ----------------- | ----------- | ---------- | -------- | ----------- | ---------------------------------------- |
-| `notifyHandler` | `q_notifications` | 4           | 30 s       | 5        | 5 s → 900 s | logs `info` "Order event" with `orderId` |
+| Handler         | Queue             | Concurrency | Visibility | Attempts | Backoff      | Does (until P6.3)                                                                                                                    |
+| --------------- | ----------------- | ----------- | ---------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `notifyHandler` | `q_notifications` | 4           | 30 s       | 5        | 5 s → 900 s  | logs `info` "Order event" with `orderId`                                                                                             |
+| `mediaHandler`  | `q_media`         | 1           | 120 s      | 5        | 10 s → 900 s | the photo's variants ([Media events](#media-events)); `info` "Photo processed", `warn` "Photo refused" with `uploadId` and `failure` |
 
 ## The worker process
 
@@ -136,10 +184,11 @@ Deployment: [DEPLOYMENT.md](DEPLOYMENT.md#local-compose). Log lines: [LOGGING.md
 Registered by migrations with `cron.schedule(name, schedule, command)`. Scheduling an existing name replaces it. A
 schedule that purges by age calls a SQL function that takes `p_now timestamptz default now()`, so tests choose the time.
 
-| Job                      | Schedule (UTC)            | Runs                              | Added by                              |
-| ------------------------ | ------------------------- | --------------------------------- | ------------------------------------- |
-| `purge-domain-events`    | `17 21 * * *` (02:47 IST) | `public.purge_domain_events()`    | `20261024181904_outbox.sql`           |
-| `purge-session-activity` | `27 21 * * *` (02:57 IST) | `public.purge_session_activity()` | `20261102110929_session_activity.sql` |
+| Job                      | Schedule (UTC)            | Runs                                                                              | Added by                              |
+| ------------------------ | ------------------------- | --------------------------------------------------------------------------------- | ------------------------------------- |
+| `purge-domain-events`    | `17 21 * * *` (02:47 IST) | `public.purge_domain_events()`                                                    | `20261024181904_outbox.sql`           |
+| `purge-session-activity` | `27 21 * * *` (02:57 IST) | `public.purge_session_activity()`                                                 | `20261102110929_session_activity.sql` |
+| `media-sweep`            | `37 21 * * *` (03:07 IST) | `emit_event('media.sweep', …)`: the worker sweeps ([Media events](#media-events)) | `20261113174022_media_sweep.sql`      |
 
 - Supabase recommends at most 8 jobs running at once, each under 10 minutes.
 - A paused Free project runs nothing; staging's schedules resume after a restore (ADR-002).
@@ -158,7 +207,7 @@ schedule that purges by age calls a SQL function that takes `p_now timestamptz d
 
 ## Runbook
 
-Local: `cd server && pnpm exec supabase db query --local "<sql>"`. Staging: the dashboard's SQL editor. Production is the
+Local: `cd server && pnpm exec supabase db query "<sql>"`. Staging: the dashboard's SQL editor. Production is the
 user's.
 
 | To                                            | Run                                                                                                                                                            |

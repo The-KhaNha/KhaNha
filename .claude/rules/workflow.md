@@ -71,7 +71,7 @@ decision.
 
 ### What counts as a major change
 
-- Any change under `server/src/{routes,controllers,services,schemas,middleware,jobs,domain}/`, `server/src/worker.ts`,
+- Any change under `server/src/{routes,controllers,services,schemas,middleware,jobs,domain,integrations}/`, `server/src/worker.ts`,
   `server/supabase/migrations/`, `client/src/{pages,services,components}/`, `client/src/App.tsx`, or any
   `package.json` or `pnpm-workspace.yaml` (overrides and allowed builds live there); or
 - 5 or more source files; or
@@ -191,7 +191,7 @@ matches `^feat/`). The `ci-ok required` ruleset covers every phase branch throug
 `feat/p2-01-brands-stores` (a `feat/*` pattern would catch the work branches and refuse their pushes). Migrations
 are immutable once merged into the phase branch. When the phase is done, `feat/P<n>` goes into `dev` as one PR, merged by the user.
 
-**PR size (STRICTLY ENFORCED).** Keep every PR reviewable: at most **38 changed files or 750 changed lines** against
+**PR size (STRICTLY ENFORCED).** Keep every PR reviewable: at most **50 changed files or 1000 changed lines** against
 its base (`node .claude/hooks/major-change-gate.js --status` prints both; `pnpm-lock.yaml`,
 `server/src/types/database.ts` and docs, meaning every Markdown file, do not count; tests do), and one theme per PR. Plan a task that is bigger than that as steps, each its own PR. The
 release PR (`release/*`, from `release.yml`) and a phase branch's PR into `dev` are exempt: each bundles work already
@@ -201,9 +201,9 @@ reviewed in its own PRs.
   `/post-change` for a major change), commit, push, open the PR into the base, and tell the user it is ready.
 - Then **stop**: start no other work, and do not poll CI or the PR. The user says when it is merged (or what to fix);
   only then branch fresh off the updated base for the next step.
-- **Exception, P2 only** (the user, 11 November 2026; P2 plan D7): the agent merges each P2 PR into `feat/P2` itself
-  once `ci-ok` is green and CodeRabbit is clear, then goes on to the next PR. The phase PR `feat/P2` → `dev` is still
-  the user's.
+- **Exception, P2 and P3** (the user, 11 and 12 November 2026; P2 plan D7, P3 plan "How the team works P3"): the
+  agent merges each PR into its phase branch (`feat/P2`, `feat/P3`) itself once `ci-ok` is green and CodeRabbit is
+  clear, then goes on to the next PR. The phase PR into `dev` is still the user's.
 - `.claude/hooks/major-change-gate.js` reminds once per branch when it passes the limit (`--status` prints the size).
 
 **CodeRabbit budget.** The repository is public, so CodeRabbit reviews it on the free open-source plan: **1–10 PR
@@ -225,8 +225,10 @@ CodeRabbit's Advanced plan, so no limit is set on it; `security_risk_instruction
 changes.
 
 - **Until 17 November 2026 the repository is on CodeRabbit Pro** (a one-week trial): no hourly review limit, so open
-  each PR as soon as it is ready and skip the draft-and-ready pacing below. From 18 November the free-plan limits
-  above apply again.
+  each PR as soon as it is ready and skip the draft-and-ready pacing below. `.coderabbit.yaml` also reviews every push
+  (`auto_incremental_review: true`, never pausing: `auto_pause_after_reviewed_commits: 0`) and answers the replies on its threads (`chat.auto_reply: true`), so no
+  `@coderabbitai review` is needed after a fix. On 18 November set both back to `false`: the free-plan limits above
+  apply again.
 - Open a PR once, complete (the flow above). With several ready at once, open the first, open the rest as drafts
   (`gh pr create --draft`), and mark the next one ready (`gh pr ready <n>`) only when a review is free again: a posted
   review does not free one, time does. `@coderabbitai rate limit` on an open PR says when, without spending a review.

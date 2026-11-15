@@ -244,6 +244,15 @@ describe('validation', () => {
       expect(res.status).toBe(201);
     });
 
+    it('upper-case ids are the same item and store (ids are case-insensitive UUIDs)', async () => {
+      const res = await placeOrder(customer1, {
+        storeId: storeId.toUpperCase(),
+        items: [{ menuItemId: menuItem('Cold Coffee').id.toUpperCase(), quantity: 1 }],
+      });
+      expect(res.status).toBe(201);
+      expect(res.body.order.store.id).toBe(storeId);
+    });
+
     it('a single line at 11 is refused', async () => {
       const res = await placeOrder(customer1, {
         items: [{ menuItemId: menuItem('Cold Coffee').id, quantity: 11 }],
@@ -794,7 +803,17 @@ describe('envelope and DTO keys', () => {
     );
     for (const item of res.body.order.items as Record<string, unknown>[]) {
       expect(Object.keys(item).sort()).toEqual(
-        ['id', 'menuItemId', 'name', 'unitPrice', 'quantity', 'lineTotal', 'imageUrl'].sort(),
+        [
+          'id',
+          'menuItemId',
+          'name',
+          'unitPrice',
+          'quantity',
+          'lineTotal',
+          'imageUrl',
+          'baseUnitPrice',
+          'modifiers',
+        ].sort(),
       );
     }
   });

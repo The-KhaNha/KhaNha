@@ -31,6 +31,8 @@ COPY --from=build /app/dist /usr/share/nginx/html
 # (so nginx's own $uri and $host survive).
 COPY nginx/default.conf.template /etc/nginx/templates/default.conf.template
 COPY nginx/security.conf.template /etc/nginx/templates/snippets/security.conf.template
+# Set, so the template's ${MEDIA_UPLOAD_ORIGIN} renders empty rather than literally when uploads need no bucket.
+ENV MEDIA_UPLOAD_ORIGIN=""
 COPY --chmod=755 nginx/runtime-env.sh /docker-entrypoint.d/40-runtime-env.sh
 EXPOSE 8080
 HEALTHCHECK --interval=15s --timeout=3s --start-period=5s --retries=3 \

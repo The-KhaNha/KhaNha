@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { ModifierGroup } from '../../types/api';
 import {
   availableQuantity,
   describeProblem,
@@ -9,6 +10,7 @@ import {
   orderItems,
   lineLimit,
   lineProblem,
+  optionsUnorderable,
   problemLabel,
   unavailableLabel,
   type CartLimits,
@@ -86,8 +88,10 @@ describe('lineLimit', () => {
   });
 });
 
-function cartLine(overrides: Partial<CartLine> = {}): Pick<CartLine, 'quantity' | 'maxQuantity'> {
-  return { quantity: 1, maxQuantity: null, ...overrides };
+function cartLine(
+  overrides: Partial<CartLine> = {},
+): Pick<CartLine, 'lineKey' | 'menuItemId' | 'quantity' | 'maxQuantity'> {
+  return { lineKey: 'm1', menuItemId: 'm1', quantity: 1, maxQuantity: null, ...overrides };
 }
 
 describe('lineProblem', () => {
@@ -127,7 +131,9 @@ describe('describeProblems', () => {
   it('joins one sentence per flagged line and skips lines with no problem', () => {
     const lines: CartLine[] = [
       {
+        lineKey: '1',
         menuItemId: '1',
+        options: [],
         name: 'Cheese Toast',
         unitPrice: 130,
         imageUrl: null,
@@ -135,7 +141,9 @@ describe('describeProblems', () => {
         maxQuantity: 1,
       },
       {
+        lineKey: '2',
         menuItemId: '2',
+        options: [],
         name: 'Cold Coffee',
         unitPrice: 120,
         imageUrl: null,
@@ -143,7 +151,9 @@ describe('describeProblems', () => {
         maxQuantity: null,
       },
       {
+        lineKey: '3',
         menuItemId: '3',
+        options: [],
         name: 'Brownie',
         unitPrice: 110,
         imageUrl: null,
@@ -157,7 +167,9 @@ describe('describeProblems', () => {
   it('is empty when nothing is flagged', () => {
     const lines: CartLine[] = [
       {
+        lineKey: '1',
         menuItemId: '1',
+        options: [],
         name: 'Cold Coffee',
         unitPrice: 120,
         imageUrl: null,
@@ -200,7 +212,9 @@ describe('isItemErrorCode', () => {
 
 describe('orderItems', () => {
   const line = (unitPrice: number): CartLine => ({
+    lineKey: 'm1',
     menuItemId: 'm1',
+    options: [],
     name: 'Cheese Toast',
     unitPrice,
     imageUrl: null,
@@ -218,5 +232,159 @@ describe('orderItems', () => {
     for (const bad of [0, 49.5, -10, Number.NaN]) {
       expect(orderItems([line(bad)])).toEqual([{ menuItemId: 'm1', quantity: 2 }]);
     }
+  });
+});
+
+describe('lines of one item share its limit', () => {
+  const store = { ...LIMITS, maxQuantityPerItem: 10 };
+  it('flags the line past what the others leave', () => {
+    const a = cartLine({ lineKey: 'm1', quantity: 2, maxQuantity: 3 });
+    const b = cartLine({ lineKey: 'm1:o', quantity: 2, maxQuantity: 3 });
+    expect(lineProblem(a, store, [a, b])).toEqual({ kind: 'over-limit', available: 1 });
+    expect(
+      lineProblem(cartLine({ lineKey: 'm1:o', quantity: 1, maxQuantity: 2 }), store, [a, b]),
+    ).toEqual({
+      kind: 'sold-out',
+    });
+    expect(lineProblem(a, store)).toBeNull();
+  });
+});
+
+describe('orderItems with options', () => {
+  const base: CartLine = {
+    lineKey: 'm1:o1',
+    menuItemId: 'm1',
+    options: [{ id: 'o1', groupName: 'Size', name: 'Small', priceDelta: -30 }],
+    name: 'Chai',
+    unitPrice: 0,
+    imageUrl: null,
+    quantity: 1,
+    maxQuantity: null,
+  };
+  it("names the line's options, and sends a ₹0 price only when options made it", () => {
+    expect(orderItems([base])).toEqual([
+      { menuItemId: 'm1', quantity: 1, expectedUnitPrice: 0, modifierOptionIds: ['o1'] },
+    ]);
+    expect(orderItems([{ ...base, lineKey: 'm1', options: [] }])).toEqual([
+      { menuItemId: 'm1', quantity: 1 },
+    ]);
+  });
+});
+
+describe('optionsUnorderable', () => {
+  const group = (
+    id: string,
+    minSelect: number,
+    maxSelect: number,
+    options: { id: string; isDefault?: boolean; isAvailable?: boolean }[],
+  ) => ({
+    id,
+    name: id,
+    minSelect,
+    maxSelect,
+    options: options.map((o) => ({
+      name: o.id,
+      priceDelta: 0,
+      isDefault: false,
+      isAvailable: true,
+      ...o,
+    })),
+  });
+  const groups = {
+    size: group('size', 1, 1, [{ id: 'reg', isDefault: true }, { id: 'lg' }]),
+    milk: group('milk', 1, 1, [{ id: 'oat' }, { id: 'soy' }]),
+    extras: group('extras', 0, 2, [
+      { id: 'shot' },
+      { id: 'off', isAvailable: false },
+      { id: 'syrup' },
+    ]),
+  };
+  const item = (ids: string[], price = 100) => ({ modifierGroupIds: ids, price });
+  const opts = (...ids: string[]) => ids.map((id) => ({ id }));
+
+  it('is fine as chosen, and when a required group left out has a default to fill it', () => {
+    expect(optionsUnorderable(item(['size', 'extras']), groups, opts('lg', 'shot'))).toBe(false);
+    expect(optionsUnorderable(item(['size']), groups, [])).toBe(false);
+    expect(optionsUnorderable(item([]), groups, [])).toBe(false);
+  });
+
+  it('flags an option switched off, gone, or no longer the item’s', () => {
+    expect(optionsUnorderable(item(['extras']), groups, opts('off'))).toBe(true);
+    expect(optionsUnorderable(item(['extras']), groups, opts('gone'))).toBe(true);
+    expect(optionsUnorderable(item(['size']), groups, opts('shot'))).toBe(true);
+  });
+
+  it('flags a required group with no default, and a group past its most', () => {
+    expect(optionsUnorderable(item(['milk']), groups, [])).toBe(true);
+    expect(optionsUnorderable(item(['size']), groups, opts('reg', 'lg'))).toBe(true);
+  });
+
+  it('flags a line whose price would be negative, defaults included', () => {
+    const priced = {
+      size: {
+        ...group('size', 1, 1, [{ id: 'reg', isDefault: true }, { id: 'lg' }]),
+        options: [
+          { id: 'reg', name: 'reg', priceDelta: -150, isDefault: true, isAvailable: true },
+          { id: 'lg', name: 'lg', priceDelta: 0, isDefault: false, isAvailable: true },
+        ],
+      },
+    };
+    expect(optionsUnorderable(item(['size'], 100), priced, [])).toBe(true);
+    expect(optionsUnorderable(item(['size'], 100), priced, opts('reg'))).toBe(true);
+    expect(optionsUnorderable(item(['size'], 100), priced, opts('lg'))).toBe(false);
+    expect(optionsUnorderable(item(['size'], 150), priced, [])).toBe(false);
+  });
+});
+
+describe('optionsUnorderable edges', () => {
+  const opt = (id: string, over: Partial<ModifierGroup['options'][number]> = {}) => ({
+    id,
+    name: id,
+    priceDelta: 0,
+    isDefault: false,
+    isAvailable: true,
+    ...over,
+  });
+  const grp = (over: Partial<ModifierGroup> & Pick<ModifierGroup, 'id' | 'options'>) => ({
+    name: over.id,
+    minSelect: 0,
+    maxSelect: 1,
+    ...over,
+  });
+
+  it('an item with no group list, or a group not in the map, offers nothing', () => {
+    expect(optionsUnorderable({ price: 100 } as never, {}, [])).toBe(false);
+    expect(optionsUnorderable({ price: 100 } as never, {}, [{ id: 'x' }])).toBe(true);
+    expect(optionsUnorderable({ modifierGroupIds: ['missing'], price: 100 }, {}, [])).toBe(false);
+  });
+
+  it('an unavailable default does not fill a required group', () => {
+    const g = grp({
+      id: 'g',
+      minSelect: 1,
+      options: [opt('d', { isDefault: true, isAvailable: false })],
+    });
+    expect(optionsUnorderable({ modifierGroupIds: ['g'], price: 100 }, { g }, [])).toBe(true);
+  });
+
+  it('a negative delta on a non-required pick that takes the price below zero is flagged; exactly zero is not', () => {
+    const g = grp({ id: 'g', options: [opt('cheap', { priceDelta: -100 })] });
+    const item = (price: number) => ({ modifierGroupIds: ['g'], price });
+    expect(optionsUnorderable(item(100), { g }, [{ id: 'cheap' }])).toBe(false);
+    expect(optionsUnorderable(item(99), { g }, [{ id: 'cheap' }])).toBe(true);
+  });
+
+  it('a required group with more defaults than its most fills only that many', () => {
+    const g = grp({
+      id: 'g',
+      minSelect: 1,
+      maxSelect: 1,
+      options: [
+        opt('a', { isDefault: true, priceDelta: -60 }),
+        opt('b', { isDefault: true, priceDelta: -60 }),
+      ],
+    });
+    // Only the first default is added: 100 - 60 = 40, not 100 - 120.
+    expect(optionsUnorderable({ modifierGroupIds: ['g'], price: 100 }, { g }, [])).toBe(false);
   });
 });

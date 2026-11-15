@@ -1,6 +1,8 @@
 {
   "minClientVersion": "0.0.0",
-  "features": {},
+  "features": {
+    "modifiers": false
+  },
   "payment": null,
   "limits": {
     "maxLinesPerOrder": 30
@@ -41,6 +43,25 @@
       "messageMax": 500,
       "stackMax": 3500,
       "routeMax": 200
+    },
+    "menuItem": {
+      "nameMin": 2,
+      "nameMax": 80,
+      "descriptionMax": 300,
+      "categoryMax": 40,
+      "priceMin": 1,
+      "priceMax": 100000,
+      "stockMax": 100000
+    },
+    "store": {
+      "nameMin": 2,
+      "nameMax": 80,
+      "slugMin": 3,
+      "slugMax": 48,
+      "taglineMax": 120,
+      "descriptionMax": 300,
+      "areaMax": 60,
+      "addressMax": 200
     }
   }
 }

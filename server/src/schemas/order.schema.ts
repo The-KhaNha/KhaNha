@@ -11,7 +11,12 @@ import { STORE_SETTING_BOUNDS } from './storeSettings.schema';
 export const MAX_ITEM_LINES_HARD = 100;
 
 const orderItemInput = z.object({
-  menuItemId: z.string().min(1, 'Menu item id is required.'),
+  // Ids are lower-cased here, once: the service keys items by the database's lower-case uuid text, and the flag rules
+  // compare store ids as strings, so an upper-case id would read as unknown (/break, P3 close).
+  menuItemId: z
+    .string()
+    .min(1, 'Menu item id is required.')
+    .transform((id) => id.toLowerCase()),
   quantity: z
     .number()
     .int('Quantity must be a whole number.')
@@ -27,7 +32,17 @@ const orderItemInput = z.object({
   expectedUnitPrice: z
     .number()
     .int('expectedUnitPrice must be a whole number of rupees.')
-    .positive('expectedUnitPrice must be positive.')
+    // A negative option can bring a line to ₹0 (P3.2), so 0 is a price a customer can see.
+    .nonnegative('expectedUnitPrice must not be negative.')
+    .optional(),
+  // The options chosen for this line (P3.2): ids of the item's modifier options. Optional, so the deployed client keeps
+  // working; a required group left out takes its default.
+  modifierOptionIds: z
+    .array(
+      z.uuid('Each option id must be a UUID.'),
+      'modifierOptionIds must be a list of option ids.',
+    )
+    .max(20, 'A line can have at most 20 options.')
     .optional(),
 });
 
@@ -38,19 +53,29 @@ interface MergedOrderItem {
   menuItemId: string;
   quantity: number;
   expectedUnitPrices: number[];
+  /** Sorted, so the same choice in any order is one line. */
+  modifierOptionIds: string[];
 }
 
 /**
- * The same item listed twice becomes one line with the quantities summed, so the
- * per-item cap (enforced in order.service, where the item's name is known) applies to the total.
+ * The same line listed twice (the same item with the same options, P3.2) becomes one line with the quantities summed.
+ * The same item with other options stays its own line; the per-item cap (enforced in order.service, where the item's
+ * name is known) counts all of an item's lines.
  */
 function mergeDuplicateItems(items: OrderItemInput[]): MergedOrderItem[] {
   const merged = new Map<string, MergedOrderItem>();
-  for (const { menuItemId, quantity, expectedUnitPrice } of items) {
-    const line = merged.get(menuItemId) ?? { menuItemId, quantity: 0, expectedUnitPrices: [] };
+  for (const { menuItemId, quantity, expectedUnitPrice, modifierOptionIds = [] } of items) {
+    const options = [...modifierOptionIds].map((id) => id.toLowerCase()).sort();
+    const key = `${menuItemId}:${options.join(',')}`;
+    const line = merged.get(key) ?? {
+      menuItemId,
+      quantity: 0,
+      expectedUnitPrices: [],
+      modifierOptionIds: options,
+    };
     line.quantity += quantity;
     if (expectedUnitPrice !== undefined) line.expectedUnitPrices.push(expectedUnitPrice);
-    merged.set(menuItemId, line);
+    merged.set(key, line);
   }
   return [...merged.values()];
 }
@@ -77,7 +102,10 @@ export const createOrderSchema = z
     // that sends none keeps working.
     idempotencyKey: z.string().uuid('idempotencyKey must be a UUID.').optional(),
     // The store the order is for: required (400 without), every order belongs to one store.
-    storeId: z.string('storeId is required.').uuid('storeId must be a UUID.'),
+    storeId: z
+      .string('storeId is required.')
+      .uuid('storeId must be a UUID.')
+      .transform((id) => id.toLowerCase()),
   })
   // Lines are counted as sent, before duplicates merge (docs/API.md): the lines limit applies to lineCount.
   .transform((input) => ({

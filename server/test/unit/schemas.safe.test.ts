@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { registerSchema } from '../../src/schemas/auth.schema';
 import { phoneField } from '../../src/schemas/common';
@@ -123,11 +124,34 @@ describe('createOrderSchema', () => {
       // 21 > the store's cap (default 10): the merged line is what order.service later refuses. Every shown price is
       // kept, so a stale one on a duplicate line is still compared.
       expect(result.data.items).toEqual([
-        { menuItemId: 'item-1', quantity: 21, expectedUnitPrices: [120, 100] },
+        {
+          menuItemId: 'item-1',
+          quantity: 21,
+          expectedUnitPrices: [120, 100],
+          modifierOptionIds: [],
+        },
       ]);
       // The lines limit counts what was sent, before the merge.
       expect(result.data.lineCount).toBe(2);
     }
+  });
+
+  it('merges a line by its item and options: the same options in another order merge, others stay apart', () => {
+    const [a, b] = [randomUUID(), randomUUID()];
+    const result = createOrderSchema.safeParse({
+      storeId: randomUUID(),
+      items: [
+        { menuItemId: 'item-1', quantity: 1, modifierOptionIds: [a, b] },
+        { menuItemId: 'item-1', quantity: 2, modifierOptionIds: [b, a] },
+        { menuItemId: 'item-1', quantity: 4, modifierOptionIds: [a] },
+      ],
+    });
+    expect(
+      result.success && result.data.items.map((l) => [l.quantity, l.modifierOptionIds.length]),
+    ).toEqual([
+      [3, 2],
+      [4, 1],
+    ]);
   });
 
   it.each([

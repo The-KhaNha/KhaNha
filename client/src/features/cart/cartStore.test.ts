@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fillStorage } from '../../test/storage';
 import type { MenuItem } from '../../types/api';
 import { CACHE_PREFIX } from '../../lib/useResource';
@@ -15,6 +15,7 @@ function menuItem(overrides: Partial<MenuItem> = {}): MenuItem {
     description: 'Creamy chilled coffee',
     price: 120,
     imageUrl: '/images/cold-coffee.jpg',
+    diet: null,
     isAvailable: true,
     isPopular: true,
     sortOrder: 1,
@@ -238,6 +239,69 @@ describe('one cart per store', () => {
   });
 });
 
+describe('another tab', () => {
+  it("takes another tab's cart when it changes, so a paid cart is not paid again here", async () => {
+    useCartStore.getState().add(menuItem(), 1, cafe);
+    expect(selectCount(useCartStore.getState())).toBe(1);
+    // The other tab paid and emptied the cart: only its storage write reaches this tab.
+    const emptied = JSON.stringify({
+      state: {
+        storeId: null,
+        storeSlug: null,
+        storeName: null,
+        lines: [],
+        limits: { maxQuantityPerItem: CAP, lowStockThreshold: 5 },
+      },
+      version: 3,
+    });
+    localStorage.setItem('fp_cart', emptied);
+    window.dispatchEvent(new StorageEvent('storage', { key: 'fp_cart', newValue: emptied }));
+    await vi.waitFor(() => expect(useCartStore.getState().lines).toEqual([]));
+    expect(useCartStore.getState().storeId).toBeNull();
+  });
+
+  it('keeps a replacement cart when a queued removal arrives after it was written', async () => {
+    useCartStore.getState().add(menuItem(), 1, cafe);
+    const replacement = JSON.stringify({
+      state: {
+        storeId: cafe.id,
+        storeSlug: cafe.slug,
+        storeName: cafe.name,
+        lines: [
+          {
+            lineKey: 'item-9',
+            menuItemId: 'item-9',
+            name: 'Tea',
+            unitPrice: 20,
+            options: [],
+            imageUrl: null,
+            quantity: 3,
+            maxQuantity: null,
+          },
+        ],
+        limits: { maxQuantityPerItem: CAP, lowStockThreshold: 5 },
+      },
+      version: 3,
+    });
+    localStorage.setItem('fp_cart', replacement);
+    window.dispatchEvent(new StorageEvent('storage', { key: 'fp_cart', newValue: null }));
+    await vi.waitFor(() =>
+      expect(useCartStore.getState().lines.map((l) => l.menuItemId)).toEqual(['item-9']),
+    );
+  });
+
+  it.each([
+    ['removes fp_cart', 'fp_cart'],
+    ['clears storage', null],
+  ])('empties the cart when another tab %s', (_label, key) => {
+    useCartStore.getState().add(menuItem(), 1, cafe);
+    localStorage.removeItem('fp_cart');
+    window.dispatchEvent(new StorageEvent('storage', { key, newValue: null }));
+    expect(useCartStore.getState().lines).toEqual([]);
+    expect(useCartStore.getState().storeId).toBeNull();
+  });
+});
+
 describe('migration from version 1', () => {
   const line = {
     menuItemId: 'item-1',
@@ -280,5 +344,165 @@ describe('migration from version 1', () => {
     await useCartStore.persist.rehydrate();
     expect(selectLines(useCartStore.getState())).toHaveLength(0);
     expect(useCartStore.getState().storeId).toBeNull();
+  });
+});
+
+describe('lines with options (P3.2)', () => {
+  const large = { id: 'o-large', groupName: 'Size', name: 'Large', priceDelta: 20 };
+  const oat = { id: 'o-oat', groupName: 'Milk', name: 'Oat', priceDelta: 30 };
+
+  it('makes one line per choice of options, priced with their deltas, in any order the same line', () => {
+    const { add } = useCartStore.getState();
+    add(menuItem(), 1, cafe);
+    add(menuItem(), 1, cafe, [large, oat]);
+    add(menuItem(), 1, cafe, [oat, large]);
+    const lines = selectLines(useCartStore.getState());
+    expect(lines.map((l) => [l.lineKey, l.unitPrice, l.quantity])).toEqual([
+      ['item-1', 120, 1],
+      ['item-1:o-large,o-oat', 170, 2],
+    ]);
+    expect(selectQuantityOf('item-1')(useCartStore.getState())).toBe(3);
+    expect(selectTotal(useCartStore.getState())).toBe(120 + 170 * 2);
+  });
+
+  it("shares the item's limit across its lines", () => {
+    const { add, increment, fix } = useCartStore.getState();
+    const item = menuItem({ stockQuantity: 3 });
+    add(item, 2, cafe);
+    add(item, 5, cafe, [large]); // only 1 left for this line
+    expect(selectLines(useCartStore.getState()).map((l) => l.quantity)).toEqual([2, 1]);
+    increment('item-1:o-large');
+    increment('item-1');
+    expect(selectQuantityOf('item-1')(useCartStore.getState())).toBe(3);
+    // The shop now has 2: the line fixed first keeps what the other leaves.
+    useCartStore.getState().setAvailability('item-1', 2);
+    fix('item-1:o-large');
+    expect(selectLines(useCartStore.getState()).map((l) => l.lineKey)).toEqual(['item-1']);
+  });
+
+  it('takes the stock an add sees onto every line of the item, so none keeps a stale limit', () => {
+    const { add, increment } = useCartStore.getState();
+    add(menuItem({ stockQuantity: 10 }), 1, cafe);
+    add(menuItem({ stockQuantity: 2 }), 1, cafe, [large]);
+    increment('item-1');
+    expect(selectQuantityOf('item-1')(useCartStore.getState())).toBe(2);
+    // Nothing left to add, but the plain line still learns the new stock.
+    useCartStore.setState({ lines: selectLines(useCartStore.getState()).slice(0, 1) });
+    add(menuItem({ stockQuantity: 1 }), 1, cafe, [large]);
+    expect(selectLines(useCartStore.getState())[0]?.maxQuantity).toBe(1);
+  });
+
+  it("syncs a line's price with its options' current deltas", () => {
+    useCartStore.getState().add(menuItem(), 1, cafe, [large]);
+    useCartStore.getState().syncPrices([menuItem({ price: 130 })], {
+      g: {
+        id: 'g',
+        name: 'Size',
+        minSelect: 1,
+        maxSelect: 1,
+        options: [{ ...large, isDefault: false, isAvailable: true, priceDelta: 25 }],
+      },
+    });
+    const [line] = selectLines(useCartStore.getState());
+    expect(line?.unitPrice).toBe(155);
+    expect(line?.options[0]?.priceDelta).toBe(25);
+  });
+});
+
+describe('an old line of an item that now has a required choice (P3.2)', () => {
+  const size = {
+    id: 'size',
+    name: 'Size',
+    minSelect: 1,
+    maxSelect: 1,
+    options: [
+      { id: 'reg', name: 'Regular', priceDelta: 20, isDefault: true, isAvailable: true },
+      { id: 'big', name: 'Big', priceDelta: 40, isDefault: false, isAvailable: true },
+    ],
+  };
+  const withSize = menuItem({ modifierGroupIds: ['size'] });
+
+  it('takes the default the server would apply, priced, when the cart reprices', () => {
+    useCartStore.getState().add(menuItem(), 2, cafe); // saved before the item had choices
+    useCartStore.getState().syncPrices([withSize], { size });
+    const [line] = selectLines(useCartStore.getState());
+    expect(line).toMatchObject({ lineKey: 'item-1:reg', unitPrice: 140, quantity: 2 });
+    expect(line?.options.map((o) => o.id)).toEqual(['reg']);
+  });
+
+  it('merges into the line it now matches', () => {
+    const regular = { id: 'reg', groupName: 'Size', name: 'Regular', priceDelta: 20 };
+    useCartStore.getState().add(menuItem(), 1, cafe);
+    useCartStore.getState().add(withSize, 2, cafe, [regular]);
+    useCartStore.getState().syncPrices([withSize], { size });
+    expect(selectLines(useCartStore.getState()).map((l) => [l.lineKey, l.quantity])).toEqual([
+      ['item-1:reg', 3],
+    ]);
+  });
+
+  it('leaves a line that already chose in the group alone', () => {
+    const big = { id: 'big', groupName: 'Size', name: 'Big', priceDelta: 40 };
+    useCartStore.getState().add(withSize, 1, cafe, [big]);
+    useCartStore.getState().syncPrices([withSize], { size });
+    expect(selectLines(useCartStore.getState())[0]?.options.map((o) => o.id)).toEqual(['big']);
+  });
+});
+
+describe('migration from version 2', () => {
+  it("keeps the cart and its store; each line's key is its item", async () => {
+    localStorage.setItem(
+      'fp_cart',
+      JSON.stringify({
+        state: {
+          storeId: 's1',
+          storeSlug: 'cafe',
+          storeName: 'Cafe',
+          lines: [
+            {
+              menuItemId: 'item-1',
+              name: 'Cold Coffee',
+              unitPrice: 120,
+              imageUrl: null,
+              quantity: 2,
+              maxQuantity: null,
+            },
+          ],
+        },
+        version: 2,
+      }),
+    );
+    await useCartStore.persist.rehydrate();
+    expect(useCartStore.getState()).toMatchObject({ storeId: 's1', storeSlug: 'cafe' });
+    expect(selectLines(useCartStore.getState())).toEqual([
+      expect.objectContaining({
+        lineKey: 'item-1',
+        menuItemId: 'item-1',
+        options: [],
+        quantity: 2,
+      }),
+    ]);
+    useCartStore.getState().increment('item-1');
+    expect(selectQuantityOf('item-1')(useCartStore.getState())).toBe(3);
+  });
+});
+
+describe('persistence across tabs', () => {
+  it('a sync that changes nothing does not write fp_cart', () => {
+    useCartStore.getState().add(menuItem(), 1, cafe);
+    const write = vi.spyOn(Storage.prototype, 'setItem');
+    useCartStore.getState().syncAvailability([menuItem()]);
+    useCartStore.getState().syncOptions([menuItem()], {});
+    expect(write).not.toHaveBeenCalled();
+    write.mockRestore();
+  });
+
+  it('persists a line without optionsStale', () => {
+    useCartStore.getState().add(menuItem(), 1, cafe);
+    useCartStore.setState((s) => ({ lines: s.lines.map((l) => ({ ...l, optionsStale: true })) }));
+    const saved = JSON.parse(localStorage.getItem('fp_cart') ?? '{}') as {
+      state: { lines: object[] };
+    };
+    expect(saved.state.lines).toHaveLength(1);
+    expect(saved.state.lines[0]).not.toHaveProperty('optionsStale');
   });
 });

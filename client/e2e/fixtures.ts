@@ -1,6 +1,7 @@
 import { expect, type Page } from '@playwright/test';
 import fallbacks from '../src/config/fallbacks.json' with { type: 'json' };
 import type {
+  ManagedStore,
   Config,
   MenuItem,
   MenuResponse,
@@ -38,6 +39,7 @@ const item = (overrides: Partial<MenuItem>): MenuItem => ({
   name: 'Cold Coffee',
   description: 'Creamy chilled coffee',
   price: 120,
+  diet: null,
   imageUrl: '/images/cold-coffee.jpg',
   isAvailable: true,
   isPopular: true,
@@ -85,6 +87,23 @@ export const summary = ({ id, slug, name, tagline, imageUrl, area, brand, ...ope
   openLabel: open.openLabel,
 });
 
+/** A store as GET /stores/:storeId/manage answers it (any status). */
+export const managed = (s: Store, over: Partial<ManagedStore> = {}): ManagedStore => ({
+  id: s.id,
+  slug: s.slug,
+  name: s.name,
+  status: 'ACTIVE',
+  isTemplate: false,
+  area: s.area,
+  address: s.address,
+  contactPhone: null,
+  tagline: s.tagline,
+  description: s.description,
+  imageUrl: s.imageUrl,
+  createdAt: '2026-11-01T00:00:00Z',
+  ...over,
+});
+
 export async function mockApi(page: Page): Promise<void> {
   await page.route('**/api/**', (route) => {
     const path = new URL(route.request().url()).pathname;
@@ -94,7 +113,34 @@ export async function mockApi(page: Page): Promise<void> {
     if (path === '/api/stores') return json({ stores: [summary(store)] });
     if (path === '/api/stores/cafe') return json({ store });
     if (path === '/api/stores/cafe/menu') return json(menu);
-    if (path === '/api/stores/s1/hours')
+    if (path === '/api/stores/s1/stock')
+      return json({
+        items: items.map((i, n) => ({
+          ...i,
+          stockQuantity: [12, 3][n] ?? null,
+          isEnabled: true,
+          archivedAt: null,
+        })),
+        lowStockThreshold: 5,
+      });
+    if (path === '/api/stores/s1/settings')
+      return json({
+        settings: {
+          maxQuantityPerItem: 10,
+          lowStockThreshold: 5,
+          staffOrderListLimit: 100,
+          lastOrderMinutesBeforeClose: 0,
+          staffCanEditStock: true,
+        },
+      });
+    // The menu editor's list (every item, with its own switch).
+    if (path === '/api/stores/s1/menu-items')
+      return json({ items: items.map((i) => ({ ...i, isEnabled: true, archivedAt: null })) });
+    if (path === '/api/stores/s1/modifier-groups') return json({ groups: [], itemGroupIds: {} });
+    // The manage screen reads its own store and hours at any status (GET /manage, /manage/hours).
+    if (path === '/api/stores/s1/manage')
+      return json({ store: managed(store), brand: store.brand, missing: [] });
+    if (path === '/api/stores/s1/hours' || path === '/api/stores/s1/manage/hours')
       return json({
         timezone: 'Asia/Kolkata',
         hours: [{ dayOfWeek: 1, opensAt: '09:00', closesAt: '17:00' }],
@@ -252,4 +298,15 @@ export async function signIn(
       }),
     );
   }, user);
+}
+
+/**
+ * After a sheet closes, its own history.back() is still landing for a moment (useBackToClose), and a page.goto in
+ * that moment is aborted (net::ERR_ABORTED). A person never navigates that fast; a test must wait for it.
+ */
+export async function sheetHistorySettled(page: Page): Promise<void> {
+  await page.waitForFunction(() => {
+    const state = window.history.state as { fpSheet?: number } | null;
+    return !state || state.fpSheet === undefined;
+  });
 }

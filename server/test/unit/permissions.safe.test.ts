@@ -1,5 +1,11 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
-import { accessFor, can, type Capability, type StoreAccess } from '../../src/domain/permissions';
+import {
+  accessFor,
+  can,
+  canAtTemplate,
+  type Capability,
+  type StoreAccess,
+} from '../../src/domain/permissions';
 
 // The P2 matrix (plans/P2_MULTI_STORE.md "Capabilities in P2"), written out cell by cell so a changed map fails here.
 const EXPECTED: Record<Capability, Record<StoreAccess, boolean>> = {
@@ -8,10 +14,17 @@ const EXPECTED: Record<Capability, Record<StoreAccess, boolean>> = {
   'store.pause': { STAFF: true, MANAGER: true, OWNER: true, ADMIN: true },
   'hours.edit': { STAFF: false, MANAGER: true, OWNER: true, ADMIN: false },
   'settings.edit': { STAFF: false, MANAGER: true, OWNER: true, ADMIN: false },
-  'team.manageStaff': { STAFF: false, MANAGER: true, OWNER: true, ADMIN: true },
-  'team.manageManagers': { STAFF: false, MANAGER: false, OWNER: true, ADMIN: true },
+  'menu.edit': { STAFF: false, MANAGER: true, OWNER: true, ADMIN: false },
+  'store.profile': { STAFF: false, MANAGER: true, OWNER: true, ADMIN: false },
+  'store.publish': { STAFF: false, MANAGER: false, OWNER: true, ADMIN: false },
+  'team.manageStaff': { STAFF: false, MANAGER: true, OWNER: true, ADMIN: false },
+  'team.manageManagers': { STAFF: false, MANAGER: false, OWNER: true, ADMIN: false },
   'audit.store': { STAFF: false, MANAGER: true, OWNER: true, ADMIN: true },
+  // STAFF while the store lets staff edit stock (the default); the cell with the setting off is tested below.
+  'stock.update': { STAFF: true, MANAGER: true, OWNER: true, ADMIN: false },
 };
+
+const STAFF_STOCK_ON = { staffCanEditStock: true };
 
 describe('can', () => {
   for (const [capability, row] of Object.entries(EXPECTED) as [
@@ -20,13 +33,21 @@ describe('can', () => {
   ][]) {
     for (const [access, allowed] of Object.entries(row) as [StoreAccess, boolean][]) {
       it(`${access} ${allowed ? 'may' : 'may not'} ${capability}`, () => {
-        expect(can(access, capability)).toBe(allowed);
+        expect(can(access, capability, STAFF_STOCK_ON)).toBe(allowed);
       });
     }
     it(`no access may not ${capability}`, () => {
       expect(can(null, capability)).toBe(false);
     });
   }
+
+  it("staff may not update stock where the store has it off, nor where the store's rules are not given", () => {
+    expect(can('STAFF', 'stock.update', { staffCanEditStock: false })).toBe(false);
+    expect(can('STAFF', 'stock.update')).toBe(false);
+    // The setting is only about staff.
+    expect(can('MANAGER', 'stock.update', { staffCanEditStock: false })).toBe(true);
+    expect(can('OWNER', 'stock.update', { staffCanEditStock: false })).toBe(true);
+  });
 
   // EXPECTED is a Record<Capability, …>, so a capability missing from it, or one the map lacks, fails to compile.
   it('an unknown capability does not compile', () => {
@@ -66,11 +87,40 @@ describe('accessFor', () => {
   it('an admin who also works the store keeps both powers', () => {
     const admin = user({ role: 'ADMIN', memberships: [{ storeId: 'store-a', role: 'STAFF' }] });
     expect(accessFor(admin, store, 'orders.view')).toBe('STAFF');
-    expect(accessFor(admin, store, 'team.manageManagers')).toBe('ADMIN');
+    expect(accessFor(admin, store, 'audit.store')).toBe('ADMIN');
+    expect(can(accessFor(admin, store, 'team.manageStaff'), 'team.manageStaff')).toBe(false);
     expect(accessFor(user({ role: 'ADMIN' }), store, 'store.pause')).toBe('ADMIN');
+  });
+
+  it('a staff member keeps their standing where stock editing is off, so the refusal is 403', () => {
+    const staff = user({ memberships: [{ storeId: 'store-a', role: 'STAFF' }] });
+    expect(accessFor(staff, { ...store, staffCanEditStock: false }, 'stock.update')).toBe('STAFF');
+    // An owner who is also staff there edits stock as the owner whatever the setting.
+    const both = user({
+      ownedBrandIds: ['brand-a'],
+      memberships: [{ storeId: 'store-a', role: 'STAFF' }],
+    });
+    expect(accessFor(both, { ...store, staffCanEditStock: false }, 'stock.update')).toBe('OWNER');
   });
 
   it('a STAFF profile with no membership has no access: the profile role grants nothing at a store', () => {
     expect(accessFor(user({ role: 'STAFF' }), store, 'orders.view')).toBeNull();
   });
+});
+
+// A brand template (P3 PR 01): the owner only, and only what a copy inherits. Written out so a widened list fails here.
+const AT_TEMPLATE: Capability[] = ['settings.edit', 'audit.store', 'menu.edit', 'store.profile'];
+
+describe('canAtTemplate', () => {
+  for (const capability of Object.keys(EXPECTED) as Capability[]) {
+    const ownerMay = AT_TEMPLATE.includes(capability);
+    it(`the owner ${ownerMay ? 'may' : 'may not'} ${capability} at a template`, () => {
+      expect(canAtTemplate('OWNER', capability)).toBe(ownerMay);
+    });
+    for (const access of ['STAFF', 'MANAGER', 'ADMIN', null] as const) {
+      it(`${access ?? 'no access'} may not ${capability} at a template`, () => {
+        expect(canAtTemplate(access, capability)).toBe(false);
+      });
+    }
+  }
 });

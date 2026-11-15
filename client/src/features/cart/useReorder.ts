@@ -1,10 +1,17 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { MenuItem, MenuResponse, Order } from '../../types/api';
+import type { MenuItem, MenuResponse, ModifierGroup, Order, OrderItem } from '../../types/api';
 import { fetchStoreMenu } from '../../services/stores';
 import { cartHoldsOtherStore } from '../stores/storeRules';
 import { availableQuantity, lineLimit } from './cartRules';
-import { selectQuantityOf, useCartStore, type CartStoreRef } from './cartStore';
+import {
+  chosenOptions,
+  defaultSelection,
+  itemGroups,
+  missingGroups,
+  type Selection,
+} from '../menu/modifierRules';
+import { selectQuantityOf, useCartStore, type CartOption, type CartStoreRef } from './cartStore';
 
 /** Router-state key under which /cart receives one line per item that could not be added in full. */
 const REORDER_NOTICE_STATE = 'reorderNotice';
@@ -40,6 +47,7 @@ export function useReorder() {
         order,
         menu.categories.flatMap((category) => category.items),
         menu.rules,
+        menu.modifierGroups,
       );
     } catch {
       notice = ["We couldn't load the menu, so nothing was added. Please try again."];
@@ -66,11 +74,46 @@ export function useReorder() {
   return { reorder, reorderingId, replace };
 }
 
+/**
+ * A line's options as the current menu can still make them (P3.2): each one it still offers and has; a required
+ * group left empty takes its defaults. `missing` names a required group no default can fill (the line cannot be
+ * added), `dropped` the options the menu no longer has.
+ */
+function reorderOptions(
+  item: MenuItem,
+  wanted: Pick<OrderItem, 'modifiers'>,
+  groups: Record<string, ModifierGroup> | undefined,
+): { options: CartOption[]; dropped: string[]; missing: string | null } {
+  const choices = itemGroups(item, groups);
+  const ids = new Set((wanted.modifiers ?? []).flatMap((m) => (m.optionId ? [m.optionId] : [])));
+  const defaults = defaultSelection(choices);
+  const selection: Selection = Object.fromEntries(
+    choices.map((g) => {
+      const kept = g.options.filter((o) => o.isAvailable && ids.has(o.id)).map((o) => o.id);
+      return [
+        g.id,
+        kept.length > 0
+          ? kept.slice(0, g.maxSelect)
+          : g.minSelect > 0
+            ? (defaults[g.id] ?? [])
+            : [],
+      ];
+    }),
+  );
+  const options = chosenOptions(choices, selection);
+  const kept = new Set(options.map((o) => o.id));
+  const dropped = (wanted.modifiers ?? [])
+    .filter((m) => !m.optionId || !kept.has(m.optionId))
+    .map((m) => m.optionName);
+  return { options, dropped, missing: missingGroups(choices, selection)[0]?.name ?? null };
+}
+
 /** Adds the order's items to the cart, each capped by what the menu can sell right now. Returns the shortfalls. */
 function addOrderToCart(
   order: Order,
   menuItems: MenuItem[],
   rules: MenuResponse['rules'],
+  groups?: Record<string, ModifierGroup>,
 ): string[] {
   const store: CartStoreRef = order.store;
   const cart = useCartStore.getState();
@@ -92,10 +135,18 @@ function addOrderToCart(
       continue;
     }
 
+    const { options, dropped, missing } = reorderOptions(item, wanted, groups);
+    if (missing) {
+      notice.push(`${item.name}: choose its ${missing} again, skipped`);
+      continue;
+    }
+    if (dropped.length > 0)
+      notice.push(`${item.name}: ${dropped.join(', ')} no longer offered, added without`);
+
     const limit = lineLimit(available, limits);
     const inCart = selectQuantityOf(item.id)(useCartStore.getState());
     const added = Math.max(0, Math.min(wanted.quantity, limit - inCart));
-    if (added > 0) cart.add(item, added, store);
+    if (added > 0) cart.add(item, added, store, options);
     if (added < wanted.quantity) {
       const reason =
         available === null ? `max ${limits.maxQuantityPerItem} per order` : `only ${limit} left`;
