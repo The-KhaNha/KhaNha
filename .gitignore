@@ -22,3 +22,11 @@ release.json
 .agents/skills/local-*/
 .codex/agents/local-*.toml
 .codex/local-plugins.json
+
+# Terraform (infra/): provider caches, state and plans stay local; only *.tfvars.example is committed.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+!*.tfvars.example

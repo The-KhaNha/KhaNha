@@ -22,7 +22,7 @@ they are the subdomain of the project URL (`server/scripts/db-push.sh`).
 ### Hosted environments
 
 Where the app runs outside a laptop, as decided for P8 ([plan](../plans/P8_INFRASTRUCTURE.md),
-[ADR-007](adr/007-pilot-on-ec2-compose.md), [ADR-011](adr/011-free-tiers.md)). Being built; nothing is hosted yet.
+[ADR-007](adr/007-pilot-on-ec2-compose.md), [ADR-011](adr/011-free-tiers.md)). Being built; nothing is hosted yet. How to bootstrap, plan and apply it: [infra/README.md](../infra/README.md).
 
 | What        | Decision                                                                                                                                                        |
 | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |

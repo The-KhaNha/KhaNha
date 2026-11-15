@@ -57,7 +57,10 @@ If the answer to 2 or 3 changes the budget's picture, the plan is revised before
   to another account (bootstrap there, apply, deploy the last release, move DNS). Whether the account stays open
   when the credits end, and whether they cover every service listed, is still to be read in the console: the
   account is on the **Paid** plan (the user, 15 November 2026), so it stays open when the credits end.
-- **3:** not checked yet. **PR 01 waits for it.**
+- **3:** checked on 15 November 2026 with AWS's console assistant for Mumbai: **about $20.30 a month with no free
+  allowances applied** (EC2 with its disk $6.09, CloudWatch $5.40, the public address $3.65, CloudFront $3.38, Route
+  53 $0.90, the secret $0.45, S3 $0.22, ECR $0.20). CloudWatch's and CloudFront's always-free allowances cover this
+  usage, which brings it to about $11.50. Under $35 either way, so PR 01 went ahead.
 - **4:** one account, the one holding the credits (D1). The setup stays movable to another account (row 2).
 - **5:** **as soon as PRs 01 and 02 are applied** (D11): the 95 days to the expiry would use only about $35 to $40
   of the credits, so waiting saves nothing and costs drill time.
@@ -255,7 +258,7 @@ marked **decided** follow from the user's decisions of 11 November 2026.
 
 ### PR 00 — The decisions, written down
 
-- [ ] Merged
+- [x] Merged
 
 Docs only (`no-release`). The two ADR amendments P8 needed are **made** (the user, 11 November 2026; see
 [ADRs this plan touches](#adrs-this-plan-touches)), so this PR brings the rest into line with them:
@@ -272,7 +275,7 @@ and the ADR-007 row of its architecture-decisions table match the
 | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `infra/terraform/bootstrap/`              | the state bucket (versioned, encrypted, private); the GitHub OIDC provider; the `plan`, `apply` and `deploy` roles, each trusted only for its GitHub Environment of this repository; **the $35 monthly budget with alerts at 50%, 80% and 100%** to the user's address. Applied by the user, once, then left alone |
 | `infra/terraform/envs/production/`        | the backend, the pinned Terraform and provider versions, the committed provider lock file, the variables (ap-south-1, account-specific names), no resources yet                                                                                                                                                    |
-| `.github/workflows/infra.yml`             | on a PR that touches `infra/terraform/**`: `plan` (Environment `infra-plan`), written to the job summary. `apply` runs only from `dev`, in the Environment `production-infra`, which has the user as required reviewer. Actions pinned by commit, like every other workflow                                        |
+| `.github/workflows/infra.yml`             | on a PR that touches `infra/terraform/**`: `plan` (Environment `infra-plan`), written to the job summary. `apply` runs only from `main` (production; `dev` applies nothing), in the Environment `production-infra`, which has the user as required reviewer. Actions pinned by commit, like every other workflow   |
 | `.github/workflows/ci.yml`                | the `changes` job gains an `infra` output; a new `infra` job (`terraform fmt -check -recursive`, `validate` with no backend) joins `ci-ok`'s list, so a broken configuration cannot merge; `static-analysis`'s `trivy config` also covers `infra/`                                                                 |
 | `scripts/ci/workflows.test.mjs` (new)     | the guard: a job asks for `id-token: write` only if it names an `environment`; no workflow that does is triggered by `pull_request_target`, and none checks out a pull request's head with a role that can change anything                                                                                         |
 | `infra/README.md` (new), `docs/README.md` | bootstrap, plan and apply, step by step; the budget table and how to read the bill; the ownership row for `infra/`                                                                                                                                                                                                 |
@@ -300,7 +303,7 @@ second plan is empty.
 
 ### PR 03 — arm64 images, proven in CI (P8.2)
 
-- [ ] Merged
+- [x] Merged
 
 No AWS involved, so it can land before the account exists.
 
@@ -375,7 +378,7 @@ refused; nothing on the host answers plain HTTP from outside the VPC; an object 
 
 ### PR 06 — Production guards in the server (P8.6)
 
-- [ ] Merged
+- [x] Merged
 
 `server/src/utils/env.ts`: with `APP_ENV=production` the server refuses to start unless `CLIENT_ORIGIN` is `https`,
 `GIT_COMMIT` is set, and `TRUST_PROXY_HOPS` is at least 1. (`staging` is left alone: a local stack pointed at the
