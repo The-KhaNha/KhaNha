@@ -31,6 +31,11 @@ of real usage this month, even while credits pay for it.
 Needs: Terraform 1.11 or newer, the AWS CLI v2 signed in to the account that holds the credits with administrator
 rights (`aws sts get-caller-identity` shows the right account).
 
+Before `terraform apply`, check the credits in the console (Billing and Cost Management → Credits, then each credit's
+applicable products). They must cover EC2, public IPv4 addresses (VPC), ECR, S3, CloudFront, CloudWatch, Secrets
+Manager and Route 53. If one is not covered, stop and say so before applying (`plans/P8_INFRASTRUCTURE.md`, "Ask the
+user before starting", keeps this check open).
+
 ```bash
 cd infra/terraform/bootstrap
 cp terraform.tfvars.example terraform.tfvars   # untracked; put the alert address in it
@@ -75,7 +80,9 @@ None of these values is secret; they are variables, not secrets, so they show in
 ## 3. Plan and apply (every change)
 
 1. A pull request that touches `infra/terraform/**` runs `infra.yml`'s **plan**; the plan is in the run's summary.
-   `ci.yml`'s `infra` job also checks `terraform fmt` and `validate` for every root, without AWS.
+   `ci.yml`'s `infra` job also checks `terraform fmt` and `validate` for every root, without AWS. Only pull requests
+   from branches of this repository are planned. A fork's pull request skips the plan, because its code would run with
+   the account's read access; a maintainer re-opens it from a branch here to see a plan.
 2. When it merges into `dev`, `infra.yml` plans again, then its **apply** job waits for you (the `production-infra`
    Environment). Read the plan in the summary of that run's plan job, then approve.
 3. A second run on an unchanged tree plans "No changes".

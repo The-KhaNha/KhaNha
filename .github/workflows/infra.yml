@@ -16,10 +16,17 @@ on:
 permissions:
   contents: read
 
-# One run at a time against production's state; a queued apply waits instead of cancelling the one in progress.
+# One run at a time against production's state. `queue: max` lets every pending run wait: by default a newer pending
+# run replaces the older one, so a pull request's plan could silently drop a dev push's apply.
 concurrency:
   group: infra-production
+  queue: max
   cancel-in-progress: false
+
+# `shell: bash` makes GitHub run `bash -eo pipefail`, so a failed `terraform plan | tee` fails the step.
+defaults:
+  run:
+    shell: bash
 
 env:
   TF_IN_AUTOMATION: '1'

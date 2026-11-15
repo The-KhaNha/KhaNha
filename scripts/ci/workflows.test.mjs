@@ -85,7 +85,12 @@ export function checkWorkflow(text) {
       problems.push(`${job}: can mint a cloud token in a pull_request_target workflow`);
     if (/github\.event\.pull_request\.head\.(sha|ref)|github\.head_ref/.test(jobText))
       problems.push(`${job}: checks out a pull request's head with a cloud token`);
-    const onlyNonPrEvents = /github\.event_name\s*==\s*'(?!pull_request)/.test(condition);
+    // Fail closed: only a plain non-PR event comparison with no `||` and no mention of
+    // pull_request counts as excluding pull requests.
+    const onlyNonPrEvents =
+      /github\.event_name\s*==\s*'(?!pull_request)/.test(condition) &&
+      !condition.includes('||') &&
+      !condition.includes('pull_request');
     if (
       environment &&
       !READ_ONLY_ENVIRONMENTS.has(environment) &&
@@ -114,6 +119,18 @@ test('the guard accepts a read-only plan on pull requests and a guarded apply', 
   );
   assert.deepEqual(checkWorkflow(plan), []);
   assert.deepEqual(checkWorkflow(apply), []);
+});
+
+test('the guard refuses an apply condition that can still run on a pull request', () => {
+  for (const cond of [
+    "github.event_name == 'push' || github.event_name == 'pull_request'",
+    "github.event_name != 'pull_request' || always()",
+  ]) {
+    const text = job(
+      `    if: ${cond}\n    environment: production-infra\n    permissions:\n      id-token: write`,
+    );
+    assert.match(checkWorkflow(text).join(), /can run on a pull request/, cond);
+  }
 });
 
 test('the guard refuses a token without an environment', () => {
