@@ -2,6 +2,10 @@
 
 All notable changes to the API server (`server/package.json`). Written by `npm run release` from `.changes/`.
 
+## 0.2.1 — 2026-11-15
+
+- Update dependencies (Dependabot): Supabase, Express, pino, dotenv 18, lucide-react 1.x and the minor/patch groups.
+
 ## 0.2.0 — 2026-11-15
 
 - P0 foundations: Node 24 pin, CI, versioning, health and version reporting, containers and the configuration registry.
