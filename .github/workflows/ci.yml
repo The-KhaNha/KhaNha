@@ -86,7 +86,7 @@ jobs:
       - run: node ../scripts/ci/check-dist-secrets.mjs .
       # The e2e specs (client/e2e/*.spec.ts) on Chromium at 360×640, every /api call mocked: layout at 200% text,
       # 44px tap targets, the add-to-cart path. WebKit runs weekly in browsers.yml (ADR-011 minutes).
-      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('client/pnpm-lock.yaml') }}
