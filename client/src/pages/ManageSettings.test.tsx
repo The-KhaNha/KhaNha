@@ -45,6 +45,22 @@ describe('ManageSettingsTab', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
+  it('still warns before a reload when one value changed and another input was emptied', async () => {
+    render(<ManageSettingsTab storeId="s1" />);
+    const leave = () => {
+      const event = new Event('beforeunload', { cancelable: true });
+      window.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    fireEvent.change(await screen.findByLabelText(/Low-stock/), { target: { value: '8' } });
+    fireEvent.change(field(/Stop orders/), { target: { value: '' } });
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+    expect(leave()).toBe(true);
+    fireEvent.change(field(/Low-stock/), { target: { value: '5' } });
+    fireEvent.change(field(/Stop orders/), { target: { value: '0' } });
+    expect(leave()).toBe(false);
+  });
+
   it('keeps Save off for a non-number and offers a retry when the load fails', async () => {
     svc.fetchStoreSettings.mockRejectedValueOnce(new ApiError(500, 'INTERNAL', 'boom'));
     render(<ManageSettingsTab storeId="s1" />);

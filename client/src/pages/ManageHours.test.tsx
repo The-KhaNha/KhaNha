@@ -127,6 +127,20 @@ describe('ManageHoursPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Could not remove.');
   });
 
+  it('warns before a reload while a special-day draft is open', async () => {
+    api.fetchStoreHours.mockResolvedValue(week([monday], []));
+    show();
+    const unload = () => {
+      const event = new Event('beforeunload', { cancelable: true });
+      window.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    fireEvent.click(await screen.findByRole('button', { name: 'Closed for …' }));
+    expect(unload()).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(unload()).toBe(false);
+  });
+
   it('offers an admin no editor, and never loads the hours for them', () => {
     state.user = { ...manager, role: 'ADMIN', memberships: [] };
     show();

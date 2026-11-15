@@ -38,4 +38,27 @@ describe('useBackToClose', () => {
     back();
     expect(under).toHaveBeenCalledTimes(1);
   });
+
+  it('a lower sheet closed first leaves an entry that Back steps over, so one press reaches the page', () => {
+    const stack: unknown[] = [null];
+    vi.spyOn(window.history, 'pushState').mockImplementation((s) => void stack.push(s));
+    vi.spyOn(window.history, 'back').mockImplementation(() => {
+      stack.pop();
+      back();
+    });
+    Object.defineProperty(window.history, 'state', { configurable: true, get: () => stack.at(-1) });
+    try {
+      const a = renderHook(({ open }) => useBackToClose(open, vi.fn()), {
+        initialProps: { open: true },
+      });
+      const b = renderHook(({ open }) => useBackToClose(open, vi.fn()), {
+        initialProps: { open: true },
+      });
+      a.rerender({ open: false });
+      b.rerender({ open: false });
+      expect(stack).toEqual([null]);
+    } finally {
+      Reflect.deleteProperty(window.history, 'state');
+    }
+  });
 });

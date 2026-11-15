@@ -12,13 +12,18 @@ const open: { id: number; close: () => void }[] = [];
 // Pops this module made itself (a sheet closed another way going back over its entry): not the person's Back.
 let ownPops = 0;
 let nextId = 0;
+// Entries of sheets closed while a sheet above them was still open: they stay in the history below it, so Back
+// must step over them instead of landing on one and needing a second press.
+const abandoned = new Set<number>();
 
 window.addEventListener('popstate', () => {
-  if (ownPops > 0) {
-    ownPops -= 1;
-    return;
+  if (ownPops > 0) ownPops -= 1;
+  else open.pop()?.close();
+  const landed = entryOf(window.history.state);
+  if (landed !== undefined && abandoned.delete(landed)) {
+    ownPops += 1;
+    window.history.back();
   }
-  open.pop()?.close();
 });
 
 const entryOf = (state: unknown): number | undefined =>
@@ -46,7 +51,7 @@ export function useBackToClose(active: boolean, onClose: () => void): void {
       if (entryOf(window.history.state) === sheet.id) {
         ownPops += 1;
         window.history.back();
-      }
+      } else if (entryOf(window.history.state) !== undefined) abandoned.add(sheet.id);
     };
   }, [active]);
 }
