@@ -1,5 +1,6 @@
 import { cn } from '../lib/cn';
-import { CARD_GROUP } from '../features/menu/menuRules';
+import { LazyGroup } from '../components/LazyGroup';
+import { CARD_GROUP, chunked } from '../lib/chunked';
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { useParams } from 'react-router-dom';
 import { Clock, UtensilsCrossed } from 'lucide-react';
@@ -36,11 +37,6 @@ const POPULAR_ID = 'popular';
 function slugify(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 }
-
-const chunked = <T,>(list: T[], size: number): T[][] =>
-  Array.from({ length: Math.ceil(list.length / size) }, (_, i) =>
-    list.slice(i * size, (i + 1) * size),
-  );
 
 export function MenuPage() {
   const { storeSlug = '' } = useParams();
@@ -110,6 +106,8 @@ export function MenuPage() {
   if (!menu) return null;
   const { store } = menu;
 
+  // Counts card groups as they render, so only the first two (on screen at load) mount at once.
+  let groupsBefore = 0;
   return (
     // The storefront header paints at once (it holds the page's largest paint); only the lists below fade in.
     <AddToCartProvider store={store} rules={menu.rules}>
@@ -204,10 +202,13 @@ export function MenuPage() {
                     below the last card (-mx/px, pb/-mb; the hover shadow reaches 42px down). The size stands in until
                     the group is first drawn, then `auto` keeps the real one; rem, so it scales with the text. */}
                 {chunked(section.items, CARD_GROUP).map((group, at) => (
-                  <div
+                  <LazyGroup
                     // By place, not by first item: an archived item would otherwise re-key every later group and
                     // remount its cards, losing their remembered sizes.
                     key={at}
+                    // The first two groups of the menu are on screen at load: mounted at once.
+                    eager={groupsBefore++ < 2}
+                    placeholderClassName="md:col-span-2 [height:calc(var(--cards)*9.25rem)] md:[height:calc(var(--cards)*4.625rem)]"
                     className={cn(
                       // pt-2/-mt-2: room above the first card for its hover lift and shadow (paint is clipped here).
                       '-mx-4 -mb-10 space-y-3 px-4 pt-2 pb-10 md:-mx-6 md:grid md:grid-cols-2 md:gap-3 md:space-y-0 md:px-6 [content-visibility:auto]',
@@ -217,10 +218,12 @@ export function MenuPage() {
                     )}
                     style={{ '--cards': group.length } as CSSProperties}
                   >
-                    {group.map((item) => (
-                      <FoodCard key={item.id} item={item} onOpen={setSelected} />
-                    ))}
-                  </div>
+                    {() =>
+                      group.map((item) => (
+                        <FoodCard key={item.id} item={item} onOpen={setSelected} />
+                      ))
+                    }
+                  </LazyGroup>
                 ))}
               </section>
             ),

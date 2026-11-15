@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { CARD_GROUP } from './features/menu/menuRules';
+import { CARD_GROUP } from './lib/chunked';
 import type { MenuItem, MenuResponse } from './types/api';
 
 // jsdom has neither; the menu's category chips and photos observe layout.
@@ -109,5 +109,35 @@ describe('menu re-renders', () => {
     }
     for (const card of container.querySelectorAll<HTMLElement>('article'))
       expect(card.className).not.toContain('content-visibility');
+  });
+
+  // content-visibility skips layout and paint, not React's mount: a menu of hundreds mounted every card at load, one
+  // 180-240 ms task on a cheap phone (perf-auditor, P3 close). Only the groups near the screen mount.
+  it('mounts only the first groups of a long menu until the rest near the screen', () => {
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        observe() {}
+        disconnect() {}
+      },
+    );
+    const categories = menu.categories;
+    menu.categories = [
+      {
+        name: 'Coffee',
+        items: Array.from({ length: 60 }, (_, i) => ({ ...item(100 + i), category: 'Coffee' })),
+      },
+    ];
+    try {
+      window.history.pushState({}, '', '/s/cafe/menu');
+      const { container } = render(<App />);
+      const cards = container.querySelectorAll('article').length;
+      expect(cards).toBeGreaterThan(0);
+      expect(cards).toBeLessThanOrEqual(2 * CARD_GROUP);
+      expect(container.querySelectorAll('[data-lazy-group="waiting"]').length).toBeGreaterThan(0);
+    } finally {
+      menu.categories = categories;
+      vi.unstubAllGlobals();
+    }
   });
 });

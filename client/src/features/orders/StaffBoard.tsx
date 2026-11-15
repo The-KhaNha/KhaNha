@@ -1,3 +1,6 @@
+import type { CSSProperties } from 'react';
+import { LazyGroup } from '../../components/LazyGroup';
+import { CARD_GROUP, chunked } from '../../lib/chunked';
 import { Inbox, RefreshCw } from 'lucide-react';
 import type { Order, OrderStatus } from '../../types/api';
 import { Button } from '../../components/Button';
@@ -102,17 +105,31 @@ export function StaffBoard({
           <RefreshCw className="h-3.5 w-3.5 animate-spin" aria-hidden /> Connection lost — retrying…
         </p>
       )}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {visible.map((order) => (
-          <StaffOrderCard
-            key={order.id}
-            order={order}
-            pending={pendingIds.has(order.id)}
-            error={actionErrors[order.id]}
-            fresh={freshIds.has(order.id)}
-            leaving={leavingIds.has(order.id)}
-            onChangeStatus={onChangeStatus}
-          />
+      {/* In groups of 12 (whole rows at 1, 2 or 3 columns) whose cards mount only as they near the screen: a board
+          of hundreds of orders mounted every card at load (perf-auditor, P3 close). The first group is on screen. */}
+      <div className="space-y-4">
+        {chunked(visible, CARD_GROUP).map((group, at) => (
+          <LazyGroup
+            key={at}
+            eager={at === 0}
+            className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3"
+            placeholderClassName="col-span-full h-[calc(var(--cards)*12rem)] sm:h-[calc(var(--cards)*6rem)] xl:h-[calc(var(--cards)*4rem)]"
+            style={{ '--cards': group.length } as CSSProperties}
+          >
+            {() =>
+              group.map((order) => (
+                <StaffOrderCard
+                  key={order.id}
+                  order={order}
+                  pending={pendingIds.has(order.id)}
+                  error={actionErrors[order.id]}
+                  fresh={freshIds.has(order.id)}
+                  leaving={leavingIds.has(order.id)}
+                  onChangeStatus={onChangeStatus}
+                />
+              ))
+            }
+          </LazyGroup>
         ))}
       </div>
     </>
