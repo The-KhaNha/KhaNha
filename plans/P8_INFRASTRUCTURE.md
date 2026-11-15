@@ -350,6 +350,9 @@ refused; nothing on the host answers plain HTTP from outside the VPC; an object 
 `server/src/utils/env.ts`: with `APP_ENV=production` the server refuses to start unless `CLIENT_ORIGIN` is `https`,
 `GIT_COMMIT` is set, and `TRUST_PROXY_HOPS` is at least 1. (`staging` is left alone: a local stack pointed at the
 staging project uses it with a `localhost` origin.) `server/.env.example` and `docs/DEPLOYMENT.md` gain the rows.
+The rule lives in `env.ts` but is called by `server.ts` and `worker.ts` only, not by the schema: `pnpm run seed
+--production` imports `env.ts` from a laptop with `APP_ENV=production`, a `localhost` origin and no commit, and must
+keep working.
 
 Tests: `test/unit/env-production.safe.test.ts`, one case per refusal, each seen failing without its rule.
 Intent: `--server patch`.

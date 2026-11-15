@@ -1,9 +1,11 @@
 import 'dotenv/config';
 import { createApp } from './app';
-import { env } from './utils/env';
+import { env, refuseUnsafeProduction } from './utils/env';
 import { logger } from './utils/logger';
 import { onShutdown } from './utils/shutdown';
 import { APP_VERSION, GIT_COMMIT } from './utils/version';
+
+refuseUnsafeProduction();
 
 const server = createApp().listen(env.PORT, () => {
   logger.info(
