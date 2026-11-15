@@ -27,7 +27,8 @@ export function StoreCard(props: StoreCardProps) {
       <Link
         to={to}
         className={cn(
-          cardClasses('flex min-h-11 items-center gap-3 p-3 active:bg-surface-2', 'tile'),
+          // Wraps at large text: the rem-sized photo and chevron once squeezed the name to 0px at 200%.
+          cardClasses('flex min-h-11 flex-wrap items-center gap-3 p-3 active:bg-surface-2', 'tile'),
           className,
         )}
       >
@@ -43,7 +44,7 @@ export function StoreCard(props: StoreCardProps) {
             />
           )}
         </div>
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 basis-32">
           <h3 className="truncate text-base font-extrabold leading-tight">{store.name}</h3>
           {store.area && <p className="mt-0.5 truncate text-sm text-muted">{store.area}</p>}
           <OpenPill

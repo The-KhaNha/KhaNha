@@ -55,7 +55,11 @@ export function StaffOrderCard({
         finished ? 'border-line/50 opacity-60' : 'border-line/70',
         order.status === 'READY' && 'ring-2 ring-success-500/40',
         leaving ? 'animate-card-leave' : entering && 'ring-flash',
+        // A card off screen skips style, layout and paint: a board of hundreds of orders scrolled and polled at 4x
+        // CPU dropped frames (/break, P3 close). Its ring and shadow are its own, so the containment clips nothing.
+        '[content-visibility:auto]',
       )}
+      style={{ containIntrinsicSize: `auto ${10 + order.items.length * 1.75}rem` }}
     >
       <span
         aria-hidden

@@ -162,11 +162,12 @@ export function ManageMenuTab({ store, onChanged }: ManageMenuTabProps) {
       ) : (
         <ul className="mt-3 divide-y divide-line/70">
           {shown.map((item) => (
-            <li key={item.id} className="flex items-center gap-1 py-2">
+            // Wraps at large text: the move buttons and switch go under the name rather than squeezing it to 0px.
+            <li key={item.id} className="flex flex-wrap items-center gap-1 py-2">
               <button
                 type="button"
                 onClick={() => setEditing(item)}
-                className="min-h-11 min-w-0 flex-1 rounded-control text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+                className="min-h-11 min-w-0 flex-1 basis-40 rounded-control text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
               >
                 <span className="block truncate font-semibold">{item.name}</span>
                 <span className="block truncate text-caption text-muted">
@@ -212,7 +213,7 @@ export function ManageMenuTab({ store, onChanged }: ManageMenuTabProps) {
       )}
 
       <section aria-labelledby="choices-heading" className="mt-6 border-t border-line/70 pt-4">
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 id="choices-heading" className="font-bold">
               Choices
