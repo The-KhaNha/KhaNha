@@ -1,5 +1,14 @@
 import { expect, test } from '@playwright/test';
-import { managed, menu, mockApi, noHorizontalOverflow, signIn, store, summary } from './fixtures';
+import {
+  managed,
+  menu,
+  mockApi,
+  noHorizontalOverflow,
+  signIn,
+  store,
+  summary,
+  sheetHistorySettled,
+} from './fixtures';
 
 test('a manager closes today and the store list says so', async ({ page }) => {
   await mockApi(page);
@@ -82,6 +91,7 @@ test('a manager adds an item and a customer sees it', async ({ page }) => {
   await page.getByLabel('Category', { exact: true }).last().fill('Coffee');
   await page.getByRole('dialog').getByRole('button', { name: 'Add item' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
+  await sheetHistorySettled(page);
 
   await page.goto('/s/cafe/menu');
   await expect(page.getByText('Masala Chai').first()).toBeVisible();
@@ -182,6 +192,7 @@ test('a manager adds an item with a photo, and a phone downloads its 400w size',
     expect(captured.photo?.subarray(0, 3)).toEqual(Buffer.from([0xff, 0xd8, 0xff]));
   await page.getByRole('dialog').getByRole('button', { name: 'Add item' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
+  await sheetHistorySettled(page);
   expect(captured.item).toMatchObject({ imageUploadId: 'u1' });
 
   await page.goto('/s/cafe/menu');
