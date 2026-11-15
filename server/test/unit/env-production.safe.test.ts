@@ -7,6 +7,7 @@ const safe = {
   CLIENT_ORIGIN: 'https://app.example.com',
   GIT_COMMIT: 'abc1234',
   TRUST_PROXY_HOPS: 2,
+  MEDIA_STORAGE: 's3' as const,
 };
 
 describe('productionProblems', () => {
@@ -32,11 +33,18 @@ describe('productionProblems', () => {
     ]);
   });
 
+  it('refuses local photo storage (refused here, not by the schema, so the seed still loads env.ts)', () => {
+    expect(productionProblems({ ...safe, MEDIA_STORAGE: 'local' })).toEqual([
+      expect.stringContaining('MEDIA_STORAGE'),
+    ]);
+  });
+
   it('leaves staging and local alone (a local stack against staging uses localhost)', () => {
     const loose = {
       CLIENT_ORIGIN: 'http://localhost:5173',
       GIT_COMMIT: 'unknown',
       TRUST_PROXY_HOPS: 0,
+      MEDIA_STORAGE: 'local' as const,
     };
     expect(productionProblems({ ...loose, APP_ENV: 'staging' })).toEqual([]);
     expect(productionProblems({ ...loose, APP_ENV: 'local' })).toEqual([]);
@@ -50,6 +58,7 @@ describe('a production process with an unsafe environment', () => {
     CLIENT_ORIGIN: 'http://localhost:5173',
     GIT_COMMIT: '',
     TRUST_PROXY_HOPS: '0',
+    MEDIA_STORAGE: 'local',
     PORT: '18000',
     WORKER_HEALTH_PORT: '18001',
   };
@@ -65,7 +74,7 @@ describe('a production process with an unsafe environment', () => {
     const result = run(`import('./src/${entry}.ts')`);
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('Refusing to start in production');
-    for (const name of ['CLIENT_ORIGIN', 'GIT_COMMIT', 'TRUST_PROXY_HOPS'])
+    for (const name of ['CLIENT_ORIGIN', 'GIT_COMMIT', 'TRUST_PROXY_HOPS', 'MEDIA_STORAGE'])
       expect(result.stderr).toContain(name);
   });
 

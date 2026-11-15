@@ -9,17 +9,17 @@ describe('resolveMediaStorage', () => {
     expect(resolveMediaStorage('production', undefined)).toBe('s3');
   });
 
-  it('takes the setting, but refuses local storage in production (the API then refuses to start)', () => {
+  it('takes the setting as given (production refuses local storage in productionProblems)', () => {
     expect(resolveMediaStorage('local', 's3')).toBe('s3');
     expect(resolveMediaStorage('staging', 'local')).toBe('local');
-    expect(resolveMediaStorage('production', 'local')).toBeNull();
+    expect(resolveMediaStorage('production', 'local')).toBe('local');
   });
 });
 
-describe('the env loader', () => {
-  it('stops the process when production is set to keep photos on local disk', () => {
-    const run = spawnSync('pnpm', ['exec', 'tsx', '-e', "import('./src/utils/env.ts')"], {
-      env: { ...process.env, APP_ENV: 'production', MEDIA_STORAGE: 'local' },
+describe('a production API', () => {
+  it('refuses to start when set to keep photos on local disk', () => {
+    const run = spawnSync('pnpm', ['exec', 'tsx', '-e', "import('./src/server.ts')"], {
+      env: { ...process.env, APP_ENV: 'production', MEDIA_STORAGE: 'local', PORT: '18002' },
       encoding: 'utf8',
     });
     expect(run.status).toBe(1);

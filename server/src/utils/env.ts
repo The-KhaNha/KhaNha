@@ -11,9 +11,8 @@ const seedPassword = (name: string) =>
 export function resolveMediaStorage(
   appEnv: 'local' | 'staging' | 'production',
   setting: 's3' | 'local' | undefined,
-): 's3' | 'local' | null {
-  const storage = setting ?? (appEnv === 'local' ? 'local' : 's3');
-  return appEnv === 'production' && storage === 'local' ? null : storage;
+): 's3' | 'local' {
+  return setting ?? (appEnv === 'local' ? 'local' : 's3');
 }
 
 const envSchema = z
@@ -100,18 +99,10 @@ const envSchema = z
     SEED_CUSTOMER_PASSWORD: seedPassword('SEED_CUSTOMER_PASSWORD'),
     SEED_OWNER_PASSWORD: seedPassword('SEED_OWNER_PASSWORD'),
   })
-  .superRefine((env, ctx) => {
-    if (resolveMediaStorage(env.APP_ENV, env.MEDIA_STORAGE) === null)
-      ctx.addIssue({
-        code: 'custom',
-        path: ['MEDIA_STORAGE'],
-        message: 'MEDIA_STORAGE=local is for development: production stores photos in S3.',
-      });
-  })
   .transform((env) => ({
     ...env,
     LOG_LEVEL: env.LOG_LEVEL ?? (env.APP_ENV === 'local' ? 'debug' : 'info'),
-    MEDIA_STORAGE: resolveMediaStorage(env.APP_ENV, env.MEDIA_STORAGE) ?? 's3',
+    MEDIA_STORAGE: resolveMediaStorage(env.APP_ENV, env.MEDIA_STORAGE),
   }));
 
 type Env = z.infer<typeof envSchema>;
@@ -142,7 +133,7 @@ export const env = loadEnv();
  * schema: `pnpm run seed --production` runs from a laptop with APP_ENV=production, a localhost origin and no commit.
  */
 export function productionProblems(
-  e: Pick<Env, 'APP_ENV' | 'CLIENT_ORIGIN' | 'GIT_COMMIT' | 'TRUST_PROXY_HOPS'>,
+  e: Pick<Env, 'APP_ENV' | 'CLIENT_ORIGIN' | 'GIT_COMMIT' | 'TRUST_PROXY_HOPS' | 'MEDIA_STORAGE'>,
 ): string[] {
   if (e.APP_ENV !== 'production') return [];
   const problems: string[] = [];
@@ -156,6 +147,8 @@ export function productionProblems(
     problems.push(
       "TRUST_PROXY_HOPS must be at least 1 in production, or every request shares the proxy's address in the rate limits.",
     );
+  if (e.MEDIA_STORAGE === 'local')
+    problems.push('MEDIA_STORAGE=local is for development: production stores photos in S3.');
   return problems;
 }
 
