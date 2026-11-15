@@ -115,8 +115,8 @@ How the shell works (`App.tsx`, with the route table in `appShell.ts`):
 - `ScrollToTop` scrolls to the top on every path change.
 - `App` calls `useAuthStore.getState().hydrate()` once on mount.
 - The shell re-renders when the cart count changes (the cart bar), so it memoises the page element: an Add tap must not
-  re-render the page. With `FoodCard` memoised and each menu category and each card `content-visibility: auto` (the
-  card's own skip matters when one category holds hundreds), a 500-item menu (`MENU_ITEMS_MAX`) answers an Add tap in
+  re-render the page. With `FoodCard` memoised and each group of 12 menu cards `content-visibility: auto` (groups, so
+  one category of hundreds skips too; never a single card or a whole section, which WebKit could not scroll into view), a 500-item menu (`MENU_ITEMS_MAX`) answers an Add tap in
   about 60 ms on a throttled phone, as a 14-item one does (`menuRenders.test.tsx`). Each `StaffOrderCard` skips the
   same way, so a long board scrolls and polls without dropped frames.
 

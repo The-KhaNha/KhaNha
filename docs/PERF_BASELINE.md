@@ -322,6 +322,20 @@ no-cache` and `Vary: Authorization, Origin`; normal `GET` 304 revalidation on `/
   10 x 201 after 2 warm-ups, per variant): without the field p50 15.2 / p95 20.2 ms, with `expectedUnitPrice` 13.5 / 19.5 ms (PR 16: 19.5 / 26.3 ms; session noise); a stale price is a 409 in 8 ms.
   Queries: `priceLines` adds no query (pure in-memory loop over the `menu_items` already read); `createOrder` still does getStore, menu_items, `place_order`, `selectOrders`.
   The 24 test orders were deleted afterwards (0 orders in the DB, as before). No regression.
+- **2026-11-15 (feat/p3-break-postchange @ 4fd3ad3, uncommitted)** · /post-change perf run after the /break fixes (menu cards skip
+  rendering in groups of 12, per-card `content-visibility` on staff cards, `syncOptions` effect, cart storage listener,
+  `menu_items` insert-cap trigger). Chromium headless, Linux/WSL2, preview build, 360×640, Slow 4G, 4× CPU, 3 runs,
+  median. Initial JS 99,753 B gzip (97.4 KiB; 91,985 B on 2026-11-03, +8.5%, within 170 KiB). `/s/campus-cafe/menu` LCP
+  1756 ms / INP 112 ms / CLS 0.0022 (2026-11-03 `/menu`: 1552 / 48 / 0.0001; the route is now per store and the INP
+  includes the Add sheet), `/` store list LCP 1224 ms / CLS 0.054, `/orders/:id` LCP 1164 ms, `/cart` (3 lines) LCP
+  2216 ms / INP 32 ms. Throwaway data (a store with 489 live items in one category, 317 orders; removed afterwards):
+  menu scroll top to bottom frame gap p95 33 ms / max 33-100 ms (the /break figure was ~155 ms), staff board scroll p95
+  33 ms / max 83-100 ms (was ~357 ms). One load-time long task of 180-237 ms (mounting 489 cards / 317 order cards).
+  489-item menu 269,661 B and 317-order board 270,625 B, uncompressed at the API (LCP 3.3 s / 3.5 s, over 3 s: payload
+  bound). Polling: `/orders/:id` 15 req/min 4.4 KB/min, `/orders` 7 req/min 2.1 KB/min, `/staff` 30 req/min 8.8 KB/min
+  (orders and `/stores/:slug` both at 4 s), all three 0 hidden, resume 1 / 1 / 2 fetches. Repeat visit: first card at
+  1016 ms before `/menu` finished at 1145 ms, no skeleton (489 items: 1220 vs 2830 ms). Menu p95 4 ms (489 items), 304
+  with 0 bytes on every endpoint. Menu insert trigger costs ~3 ms per insert (local).
 
 ## CI numbers
 

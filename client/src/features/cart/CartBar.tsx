@@ -1,3 +1,4 @@
+import { formatPrice } from '../../lib/format';
 import type { CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight } from 'lucide-react';
@@ -24,13 +25,18 @@ export function CartBar({ widthClass = 'max-w-md md:max-w-lg' }: CartBarProps) {
   const countKey = useChangeKey(count);
 
   if (count === 0) return null;
+  const items = `${count} item${count === 1 ? '' : 's'}`;
 
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-30 short:hidden">
       <div className={cn('mx-auto px-4 pb-3', widthClass)}>
         <Link
           to="/cart"
-          className="pointer-events-auto flex min-h-14 flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl py-2 bg-ink-fill pl-3 pr-4 text-white shadow-float transition-transform duration-[120ms] active:scale-[0.98] animate-bar-up focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+          // Its name says it all, because the label below can be hidden at large text.
+          aria-label={`View cart: ${items}${storeName ? ` from ${storeName}` : ''}, ${formatPrice(total)}`}
+          // One line always (a bar that wrapped at 200% text left no menu to tap on a 640px phone); a container, so the
+          // label can give way by its own width.
+          className="@container pointer-events-auto flex h-14 items-center gap-3 rounded-2xl bg-ink-fill pl-3 pr-4 text-white shadow-float transition-transform duration-[120ms] active:scale-[0.98] animate-bar-up focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
         >
           <span className="grid h-8 min-w-8 place-items-center overflow-hidden rounded-lg bg-brand-500 px-2 text-sm font-bold tabular-nums">
             <span
@@ -41,20 +47,19 @@ export function CartBar({ widthClass = 'max-w-md md:max-w-lg' }: CartBarProps) {
               {count}
             </span>
           </span>
-          {/* The label gives way, never the money: a clipped total would mislead. */}
-          {/* Wraps under the count at large text instead of truncating to nothing (200%, 360px). */}
-          <span className="min-w-0 flex-1 basis-24">
+          {/* The label gives way, never the money: a clipped total would mislead. Under 16rem of bar (rem, so it
+              tracks the text size: 200% text on a 360px phone) it is hidden rather than squeezed to "…"; the count,
+              the total and the link's name still say what it is. */}
+          <span className="hidden min-w-0 flex-1 @[16rem]:block" aria-hidden>
             <span className="block truncate text-body font-bold">
               View cart
-              <span className="ml-2 font-medium text-white/60">
-                · {count} item{count === 1 ? '' : 's'}
-              </span>
+              <span className="ml-2 font-medium text-white/60">· {items}</span>
             </span>
             {storeName && (
               <span className="block truncate text-2xs font-medium text-white/60">{storeName}</span>
             )}
           </span>
-          <span className="shrink-0 overflow-hidden">
+          <span className="ml-auto shrink-0 overflow-hidden" aria-hidden>
             <Price
               key={totalKey.key}
               value={total}

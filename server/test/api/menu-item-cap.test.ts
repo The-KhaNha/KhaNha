@@ -5,6 +5,7 @@ import { supabaseAdmin } from '../../src/utils/supabase';
 import { api } from '../setup/api';
 import {
   createBrandOwner,
+  localExec,
   createStoreMember,
   deleteTestStores,
   type TestUser,
@@ -17,6 +18,7 @@ let brandId = '';
 let sourceId = '';
 let fullId = '';
 let templateItemIds: string[] = [];
+let templateId = '';
 let manager: TestUser;
 let owner: TestUser;
 const users: TestUser[] = [];
@@ -94,9 +96,10 @@ beforeAll(async () => {
     .from('menu_items')
     .insert([row(sourceId, 1), row(sourceId, 2)])
     .throwOnError();
-  const { data: templateId } = await supabaseAdmin
+  const { data: template } = await supabaseAdmin
     .rpc('ensure_brand_template', { p_brand_id: brandId })
     .throwOnError();
+  templateId = template;
   storeIds.push(templateId);
   templateItemIds = (
     await supabaseAdmin.from('menu_items').select('id').eq('store_id', templateId).throwOnError()
@@ -161,5 +164,37 @@ describe(`at most ${MENU_ITEMS_MAX} live items per store`, () => {
     expect(res.body.error.code).toBe('MENU_FULL');
     // Neither copy was made: the push is one transaction.
     expect(await live()).toBe(MENU_ITEMS_MAX - 1);
+  });
+});
+
+describe('a new branch from a template past the cap', () => {
+  it('is refused whole with 409 MENU_FULL and leaves no store behind', async () => {
+    // A template from before the cap (the trigger refuses to build one now): one statement, so the trigger is off
+    // only inside its own transaction.
+    localExec(`do $$ begin
+      alter table public.menu_items disable trigger menu_items_enforce_cap;
+      insert into public.menu_items (store_id, category, name, description, price_paise, image_url, sort_order)
+        select '${templateId}', 'Cap', 'Over ' || g, '', 1000, '/images/x.jpg', 20000 + g
+          from generate_series(1, ${MENU_ITEMS_MAX}) as g;
+      alter table public.menu_items enable trigger menu_items_enforce_cap;
+    end $$`);
+    const before = await supabaseAdmin
+      .from('stores')
+      .select('id', { count: 'exact', head: true })
+      .eq('brand_id', brandId)
+      .throwOnError();
+    const res = await api()
+      .post(`/api/brands/${brandId}/stores`)
+      .set(auth(owner))
+      .send({ name: `Overflow ${tag}` });
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('MENU_FULL');
+    expect(res.body.error.details).toEqual({ kind: 'menuFull', max: MENU_ITEMS_MAX });
+    const after = await supabaseAdmin
+      .from('stores')
+      .select('id', { count: 'exact', head: true })
+      .eq('brand_id', brandId)
+      .throwOnError();
+    expect(after.count).toBe(before.count);
   });
 });

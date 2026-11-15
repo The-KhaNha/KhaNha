@@ -9,6 +9,9 @@ import { availableQuantity, lineLimit, optionsUnorderable, type CartLimits } fro
 /** The limits used until a menu says otherwise (config/fallbacks.json, parity-tested against the store defaults). */
 const DEFAULT_LIMITS: CartLimits = fallbacks.storeDefaults;
 
+/** The cart's localStorage key: persist writes it, the cross-tab listener watches it. */
+const CART_KEY = 'fp_cart';
+
 /** A modifier option on a cart line, as the menu showed it when added (P3.2). */
 export interface CartOption {
   id: string;
@@ -169,6 +172,18 @@ function withLines(state: CartState, lines: CartLine[]): CartState | Pick<CartSt
   return lines === state.lines ? state : { lines };
 }
 
+/**
+ * A line's `optionsStale` by this menu. A menu without choices (an older API, persisted before P3.2) says nothing
+ * about them, so the line keeps what it had.
+ */
+function staleOptions(
+  line: CartLine,
+  item: MenuItem | undefined,
+  groups: Record<string, ModifierGroup> | undefined,
+): boolean | undefined {
+  return item && groups ? optionsUnorderable(item, groups, line.options) : line.optionsStale;
+}
+
 export const useCartStore = create<CartState>()(
   persist(
     (set, get) => ({
@@ -304,9 +319,7 @@ export const useCartStore = create<CartState>()(
           const item = byId.get(line.menuItemId);
           // An item that vanished from the menu can't be ordered either.
           const maxQuantity = item ? availableQuantity(item) : 0;
-          // A menu without choices (an older API, persisted before P3.2) says nothing about them.
-          const optionsStale =
-            item && groups ? optionsUnorderable(item, groups, line.options) : line.optionsStale;
+          const optionsStale = staleOptions(line, item, groups);
           if (maxQuantity === line.maxQuantity && !!optionsStale === !!line.optionsStale)
             return line;
           changed = true;
@@ -321,9 +334,7 @@ export const useCartStore = create<CartState>()(
         const byId = new Map(items.map((item) => [item.id, item]));
         let changed = false;
         const lines = state.lines.map((line) => {
-          const item = byId.get(line.menuItemId);
-          const optionsStale =
-            item && groups ? optionsUnorderable(item, groups, line.options) : line.optionsStale;
+          const optionsStale = staleOptions(line, byId.get(line.menuItemId), groups);
           if (!!optionsStale === !!line.optionsStale) return line;
           changed = true;
           return { ...line, optionsStale };
@@ -380,7 +391,7 @@ export const useCartStore = create<CartState>()(
       },
     }),
     {
-      name: 'fp_cart',
+      name: CART_KEY,
       version: 3,
       storage: safeJSONStorage(),
       partialize: (state): PersistedCart => ({
@@ -433,12 +444,12 @@ export const useCartStore = create<CartState>()(
 // paid and emptied it, and a stale tab's add at another store would skip "Start a new cart?" (/break, P3 close). The
 // event fires only in the other tabs; `key` is null when storage was cleared.
 window.addEventListener('storage', (e) => {
-  if (e.key !== 'fp_cart' && e.key !== null) return;
+  if (e.key !== CART_KEY && e.key !== null) return;
   // Removed or cleared: rehydrate() finds nothing and would keep this tab's stale lines, so empty explicitly. Decide
   // from what is stored now, not e.newValue: a queued removal can arrive after the other tab wrote a new cart.
   let current: string | null = null;
   try {
-    current = localStorage.getItem('fp_cart');
+    current = localStorage.getItem(CART_KEY);
   } catch {
     // Storage unreadable: treat as absent.
   }

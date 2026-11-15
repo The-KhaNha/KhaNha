@@ -893,3 +893,10 @@ As built, in two: **16a** orders, the order page and the kitchen card show each 
 menu tab (`ModifierGroupEditor`, `useModifierGroups`) and the item's choices in `ItemEditor`, with
 `e2e/modifiers.spec.ts` (the manager adds "Extra cheese +₹20", a customer orders it and Pay sends it, the kitchen ticket
 names it), which also covers PR 15's customise-and-pay e2e.
+
+**The `/break` round at the P3 close** (PRs #112 to #116, into `feat/P3`) changed four things, each recorded in its
+owner doc: a store holds at most 500 live items (`MENU_ITEMS_MAX`; the overflow of an existing store is archived, not
+deleted, and a create past the cap is 409 `MENU_FULL`, [SCHEMA.md](../docs/SCHEMA.md), [API.md](../docs/API.md)); a
+site `ADMIN` has no team power ([PERMISSIONS.md](../docs/PERMISSIONS.md)); a brand's owner opens the board of any of
+their branches; and the cart follows another tab's write to `fp_cart`
+([FRONTEND_STRUCTURE.md](../docs/FRONTEND_STRUCTURE.md)).

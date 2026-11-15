@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { cn } from '../lib/cn';
+import { CARD_GROUP } from '../features/menu/menuRules';
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { useParams } from 'react-router-dom';
 import { Clock, UtensilsCrossed } from 'lucide-react';
 import type { MenuItem } from '../types/api';
@@ -34,6 +36,11 @@ const POPULAR_ID = 'popular';
 function slugify(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 }
+
+const chunked = <T,>(list: T[], size: number): T[][] =>
+  Array.from({ length: Math.ceil(list.length / size) }, (_, i) =>
+    list.slice(i * size, (i + 1) * size),
+  );
 
 export function MenuPage() {
   const { storeSlug = '' } = useParams();
@@ -184,23 +191,37 @@ export function MenuPage() {
                 key={section.id}
                 id={`section-${section.id}`}
                 aria-labelledby={`heading-${section.id}`}
-                // A menu can hold 500 items (MENU_ITEMS_MAX): a category off screen skips style, layout and paint, so
-                // an Add tap redraws what is visible (about 60 ms at 500 items, as at 14, against 200+ without). The
-                // containment clips paint to the section, so it reaches out to the side and 40px below the last card
-                // (-mx/px, pb/-mb; the hover shadow reaches 42px down) to keep the cards' shadows whole. The size
-                // stands in until the section is first drawn, then `auto` keeps the real one; rem, so it scales with
-                // the text (a phone-column estimate).
-                className="-mx-4 -mb-10 px-4 pt-6 pb-10 md:-mx-6 md:px-6 [content-visibility:auto]"
-                style={{ containIntrinsicSize: `auto ${2.5 + section.items.length * 9.25}rem` }}
+                className="pt-6"
               >
                 <h2 id={`heading-${section.id}`} className="eyebrow mb-3 text-muted">
                   {section.name}
                 </h2>
-                <div className="space-y-3 md:grid md:grid-cols-2 md:gap-3 md:space-y-0">
-                  {section.items.map((item) => (
-                    <FoodCard key={item.id} item={item} onOpen={setSelected} />
-                  ))}
-                </div>
+                {/* A menu can hold 500 items (MENU_ITEMS_MAX): a group of cards off screen skips style, layout and
+                    paint, so an Add tap redraws what is visible (about 60 ms at 500 items, as at 14, against 200+
+                    without), and one category of hundreds skips as well as many small ones. Groups, not cards or
+                    sections: WebKit could not scroll a contained card, or a group inside a contained section, into
+                    view to tap it. The containment clips paint to the group, so it reaches out to the side and 40px
+                    below the last card (-mx/px, pb/-mb; the hover shadow reaches 42px down). The size stands in until
+                    the group is first drawn, then `auto` keeps the real one; rem, so it scales with the text. */}
+                {chunked(section.items, CARD_GROUP).map((group, at) => (
+                  <div
+                    // By place, not by first item: an archived item would otherwise re-key every later group and
+                    // remount its cards, losing their remembered sizes.
+                    key={at}
+                    className={cn(
+                      // pt-2/-mt-2: room above the first card for its hover lift and shadow (paint is clipped here).
+                      '-mx-4 -mb-10 space-y-3 px-4 pt-2 pb-10 md:-mx-6 md:grid md:grid-cols-2 md:gap-3 md:space-y-0 md:px-6 [content-visibility:auto]',
+                      at > 0 ? 'mt-1' : '-mt-2',
+                      // A card's row is ~9.25rem: one per row on a phone, two from md.
+                      '[contain-intrinsic-size:auto_calc(var(--cards)*9.25rem)] md:[contain-intrinsic-size:auto_calc(var(--cards)*4.625rem)]',
+                    )}
+                    style={{ '--cards': group.length } as CSSProperties}
+                  >
+                    {group.map((item) => (
+                      <FoodCard key={item.id} item={item} onOpen={setSelected} />
+                    ))}
+                  </div>
+                ))}
               </section>
             ),
           )}

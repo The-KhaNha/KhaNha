@@ -353,3 +353,39 @@ describe('ordering with options, beyond the table', () => {
     expect(res.body.order.items[0].unitPrice).toBe(0);
   });
 });
+
+describe('upper-case ids with modifiers', () => {
+  it('a store id and option ids in capitals are the same store and options (ids are case-insensitive UUIDs)', async () => {
+    await setFlag(true);
+    const item = await itemFor(10_000, [
+      {
+        id: 'g-case',
+        name: 'Case',
+        minSelect: 0,
+        maxSelect: 2,
+        options: [
+          { id: 'o-case-a', name: 'A', priceDeltaPaise: 500, isDefault: false, isAvailable: true },
+          { id: 'o-case-b', name: 'B', priceDeltaPaise: 700, isDefault: false, isAvailable: true },
+        ],
+      },
+    ]);
+    const res = await api()
+      .post('/api/orders')
+      .set({ Authorization: `Bearer ${customer.token}` })
+      .send({
+        storeId: storeId.toUpperCase(),
+        items: [
+          {
+            menuItemId: item.id.toUpperCase(),
+            quantity: 1,
+            modifierOptionIds: [real.get('o-case-b'), real.get('o-case-a')].map((id) =>
+              (id ?? '').toUpperCase(),
+            ),
+          },
+        ],
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.order.items[0].unitPrice).toBe(112);
+    expect(res.body.order.items[0].modifiers).toHaveLength(2);
+  });
+});

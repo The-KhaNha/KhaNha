@@ -271,3 +271,69 @@ describe('the choices an item offers (P3.2)', () => {
     expect(screen.queryByText('Choices')).not.toBeInTheDocument();
   });
 });
+
+describe('ItemEditor leave warning', () => {
+  beforeEach(() => setPhoto({}));
+  /** True when a reload would be stopped by the browser's prompt. */
+  const warns = () => {
+    const event = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(event);
+    return event.defaultPrevented;
+  };
+
+  it('does not warn while nothing was changed', () => {
+    editPhoto();
+    expect(warns()).toBe(false);
+  });
+
+  it('warns after a field is edited, and stops when it is put back', () => {
+    editPhoto();
+    const name = screen.getByLabelText('Name');
+    fireEvent.change(name, { target: { value: 'Lassi 2' } });
+    expect(warns()).toBe(true);
+    fireEvent.change(name, { target: { value: 'Lassi' } });
+    expect(warns()).toBe(false);
+  });
+
+  it('warns after the photo is removed, and while a new one is going up', () => {
+    const { again } = editPhoto();
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    expect(warns()).toBe(true);
+    setPhoto({ status: 'processing', preview: 'blob:p' });
+    again();
+    expect(warns()).toBe(true);
+  });
+
+  it('warns after a choice is ticked', () => {
+    render(
+      <ItemEditor
+        storeId="s1"
+        item={null}
+        categories={[]}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+        modifierGroups={[{ id: 'size', name: 'Size', minSelect: 0, maxSelect: 1, options: [] }]}
+      />,
+    );
+    expect(warns()).toBe(false);
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Size' }));
+    expect(warns()).toBe(true);
+  });
+
+  it('stops warning once the editor is gone', () => {
+    const ui = (
+      <ItemEditor
+        storeId="s1"
+        item={withPhoto}
+        categories={[]}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+    const { unmount } = render(ui);
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'X' } });
+    expect(warns()).toBe(true);
+    unmount();
+    expect(warns()).toBe(false);
+  });
+});
