@@ -14,7 +14,7 @@ Loaded with any `server/` file, a Dockerfile, the nginx config or `compose.yaml`
 
 The principle is in `CLAUDE.md` §2c; the client side is in `.claude/rules/frontend.md` §2c.
 
-- Every `/api` response carries `Cache-Control: no-cache` and `Vary: Authorization` (`server/src/app.ts`). With
+- Every `/api` response carries `Cache-Control: no-cache` and `Vary: Authorization` (`server/src/app.ts`), and a body of 1 KB or more is gzipped (`compression`). With
   Express's ETag, an unchanged body comes back as a bodiless 304, including on every poll. Never give stock, menu or
   order responses a `max-age`.
 - Public, read-mostly data (menu, store, any future catalog) is read through `cached(key, PUBLIC_READ_TTL_MS, load)`

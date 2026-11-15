@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { api } from '../setup/api';
+import { menuPath } from '../setup/helpers';
 
 describe('HTTP caching', () => {
   it('marks API responses for revalidation and varies on the account', async () => {
@@ -40,5 +41,27 @@ describe('HTTP caching', () => {
     expect(res.status).toBe(400);
     expect(res.headers['cache-control']).toBe('no-cache');
     expect(res.headers.vary).toMatch(/Authorization/);
+  });
+
+  // A menu or board at its cap is ~270 KB of JSON; gzipped it is a tenth of that on a metered phone (P3 close).
+  it('gzips a large JSON body for a client that accepts it, and keeps the ETag and the bodiless 304', async () => {
+    const path = await menuPath();
+    const res = await api().get(path).set('Accept-Encoding', 'gzip');
+    expect(res.status).toBe(200);
+    expect(res.headers['content-encoding']).toBe('gzip');
+    expect(res.headers.vary).toMatch(/Accept-Encoding/);
+    expect(res.body.categories).toBeTruthy();
+    const again = await api()
+      .get(path)
+      .set('Accept-Encoding', 'gzip')
+      .set('If-None-Match', res.headers.etag!);
+    expect(again.status).toBe(304);
+    expect(again.text).toBeFalsy();
+  });
+
+  it('sends a small body as it is', async () => {
+    const res = await api().get('/api/health').set('Accept-Encoding', 'gzip');
+    expect(res.status).toBe(200);
+    expect(res.headers['content-encoding']).toBeUndefined();
   });
 });

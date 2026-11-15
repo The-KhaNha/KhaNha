@@ -37,6 +37,7 @@
     "@aws-sdk/s3-presigned-post": "^3.1163.0",
     "@supabase/server": "^1.8.0",
     "@supabase/supabase-js": "^2.117.2",
+    "compression": "^1.8.2",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^5.1.0",
@@ -48,6 +49,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@types/compression": "^1.8.1",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
     "@types/express-serve-static-core": "^5.1.3",
