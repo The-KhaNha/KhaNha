@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { Store as StoreIcon } from 'lucide-react';
 import { ButtonLink, buttonClasses } from '../components/Button';
@@ -148,6 +148,16 @@ export function StaffDashboardPage() {
     }
   }
 
+  // One function for the board's whole life, so memoised cards are not re-rendered by a new prop on every poll; it
+  // reaches the current changeStatus (the filter, the store) through the ref.
+  const changeStatusRef = useRef(changeStatus);
+  useEffect(() => {
+    changeStatusRef.current = changeStatus;
+  });
+  const onChangeStatus = useCallback((o: Order, status: OrderStatus) => {
+    void changeStatusRef.current(o, status);
+  }, []);
+
   function handleLogout() {
     logout();
     navigate('/login', { replace: true });
@@ -220,7 +230,7 @@ export function StaffDashboardPage() {
             leavingIds={leavingIds}
             onRetry={retry}
             onShowAll={() => selectFilter('ALL')}
-            onChangeStatus={(o, status) => void changeStatus(o, status)}
+            onChangeStatus={onChangeStatus}
           />
         )}
       </main>

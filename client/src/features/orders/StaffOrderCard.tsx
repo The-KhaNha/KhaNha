@@ -1,5 +1,5 @@
 import { orderLineOptions } from '../menu/modifierRules';
-import { useState, type AnimationEvent } from 'react';
+import { memo, useState, type AnimationEvent } from 'react';
 import { CircleAlert, MessageSquareText, UserRound } from 'lucide-react';
 import type { Order, OrderStatus } from '../../types/api';
 import { Button } from '../../components/Button';
@@ -27,7 +27,7 @@ interface StaffOrderCardProps {
  * always paprika so staff can hit it without reading. The total + actions sit at the bottom of the
  * card (mt-auto) so buttons line up across a grid row whatever the ticket length.
  */
-export function StaffOrderCard({
+function OrderCard({
   order,
   pending,
   error,
@@ -183,6 +183,25 @@ export function StaffOrderCard({
     </article>
   );
 }
+
+/**
+ * Re-renders only when what it shows changed: a poll that finds any change parses the whole list into new objects,
+ * and a board scrolled through keeps hundreds of cards mounted (LazyGroup), so re-rendering them all on every poll
+ * cost 160-245 ms long tasks on a cheap phone (/break re-run, P3 close). `updatedAt` moves with every server change.
+ */
+export const StaffOrderCard = memo(
+  OrderCard,
+  (a, b) =>
+    a.order.id === b.order.id &&
+    a.order.status === b.order.status &&
+    a.order.updatedAt === b.order.updatedAt &&
+    a.order.estimatedReadyAt === b.order.estimatedReadyAt &&
+    a.pending === b.pending &&
+    a.error === b.error &&
+    a.fresh === b.fresh &&
+    a.leaving === b.leaving &&
+    a.onChangeStatus === b.onChangeStatus,
+);
 
 export function StaffOrderCardSkeleton() {
   return (
