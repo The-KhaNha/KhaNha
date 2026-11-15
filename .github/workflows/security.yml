@@ -35,7 +35,7 @@ jobs:
       run:
         working-directory: ${{ matrix.package }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-pnpm
       # Every dependency, dev tooling included: a compromised build or test tool reaches the bundle and CI's secrets.
       # It reads the lockfile only, so nothing is installed.
@@ -48,7 +48,7 @@ jobs:
     env:
       TRIVY_VERSION: 0.76.1
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # The binary from its release, checked against the release's checksums, not trivy-action: an action's tag can be
       # repointed (trivy-action's was, in a supply-chain attack).
       - name: Install Trivy
@@ -69,7 +69,7 @@ jobs:
     env:
       GITLEAKS_VERSION: 8.30.1
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       # The binary, not gitleaks-action: the action needs a paid licence on organisation repositories.
