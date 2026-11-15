@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { ModifierGroup } from '../../types/api';
 import {
   availableQuantity,
   describeProblem,
@@ -332,5 +333,58 @@ describe('optionsUnorderable', () => {
     expect(optionsUnorderable(item(['size'], 100), priced, opts('reg'))).toBe(true);
     expect(optionsUnorderable(item(['size'], 100), priced, opts('lg'))).toBe(false);
     expect(optionsUnorderable(item(['size'], 150), priced, [])).toBe(false);
+  });
+});
+
+describe('optionsUnorderable edges', () => {
+  const opt = (id: string, over: Partial<ModifierGroup['options'][number]> = {}) => ({
+    id,
+    name: id,
+    priceDelta: 0,
+    isDefault: false,
+    isAvailable: true,
+    ...over,
+  });
+  const grp = (over: Partial<ModifierGroup> & Pick<ModifierGroup, 'id' | 'options'>) => ({
+    name: over.id,
+    minSelect: 0,
+    maxSelect: 1,
+    ...over,
+  });
+
+  it('an item with no group list, or a group not in the map, offers nothing', () => {
+    expect(optionsUnorderable({ price: 100 } as never, {}, [])).toBe(false);
+    expect(optionsUnorderable({ price: 100 } as never, {}, [{ id: 'x' }])).toBe(true);
+    expect(optionsUnorderable({ modifierGroupIds: ['missing'], price: 100 }, {}, [])).toBe(false);
+  });
+
+  it('an unavailable default does not fill a required group', () => {
+    const g = grp({
+      id: 'g',
+      minSelect: 1,
+      options: [opt('d', { isDefault: true, isAvailable: false })],
+    });
+    expect(optionsUnorderable({ modifierGroupIds: ['g'], price: 100 }, { g }, [])).toBe(true);
+  });
+
+  it('a negative delta on a non-required pick that takes the price below zero is flagged; exactly zero is not', () => {
+    const g = grp({ id: 'g', options: [opt('cheap', { priceDelta: -100 })] });
+    const item = (price: number) => ({ modifierGroupIds: ['g'], price });
+    expect(optionsUnorderable(item(100), { g }, [{ id: 'cheap' }])).toBe(false);
+    expect(optionsUnorderable(item(99), { g }, [{ id: 'cheap' }])).toBe(true);
+  });
+
+  it('a required group with more defaults than its most fills only that many', () => {
+    const g = grp({
+      id: 'g',
+      minSelect: 1,
+      maxSelect: 1,
+      options: [
+        opt('a', { isDefault: true, priceDelta: -60 }),
+        opt('b', { isDefault: true, priceDelta: -60 }),
+      ],
+    });
+    // Only the first default is added: 100 - 60 = 40, not 100 - 120.
+    expect(optionsUnorderable({ modifierGroupIds: ['g'], price: 100 }, { g }, [])).toBe(false);
   });
 });

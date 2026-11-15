@@ -1,10 +1,14 @@
-import { renderHook } from '@testing-library/react';
+import { act, renderHook } from '@testing-library/react';
+import { StrictMode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useBackToClose } from './useBackToClose';
 
 const back = () => window.dispatchEvent(new PopStateEvent('popstate', { state: null }));
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 
 describe('useBackToClose', () => {
   it('pushes an entry while open, and Back closes the sheet without leaving the page', () => {
@@ -57,6 +61,44 @@ describe('useBackToClose', () => {
       a.rerender({ open: false });
       b.rerender({ open: false });
       expect(stack).toEqual([null]);
+    } finally {
+      Reflect.deleteProperty(window.history, 'state');
+    }
+  });
+
+  it('under StrictMode (mount, unmount, mount at once), Back still closes the sheet and stays on the page', () => {
+    vi.useFakeTimers();
+    // Chrome's history: back() fixes its target when called and arrives a task later; a push drops forward entries.
+    const entries: unknown[] = [null];
+    let index = 0;
+    vi.spyOn(window.history, 'pushState').mockImplementation((s) => {
+      entries.splice(index + 1, Infinity, s);
+      index += 1;
+    });
+    const traverse = (to: number) => {
+      index = to;
+      window.dispatchEvent(new PopStateEvent('popstate', { state: entries[to] }));
+    };
+    vi.spyOn(window.history, 'back').mockImplementation(() => {
+      const to = index - 1;
+      window.setTimeout(() => traverse(to), 0);
+    });
+    Object.defineProperty(window.history, 'state', {
+      configurable: true,
+      get: () => entries[index],
+    });
+    try {
+      const onClose = vi.fn();
+      renderHook(() => useBackToClose(true, onClose), { wrapper: StrictMode });
+      act(() => vi.runAllTimers());
+      expect(index).toBeGreaterThan(0); // still on the sheet's entry, not back on the page's
+      // The person presses Back once.
+      act(() => {
+        traverse(index - 1);
+        vi.runAllTimers();
+      });
+      expect(onClose).toHaveBeenCalledTimes(1);
+      expect(index).toBe(0); // the page under the sheet, not the one before it
     } finally {
       Reflect.deleteProperty(window.history, 'state');
     }

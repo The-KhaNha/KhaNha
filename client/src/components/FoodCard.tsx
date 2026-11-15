@@ -42,13 +42,9 @@ export const FoodCard = memo(function FoodCard({
       className={cardClasses(
         // flex-wrap + the text column's basis: at large text the column drops under the photo instead of pushing
         // the price and Add off the screen.
-        // content-visibility: a card off screen skips style, layout and paint, so one category of hundreds is as
-        // cheap as many small ones (the section's own skip does nothing while the category fills the screen). Its own
-        // shadow is not clipped by the containment; the size stands in until it is first drawn (rem: it scales).
-        'group flex flex-wrap gap-3.5 p-3 transition-[translate,scale,box-shadow] duration-[180ms] ease-out hover:-translate-y-0.5 hover:shadow-card-hover [content-visibility:auto]',
+        'group flex flex-wrap gap-3.5 p-3 transition-[translate,scale,box-shadow] duration-[180ms] ease-out hover:-translate-y-0.5 hover:shadow-card-hover',
         'tile',
       )}
-      style={{ containIntrinsicSize: 'auto 8.5rem' }}
     >
       {/* The title button is the card's single tab stop; the photo is a pointer-only duplicate of it. */}
       <button

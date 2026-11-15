@@ -290,6 +290,8 @@ for (const { path, role, status, account, setup } of LAYOUT_ROUTES) {
 for (const { name, width, height } of [
   { name: 'a phone on its side', width: 640, height: 360 },
   { name: 'a narrow landscape window', width: 500, height: 300 },
+  // Upright with a cart: a cart bar that wrapped to four lines once left a 3px strip of menu to tap.
+  { name: 'a phone upright', width: 360, height: 640 },
 ]) {
   test(`/s/cafe/menu on ${name} at 200% text: an item can still be added`, async ({ page }) => {
     await seedCart(page);

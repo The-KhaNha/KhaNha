@@ -10,6 +10,7 @@ import {
   forbidden,
   idempotencyKeyReused,
   insufficientStock,
+  menuFull,
   modifierRequired,
   notFound,
   payloadTooLarge,
@@ -277,5 +278,15 @@ describe('modifier messages', () => {
     expect(modifierRequired('i1', 'Cold Coffee', null).message).toBe(
       'Choose the options for Cold Coffee.',
     );
+  });
+});
+
+describe('menuFull', () => {
+  it('is 409 MENU_FULL with the cap as { kind, max } (the client reads exactly these)', () => {
+    const err = menuFull(500);
+    expect(err.status).toBe(409);
+    expect(err.code).toBe('MENU_FULL');
+    expect(err.message).toContain('500');
+    expect(err.details).toEqual({ kind: 'menuFull', max: 500 });
   });
 });

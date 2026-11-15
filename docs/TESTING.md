@@ -86,6 +86,9 @@ table gets a row in the same change. Tests and scripts are exempt; they set up f
 - `localSql(sql)` runs one row-returning statement as `postgres` (`supabase db query`, local by default) for what the API
   cannot reach: pgmq, `cron.job`, the catalogs. Local only. `test/api/database-lockdown.test.ts` uses it to check
   every table, function and queue schema is closed to `anon` and `authenticated` (SCHEMA.md "Row-level security").
+- `localExec(sql)` runs one statement that returns no rows (a `do` block that bulk-inserts) the same way, local only.
+  `test/api/menu-item-cap.test.ts` and `menu-cap.test.ts` use it to fill a store to `MENU_ITEMS_MAX` and check the
+  `menu_items_enforce_cap` trigger refuses the next live item however it is made (create, restore, template push).
 
 ### The per-file API server
 
