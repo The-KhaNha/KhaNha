@@ -3,10 +3,12 @@ import { createServer } from 'node:http';
 import { healthReport, readQueueMetrics } from './jobs/health';
 import { notifyHandler } from './jobs/notify';
 import { runQueue, type JobHandler } from './jobs/runner';
-import { env } from './utils/env';
+import { env, refuseUnsafeProduction } from './utils/env';
 import { logger } from './utils/logger';
 import { onShutdown } from './utils/shutdown';
 import { APP_VERSION, GIT_COMMIT } from './utils/version';
+
+refuseUnsafeProduction();
 
 // The worker process (ADR-005): one loop per queue consumer, a health endpoint, and a stop that lets jobs finish.
 // A consumer is added to this list (docs/JOBS.md "Handlers and the runner").
