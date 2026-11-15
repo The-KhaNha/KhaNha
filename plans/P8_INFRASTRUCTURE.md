@@ -19,6 +19,9 @@ PR merges, tick its box here and in the roadmap.
 > [ADR-007](../docs/adr/007-pilot-on-ec2-compose.md) and [ADR-011](../docs/adr/011-free-tiers.md) were amended the
 > same day to say so. At about $13 a month the credits last roughly ten months. The remaining
 > [decisions](#decisions) are open; what must be asked first is in the next section.
+>
+> **Revised 15 November 2026:** the credits are about $130 and **expire on 18 February 2027**, so the date, not the
+> monthly figure, is what runs out first (answer 2 below). The $35 ceiling and the budget alert stay as they are.
 
 ## Ask the user before starting
 
@@ -38,6 +41,28 @@ a safe default, and none can be found in the repository.
 
 An agent asks with one batched question, never by guessing, and never proceeds past a gate on an unanswered row.
 If the answer to 2 or 3 changes the budget's picture, the plan is revised before any resource exists.
+
+**Answered by the user on 15 November 2026** (PR 00 wrote them in):
+
+- **1:** an address the user gave. It is not written in the repository (which is public): the user puts it into the
+  bootstrap's local, untracked `terraform.tfvars` (PR 01) and into the `ALERT_EMAIL` variable of the GitHub
+  Environment `production-infra` (PR 08).
+- **2:** about **$130 of credits left, expiring on 18 February 2027**. That is the real limit, not the monthly
+  figure: at about $11 a month, credits outlast the date. **The account is on the Paid plan, and after the date the
+  user pays from pilot revenue** (about $11 a month, plus GST). More credits only by a legitimate route. **A second account opened for fresh credits is not one of them**:
+  AWS's Free Tier terms give credits to one account per customer, and its promotional-credit terms void credits on
+  an account created solely to obtain them (read 15 November 2026: https://aws.amazon.com/free/terms/,
+  https://aws.amazon.com/awscredits/). AWS Activate is the legitimate route to look at. Nothing may still tie the infrastructure to this one account: the bootstrap and
+  `envs/production` take every account-specific value as a variable, and `infra/README.md` (PR 01) says how to move
+  to another account (bootstrap there, apply, deploy the last release, move DNS). Whether the account stays open
+  when the credits end, and whether they cover every service listed, is still to be read in the console: the
+  account is on the **Paid** plan (the user, 15 November 2026), so it stays open when the credits end.
+- **3:** not checked yet. **PR 01 waits for it.**
+- **4:** one account, the one holding the credits (D1). The setup stays movable to another account (row 2).
+- **5:** **as soon as PRs 01 and 02 are applied** (D11): the 95 days to the expiry would use only about $35 to $40
+  of the credits, so waiting saves nothing and costs drill time.
+- **6:** no domain yet (about $10 a year). When to buy it: see D3.
+- **7:** not yet (it is only needed for the first production release).
 
 ## How the team works P8
 
@@ -107,18 +132,22 @@ infra/
 
 Decided by the user on 11 November 2026 and recorded in
 [ADR-011](../docs/adr/011-free-tiers.md#aws-paid-from-credits-from-p8): $140 of credits, at least four months, so
-**about $35 a month at most**.
+**about $35 a month at most**. Revised on 15 November 2026: about $130 is left and expires on 18 February 2027 (answer 2).
 
-| What                                                                  | About, per month | Note                                                                                               |
-| --------------------------------------------------------------------- | ---------------- | -------------------------------------------------------------------------------------------------- |
-| One `t4g.micro` host (2 vCPU, 1 GB), standard CPU credits             | $6               | $0.0084 an hour on AWS's page on 11 November 2026; Mumbai's price may differ a little              |
-| Its public address and its 16 GB disk                                 | $5               | from list prices as remembered                                                                     |
-| One secret in Secrets Manager                                         | $0.40            |                                                                                                    |
-| Images (ECR), buckets (S3), the CDN (CloudFront), parameters, deploys | under $1         | CloudFront's and S3's standing free allowances cover pilot traffic; ECR keeps the newest 10 images |
-| Logs, metrics, alarms                                                 | $0 to $1         | inside CloudWatch's free allowances: about ten alarms and ten metrics                              |
-| A DNS zone                                                            | $0.50            | the domain's own registration is probably not payable from credits                                 |
-| **Production, as planned**                                            | **about $13**    | the credits last roughly ten months; more than twice the four the user asked for                   |
-| With a staging on AWS later                                           | about $26        | still under $35                                                                                    |
+| What                                                                  | About, per month | Note                                                                                                  |
+| --------------------------------------------------------------------- | ---------------- | ----------------------------------------------------------------------------------------------------- |
+| One `t4g.micro` host (2 vCPU, 1 GB), standard CPU credits             | $4.10            | $0.0056 an hour, AWS's Mumbai price list read on 15 November 2026                                     |
+| Its public address and its 16 GB disk                                 | $5.10            | $3.65 for the public IPv4 address, $1.46 for 16 GB of gp3 (Mumbai, 15 November 2026)                  |
+| One secret in Secrets Manager                                         | $0.40            |                                                                                                       |
+| Images (ECR), buckets (S3), the CDN (CloudFront), parameters, deploys | under $1         | CloudFront's and S3's standing free allowances cover pilot traffic; ECR keeps the newest 10 images    |
+| Logs, metrics, alarms                                                 | $0 to $1         | inside CloudWatch's free allowances: about ten alarms and ten metrics                                 |
+| A DNS zone                                                            | $0.50            | the domain's own registration (about $10 a year) is not payable from credits; register it outside AWS |
+| Encryption keys                                                       | $0               | AWS-managed keys only; a customer-managed KMS key would add $1 a month each                           |
+| **Production, as planned**                                            | **about $11**    | read against Mumbai's prices on 15 November 2026; the credits expire before they run out              |
+| With a staging on AWS later                                           | about $22        | still under $35                                                                                       |
+
+Not in the table: **18% GST** on whatever is billed after credits, if the billing address is Indian; and CloudFront
+past its free 1 TB and 10 million requests a month, at $0.109 a GB from India (pilot traffic stays far below).
 
 **It fits with wide room, on these conditions:**
 
@@ -132,8 +161,8 @@ Decided by the user on 11 November 2026 and recorded in
 ap-south-1; the date the credits expire, and whether the account stays open when they run out (newer AWS accounts
 on a free plan can be closed at that point); and whether credits cover everything used here.
 
-**Room that is there if wanted**, none of it needed by the estimate: `t4g.small` (2 GB) is about $12 instead of $6
-and still leaves the total near $19; AWS also lists `t4g.small` as free for 750 hours a month until
+**Room that is there if wanted**, none of it needed by the estimate: `t4g.small` (2 GB) is about $8.20 instead of
+$4.10 and leaves the total near $15; AWS also lists `t4g.small` as free for 750 hours a month until
 31 December 2026.
 
 ## Build order
@@ -312,7 +341,8 @@ Waits for D11: the first PR with an hourly price, about $11.50 a month from its 
   that passed without anyone deploying.
 
 Tests: `infra/host/*.sh` pass `shellcheck` in the `infra` job; `apply-release.sh` has a test with a fake `docker` on
-the path (applies a candidate; applies the parameter's tags when given none; and a candidate that never becomes
+the path (applies a candidate; applies the parameter's tags when given none; exits cleanly with nothing to apply
+when the parameter is still empty, as on the very first host; and a candidate that never becomes
 ready ends on the parameter's tags with a non-zero exit); a Terraform test asserts the instance's
 credit mode is `standard` (the guard against the default that bills). Verify, after the approved apply: a Session
 Manager shell on the host shows docker running, `free -m` shows the swap, and the instance's credit mode reads
@@ -467,7 +497,7 @@ Everything since P0 reaches `main` for the first time (P1's and later plans' "at
 ## Later: staging on AWS
 
 Decided by the user (11 November 2026): one to two months after the first release, not before. Until then the
-staging Supabase project and a locally run app are staging. When it comes it is three small PRs, about $13 a month
+staging Supabase project and a locally run app are staging. When it comes it is three small PRs, about $11 a month
 more (about $26 in all, still under the ceiling):
 
 1. **The environment**: `infra/terraform/envs/staging/`, the same modules with staging's variables, in the same
@@ -516,22 +546,22 @@ item that needed the user is resolved** (11 November 2026).
 Those marked ★ are still to be asked ([Ask the user before starting](#ask-the-user-before-starting)). The rest are
 answered, or have a default the plan follows.
 
-| #     | Decision                                        | Answer or default                                                                                                                                                              | Applies to |
-| ----- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
-| D1    | AWS accounts (roadmap decision 13)              | **one account**: the credits sit in one, and there is one environment (follows from the user's decisions; say if a second account is wanted anyway)                            | 01         |
-| D2    | Region                                          | **ap-south-1 (Mumbai)**: the staging Supabase project's region, read from Supabase on 11 November 2026. The production project is created there too                            | 01         |
-| D3 ★  | Domain name                                     | asked before PR 05; required then if the private origin cannot be used (HTTPS to `origin.<domain>`). With the private origin, CloudFront's own hostname serves the dark period | 05         |
-| D4    | Host architecture and size                      | **answered (the user, 11 November 2026):** small; `t4g.micro` (2 vCPU, 1 GB, arm64), standard CPU credits                                                                      | 03, 04     |
-| D5    | Staging migrations inside a pipeline            | **answered (the user, 11 November 2026): yes**, with staging's credentials in a GitHub Environment; it takes effect with the AWS staging. Until then, by hand                  | later      |
-| D6    | Production migrations (roadmap decision 11)     | manual, by the user, while the deploy waits                                                                                                                                    | 07         |
-| D7    | Compose on EC2, or ECS (roadmap decision 12)    | compose on EC2 (ADR-007)                                                                                                                                                       | 04         |
-| D8    | A staging on AWS                                | **answered (the user, 11 November 2026):** not at first; one to two months after the first release                                                                             | later      |
-| D9    | Production hosts                                | **answered (the user, 11 November 2026):** a single host; replicas come with funding                                                                                           | 04         |
-| D10 ★ | Where alarms and the budget alert go            | one email address the user names                                                                                                                                               | 01, 08     |
-| D11   | When the host is created (PR 04)                | when the user says: that is the day the bill starts. Suggested: about a month before launch, to leave time for the dark-period drills. PRs 00–03 and 06 are free               | 04         |
-| D12   | Where webhooks are tested before an AWS staging | for the P5 plan: a tunnel to a local stack for the provider's sandbox, or the AWS staging brought forward                                                                      | P5         |
-| D13   | Where the AWS spend is recorded                 | **answered (the user, 11 November 2026):** $140 of credits, at least four months; recorded as an amendment to ADR-011                                                          | 00         |
-| D14   | Who applies Terraform                           | **answered (the user, 11 November 2026):** the pipeline, after the user's approval (ADR-007 as amended)                                                                        | 01         |
+| #    | Decision                                        | Answer or default                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Applies to |
+| ---- | ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| D1   | AWS accounts (roadmap decision 13)              | **answered (the user, 15 November 2026): one account**, the one with the credits; built so the whole setup can move to another account after the credits expire (answer 2)                                                                                                                                                                                                                                                                                                                    | 01         |
+| D2   | Region                                          | **ap-south-1 (Mumbai)**: the staging Supabase project's region, read from Supabase on 11 November 2026. The production project is created there too                                                                                                                                                                                                                                                                                                                                           | 01         |
+| D3 ★ | Domain name                                     | none yet (15 November 2026). **Buy it before PR 05**, registered outside AWS, and serve the app on a subdomain (`app.<domain>`), not the apex: moving an apex name between accounts' distributions needs AWS Support. The VPC origin stays the expected form: AWS lists a private subnet as a prerequisite, yet its own migration guide creates the VPC origin while the resource is still public, so PR 05 proves it on the real host first. HTTPS to `origin.<domain>` remains the fallback | 05         |
+| D4   | Host architecture and size                      | **answered (the user, 11 November 2026):** small; `t4g.micro` (2 vCPU, 1 GB, arm64), standard CPU credits                                                                                                                                                                                                                                                                                                                                                                                     | 03, 04     |
+| D5   | Staging migrations inside a pipeline            | **answered (the user, 11 November 2026): yes**, with staging's credentials in a GitHub Environment; it takes effect with the AWS staging. Until then, by hand                                                                                                                                                                                                                                                                                                                                 | later      |
+| D6   | Production migrations (roadmap decision 11)     | manual, by the user, while the deploy waits                                                                                                                                                                                                                                                                                                                                                                                                                                                   | 07         |
+| D7   | Compose on EC2, or ECS (roadmap decision 12)    | compose on EC2 (ADR-007)                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | 04         |
+| D8   | A staging on AWS                                | **answered (the user, 11 November 2026):** not at first; one to two months after the first release                                                                                                                                                                                                                                                                                                                                                                                            | later      |
+| D9   | Production hosts                                | **answered (the user, 11 November 2026):** a single host; replicas come with funding                                                                                                                                                                                                                                                                                                                                                                                                          | 04         |
+| D10  | Where alarms and the budget alert go            | **answered (the user, 15 November 2026):** one address, kept out of the repository (answer 1)                                                                                                                                                                                                                                                                                                                                                                                                 | 01, 08     |
+| D11  | When the host is created (PR 04)                | **answered (the user, 15 November 2026):** as soon as PRs 01 and 02 are applied, so the dark-period drills run on credits that would otherwise expire on 18 February 2027. If launch is after that date, the host may be destroyed after the drills and rebuilt a month before launch                                                                                                                                                                                                         | 04         |
+| D12  | Where webhooks are tested before an AWS staging | for the P5 plan: a tunnel to a local stack for the provider's sandbox, or the AWS staging brought forward                                                                                                                                                                                                                                                                                                                                                                                     | P5         |
+| D13  | Where the AWS spend is recorded                 | **answered (the user, 11 November 2026):** $140 of credits, at least four months; recorded as an amendment to ADR-011                                                                                                                                                                                                                                                                                                                                                                         | 00         |
+| D14  | Who applies Terraform                           | **answered (the user, 11 November 2026):** the pipeline, after the user's approval (ADR-007 as amended)                                                                                                                                                                                                                                                                                                                                                                                       | 01         |
 
 ## User steps (cannot be done from the repository)
 
@@ -554,6 +584,20 @@ answered, or have a default the plan follows.
 - Staging, unchanged: push its migrations and seed it by hand, as today.
 
 ## Risks and gotchas
+
+- **Moving accounts.** Kept cheap by design: the state and media buckets' names end in the account ID (bucket names
+  are global); no account ID is hard-coded; the CloudFront hostname (`dxxxx.cloudfront.net`) is registered nowhere
+  (not in Supabase's redirect URLs, not in `CLIENT_ORIGIN`), only the domain is; the certificate is requested anew
+  in the new account. A move is: bootstrap, apply, re-enter the secret and parameters, copy the media bucket, deploy
+  the last release, move DNS.
+- **The VPC origin is bound to the instance.** A replaced instance needs an apply (up to 15 minutes) before
+  CloudFront reaches it again, and the distribution stays on pay-as-you-go: CloudFront's flat-rate Free plan does
+  not take VPC origins.
+- **The fallback origin is heavier than its paragraph.** With the security group closed to all but CloudFront, the
+  origin certificate needs a DNS-01 challenge, so the instance role needs write access to its own DNS records, and
+  the host an Elastic IP.
+- **CloudFront's metrics live in us-east-1.** The 5xx and certificate alarms (PR 08), and an SNS topic for them,
+  are created there.
 
 - **No staging to fail on first.** Every infrastructure and pipeline change is first run on production. The
   answers are in [How the team works P8](#how-the-team-works-p8) and [Closing P8](#closing-p8): each piece tested

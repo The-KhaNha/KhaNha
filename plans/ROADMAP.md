@@ -53,7 +53,8 @@ deliver it.
   - **P4** (payment aggregator research) starts **now**, in parallel with P0: its sales, CA and lawyer questions,
     the KYC policy pages and the SMS DLT registration have no code dependency and are the longest lead items in the
     plan. Only the sandbox spike (P4.6) waits for the P5.1 port shape. P4 must finish before P5.
-  - **P8** (infrastructure) must reach a staging environment before P5's webhook work starts.
+  - **P8** (infrastructure) builds production only, before the pilot. P5's webhook work tests against a tunnel to a
+    local stack or an AWS staging brought forward; the P5 plan chooses (D12 in the P8 plan).
 
   **P11** and **P12** were added after the pilot plan, so they sit at the end, but they need only P6 (P11) and P2 plus
   P7 (P12); either can start once those ship.
@@ -186,7 +187,7 @@ flowchart LR
   P2 -.->|"ratings and usuals can start early"| P7
   P1 --> P8["P8 Infrastructure track"]
   P8 -->|"media bucket"| P3
-  P8 -->|"staging with a public URL for webhooks"| P5
+  P8 -.->|"AWS staging, if P5 brings it forward"| P5
   P6 --> P9["P9 Pilot readiness and launch"]
   P7 --> P9
   P8 --> P9
@@ -3606,17 +3607,26 @@ R22 (similarity, popularity, other users' orders) and R28.7 (recommendation upda
 
 ## P8 — Infrastructure and delivery
 
-**Goal:** reproducible staging and production on AWS, with every change deployed by a pipeline: `dev` deploys staging
-and `main` deploys production (P8.5). This is a parallel track. P8.1–P8.5 for **staging** must be ready before P5.4 (webhooks need a public HTTPS URL), and the rest before the
-pilot. **Items:** R16, R17, R18, R21, R3 (secrets), R6 (observability), R14 (usage load). **Depends on:** P0.6.
-**Size:** L.
+**Goal:** a production environment on AWS that anyone can rebuild from the repository, with every release deployed
+to it by a pipeline: `main`'s release tags deploy production, after the user's approval (P8.5). Staging stays the
+Supabase staging project with the app run locally against it; an AWS staging follows one to two months after the
+first release. This is a parallel track, finished before the pilot. P5's webhook testing does not wait for it: the
+P5 plan chooses a tunnel to a local stack or brings the AWS staging forward (D12 in the P8 plan). **Items:** R16,
+R17, R18, R21, R3 (secrets), R6 (observability), R14 (usage load). **Depends on:** P0.6. **Size:** L.
 
 > **How it is built:** [P8_INFRASTRUCTURE.md](P8_INFRASTRUCTURE.md), PR by PR straight into `dev`. Decided on
 > 11 November 2026 (ADR-007 and ADR-011 as amended): production only to start, on one small host with no load
 > balancer, inside a budget of about $35 a month; a staging on AWS follows one to two months after the first
-> release. Where the plan and this section disagree, the plan is newer.
+> release. The credits expire on 18 February 2027 (the user, 15 November 2026). Each subsection below opens with
+> what was decided where it differs; the full list, with what picks each item up, is the plan's
+> [Where P8 builds less than the roadmap](P8_INFRASTRUCTURE.md#where-p8-builds-less-than-the-roadmap). Where the
+> plan and this section disagree, the plan is newer.
 
 ### P8.1 AWS foundation with Terraform
+
+> **Decided:** one account; `envs/production` only; no load balancer and no private subnets; CI runs
+> `terraform fmt`, `validate` and the existing `trivy config` scan instead of `tflint` and `checkov`; S3's own lock
+> file instead of a lock table.
 
 - **Accounts.** Separate AWS accounts for staging and production under AWS Organizations (the blast radius stops at
   the account), with budgets and billing alarms on both.
@@ -3641,6 +3651,9 @@ pilot. **Items:** R16, R17, R18, R21, R3 (secrets), R6 (observability), R14 (usa
 
 ### P8.2 Container registry and image pipeline
 
+> **Decided:** the newest 10 images kept, ECR's basic scan plus `security.yml`'s weekly `trivy image`; no `dev-<sha7>`
+> staging images; `ci.yml` builds and smoke-tests the arm64 images on pull requests, pushing nothing.
+
 - ECR repositories `food-pickup/web` and `food-pickup/server`, with **immutable tags** (git SHA, plus the semver from
   P0.3 at release). A lifecycle policy keeps the last 30 images, and every push is scanned (Inspector).
 - `docker/build-push-action` with layer caching, SBOM and provenance attestations. Images are built for the instance
@@ -3651,6 +3664,10 @@ pilot. **Items:** R16, R17, R18, R21, R3 (secrets), R6 (observability), R14 (usa
   one build per branch serves its environment. The registry scan is the image scan; P0 ships no Trivy step.
 
 ### P8.3 Media bucket and CDN
+
+> **Decided:** CloudFront reaches the one host directly (no ALB), never over plain HTTP; no release-assets bucket
+> (`/assets/*` comes from the web container through CloudFront, and `PageBoundary` reloads a stale tab); no WAF yet
+> (P9.3).
 
 - **S3 bucket** `food-pickup-media-<env>`:
   - public access blocked, SSE-S3 encryption, versioning on;
@@ -3667,6 +3684,10 @@ pilot. **Items:** R16, R17, R18, R21, R3 (secrets), R6 (observability), R14 (usa
   - The WAF web ACL is attached ([P9.3](#p93-edge-protection-and-security-review)).
 
 ### P8.4 Compute on EC2
+
+> **Decided:** one `t4g.micro` host (1 GB, standard CPU credits, a memory limit per container, a swap file), no Auto
+> Scaling group and no ALB, so a deploy is a few seconds of errors; `web`, `api` and `worker` only (the reconciler
+> and its lease come with P5.10); no backups in P8 (P9.5).
 
 R18.
 
@@ -3694,20 +3715,22 @@ R18.
 
 ### P8.5 Continuous deployment
 
+> **Decided:** no `deploy-staging.yml` until the AWS staging; production's smoke is HTTP checks, with no browser run,
+> no k6 and no test orders; production migrations stay manual (decision 11). The diagram shows what P8 builds.
+
 R21. `dev` is staging and `main` is production; a release is a PR from `dev` into `main`
 ([P0.3](#p03-semantic-versioning-with-change-intents)).
 
 ```mermaid
 flowchart LR
   PR["Pull request into dev"] --> CI["ci.yml: lint, types, format, tests,<br/>build, bundle budget, migrations check, images"]
-  CI --> Dev["merge to dev"]
-  Dev --> Stg["deploy-staging.yml: build dev-{sha} images,<br/>push to ECR, db push staging (--include-all),<br/>rolling deploy, smoke + k6 smoke"]
-  Stg --> Rel["release PR: release/{date} into main<br/>(bump, changelogs, intents consumed)"]
+  CI --> Dev["merge to dev<br/>(staging: Supabase project, app run locally)"]
+  Dev --> Rel["release PR: release/{date} into main<br/>(bump, changelogs, intents consumed)"]
   Rel --> Gate{"user merges<br/>= production approval"}
   Gate --> Tags["tag-and-backmerge: client-vX, server-vY,<br/>back-merge PR into dev"]
   Tags --> ProdMig["production migrations<br/>(user, manual)"]
-  ProdMig --> Prod["deploy-production.yml: build from main,<br/>rolling deploy, health-gated"]
-  Prod --> Verify["smoke tests, alarms quiet"]
+  ProdMig --> Prod["deploy-production.yml: build arm64 from main,<br/>push to ECR, SSM deploy to the one host"]
+  Prod --> Verify["HTTP smoke, then the release parameter is written;<br/>alarms quiet"]
 ```
 
 - **`deploy-staging.yml`**, on push to `dev` once `ci.yml` has passed (`workflow_run`), with `concurrency` and no
@@ -3738,6 +3761,10 @@ flowchart LR
 
 ### P8.6 Secrets and configuration
 
+> **Decided:** one secret holding `SUPABASE_SECRET_KEY` today, each later secret one more key in it, added by its
+> phase (P5, P6); production refuses to start without an `https` `CLIENT_ORIGIN`, `GIT_COMMIT` and
+> `TRUST_PROXY_HOPS` of at least 1; rotation is a paragraph in `infra/README.md` until P9.5.
+
 R3, for deployments.
 
 - **Where secrets live.** Secrets Manager per environment:
@@ -3760,6 +3787,11 @@ R3, for deployments.
   window (both secrets accepted for 24 h). The Supabase key and the VAPID keys rotate with a redeploy.
 
 ### P8.7 Observability
+
+> **Decided:** about ten metrics from CloudWatch metric filters on the log lines the app already writes, not
+> Embedded Metric Format; alarms only for signals that exist (errors, latency, dead letters, queue age, the host
+> down, memory, CPU credits, the certificate); no tracing (P10.4) and no real-user metrics (P9); the SLOs are
+> written down as targets.
 
 R6 in production, and R14's "usage load".
 
@@ -4565,9 +4597,9 @@ The ones marked ★ block a phase.
 | 8   | Error tracking: self-reported (P1.6) or Sentry (a new runtime host, about 25 KB)                                   | P1.6            | decided 2026-10-24: self-reported in P1; Sentry later, low priority ([P10.4](#p104-observability-v2-sentry-prometheus-and-grafana-low-priority))                                            |
 | 9   | CAPTCHA on registration (a new runtime host)                                                                       | P9.3            | Turnstile on register only                                                                                                                                                                  |
 | 10  | Browser-to-S3 presigned uploads (a new CSP host) or proxied uploads                                                | P3.3            | presigned                                                                                                                                                                                   |
-| 11  | Production migrations inside the pipeline (behind approval) or kept manual                                         | P8.5            | manual, per CLAUDE.md §2                                                                                                                                                                    |
-| 12  | ECS instead of compose on EC2                                                                                      | P8.4            | compose on EC2 (ADR-007)                                                                                                                                                                    |
-| 13  | AWS account structure, region and domain name                                                                      | P8.1            | two accounts; the Supabase projects' region                                                                                                                                                 |
+| 11  | Production migrations inside the pipeline (behind approval) or kept manual                                         | P8.5            | manual, per CLAUDE.md §2 **(answered: the user, 11 November 2026)**                                                                                                                         |
+| 12  | ECS instead of compose on EC2                                                                                      | P8.4            | compose on EC2 (ADR-007) **(answered: ADR-007 as amended, 11 November 2026)**                                                                                                               |
+| 13  | AWS account structure, region and domain name                                                                      | P8.1            | **answered:** one account, ap-south-1; the domain is still open (P8 plan D1–D3)                                                                                                             |
 | 14  | Supabase plan tier (PITR, compute, read replicas)                                                                  | P8.4, P9.1      | a tier with PITR for production                                                                                                                                                             |
 | 15  | Token format and business-day start                                                                                | P6.2            | `A-017`, rolling over at 04:00                                                                                                                                                              |
 | 16  | Whether staff may edit stock by default                                                                            | P3.5            | yes (`staff_can_edit_stock` defaults on)                                                                                                                                                    |

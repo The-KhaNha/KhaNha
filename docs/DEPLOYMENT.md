@@ -19,6 +19,21 @@ Environments, configuration, database changes and production setup. The environm
 Each environment is a separate Supabase project with its own database, users and keys. Project refs are not secret:
 they are the subdomain of the project URL (`server/scripts/db-push.sh`).
 
+### Hosted environments
+
+Where the app runs outside a laptop, as decided for P8 ([plan](../plans/P8_INFRASTRUCTURE.md),
+[ADR-007](adr/007-pilot-on-ec2-compose.md), [ADR-011](adr/011-free-tiers.md)). Being built; nothing is hosted yet.
+
+| What        | Decision                                                                                                                                                        |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Hosted      | **production only**. Staging is the Supabase staging project with the app run locally against it (`./run.sh staging`); an AWS staging follows the first release |
+| Account     | one AWS account, the one holding the credits; every account-specific value is a variable, so the setup can move to another account                              |
+| Region      | `ap-south-1` (Mumbai), the Supabase projects' region                                                                                                            |
+| Domain      | not chosen yet; until it is, production answers on CloudFront's own hostname                                                                                    |
+| Size        | one EC2 `t4g.micro` (arm64, 1 GB, standard CPU credits) running `web`, `api` and `worker` with compose, behind CloudFront; no load balancer                     |
+| Budget      | about $11 a month planned (Mumbai prices), $35 a month at most, with an alert at 50%, 80% and 100%; paid from credits that expire on 18 February 2027           |
+| Who changes | Terraform applies and deploys are pipeline runs that wait for the user's approval; migrations and seeds stay the user's (above)                                 |
+
 ### API and client must point at the same project
 
 Access tokens are signed per project. A token from one project fails verification in an API pointed at another, and
