@@ -44,8 +44,9 @@ export function StaffDashboardPage() {
   );
   // A brand owner works any branch with no membership (orders.view, orders.transition, stock.update).
   const isOwner = useAuthStore((s) => (s.user?.ownedBrands ?? []).length > 0);
-  const brands = useMyBrands(isOwner && !membership);
-  const branch = membership ? null : ownedBranch(brands.data, storeSlug);
+  // Resolved even with a membership: the server gives OWNER precedence for stock.update over a STAFF row's switch.
+  const brands = useMyBrands(isOwner);
+  const branch = ownedBranch(brands.data, storeSlug);
   const storeId = membership?.storeId ?? branch?.id;
   const maySeeStock = branch !== null || canSeeStock(membership);
   const { polling } = useConfig();

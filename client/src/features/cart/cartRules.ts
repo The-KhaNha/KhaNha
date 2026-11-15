@@ -45,10 +45,11 @@ type ProblemLine = Pick<CartLine, 'lineKey' | 'menuItemId' | 'quantity' | 'maxQu
 /**
  * Whether a line's options can no longer be ordered as chosen, by place_order's rules: an option gone or switched
  * off, a group past its most, or a required group short with no default left to fill it (the server fills a
- * default). Checked on every menu load so the line is flagged before Pay, not after a refusal.
+ * default), or a price that would come out below zero. Checked on every menu load so the line is flagged before Pay,
+ * not after a refusal.
  */
 export function optionsUnorderable(
-  item: Pick<MenuItem, 'modifierGroupIds'>,
+  item: Pick<MenuItem, 'modifierGroupIds' | 'price'>,
   groups: Record<string, ModifierGroup>,
   options: Pick<CartOption, 'id'>[],
 ): boolean {
@@ -56,12 +57,18 @@ export function optionsUnorderable(
   const chosen = new Set(options.map((o) => o.id));
   const offered = itemGroups.flatMap((g) => g.options.filter((o) => o.isAvailable));
   if (options.some((o) => !offered.some((x) => x.id === o.id))) return true;
-  return itemGroups.some((g) => {
-    const picked = g.options.filter((o) => chosen.has(o.id)).length;
-    if (picked > g.maxSelect) return true;
-    const defaults = g.options.filter((o) => o.isDefault && o.isAvailable).length;
-    return picked < g.minSelect && (picked > 0 || defaults < g.minSelect);
+  // The price place_order would charge: base plus each group's picks, a required group left empty taking its defaults.
+  let price = item.price;
+  const short = itemGroups.some((g) => {
+    let picked = g.options.filter((o) => chosen.has(o.id));
+    if (picked.length > g.maxSelect) return true;
+    if (picked.length === 0 && g.minSelect > 0)
+      picked = g.options.filter((o) => o.isDefault && o.isAvailable).slice(0, g.maxSelect);
+    price += picked.reduce((sum, o) => sum + o.priceDelta, 0);
+    return picked.length < g.minSelect;
   });
+  // A negative price is refused by priceLine (MODIFIER_INVALID), so the line must be chosen again.
+  return short || price < 0;
 }
 
 /** The most this line may hold: its item's limit less what the item's other lines in `lines` hold. */

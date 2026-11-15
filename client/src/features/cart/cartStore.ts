@@ -413,7 +413,10 @@ export const useCartStore = create<CartState>()(
 // paid and emptied it, and a stale tab's add at another store would skip "Start a new cart?" (/break, P3 close). The
 // event fires only in the other tabs; `key` is null when storage was cleared.
 window.addEventListener('storage', (e) => {
-  if (e.key === 'fp_cart' || e.key === null) void useCartStore.persist.rehydrate();
+  if (e.key !== 'fp_cart' && e.key !== null) return;
+  // Removed or cleared: rehydrate() finds nothing and would keep this tab's stale lines, so empty explicitly.
+  if (e.newValue === null) useCartStore.getState().clear();
+  else void useCartStore.persist.rehydrate();
 });
 
 /* Derived selectors — count and total are never stored. */

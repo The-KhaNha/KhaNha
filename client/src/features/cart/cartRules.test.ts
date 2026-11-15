@@ -298,7 +298,7 @@ describe('optionsUnorderable', () => {
       { id: 'syrup' },
     ]),
   };
-  const item = (ids: string[]) => ({ modifierGroupIds: ids });
+  const item = (ids: string[], price = 100) => ({ modifierGroupIds: ids, price });
   const opts = (...ids: string[]) => ids.map((id) => ({ id }));
 
   it('is fine as chosen, and when a required group left out has a default to fill it', () => {
@@ -316,5 +316,21 @@ describe('optionsUnorderable', () => {
   it('flags a required group with no default, and a group past its most', () => {
     expect(optionsUnorderable(item(['milk']), groups, [])).toBe(true);
     expect(optionsUnorderable(item(['size']), groups, opts('reg', 'lg'))).toBe(true);
+  });
+
+  it('flags a line whose price would be negative, defaults included', () => {
+    const priced = {
+      size: {
+        ...group('size', 1, 1, [{ id: 'reg', isDefault: true }, { id: 'lg' }]),
+        options: [
+          { id: 'reg', name: 'reg', priceDelta: -150, isDefault: true, isAvailable: true },
+          { id: 'lg', name: 'lg', priceDelta: 0, isDefault: false, isAvailable: true },
+        ],
+      },
+    };
+    expect(optionsUnorderable(item(['size'], 100), priced, [])).toBe(true);
+    expect(optionsUnorderable(item(['size'], 100), priced, opts('reg'))).toBe(true);
+    expect(optionsUnorderable(item(['size'], 100), priced, opts('lg'))).toBe(false);
+    expect(optionsUnorderable(item(['size'], 150), priced, [])).toBe(false);
   });
 });

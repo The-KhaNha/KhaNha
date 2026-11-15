@@ -15,6 +15,10 @@ export function useStoreMenu(storeRef: string, enabled = true) {
     enabled,
   });
 
+  // Lines that arrive later (another tab's cart rehydrated into this one) are checked against the loaded menu too.
+  // syncAvailability hands back the same state when nothing changed, so this settles after one pass.
+  const lines = useCartStore((s) => s.lines);
+
   useEffect(() => {
     if (!data) return;
     const cart = useCartStore.getState();
@@ -22,7 +26,7 @@ export function useStoreMenu(storeRef: string, enabled = true) {
     const items = data.categories.flatMap((category) => category.items);
     cart.setLimits(data.rules);
     cart.syncAvailability(items, data.modifierGroups);
-  }, [data]);
+  }, [data, lines]);
 
   return { menu: data, isLoading, error, retry: reload };
 }

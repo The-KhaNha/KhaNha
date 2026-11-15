@@ -259,6 +259,17 @@ describe('another tab', () => {
     await vi.waitFor(() => expect(useCartStore.getState().lines).toEqual([]));
     expect(useCartStore.getState().storeId).toBeNull();
   });
+
+  it.each([
+    ['removes fp_cart', 'fp_cart'],
+    ['clears storage', null],
+  ])('empties the cart when another tab %s', (_label, key) => {
+    useCartStore.getState().add(menuItem(), 1, cafe);
+    localStorage.removeItem('fp_cart');
+    window.dispatchEvent(new StorageEvent('storage', { key, newValue: null }));
+    expect(useCartStore.getState().lines).toEqual([]);
+    expect(useCartStore.getState().storeId).toBeNull();
+  });
 });
 
 describe('migration from version 1', () => {

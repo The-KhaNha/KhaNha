@@ -219,6 +219,19 @@ describe("a brand owner on a branch's board (no membership)", () => {
     expect(screen.getByRole('button', { name: /stock/i })).toBeInTheDocument();
   });
 
+  it('keeps the stock view when they also hold a STAFF membership with stock editing off', () => {
+    signInAsOwner();
+    const user = useAuthStore.getState().user!;
+    useAuthStore.setState({
+      user: {
+        ...user,
+        memberships: [{ ...member('north'), storeId: 'id-north', staffCanEditStock: false }],
+      },
+    });
+    at('/staff/north');
+    expect(screen.getByRole('button', { name: /stock/i })).toBeInTheDocument();
+  });
+
   it('is sent home from a store that is not one of their branches, or their template (no kitchen)', () => {
     signInAsOwner();
     const { unmount } = at('/staff/elsewhere');
