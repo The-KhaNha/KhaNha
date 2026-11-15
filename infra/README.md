@@ -61,7 +61,7 @@ In GitHub → Settings → **Environments**, create:
 | Environment        | Protection                                                                                                  | Variable `AWS_ROLE_ARN`                     |
 | ------------------ | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
 | `infra-plan`       | none (it plans pull requests; its role is read-only)                                                        | `terraform output` → `role_arns.infra-plan` |
-| `production-infra` | required reviewer: you; deployment branches: `dev` only                                                     | `role_arns.production-infra`                |
+| `production-infra` | required reviewer: you; deployment branches: `main` only                                                    | `role_arns.production-infra`                |
 | `production`       | required reviewer: you; deployment branches and tags: `main`, `client-v*`, `server-v*` (used from PR 07 on) | `role_arns.production`                      |
 
 Then the repository variables (Settings → Secrets and variables → Actions → **Variables**), or with `gh`:
@@ -83,8 +83,9 @@ None of these values is secret; they are variables, not secrets, so they show in
    `ci.yml`'s `infra` job also checks `terraform fmt` and `validate` for every root, without AWS. Only pull requests
    from branches of this repository are planned. A fork's pull request skips the plan, because its code would run with
    the account's read access; a maintainer re-opens it from a branch here to see a plan.
-2. When it merges into `dev`, `infra.yml` plans again, then its **apply** job waits for you (the `production-infra`
-   Environment). Read the plan in the summary of that run's plan job, then approve.
+2. It merges into `dev` and waits there: `dev` applies nothing. When a release reaches `main` (production),
+   `infra.yml` plans again, then its **apply** job waits for you (the `production-infra` Environment). Read the plan
+   in the summary of that run's plan job, then approve.
 3. A second run on an unchanged tree plans "No changes".
 
 Until step 2 is done the plan and apply jobs skip (no `TF_STATE_BUCKET`), so nothing fails while the account is

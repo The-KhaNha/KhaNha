@@ -1,6 +1,7 @@
 name: infra
 
-# Plans production's Terraform on a pull request, and applies it from dev after the user's approval. Nothing here
+# Plans production's Terraform on a pull request, and applies it from main (production) after the
+# user's approval. Nothing here
 # runs until the bootstrap has been applied and its outputs are in GitHub (infra/README.md); until then the jobs skip.
 on:
   pull_request:
@@ -8,7 +9,7 @@ on:
       - 'infra/terraform/**'
       - '.github/workflows/infra.yml'
   push:
-    branches: [dev]
+    branches: [main]
     paths:
       - 'infra/terraform/**'
       - '.github/workflows/infra.yml'
@@ -17,7 +18,7 @@ permissions:
   contents: read
 
 # One run at a time against production's state. `queue: max` lets every pending run wait: by default a newer pending
-# run replaces the older one, so a pull request's plan could silently drop a dev push's apply.
+# run replaces the older one, so a pull request's plan could silently drop a main push's apply.
 concurrency:
   group: infra-production
   queue: max
@@ -69,7 +70,7 @@ jobs:
 
   apply:
     needs: plan
-    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     # Required reviewer: the user. The approval is given after reading the plan job's summary.
     environment: production-infra
