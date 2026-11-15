@@ -6,7 +6,9 @@ Accepted (2026-09-28), by the user. Amended (2026-11-03), by the user: the repos
 public-repository features apply (rulesets, secret scanning, unlimited Actions minutes) and the GitHub table below
 records what the project now uses. Amended (2026-11-11), by the user: AWS is the one paid service, paid from $140 of
 credits that must last at least four months (about $35 a month); the AWS section below records what that buys and
-what waits for funding.
+what waits for funding. Amended (2026-11-15), by the user: about $130 of the credits is left and it expires on
+2027-02-18; the account is on AWS's Paid plan and is paid from pilot revenue after that; prices re-read for Mumbai
+([Revised 2026-11-15](#revised-2026-11-15)).
 
 ## Date
 
@@ -88,6 +90,23 @@ addresses, per environment), a second host, a NAT gateway, a web application fir
   before it merges, never after.
 - AWS lists `t4g.small` as free for 750 hours a month until 31 December 2026. One host may use it while it lasts; the
   budget does not count on it.
+
+#### Revised 2026-11-15
+
+The credits are about **$130 and expire on 2027-02-18**: the date runs out before the money does. Read against AWS's
+Mumbai (ap-south-1) price list on 2026-11-15, production is **about $11 a month**, not $13: the host $4.10
+($0.0056 an hour), its public IPv4 address $3.65, 16 GB of gp3 $1.46, the secret $0.40, the DNS zone $0.50, the rest
+inside free allowances; `t4g.small` would be $8.20. The domain (about $10 a year) is not payable from credits, and
+18% GST applies to what is billed after them if the billing address is Indian.
+
+- **One account, kept.** AWS's terms give Free Tier credits to one account per customer and void promotional
+  credits on an account created solely to obtain them, so a second account is never opened for credits. The
+  account is on the **Paid** plan (a Free-plan account is closed when its plan ends) and, after 2027-02-18, is paid
+  from pilot revenue. AWS Activate is the route to look at for more credits.
+- **Spend the credits on the hard part.** The host is created as soon as the network and roles are applied, not a
+  month before launch: the drills and the dark period then run on credits that would otherwise expire unused
+  ([P8 plan, D11](../../plans/P8_INFRASTRUCTURE.md#decisions)).
+- **The $35 ceiling and its alert stay** as the guard.
 
 ## Consequences
 

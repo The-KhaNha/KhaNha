@@ -34,6 +34,11 @@ the one-row `site_settings` table, edited by admins.
 - Security and accessibility are requirements, not polish.
 - **Never touch production.** `pnpm run db:push:production` and `pnpm run seed --production` are run by the user
   only. Tests run against local Supabase only (§13, `docs/TESTING.md`).
+- **Never run `terraform apply` yourself** (nor `destroy`, `import`, or any `state` write) unless the user gives
+  explicit permission for that specific Terraform root, in that instance. One permission covers one run of one root;
+  it never carries over to another root, a later run or a later session. `init`, `fmt`, `validate` and a `plan`
+  against local or no state are fine; applies normally run through `infra.yml` behind the `production-infra`
+  Environment (`infra/README.md`).
 - Migrations in `server/supabase/migrations/` are append-only once pushed (the `migrations` CI job enforces it).
 - API changes stay backward-compatible with the deployed client: add fields, never rename or remove fields the
   client reads, keep error codes stable. A change the deployed client cannot survive ships with a
