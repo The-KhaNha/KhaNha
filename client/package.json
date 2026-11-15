@@ -1,20 +1,29 @@
 {
   "name": "food-pickup-client",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
+  "engines": {
+    "node": "^24.15.0"
+  },
+  "packageManager": "pnpm@12.17.0+sha512.b8d223ebec04b580a89ed206daa71d1bccb6a1ee1d52efa95cc3b0db75271561df8f0d8e2c43add39c5ec08018af7a8a95108e7090f95a29f88727b7a40fd53d",
   "scripts": {
-    "dev": "vite --port 5173 --strictPort",
-    "dev:staging": "vite --port 5173 --strictPort --mode staging",
+    "dev": "vite",
+    "dev:staging": "vite --mode staging",
     "build": "tsc -p tsconfig.json --noEmit && vite build",
     "build:staging": "tsc -p tsconfig.json --noEmit && vite build --mode staging",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build:container": "tsc -p tsconfig.json --noEmit && vite build --mode container",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.e2e.json --noEmit",
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "e2e": "playwright test",
+    "e2e:webkit": "playwright test --project=webkit",
+    "e2e:chromium": "playwright test --project=chromium",
+    "e2e:install": "playwright install webkit"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",
@@ -26,9 +35,11 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/vite": "^4.1.0",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
+    "@types/node": "^26.6.3",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.3.4",

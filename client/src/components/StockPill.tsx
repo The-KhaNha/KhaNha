@@ -1,6 +1,7 @@
 import { Hourglass } from 'lucide-react';
 import type { MenuItem } from '../types/api';
 import { isLowStock } from '../features/cart/cartRules';
+import { selectLimits, useCartStore } from '../features/cart/cartStore';
 import { cn } from '../lib/cn';
 
 interface StockPillProps {
@@ -13,11 +14,12 @@ interface StockPillProps {
  * It sits beside the item's text: never on the photo (Popular's spot) and never on a control.
  */
 export function StockPill({ item, className }: StockPillProps) {
-  if (!isLowStock(item)) return null;
+  const limits = useCartStore(selectLimits);
+  if (!isLowStock(item, limits)) return null;
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 rounded-full bg-gold-50 px-2 py-0.5 text-[11px] font-bold leading-4 text-gold-700 tabular-nums',
+        'inline-flex items-center gap-1 rounded-full bg-gold-50 px-2 py-0.5 text-2xs font-bold leading-4 text-gold-700 tabular-nums',
         className,
       )}
     >

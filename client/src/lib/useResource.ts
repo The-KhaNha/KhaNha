@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { logger } from './logger';
 import { ApiError } from '../services/api';
 
@@ -31,8 +31,10 @@ interface Resource<T> extends ResourceState<T> {
   mutate: (updater: (previous: T) => T) => void;
 }
 
-// Bump when a persisted response shape changes, so an old cached shape is never rendered by new code.
-const CACHE_PREFIX = 'fp_cache:v1:';
+const CACHE_ROOT = 'fp_cache:';
+// Bump when a persisted response shape changes, so an old cached shape is never rendered by new code. v2: a store
+// gained slug, brand, area and address (P2).
+export const CACHE_PREFIX = `${CACHE_ROOT}v2:`;
 // Keys whose storage failure was already logged: writeCache runs on every successful poll.
 const reportedKeys = new Set<string>();
 
@@ -61,6 +63,43 @@ function writeCache(key: string, data: unknown): void {
   }
 }
 
+/** Drops one persisted response, so the next visit refetches it (a manager's edit must not hide behind a saved menu). */
+export function dropPersisted(key: string): void {
+  removeKeys((k) => k === CACHE_PREFIX + key);
+}
+
+/** Removes every key that matches. Keys are collected first: removing while scanning can reorder them and skip one. */
+function removeKeys(matches: (key: string) => boolean): void {
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (key !== null && matches(key)) keys.push(key);
+    }
+    for (const key of keys) localStorage.removeItem(key);
+  } catch {
+    // Storage blocked: nothing was persisted either.
+  }
+}
+
+/**
+ * Drops every persisted response. PageBoundary calls it when a render crashes: a malformed response that was cached
+ * would otherwise crash every later visit before the fresh fetch could replace it, and Reload could never recover.
+ */
+export function clearPersistedCache(): void {
+  removeKeys((key) => key.startsWith(CACHE_PREFIX));
+}
+
+/**
+ * Drops what an older CACHE_PREFIX left behind: no code reads it again, so it only fills a small phone's storage. A tab
+ * still running the old build loses its head start once (it refetches), by design: no migration for a cache.
+ */
+export function dropOldCacheVersions(): void {
+  removeKeys((key) => key.startsWith(CACHE_ROOT) && !key.startsWith(CACHE_PREFIX));
+}
+// Once per page load, before any resource reads its cache.
+dropOldCacheVersions();
+
 function toApiError(err: unknown): ApiError {
   if (err instanceof ApiError) return err;
   return new ApiError(0, 'UNKNOWN', 'Something went wrong.');
@@ -82,9 +121,12 @@ export function useResource<T>(
   const [nonce, setNonce] = useState(0);
 
   const fetcherRef = useRef(fetcher);
-  fetcherRef.current = fetcher;
   const pollRef = useRef(pollInterval);
-  pollRef.current = pollInterval;
+  // Layout effects run before the fetch effect below, so a fetch or poll always uses the latest callbacks.
+  useLayoutEffect(() => {
+    fetcherRef.current = fetcher;
+    pollRef.current = pollInterval;
+  });
   const dataRef = useRef<T | null>(state.data);
   const lastKey = useRef(key);
   // Bumped by mutate(): a fetch that started before the latest local change must not overwrite it.
@@ -101,6 +143,7 @@ export function useResource<T>(
     }
 
     let cancelled = false;
+    let outdated = false;
     let timer: number | undefined;
 
     const schedule = () => {
@@ -125,14 +168,21 @@ export function useResource<T>(
       } catch (err) {
         if (cancelled) return;
         if (err instanceof DOMException && err.name === 'AbortError') return;
-        setState((s) => ({ ...s, isLoading: false, error: toApiError(err) }));
+        const apiError = toApiError(err);
+        setState((s) => ({ ...s, isLoading: false, error: apiError }));
+        // 426: this build is too old and every retry would be refused. Stop polling until the page reloads;
+        // otherwise a screen with data (no ErrorState) would keep asking every few seconds.
+        if (apiError.status === 426) {
+          outdated = true;
+          return;
+        }
       }
       schedule();
     };
 
     const onVisibility = () => {
       window.clearTimeout(timer);
-      if (!document.hidden && dataRef.current !== null && pollRef.current) void run();
+      if (!document.hidden && !outdated && dataRef.current !== null && pollRef.current) void run();
     };
 
     document.addEventListener('visibilitychange', onVisibility);

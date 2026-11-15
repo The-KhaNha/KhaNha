@@ -1,5 +1,6 @@
 // Response shapes shared with the client. Keep these in sync with the API contract.
-import type { OrderStatus, PaymentStatus, Role } from './enums';
+import type { OpenStateName } from '../domain/schedule';
+import type { ActorType, OrderStatus, PaymentStatus, Role, StoreRole } from './enums';
 
 export interface UserDto {
   id: string;
@@ -8,17 +9,115 @@ export interface UserDto {
   phone: string | null;
   role: Role;
   createdAt: string;
+  /** The stores this account works at (P2.2); the brand's owner has no rows here. */
+  memberships: {
+    storeId: string;
+    storeSlug: string;
+    storeName: string;
+    role: StoreRole;
+    /** The store's setting: whether its STAFF may change stock (a manager may change it at any time). */
+    staffCanEditStock: boolean;
+  }[];
+  /** The brands this account owns: OWNER of every store of each (ADR-001). */
+  ownedBrands: { id: string; name: string; slug: string }[];
 }
 
 export interface StoreDto {
   id: string;
+  slug: string;
   name: string;
+  brand: { id: string; name: string; slug: string };
+  area: string | null;
+  address: string | null;
   tagline: string;
   description: string;
   imageUrl: string | null;
   isOpen: boolean;
+  openState: OpenStateName;
+  /** The next change of state: the closing time while open, the next opening while closed; null when unknown. */
+  nextChangeAt: string | null;
+  /** Ready to show: "Closes at 9:00 PM", "Opens tomorrow at 8:00 AM", "Closed for Diwali". */
+  openLabel: string | null;
   prepTimeMinMinutes: number;
   prepTimeMaxMinutes: number;
+}
+
+/** One row of GET /api/stores: what a store picker shows. */
+export type StoreSummaryDto = Pick<
+  StoreDto,
+  | 'id'
+  | 'slug'
+  | 'name'
+  | 'tagline'
+  | 'imageUrl'
+  | 'area'
+  | 'brand'
+  | 'isOpen'
+  | 'openState'
+  | 'nextChangeAt'
+  | 'openLabel'
+>;
+
+export type StoreStatus = 'DRAFT' | 'ACTIVE' | 'SUSPENDED' | 'ARCHIVED';
+
+/** A store as its brand's owner and managers edit it (P3.1): any status, with its contact phone. */
+export interface ManagedStoreDto {
+  id: string;
+  slug: string;
+  name: string;
+  status: StoreStatus;
+  isTemplate: boolean;
+  area: string | null;
+  address: string | null;
+  contactPhone: string | null;
+  tagline: string;
+  description: string;
+  imageUrl: string | null;
+  createdAt: string;
+}
+
+/** What a branch still lacks before it can be published (store_publish_missing); empty: ready. */
+export type PublishMissing = 'address' | 'hours' | 'menu';
+
+/** GET /api/stores/:storeId/manage: the store as its managers see it, whatever its status, and its go-live checklist. */
+export interface ManageStoreResponseDto {
+  store: ManagedStoreDto;
+  brand: { id: string; name: string; slug: string };
+  missing: PublishMissing[];
+}
+
+/** One brand of GET /api/brands/mine: its branches (every status) and its template, which branches copy. */
+export interface MyBrandDto {
+  id: string;
+  name: string;
+  slug: string;
+  template: ManagedStoreDto | null;
+  stores: ManagedStoreDto[];
+}
+
+/** One weekly interval of GET /api/stores/:storeRef/hours; `HH:MM`, `closesAt` before `opensAt` runs past midnight. */
+export interface StoreHoursDto {
+  /** ISO weekday: 1 = Monday ... 7 = Sunday. */
+  dayOfWeek: number;
+  opensAt: string;
+  closesAt: string;
+}
+
+export interface ScheduleExceptionDto {
+  id: string;
+  startsOn: string;
+  endsOn: string;
+  kind: 'CLOSED' | 'SPECIAL_HOURS';
+  opensAt: string | null;
+  closesAt: string | null;
+  label: string;
+}
+
+/** GET /api/stores/:storeRef/hours: the week, and the exceptions from today (store time) on. */
+export interface StoreScheduleResponse {
+  timezone: string;
+  hours: StoreHoursDto[];
+  exceptions: ScheduleExceptionDto[];
 }
 
 export interface MenuItemDto {
@@ -27,7 +126,14 @@ export interface MenuItemDto {
   name: string;
   description: string;
   price: number;
-  imageUrl: string;
+  /** null: no photo yet (an item made in the editor before its upload). */
+  imageUrl: string | null;
+  /** An uploaded photo's WebP sizes, for `<img srcset>` ("/media/… 400w, /media/… 900w"); null for a bundled photo. */
+  imageSrcSet: string | null;
+  /** The item's modifier groups, in order, as keys of MenuResponse.modifierGroups; empty while `modifiers` is off. */
+  modifierGroupIds: string[];
+  /** null: not marked. */
+  diet: Diet | null;
   /** Effective availability: false when the item is switched off OR its tracked stock has run out. */
   isAvailable: boolean;
   isPopular: boolean;
@@ -36,21 +142,108 @@ export interface MenuItemDto {
   stockQuantity: number | null;
 }
 
+export type Diet = 'VEG' | 'NON_VEG' | 'EGG';
+
+/** An item in the menu editor (`GET /api/stores/:storeId/menu-items`): archived ones too, with the raw switch. */
+export interface ManagedMenuItemDto extends MenuItemDto {
+  /** The switch alone; `isAvailable` also counts stock. Always false once archived. */
+  isEnabled: boolean;
+  archivedAt: string | null;
+  /** The brand template item this one was copied from (its lineage, P3.1); null for a branch's own item or a template's. */
+  templateItemId: string | null;
+}
+
 export interface MenuCategoryDto {
   name: string;
   items: MenuItemDto[];
 }
 
 export interface MenuResponse {
+  /** Cart rules: most of one item per order, and the stock at or below which the menu says "only N left". */
+  rules: { maxQuantityPerItem: number; lowStockThreshold: number };
   store: StoreDto;
   popular: MenuItemDto[];
   categories: MenuCategoryDto[];
+  /** Every modifier group the menu's items offer, once (items name them by id); empty while `modifiers` is off. */
+  modifierGroups: Record<string, ModifierGroupDto>;
+}
+
+/** A choice on an item (P3.2): "Size" (choose 1), "Add-ons" (up to 3). */
+export interface ModifierGroupDto {
+  id: string;
+  name: string;
+  /** 0: optional. */
+  minSelect: number;
+  maxSelect: number;
+  options: {
+    id: string;
+    name: string;
+    /** Whole rupees, may be negative ("Small −₹20"). */
+    priceDelta: number;
+    /** Applied when the group is required and nothing is chosen. */
+    isDefault: boolean;
+    isAvailable: boolean;
+  }[];
+}
+
+/** A store's own limits (GET/PATCH /api/stores/:storeId/settings), edited by its manager or owner. */
+export interface StoreSettingsDto {
+  maxQuantityPerItem: number;
+  lowStockThreshold: number;
+  staffOrderListLimit: number;
+  /** Minutes before closing at which the store stops taking orders; 0 = until it closes. */
+  lastOrderMinutesBeforeClose: number;
+  /** Whether STAFF may change stock here (P3.5); managers and the owner always may. */
+  staffCanEditStock: boolean;
+}
+
+/** One hand-made stock change (GET /api/stores/:storeId/stock-movements). Sales are not movements. */
+export interface StockMovementDto {
+  id: number;
+  menuItemId: string;
+  /** Units added (negative: removed); null when tracking started or stopped. */
+  delta: number | null;
+  /** Stock after the change; null: no longer tracked. */
+  resultingQuantity: number | null;
+  reason: 'MANUAL_SET' | 'MANUAL_ADJUST' | 'WASTE';
+  /** Who made it; null for a system change or a deleted account. */
+  actor: { id: string; name: string } | null;
+  createdAt: string;
+}
+
+/** One person on a store's team (GET /api/stores/:storeId/members). The brand's owner is not a member. */
+export interface MemberDto {
+  /** The membership's id, which DELETE /api/stores/:storeId/members/:membershipId takes. */
+  id: string;
+  userId: string;
+  name: string;
+  email: string;
+  role: StoreRole;
+  joinedAt: string;
+}
+
+/** An open invite: not accepted, not revoked. One past `expiresAt` can no longer be accepted. */
+export interface InviteDto {
+  id: string;
+  email: string;
+  role: StoreRole;
+  expiresAt: string;
+  createdAt: string;
 }
 
 /** Site-wide limits edited on the admin dashboard (the site_settings row). */
 export interface SiteSettingsDto {
   customerOrderHistoryLimit: number;
-  staffOrderListLimit: number;
+  /** Most lines one order may have (enforced by createOrder). */
+  maxLinesPerOrder: number;
+  /** Client poll intervals in ms: one order's page, the customer's order list, the staff board. */
+  orderPollMs: number;
+  ordersPollMs: number;
+  staffBoardPollMs: number;
+  /** The share of page loads (0–100) whose errors the client reports to POST /api/client-errors. */
+  clientErrorSamplePercent: number;
+  /** The oldest client version served; older clients get 426 CLIENT_OUTDATED. */
+  minClientVersion: string;
   updatedAt: string;
 }
 
@@ -61,8 +254,20 @@ export interface OrderItemDto {
   unitPrice: number;
   quantity: number;
   lineTotal: number;
-  /** Current photo of the menu item, so order screens need no menu lookup for thumbnails. */
-  imageUrl: string;
+  /** The menu item's photo when the order was placed, so order screens need no menu lookup for thumbnails. */
+  imageUrl: string | null;
+  /** The item's own price, whole rupees, before its options (`unitPrice` includes them); null on older orders. */
+  baseUnitPrice: number | null;
+  /**
+   * The options the line was made with, as they were then (P3.2): empty for a line without any. `optionId` is the
+   * option still on the menu (a reorder re-adds it), null once the option was deleted.
+   */
+  modifiers: {
+    optionId: string | null;
+    groupName: string;
+    optionName: string;
+    priceDelta: number;
+  }[];
 }
 
 export interface OrderDto {
@@ -77,6 +282,77 @@ export interface OrderDto {
   estimatedReadyAt: string;
   createdAt: string;
   updatedAt: string;
-  store: { id: string; name: string };
+  /** The store's name when the order was placed; its slug is the live one, for a link to the store. */
+  store: { id: string; name: string; slug: string };
   items: OrderItemDto[];
+}
+
+/** GET /api/config: what the client needs to run. The client's defaults are client/src/config/fallbacks.json. */
+export interface ConfigDto {
+  serverVersion: string;
+  minClientVersion: string;
+  /** Feature flags by name; empty until P1.7. */
+  features: Record<string, boolean>;
+  /** The payment provider's public details; null until P5. */
+  payment: { provider: string; publicKey: string | null } | null;
+  limits: { maxLinesPerOrder: number };
+  /** Poll intervals in ms: one order's page, the customer's order list, the staff board. */
+  polling: { orderMs: number; ordersMs: number; staffBoardMs: number };
+  session: { idleDays: number };
+  /** The share of page loads (0–100) that report their errors to POST /api/client-errors. */
+  clientErrors: { samplePercent: number };
+}
+
+/** One audit_log row (GET /api/admin/audit): who changed what, when. */
+export interface AuditEntryDto {
+  id: number;
+  occurredAt: string;
+  actorType: ActorType;
+  /** The profile id for a USER, null for system actors. */
+  actorId: string | null;
+  /** The actor's role when the change happened. */
+  actorRole: string | null;
+  storeId: string | null;
+  /** 'order.status_changed', 'menu_item.changed', ... */
+  action: string;
+  entityType: string;
+  entityId: string;
+  /** The watched columns that changed, as { column: [old, new] }. */
+  changes: Record<string, [unknown, unknown]> | null;
+  reason: string | null;
+  requestId: string | null;
+}
+
+/** GET /api/admin/audit: one page, newest first. Pass nextCursor back as `before`; null on the last page. */
+export interface AuditPageDto {
+  entries: AuditEntryDto[];
+  nextCursor: number | null;
+}
+
+/** One feature_flags row (PATCH /api/admin/flags/:key). */
+export interface FeatureFlagDto {
+  key: string;
+  description: string;
+  enabled: boolean;
+  /** Served to the client through GET /api/config (P1.7, PR 14). */
+  clientVisible: boolean;
+  /** Who gets it once enabled: each list narrows, `percent` is a stable share of signed-in users. */
+  rules: { storeIds?: string[]; roles?: Role[]; percent?: number };
+  updatedAt: string;
+  /** The admin who last changed it; null for a migration or a deleted account. */
+  updatedBy: string | null;
+}
+
+/** One photo upload (P3.3): its progress and, once the pipeline has run, its variants. */
+export interface MediaUploadDto {
+  id: string;
+  status: 'PENDING' | 'UPLOADED' | 'PROCESSED' | 'FAILED';
+  contentType: string;
+  byteSize: number;
+  /** Where the photo is served from: the largest variant once PROCESSED, the original before. */
+  url: string;
+  /** The WebP copies, narrowest first, once PROCESSED; null before. */
+  variants: { width: number; height: number; url: string }[] | null;
+  failure: string | null;
+  createdAt: string;
 }

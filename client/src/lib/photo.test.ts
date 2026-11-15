@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { photoSrcSet } from './photo';
 
+// Each bundled photo as a base64 data URL, only to measure its size (CLAUDE.md §2b: ~80 KB per photo).
+const inlined = import.meta.glob<string>('../../public/images/*.jpg', {
+  eager: true,
+  query: '?inline',
+  import: 'default',
+});
+const PHOTO_BUDGET_BYTES = 80 * 1024;
+
 // File names only: the modules are never loaded.
 const bundled = Object.keys(import.meta.glob('../../public/images/*.jpg')).map((path) =>
   path.split('/').pop()!,
@@ -24,5 +32,16 @@ describe('photoSrcSet', () => {
     expect(photos.length).toBeGreaterThan(0);
     const missing = photos.filter((f) => !bundled.includes(f.replace(/\.jpg$/, '-400.jpg')));
     expect(missing).toEqual([]);
+  });
+
+  it('keeps every bundled photo within the ~80 KB budget (optimize-images.py --refit)', () => {
+    const over = Object.entries(inlined)
+      .map(([path, url]) => ({
+        file: path.split('/').pop()!,
+        bytes: (url.length - url.indexOf(',') - 1) * 0.75,
+      }))
+      .filter(({ bytes }) => bytes > PHOTO_BUDGET_BYTES)
+      .map(({ file, bytes }) => `${file} ${Math.round(bytes / 1024)} KB`);
+    expect(over).toEqual([]);
   });
 });

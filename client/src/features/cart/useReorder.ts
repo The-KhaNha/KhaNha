@@ -1,9 +1,17 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { MenuItem, Order } from '../../types/api';
-import { fetchMenu } from '../../services/menu';
-import { MAX_LINE_QUANTITY, availableQuantity, lineLimit } from './cartRules';
-import { selectQuantityOf, useCartStore } from './cartStore';
+import type { MenuItem, MenuResponse, ModifierGroup, Order, OrderItem } from '../../types/api';
+import { fetchStoreMenu } from '../../services/stores';
+import { cartHoldsOtherStore } from '../stores/storeRules';
+import { availableQuantity, lineLimit } from './cartRules';
+import {
+  chosenOptions,
+  defaultSelection,
+  itemGroups,
+  missingGroups,
+  type Selection,
+} from '../menu/modifierRules';
+import { selectQuantityOf, useCartStore, type CartOption, type CartStoreRef } from './cartStore';
 
 /** Router-state key under which /cart receives one line per item that could not be added in full. */
 const REORDER_NOTICE_STATE = 'reorderNotice';
@@ -18,21 +26,28 @@ export function readReorderNotice(state: unknown): string[] {
 
 /**
  * "Order Again": adds the order's items ON TOP of whatever is already in the cart (quantities merge),
- * using the CURRENT menu for new lines' prices and every line's stock limit. Existing lines keep their prices.
- * Anything that could not be added in full is reported on the cart page, never silently dropped.
+ * using the CURRENT menu of the order's store for new lines' prices and every line's stock limit. Existing lines keep
+ * their prices. Anything that could not be added in full is reported on the cart page, never silently dropped.
+ * A cart that holds another store's items is replaced only after the customer confirms: render `<ReplaceCartSheet {...replace} />` when it is set.
  */
 export function useReorder() {
   const navigate = useNavigate();
   const [reorderingId, setReorderingId] = useState<string | null>(null);
 
-  async function reorder(order: Order) {
+  const [asking, setAsking] = useState<Order | null>(null);
+
+  /** `replace`: the customer chose to replace the cart; it is emptied only once the new menu is in hand. */
+  async function run(order: Order, replace = false) {
     setReorderingId(order.id);
     let notice: string[];
     try {
-      const menu = await fetchMenu();
+      const menu = await fetchStoreMenu(order.store.slug);
+      if (replace) useCartStore.getState().clear();
       notice = addOrderToCart(
         order,
         menu.categories.flatMap((category) => category.items),
+        menu.rules,
+        menu.modifierGroups,
       );
     } catch {
       notice = ["We couldn't load the menu, so nothing was added. Please try again."];
@@ -41,13 +56,70 @@ export function useReorder() {
     navigate('/cart', { state: notice.length > 0 ? { [REORDER_NOTICE_STATE]: notice } : null });
   }
 
-  return { reorder, reorderingId };
+  function reorder(order: Order) {
+    if (cartHoldsOtherStore(useCartStore.getState(), order.store.id)) setAsking(order);
+    else void run(order);
+  }
+
+  const replace = asking && {
+    fromName: useCartStore.getState().storeName ?? 'another store',
+    toName: asking.store.name,
+    onKeep: () => setAsking(null),
+    onReplace: () => {
+      setAsking(null);
+      void run(asking, true);
+    },
+  };
+
+  return { reorder, reorderingId, replace };
+}
+
+/**
+ * A line's options as the current menu can still make them (P3.2): each one it still offers and has; a required
+ * group left empty takes its defaults. `missing` names a required group no default can fill (the line cannot be
+ * added), `dropped` the options the menu no longer has.
+ */
+function reorderOptions(
+  item: MenuItem,
+  wanted: Pick<OrderItem, 'modifiers'>,
+  groups: Record<string, ModifierGroup> | undefined,
+): { options: CartOption[]; dropped: string[]; missing: string | null } {
+  const choices = itemGroups(item, groups);
+  const ids = new Set((wanted.modifiers ?? []).flatMap((m) => (m.optionId ? [m.optionId] : [])));
+  const defaults = defaultSelection(choices);
+  const selection: Selection = Object.fromEntries(
+    choices.map((g) => {
+      const kept = g.options.filter((o) => o.isAvailable && ids.has(o.id)).map((o) => o.id);
+      return [
+        g.id,
+        kept.length > 0
+          ? kept.slice(0, g.maxSelect)
+          : g.minSelect > 0
+            ? (defaults[g.id] ?? [])
+            : [],
+      ];
+    }),
+  );
+  const options = chosenOptions(choices, selection);
+  const kept = new Set(options.map((o) => o.id));
+  const dropped = (wanted.modifiers ?? [])
+    .filter((m) => !m.optionId || !kept.has(m.optionId))
+    .map((m) => m.optionName);
+  return { options, dropped, missing: missingGroups(choices, selection)[0]?.name ?? null };
 }
 
 /** Adds the order's items to the cart, each capped by what the menu can sell right now. Returns the shortfalls. */
-function addOrderToCart(order: Order, menuItems: MenuItem[]): string[] {
+function addOrderToCart(
+  order: Order,
+  menuItems: MenuItem[],
+  rules: MenuResponse['rules'],
+  groups?: Record<string, ModifierGroup>,
+): string[] {
+  const store: CartStoreRef = order.store;
   const cart = useCartStore.getState();
+  cart.setLimits(rules);
   cart.syncAvailability(menuItems);
+  const { limits } = useCartStore.getState();
   const byId = new Map(menuItems.map((item) => [item.id, item]));
   const notice: string[] = [];
 
@@ -63,13 +135,21 @@ function addOrderToCart(order: Order, menuItems: MenuItem[]): string[] {
       continue;
     }
 
-    const limit = lineLimit(available);
+    const { options, dropped, missing } = reorderOptions(item, wanted, groups);
+    if (missing) {
+      notice.push(`${item.name}: choose its ${missing} again, skipped`);
+      continue;
+    }
+    if (dropped.length > 0)
+      notice.push(`${item.name}: ${dropped.join(', ')} no longer offered, added without`);
+
+    const limit = lineLimit(available, limits);
     const inCart = selectQuantityOf(item.id)(useCartStore.getState());
     const added = Math.max(0, Math.min(wanted.quantity, limit - inCart));
-    if (added > 0) cart.add(item, added);
+    if (added > 0) cart.add(item, added, store, options);
     if (added < wanted.quantity) {
       const reason =
-        available === null ? `max ${MAX_LINE_QUANTITY} per order` : `only ${limit} left`;
+        available === null ? `max ${limits.maxQuantityPerItem} per order` : `only ${limit} left`;
       notice.push(
         added > 0
           ? `${item.name}: ${reason}, added ${added}`

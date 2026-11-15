@@ -1,0 +1,361 @@
+name: ci
+
+# `ci-ok` sums up every job, and the `ci-ok required` ruleset blocks a merge into main, dev or a phase branch until it is
+# green (docs/adr/011-free-tiers.md). Heavy jobs run only when their files changed (the `changes` job), which keeps a
+# PR's run short; a skipped job counts as passed. The workflow itself has no `paths:` filter, so
+# every PR still reports `ci-ok`.
+# Branches by environment: main is production (release PRs), dev is staging, feat/** is development. Every PR into
+# one of them is gated. Pushes run on main, dev and the phase feature branches (feat/P<n>, CLAUDE.md §21), where two PRs
+# that were each green alone can still break together once both are merged; a push to a work branch (feat/p1-03-…,
+# feat/<slug>) does not, as its PR run already covers it.
+on:
+  pull_request:
+    branches: [main, dev, 'feat/**']
+    # labeled/unlabeled: adding `no-release` re-runs version-intent.
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+  push:
+    branches: [main, dev, 'feat/P[0-9]+']
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      client: ${{ steps.filter.outputs.client }}
+      server: ${{ steps.filter.outputs.server }}
+      images: ${{ steps.filter.outputs.images }}
+      infra: ${{ steps.filter.outputs.infra }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - id: filter
+        uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad # v3.0.4
+        with:
+          filters: |
+            client:
+              - 'client/**'
+              - '.node-version'
+              - 'scripts/ci/check-bundle.mjs'
+              - 'scripts/ci/check-dist-secrets.mjs'
+              - '.github/actions/setup-pnpm/**'
+              - '.github/workflows/ci.yml'
+            server:
+              - 'server/**'
+              # The parity tests read the client's fallbacks.
+              - 'client/src/config/fallbacks.json'
+              - '.node-version'
+              - '.github/actions/setup-pnpm/**'
+              - '.github/workflows/ci.yml'
+            images:
+              - 'client/**'
+              - 'server/**'
+              - 'compose.yaml'
+              - 'scripts/ci/image-smoke.sh'
+              - '.github/workflows/ci.yml'
+            infra:
+              - 'infra/**'
+              - '.github/workflows/ci.yml'
+
+  client:
+    needs: changes
+    if: needs.changes.outputs.client == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/setup-pnpm
+        with:
+          cache-dependency-path: client/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run typecheck
+      - run: pnpm run lint
+      - run: pnpm run format:check
+      - run: pnpm test
+      - run: pnpm run build:staging
+      - run: node ../scripts/ci/check-bundle.mjs .
+      - run: node ../scripts/ci/check-dist-secrets.mjs .
+      # The e2e specs (client/e2e/*.spec.ts) on Chromium at 360×640, every /api call mocked: layout at 200% text,
+      # 44px tap targets, the add-to-cart path. WebKit runs weekly in browsers.yml (ADR-011 minutes).
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('client/pnpm-lock.yaml') }}
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm run e2e:chromium
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: failure()
+        with:
+          name: chromium-smoke
+          path: client/test-results/
+
+  server-static:
+    needs: changes
+    if: needs.changes.outputs.server == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/setup-pnpm
+        with:
+          cache-dependency-path: server/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run typecheck
+      - run: pnpm run lint
+      - run: pnpm run format:check
+      - run: pnpm run build
+
+  server-tests:
+    needs: changes
+    if: needs.changes.outputs.server == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/setup-pnpm
+        with:
+          cache-dependency-path: server/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      # A key or flag the Supabase CLI has deprecated is removed in its next major: fail now, not on that upgrade.
+      # The config is read by any command; the push script's flags only when it runs against a project.
+      - name: Nothing the Supabase CLI deprecated
+        run: |
+          out=$(pnpm exec supabase status 2>&1 || true)
+          if grep -iE 'deprecated|removed in v4' <<<"$out"; then exit 1; fi
+          # CLI 3: --project-ref became --remote=<ref>, and --local is the default (both go in v4).
+          if grep -nE -- '--project-ref|--local\b' scripts/*.sh package.json test/setup/*.ts; then
+            echo 'A deprecated Supabase CLI flag: --remote=<ref> for a project; nothing for local'; exit 1
+          fi
+      # Only the services the API and tests use: Postgres, GoTrue, PostgREST and Kong.
+      - run: pnpm run db:start:ci
+      # The S3 store's suite (test/api/media-s3.test.ts) runs against RustFS, as compose's `media` service does locally.
+      - name: Start the media bucket server
+        run: |
+          docker run -d --name media -p 9000:9000 -e RUSTFS_ACCESS_KEY=rustfsadmin -e RUSTFS_SECRET_KEY=rustfsadmin \
+            rustfs/rustfs:1.0.4
+          for _ in $(seq 1 30); do curl -fs -o /dev/null http://127.0.0.1:9000/health && exit 0; sleep 1; done
+          echo "RustFS did not start"; docker logs media; exit 1
+      # server/.env.example holds the local CLI's default keys and URL, so the test-target guard sees APP_ENV=local.
+      - run: cp .env.example .env
+      - run: pnpm run seed
+      - run: pnpm test
+      - name: Generated types match the migrations
+        # The CLI's warnings go to stderr: a deprecated flag or key fails here too, not only on the v4 upgrade.
+        run: |
+          # `|| status=$?`: the step runs under bash -e, which would exit before printing the CLI's error.
+          status=0
+          pnpm run db:types 2> "$RUNNER_TEMP/types.err" || status=$?
+          cat "$RUNNER_TEMP/types.err" >&2
+          [ $status -eq 0 ] || exit $status
+          if grep -iE 'deprecated|removed in v4' "$RUNNER_TEMP/types.err"; then exit 1; fi
+          git diff --exit-code -- src/types/database.ts
+      - if: always()
+        run: pnpm run db:stop
+
+  migrations:
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.server == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .node-version
+      - env:
+          BASE_REF: ${{ github.base_ref }}
+        run: node scripts/ci/check-migrations.mjs --base "origin/$BASE_REF" --main origin/main
+
+  version-intent:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .node-version
+      # Release tags are needed for the release-PR check.
+      - run: git fetch --tags --quiet
+      - name: Check the change intent
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
+          NO_RELEASE: ${{ contains(github.event.pull_request.labels.*.name, 'no-release') }}
+        run: |
+          args=(--base "origin/$BASE_REF" --base-branch "$BASE_REF" --head-branch "$HEAD_REF")
+          if [ "$NO_RELEASE" = true ]; then args+=(--allow-missing); fi
+          node scripts/version/check.mjs "${args[@]}"
+
+  repo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # The PR's own commits are scanned for secrets below, against origin/<base>. Not `pull_request && 0 || 1`:
+          # 0 is falsy in an expression, so that always gave 1, and the scan found no base and checked nothing.
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-pnpm
+        with:
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run format:check
+      - run: pnpm test
+      - run: pnpm run check:durations
+      # The PR's commits only, here where it costs no extra job minute; security.yml scans the whole history weekly.
+      - name: Secrets in this PR's commits
+        if: github.event_name == 'pull_request'
+        env:
+          GITLEAKS_VERSION: 8.30.1
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz -C "$RUNNER_TEMP" gitleaks
+          # gitleaks logs a git error, scans 0 commits and still exits 0, so check the range first: a scan of nothing
+          # must fail, not pass.
+          commits=$(git rev-list --count "origin/${BASE_REF}..HEAD")
+          [ "$commits" -gt 0 ] || { echo "::error::No commits in origin/${BASE_REF}..HEAD to scan for secrets."; exit 1; }
+          # git log -p prints no patch for a merge: --diff-merges makes a secret added only in a merge's conflict
+          # resolution visible (scripts/ci/gitleaks-merge-diffs.test.mjs).
+          "$RUNNER_TEMP/gitleaks" detect --source . --redact --verbose --log-opts="--diff-merges=first-parent origin/${BASE_REF}..HEAD"
+
+  # Static analysis on every change. Semgrep's rules for this stack cover the code, the Dockerfiles and these workflows;
+  # Trivy checks the Dockerfiles' configuration (secrets are gitleaks' job, in `repo`). Not CodeQL, which needed a paid
+  # plan while the repository was private and is not set up yet (ADR-011).
+  static-analysis:
+    runs-on: ubuntu-latest
+    env:
+      SEMGREP_VERSION: 1.183.0
+      TRIVY_VERSION: 0.76.1
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Semgrep
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src "semgrep/semgrep:$SEMGREP_VERSION" semgrep scan --metrics=off --error \
+            --config p/javascript --config p/typescript --config p/react --config p/nodejs --config p/expressjs \
+            --config p/owasp-top-ten --config p/dockerfile --config p/github-actions --config p/secrets
+      # The binary from its release, checked against the release's checksums, not trivy-action: an action's tag can be
+      # repointed (trivy-action's was, in a supply-chain attack).
+      - name: Install Trivy
+        run: |
+          base="https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}"
+          tarball="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          curl -sSfLO "$base/$tarball" && curl -sSfLO "$base/trivy_${TRIVY_VERSION}_checksums.txt"
+          grep " $tarball$" "trivy_${TRIVY_VERSION}_checksums.txt" | sha256sum -c -
+          tar -xzf "$tarball" -C "$RUNNER_TEMP" trivy
+      - run: '"$RUNNER_TEMP/trivy" config --exit-code 1 .'
+
+  images:
+    needs: changes
+    if: needs.changes.outputs.images == 'true'
+    # arm64 is the production host's architecture (P8): the Alpine runtime stage and native modules are proven there
+    # on every pull request that touches an image. GitHub's arm64 runners are free for a public repository.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    name: images (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: hadolint
+        if: matrix.arch == 'amd64'
+        run: |
+          for f in server/Dockerfile client/Dockerfile; do
+            docker run --rm -i hadolint/hadolint:v2.15.1 < "$f"
+          done
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: server
+          push: false
+          load: true
+          tags: fp-api:ci
+          build-args: GIT_COMMIT=${{ github.sha }}
+          cache-from: type=gha,scope=api-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=api-${{ matrix.arch }}
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: client
+          push: false
+          load: true
+          tags: fp-web:ci
+          build-args: GIT_COMMIT=${{ github.sha }}
+          cache-from: type=gha,scope=web-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=web-${{ matrix.arch }}
+      - name: Smoke test and size budgets
+        run: scripts/ci/image-smoke.sh "${{ github.sha }}"
+
+  # Production's Terraform must format and validate before it can merge; infra.yml plans it against AWS.
+  infra:
+    needs: changes
+    if: needs.changes.outputs.infra == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.16.5
+          terraform_wrapper: false
+      - run: terraform fmt -check -recursive infra/terraform
+      # Every root, without a backend or credentials: syntax, types and references only.
+      - name: Validate
+        run: |
+          for root in infra/terraform/bootstrap infra/terraform/envs/*/; do
+            echo "::group::$root"
+            terraform -chdir="$root" init -backend=false -input=false -lockfile=readonly
+            terraform -chdir="$root" validate -no-color
+            echo "::endgroup::"
+          done
+
+  ci-ok:
+    if: always()
+    needs:
+      [
+        changes,
+        client,
+        server-static,
+        server-tests,
+        migrations,
+        version-intent,
+        repo,
+        static-analysis,
+        images,
+        infra,
+      ]
+    runs-on: ubuntu-latest
+    steps:
+      # Skipped jobs (PR-only jobs on a push) count as success. Anything else fails, including a job GitHub
+      # abandoned without a runner: a run once went green with nothing tested (scripts/ci/ci-ok.test.mjs).
+      - name: All jobs passed or were skipped
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "results: $RESULTS"
+          [ -n "$RESULTS" ] || exit 1
+          for r in $RESULTS; do
+            case "$r" in
+              success | skipped) ;;
+              *) echo "a job ended $r"; exit 1 ;;
+            esac
+          done

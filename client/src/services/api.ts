@@ -1,11 +1,15 @@
+import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ApiErrorDetails, ApiErrorEnvelope } from '../types/api';
 import { useAuthStore } from '../features/auth/authStore';
+import { useVersionStore } from '../features/version/versionStore';
+import { APP_VERSION } from '../lib/appVersion';
 import { logger } from '../lib/logger';
-import { supabase } from '../lib/supabase';
+import { runtimeEnv } from '../lib/runtimeEnv';
+import { getSupabase } from '../lib/supabase';
 
 const BASE_URL = '/api';
 /** Longest wait for a response (headers and body) before the request counts as unreachable. */
-export const REQUEST_TIMEOUT_MS = 15_000;
+export const REQUEST_TIMEOUT_MS = runtimeEnv.requestTimeoutMs;
 
 export class ApiError extends Error {
   readonly status: number;
@@ -28,11 +32,16 @@ export class ApiError extends Error {
 }
 
 interface RequestOptions {
-  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
   /** Attach the bearer token when one exists. Defaults to true. */
   auth?: boolean;
   signal?: AbortSignal;
+  keepalive?: boolean;
+  /** Sent as is, with its own type, in place of a JSON `body` (a photo's bytes). */
+  blob?: Blob;
+  /** Longer than REQUEST_TIMEOUT_MS for a request that carries a file on a slow connection. */
+  timeoutMs?: number;
 }
 
 function isErrorEnvelope(value: unknown): value is ApiErrorEnvelope {
@@ -46,13 +55,49 @@ function isErrorEnvelope(value: unknown): value is ApiErrorEnvelope {
   );
 }
 
-export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { method = 'GET', body, auth = true, signal } = options;
-  // supabase-js hands out the current access token, refreshing it first when it has expired.
-  const token = auth ? (await supabase.auth.getSession()).data.session?.access_token : undefined;
+let loadFailureLogged = false;
 
-  const headers: Record<string, string> = { Accept: 'application/json' };
-  if (body !== undefined) headers['Content-Type'] = 'application/json';
+/**
+ * supabase-js, or CLIENT_RELOAD_REQUIRED (client-only, never sent by the server) when its chunk failed to load twice:
+ * the failure is kept for the page's life (lib/supabase.ts), so the ErrorState showing it offers Reload instead of a
+ * retry. The cart, the checkout draft and its idempotency key are persisted, so the reload loses nothing.
+ */
+export async function loadSupabase(): Promise<SupabaseClient> {
+  try {
+    return await getSupabase();
+  } catch (error) {
+    // Once per page life: every later call fails with the same kept rejection. The name only: the message holds a URL.
+    if (!loadFailureLogged) {
+      loadFailureLogged = true;
+      logger.error('Sign-in module failed to load', {
+        name: error instanceof Error ? error.name : typeof error,
+      });
+    }
+    throw new ApiError(
+      0,
+      'CLIENT_RELOAD_REQUIRED',
+      "We couldn't load sign-in. Reload the page to continue.",
+    );
+  }
+}
+
+async function currentAccessToken(): Promise<string | undefined> {
+  return (await (await loadSupabase()).auth.getSession()).data.session?.access_token;
+}
+
+export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const { method = 'GET', body, auth = true, signal, keepalive, blob, timeoutMs } = options;
+  // supabase-js hands out the current access token, refreshing it first when it has expired. Public requests
+  // (auth: false) never load it.
+  const token = auth ? await currentAccessToken() : undefined;
+
+  // Same origin (Vite proxy, nginx), so the custom header costs no CORS preflight.
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+    'X-Client-Version': APP_VERSION,
+  };
+  if (blob) headers['Content-Type'] = blob.type;
+  else if (body !== undefined) headers['Content-Type'] = 'application/json';
   if (token) headers.Authorization = `Bearer ${token}`;
 
   // A stalled connection must end in the unreachable state, never an endless skeleton. The timer covers the body
@@ -61,7 +106,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   const abort = () => controller.abort();
   if (signal?.aborted) abort();
   signal?.addEventListener('abort', abort, { once: true });
-  const timer = setTimeout(abort, REQUEST_TIMEOUT_MS);
+  const timer = setTimeout(abort, timeoutMs ?? REQUEST_TIMEOUT_MS);
 
   let response: Response;
   let payload: unknown;
@@ -69,8 +114,9 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     response = await fetch(`${BASE_URL}${path}`, {
       method,
       headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: blob ?? (body === undefined ? undefined : JSON.stringify(body)),
       signal: controller.signal,
+      keepalive,
     });
     payload = await response.json().catch(() => null);
     if (controller.signal.aborted) throw controller.signal.reason;
@@ -101,6 +147,8 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     if (response.status === 401 && auth && token) {
       useAuthStore.getState().clearSession();
     }
+    // This build is older than the server's minimum (426 CLIENT_OUTDATED): App shows the refresh banner.
+    if (response.status === 426) useVersionStore.getState().markOutdated();
     if (isErrorEnvelope(payload)) {
       const { code, message, details } = payload.error;
       throw new ApiError(

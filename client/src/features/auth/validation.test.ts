@@ -4,6 +4,8 @@ import {
   NOTE_MAX_LENGTH,
   PASSWORD_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
+  errorOnBlur,
+  errorOnChange,
   validateEmail,
   validateName,
   validateNote,
@@ -22,9 +24,65 @@ describe('validateName', () => {
     expect(error === undefined).toBe(ok as boolean);
   });
 
+  it('says what is wrong: missing, or too short', () => {
+    expect(validateName('')).toBe('Please enter your name.');
+    expect(validateName('R')).toBe(`Your name needs at least 2 characters.`);
+  });
+
   it('trims before counting', () => {
     expect(validateName(`  ${'a'.repeat(NAME_MAX_LENGTH)}  `)).toBeUndefined();
     expect(validateName('   ')).toBeDefined();
+  });
+});
+
+// The server's typed-text rule (server/src/schemas/common.ts): invisible characters do not fill a name, and lengths
+// are UTF-16 units, as maxLength counts them. A form that disagreed would let the API refuse or store what it should not.
+describe('validateName and validateNote: invisible characters and emoji', () => {
+  it.each([
+    ['zero-width spaces', '\u200b\u200b\u200b'],
+    ['a Braille blank and a Hangul filler', '\u2800\u3164'],
+    ['Hangul fillers', '\u115f\u1160\uffa0'],
+    ['a word joiner between spaces', ' \u2060 '],
+    ['emoji variation selectors and a combining grapheme joiner', '\ufe0f\u034f\ufe0e'],
+    ['an ideographic variation selector', '\u{e0100}\u{e01ef}'],
+    ['Khmer inherent vowels and Mongolian variation selectors', '\u17b4\u17b5\u180b\u180c\u180d'],
+    ['variation selectors around spaces', '\ufe0f  \ufe0f'],
+    ['tag characters', '\u{e0067}\u{e0062}\u{e007f}'],
+  ])('treats a name of %s as missing', (_label, name) => {
+    expect(validateName(name)).toBe('Please enter your name.');
+  });
+
+  // The server keeps a subdivision flag's tags and a trailing variation selector, so the form must count them the same.
+  it.each([
+    ['a Scotland flag', 'Ann \ud83c\udff4\u{e0067}\u{e0062}\u{e0073}\u{e0063}\u{e0074}\u{e007f}'],
+    ['a red heart', 'Ann \u2764\ufe0f'],
+  ])('keeps %s at the end of a name or note: it is counted, not trimmed', (_label, text) => {
+    expect(validateName(text)).toBeUndefined();
+    // One unit short of the limit only once the trailing characters are counted.
+    const padded = `${'a'.repeat(NAME_MAX_LENGTH - text.length + 1)}${text}`;
+    expect(validateName(padded)).toBe(`Keep your name to ${NAME_MAX_LENGTH} characters or fewer.`);
+    const note = `${'a'.repeat(NOTE_MAX_LENGTH - text.length + 1)}${text}`;
+    expect(validateNote(note)).toBeDefined();
+  });
+
+  it('counts only visible characters toward the minimum', () => {
+    expect(validateName('A\u200b')).toBe('Your name needs at least 2 characters.');
+    expect(validateName('A\ufe0f')).toBe('Your name needs at least 2 characters.');
+    expect(validateName('\u200bAnn\u200b')).toBeUndefined();
+    expect(validateName('ক\u200cষ')).toBeUndefined();
+  });
+
+  it.each([
+    ['30 emoji (60 units)', '🍔'.repeat(30), true],
+    ['31 emoji (62 units)', '🍔'.repeat(31), false],
+  ])('limits a name of %s -> ok=%s', (_label, name, ok) => {
+    expect(validateName(name) === undefined).toBe(ok);
+  });
+
+  it('limits a note by UTF-16 units and ignores invisible padding at its ends', () => {
+    expect(validateNote('🍔'.repeat(100))).toBeUndefined();
+    expect(validateNote('🍔'.repeat(101))).toBeDefined();
+    expect(validateNote(`\u200b${'a'.repeat(NOTE_MAX_LENGTH)}\u200b`)).toBeUndefined();
   });
 });
 
@@ -45,6 +103,11 @@ describe('validateEmail', () => {
 });
 
 describe('validatePassword', () => {
+  it('refuses a password of only spaces, and keeps spaces inside one', () => {
+    expect(validatePassword('        ')).toBe('Password cannot be only spaces.');
+    expect(validatePassword('open sesame')).toBeUndefined();
+  });
+
   it.each([
     [`${PASSWORD_MIN_LENGTH - 1} chars`, PASSWORD_MIN_LENGTH - 1, false],
     [`${PASSWORD_MIN_LENGTH} chars (min)`, PASSWORD_MIN_LENGTH, true],
@@ -100,5 +163,46 @@ describe('validateNote', () => {
 
   it('is optional: blank passes', () => {
     expect(validateNote('')).toBeUndefined();
+  });
+});
+
+/** How the forms type their errors: every field optional. */
+type Errors = { name?: string; phone?: string };
+
+describe('errorOnBlur', () => {
+  it('shows a new problem', () => {
+    expect(errorOnBlur('phone', 'Bad phone.')({})).toEqual({ phone: 'Bad phone.' });
+  });
+
+  it('never hides or replaces a shown error: the press on submit is what blurs the field', () => {
+    const shown = { phone: 'The server refused this value.' };
+    expect(errorOnBlur('phone', undefined)(shown)).toBe(shown);
+    expect(errorOnBlur('phone', 'Bad phone.')(shown)).toBe(shown);
+  });
+
+  it('leaves a valid field with no error alone', () => {
+    const errors: Errors = { name: 'Please enter your name.' };
+    expect(errorOnBlur('phone', undefined)(errors)).toBe(errors);
+  });
+});
+
+describe('errorOnChange', () => {
+  it('clears a shown error once the value is fixed', () => {
+    const errors: Errors = { phone: 'Bad phone.', name: 'x' };
+    expect(errorOnChange('phone', undefined)(errors)).toEqual({
+      phone: undefined,
+      name: 'x',
+    });
+  });
+
+  it('updates a shown error while the value is still wrong', () => {
+    expect(errorOnChange('phone', 'Too short.')({ phone: 'Bad phone.' })).toEqual({
+      phone: 'Too short.',
+    });
+  });
+
+  it('shows nothing while the field has no error yet: typing is not judged', () => {
+    const errors: Errors = {};
+    expect(errorOnChange('phone', 'Too short.')(errors)).toBe(errors);
   });
 });

@@ -1,5 +1,5 @@
-import type { RequestHandler } from 'express';
-import { currentUser } from '../middleware/auth';
+import type { RequestHandler, Response } from 'express';
+import { currentStore, currentUser, requestContext } from '../middleware/auth';
 import type {
   CreateOrderInput,
   ListOrdersQuery,
@@ -10,9 +10,11 @@ import type { BodyHandler, QueryHandler } from '../types/http';
 import { toOrderDto } from '../utils/serializers';
 
 type OrderParams = { id: string };
+type StoreOrderParams = { storeId: string; orderId: string };
 
 export const createOrder: BodyHandler<CreateOrderInput> = async (req, res) => {
-  const order = toOrderDto(await orderService.createOrder(currentUser(req), req.body));
+  const placed = await orderService.createOrder(currentUser(req), req.body, requestContext(req));
+  const order = toOrderDto(placed.order);
   req.log.info(
     {
       orderId: order.id,
@@ -20,7 +22,9 @@ export const createOrder: BodyHandler<CreateOrderInput> = async (req, res) => {
       lines: order.items.length,
       total: order.total,
     },
-    'Order placed',
+    // A replay is the same order answered again (a retried request): the same shape, so the client's one path
+    // handles both, but a distinct message so a burst of them shows up in the logs.
+    placed.replayed ? 'Order placement replayed' : 'Order placed',
   );
   res.status(201).json({ order });
 };
@@ -30,24 +34,49 @@ export const listOrders: QueryHandler<ListOrdersQuery> = async (req, res) => {
   res.json({ orders: orders.map(toOrderDto) });
 };
 
+/** GET /api/stores/:storeId/orders, after requireStore('orders.view'). */
+export const listStoreOrders: QueryHandler<ListOrdersQuery> = async (req, res) => {
+  const orders = await orderService.listStoreOrders([currentStore(req).id], req.query.status);
+  res.json({ orders: orders.map(toOrderDto) });
+};
+
 export const getOrder: RequestHandler<OrderParams> = async (req, res) => {
   const order = await orderService.getOrder(currentUser(req), req.params.id);
   res.json({ order: toOrderDto(order) });
 };
 
-export const updateOrderStatus: BodyHandler<UpdateOrderStatusInput, OrderParams> = async (
+/** PATCH /api/stores/:storeId/orders/:orderId/status, after requireStore('orders.transition'). */
+export const updateStoreOrderStatus: BodyHandler<UpdateOrderStatusInput, StoreOrderParams> = (
   req,
   res,
-) => {
-  const order = toOrderDto(await orderService.updateOrderStatus(req.params.id, req.body.status));
+) => moveOrder(req, res, req.params.orderId, currentStore(req).id);
+
+async function moveOrder(
+  req: Parameters<BodyHandler<UpdateOrderStatusInput>>[0],
+  res: Response,
+  orderId: string,
+  storeId?: string,
+): Promise<void> {
+  const ctx = requestContext(req);
+  const { order: updated, repeated } = await orderService.updateOrderStatus(
+    currentUser(req),
+    orderId,
+    req.body.status,
+    ctx,
+    storeId,
+  );
+  const order = toOrderDto(updated);
   req.log.info(
     {
       orderId: order.id,
       orderNumber: order.orderNumber,
       status: order.status,
-      by: currentUser(req).id,
+      storeId: order.store.id,
+      by: ctx.actor.id,
     },
-    'Order status changed',
+    // A repeat answers the same 200 (a retried request, a second device), but changed nothing: told apart in the logs,
+    // like a replayed placement.
+    repeated ? 'Order status repeated' : 'Order status changed',
   );
   res.json({ order });
-};
+}

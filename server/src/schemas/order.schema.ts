@@ -1,52 +1,127 @@
 import { z } from 'zod';
 import { ORDER_STATUSES } from '../types/enums';
-import { optionalField, phoneField } from './common';
+import { optionalField, phoneField, typedText } from './common';
+import { LIMITS } from './limits';
+import { STORE_SETTING_BOUNDS } from './storeSettings.schema';
 
-/** Most of one item in a single order, checked after duplicate lines are merged. */
-export const MAX_QUANTITY_PER_ITEM = 10;
-const MAX_ITEM_LINES = 30;
+/**
+ * A sanity bound only. The real limit is the site setting max_lines_per_order (1-100), enforced by createOrder,
+ * so an admin can change it without a deploy.
+ */
+export const MAX_ITEM_LINES_HARD = 100;
 
 const orderItemInput = z.object({
-  menuItemId: z.string().min(1, 'Menu item id is required.'),
+  // Ids are lower-cased here, once: the service keys items by the database's lower-case uuid text, and the flag rules
+  // compare store ids as strings, so an upper-case id would read as unknown (/break, P3 close).
+  menuItemId: z
+    .string()
+    .min(1, 'Menu item id is required.')
+    .transform((id) => id.toLowerCase()),
   quantity: z
     .number()
     .int('Quantity must be a whole number.')
-    .min(1, 'Quantity must be at least 1.'),
+    .min(1, 'Quantity must be at least 1.')
+    // A sanity bound only (the largest a store may set); the store's own cap is enforced by createOrder.
+    .max(
+      STORE_SETTING_BOUNDS.maxQuantityPerItem.max,
+      `Quantity must be at most ${STORE_SETTING_BOUNDS.maxQuantityPerItem.max}.`,
+    ),
+  // The whole-rupee price the customer was shown (a cart keeps the price it was added at). Never charged: a price that
+  // differs from the menu's refuses the order (PRICE_CHANGED). Optional, so the deployed client that sends none keeps
+  // working. int() also bounds it to a safe integer.
+  expectedUnitPrice: z
+    .number()
+    .int('expectedUnitPrice must be a whole number of rupees.')
+    // A negative option can bring a line to ₹0 (P3.2), so 0 is a price a customer can see.
+    .nonnegative('expectedUnitPrice must not be negative.')
+    .optional(),
+  // The options chosen for this line (P3.2): ids of the item's modifier options. Optional, so the deployed client keeps
+  // working; a required group left out takes its default.
+  modifierOptionIds: z
+    .array(
+      z.uuid('Each option id must be a UUID.'),
+      'modifierOptionIds must be a list of option ids.',
+    )
+    .max(20, 'A line can have at most 20 options.')
+    .optional(),
 });
 
 type OrderItemInput = z.infer<typeof orderItemInput>;
 
+/** One merged line. Every price sent for the item is kept, so a duplicate line cannot hide a stale one. */
+interface MergedOrderItem {
+  menuItemId: string;
+  quantity: number;
+  expectedUnitPrices: number[];
+  /** Sorted, so the same choice in any order is one line. */
+  modifierOptionIds: string[];
+}
+
 /**
- * The same item listed twice becomes one line with the quantities summed, so the
- * per-item cap (enforced in order.service, where the item's name is known) applies to the total.
+ * The same line listed twice (the same item with the same options, P3.2) becomes one line with the quantities summed.
+ * The same item with other options stays its own line; the per-item cap (enforced in order.service, where the item's
+ * name is known) counts all of an item's lines.
  */
-function mergeDuplicateItems(items: OrderItemInput[]): OrderItemInput[] {
-  const merged = new Map<string, number>();
-  for (const { menuItemId, quantity } of items) {
-    merged.set(menuItemId, (merged.get(menuItemId) ?? 0) + quantity);
+function mergeDuplicateItems(items: OrderItemInput[]): MergedOrderItem[] {
+  const merged = new Map<string, MergedOrderItem>();
+  for (const { menuItemId, quantity, expectedUnitPrice, modifierOptionIds = [] } of items) {
+    const options = [...modifierOptionIds].map((id) => id.toLowerCase()).sort();
+    const key = `${menuItemId}:${options.join(',')}`;
+    const line = merged.get(key) ?? {
+      menuItemId,
+      quantity: 0,
+      expectedUnitPrices: [],
+      modifierOptionIds: options,
+    };
+    line.quantity += quantity;
+    if (expectedUnitPrice !== undefined) line.expectedUnitPrices.push(expectedUnitPrice);
+    merged.set(key, line);
   }
-  return [...merged].map(([menuItemId, quantity]) => ({ menuItemId, quantity }));
+  return [...merged.values()];
 }
 
 /**
  * Unknown keys (price, unitPrice, total, ...) are stripped by z.object, so the
- * client can never influence what is charged. Prices come from the database only.
+ * client can never influence what is charged. Prices come from the database only; expectedUnitPrice can only refuse.
  */
-export const createOrderSchema = z.object({
-  items: z
-    .array(orderItemInput)
-    .min(1, 'Add at least one item to your order.')
-    .max(MAX_ITEM_LINES, `An order can have at most ${MAX_ITEM_LINES} items.`)
-    .transform(mergeDuplicateItems),
-  customerName: optionalField(z.string().trim().max(60, 'Name must be at most 60 characters.')),
-  customerPhone: phoneField,
-  note: optionalField(z.string().trim().max(200, 'Note must be at most 200 characters.')),
-});
+export const createOrderSchema = z
+  .object({
+    items: z
+      .array(orderItemInput)
+      .min(1, 'Add at least one item to your order.')
+      .max(MAX_ITEM_LINES_HARD, `An order can have at most ${MAX_ITEM_LINES_HARD} items.`),
+    customerName: optionalField(
+      typedText(LIMITS.nameMax, `Name must be at most ${LIMITS.nameMax} characters.`),
+    ),
+    customerPhone: phoneField,
+    note: optionalField(
+      typedText(LIMITS.noteMax, `Note must be at most ${LIMITS.noteMax} characters.`),
+    ),
+    // One per checkout attempt, generated by the client and resent unchanged on every retry of that attempt: the
+    // server answers a repeat with the order it already placed (place_order). Optional, so the deployed client
+    // that sends none keeps working.
+    idempotencyKey: z.string().uuid('idempotencyKey must be a UUID.').optional(),
+    // The store the order is for: required (400 without), every order belongs to one store.
+    storeId: z
+      .string('storeId is required.')
+      .uuid('storeId must be a UUID.')
+      .transform((id) => id.toLowerCase()),
+  })
+  // Lines are counted as sent, before duplicates merge (docs/API.md): the lines limit applies to lineCount.
+  .transform((input) => ({
+    ...input,
+    lineCount: input.items.length,
+    items: mergeDuplicateItems(input.items),
+  }));
 
 export type CreateOrderInput = z.infer<typeof createOrderSchema>;
 
+// zod 4 reports a missing enum value as a wrong one (invalid_value), so the "required" wording zod 3 gave is kept here.
 const status = z.enum(ORDER_STATUSES, {
-  errorMap: () => ({ message: `Status must be one of ${ORDER_STATUSES.join(', ')}.` }),
+  error: (issue) =>
+    issue.input === undefined
+      ? 'Status is required.'
+      : `Status must be one of ${ORDER_STATUSES.join(', ')}.`,
 });
 
 export const updateOrderStatusSchema = z.object({ status });

@@ -56,14 +56,17 @@ const me: User = {
   phone: null,
   role: 'CUSTOMER',
   createdAt: '2026-09-27T00:00:00Z',
+  memberships: [],
+  ownedBrands: [],
 };
 vi.mock('../../lib/supabase', () => ({
-  supabase: {
+  getSupabase: async () => ({
     auth: {
       getSession: async () => ({ data: { session: { access_token: 'token' } } }),
       onAuthStateChange: () => {},
     },
-  },
+  }),
+  mayHaveSession: () => true,
 }));
 vi.mock('../../services/auth', () => ({
   fetchMe: async () => ({ user: me }),
@@ -71,7 +74,10 @@ vi.mock('../../services/auth', () => ({
   signOut: () => signOut(),
   register: vi.fn(),
 }));
-vi.mock('../../services/api', () => ({ ApiError: class ApiError extends Error {} }));
+vi.mock('../../services/api', () => ({
+  ApiError: class ApiError extends Error {},
+  loadSupabase: async () => (await import('../../lib/supabase')).getSupabase(),
+}));
 
 describe('authStore.hydrate', () => {
   afterEach(() => {

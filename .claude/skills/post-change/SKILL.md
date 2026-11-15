@@ -1,30 +1,33 @@
 ---
 name: post-change
-description: Verification pipeline for a MAJOR change in food-pickup — runs the gate, then refactorer → responsive-fixer → logging-auditor, then test-generator + docs-writer, then ui-verifier → perf-auditor, acts on every verdict, refreshes graphify and records the change as verified. Use it whenever a "[post-change] unverified major change" reminder appears, when a feature, endpoint, migration, page or dependency change is finished, before saying a substantial piece of work is done, or when the user says "/post-change", "run the pipeline", "verify everything", "is this ready". Do not use it after a docs-only change, a copy edit or a one-line fix.
+description: Verification pipeline for a MAJOR change in food-pickup — runs the gate, then refactorer → responsive-fixer → logging-auditor, then test-generator + docs-writer, then ui-verifier → perf-auditor, then code-review (and a claude-security scan when auth, orders, money or middleware changed), acts on every verdict, refreshes graphify and records the change as verified. Use it whenever a "[post-change] unverified major change" reminder appears, when a feature, endpoint, migration, page or dependency change is finished, before saying a substantial piece of work is done, or when the user says "/post-change", "run the pipeline", "verify everything", "is this ready". Do not use it after a docs-only change, a copy edit or a one-line fix.
 ---
 
 # /post-change — the major-change pipeline
 
-A major change (see CLAUDE.md "What counts as a major change") gets the full treatment once, when the piece of work
+`$BASE` is the PR's base branch: `origin/dev` for features, `origin/main` for `hotfix/*` branches
+(`BASE=origin/dev`; `BASE=origin/main` when `git branch --show-current` starts with `hotfix/`).
+
+A major change (see `.claude/rules/workflow.md` "What counts as a major change") gets the full treatment once, when the piece of work
 is finished — not after every edit. The stages run in a fixed order because the early agents rewrite source and the
 later ones must check the final state. Report progress one line per stage as you go.
 
 ## 0. Preflight
 
-1. Scope: `git diff --name-only origin/main...HEAD` plus `git status --porcelain` (tracked edits and untracked
+1. Scope: `git diff --name-only $BASE...HEAD` plus `git status --porcelain` (tracked edits and untracked
    files). Also run `node .claude/hooks/major-change-gate.js --status` to see which files are unverified. Note
    whether UI changed (`client/src/**/*.tsx`, `client/src/index.css`) and which packages are touched.
 2. If the scope is not major (the gate says `minor`) and the user did not ask explicitly, say so and stop.
 3. Probe services; start only what is down, in the background, and remember what you started:
-   - `curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:54321/rest/v1/` → down: `cd server && npm run db:start`
+   - `curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:54321/rest/v1/` → down: `cd server && pnpm run db:start`
      (needs Docker; `open -a Docker` first if the daemon is off)
-   - `http://localhost:8000/api/health` → down: `cd server && npm run dev`
-   - `http://localhost:5173` → down: `cd client && npm run dev`
+   - `http://localhost:8000/api/health` → down: `cd server && pnpm run dev`
+   - `http://localhost:5173` → down: `cd client && pnpm run dev`
    Never run `start.sh` while the user's servers are up: it kills whatever holds 8000/5173.
 
 ## 1. Gate
 
-In every touched package: `npm run typecheck && npm run lint && npm test`. Fix failures inside the scope before
+In every touched package: `pnpm run typecheck && pnpm run lint && pnpm test` (and `pnpm run e2e:chromium` in `client/`). Fix failures inside the scope before
 going on; the agents assume a green baseline. A failure outside the scope is reported, not fixed.
 
 ## 2. Source editors — one at a time
@@ -49,6 +52,13 @@ results (the same reason `responsive-fixer` never overlaps them). Skip `ui-verif
 `client/` changed AND no response shape changed (`server/src/types/api.ts`, `utils/serializers.ts`).
 `perf-auditor` always runs.
 
+## 4b. Review the diff
+
+Run `code-review:code-review` on the scope (bugs only; `--fix` is fine inside the scope). When the scope touches
+`server/src/middleware/`, auth, orders, money, settings or the request pipeline, also run
+`claude-security:claude-security` as a scan of this branch's changes. Treat both outputs as verdicts for step 5: a
+confirmed bug or finding is CONFIRM unless its fix is one obvious line inside the scope (AUTO-EXECUTE).
+
 ## 5. Act on every verdict
 
 Classify each item with the agent's handoff table (CLAUDE.md "Verdict handoff"):
@@ -60,14 +70,21 @@ Classify each item with the agent's handoff table (CLAUDE.md "Verdict handoff"):
 
 If anything changed after step 1, run the gate again for the touched packages.
 
+Every fix applied in this stage ships with its guard (CLAUDE.md §13): the test, check or agent item that fails if the
+same class of bug returns. Run it once with the fix reverted to see it fail, then restore the fix.
+
 ## 6. Finish
 
-1. `graphify update .`
-2. `node .claude/hooks/major-change-gate.js --mark` — records the verified state so the Stop hook and the prompt
+1. Record the change intent if missing: when `git diff --name-status $BASE...HEAD` plus `git status --porcelain`
+   touch `client/src`, `server/src`, `server/scripts`, `server/supabase/migrations` or a `package.json` and add no
+   `.changes/*.md`, pick the levels from `.changes/README.md` and run
+   `pnpm run change --client <level> --server <level> "summary"` (`.claude/rules/workflow.md` §21).
+2. `graphify update .`
+3. `node .claude/hooks/major-change-gate.js --mark` — records the verified state so the Stop hook and the prompt
    reminder go quiet.
-3. Stop every server you started (TaskStop), then confirm those ports answer `000`. Leave the user's servers alone.
-4. Delete every screenshot or trace the agents wrote (`find . -maxdepth 3 -newer CLAUDE.md \( -name '*.png' -o -name '*.jpeg' \) -not -path '*/node_modules/*' -not -path './client/public/*'`, then check each against git before `rm`).
-5. Report: a table with one row per stage (agent, verdict, what changed), the CONFIRM answers applied, the ADVISORY
+4. Stop every server you started (TaskStop), then confirm those ports answer `000`. Leave the user's servers alone.
+5. Delete every screenshot or trace the agents wrote (`find . -maxdepth 3 -newer CLAUDE.md \( -name '*.png' -o -name '*.jpeg' \) -not -path '*/node_modules/*' -not -path './client/public/*'`, then check each against git before `rm`).
+6. Report: a table with one row per stage (agent, verdict, what changed), the CONFIRM answers applied, the ADVISORY
    list, and the final gate result. No `## In-flight` block on the final turn.
 
 ## If an agent type is not registered

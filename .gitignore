@@ -11,3 +11,22 @@ graphify-out/
 
 # Claude Code hook state (post-change marker, pending major change)
 .claude/.state/
+
+# pnpm run release output, read by release.yml
+release.json
+
+# Per-machine Claude Code overrides; the shared hooks and plugins live in .claude/settings.json
+.claude/settings.local.json
+
+# Local adapters reference installed plugin paths; project adapters are portable and committed.
+.agents/skills/local-*/
+.codex/agents/local-*.toml
+.codex/local-plugins.json
+
+# Terraform (infra/): provider caches, state and plans stay local; only *.tfvars.example is committed.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+!*.tfvars.example

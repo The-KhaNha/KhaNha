@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../lib/supabase', () => ({
-  supabase: { auth: { getSession: async () => ({ data: { session: null } }) } },
-}));
+const getSupabase = vi.hoisted(() =>
+  vi.fn(async () => ({ auth: { getSession: async () => ({ data: { session: null } }) } })),
+);
+vi.mock('../lib/supabase', () => ({ getSupabase }));
 vi.mock('../features/auth/authStore', () => ({
   useAuthStore: { getState: () => ({ clearSession: () => {} }) },
 }));
@@ -68,5 +69,85 @@ describe('request timeout', () => {
     );
     await expect(request('/health')).resolves.toEqual({ ok: true });
     expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+describe('client version header', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('sends X-Client-Version on every request', async () => {
+    const fetchMock = vi.fn(
+      async (_url: string, _init?: RequestInit) => new Response('{}', { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    await request('/menu');
+    const init = fetchMock.mock.calls[0]?.[1];
+    expect((init?.headers as Record<string, string>)['X-Client-Version']).toMatch(/^\d+\.\d+\.\d+/);
+  });
+});
+
+describe('426 CLIENT_OUTDATED', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('marks the build outdated and still throws the server message', async () => {
+    const { useVersionStore } = await import('../features/version/versionStore');
+    const envelope = { error: { code: 'CLIENT_OUTDATED', message: 'A new version is available.' } };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify(envelope), { status: 426 })),
+    );
+    await expect(request('/menu')).rejects.toSatisfy(
+      (err) => err instanceof ApiError && err.code === 'CLIENT_OUTDATED',
+    );
+    expect(useVersionStore.getState().outdated).toBe(true);
+  });
+});
+
+describe('supabase-js loading', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    getSupabase.mockClear();
+  });
+
+  it('never loads it for a public request (auth: false)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('{}', { status: 200 })),
+    );
+    await request('/menu', { auth: false });
+    expect(getSupabase).not.toHaveBeenCalled();
+  });
+
+  // Chromium keeps a failed import() for the page's life: only a reload can load it, so the retry must become one.
+  it('turns a failed load into CLIENT_RELOAD_REQUIRED', async () => {
+    getSupabase.mockRejectedValueOnce(new TypeError('Failed to fetch dynamically imported module'));
+    await expect(request('/orders')).rejects.toSatisfy(
+      (err) =>
+        err instanceof ApiError && err.isUnreachable && err.code === 'CLIENT_RELOAD_REQUIRED',
+    );
+  });
+
+  // Every later call fails with the same kept rejection: one line per page life, the name only (the message is a URL).
+  it('logs the failed load once, with the error name only', async () => {
+    // A fresh module: an earlier test here already spent this page life's one log line.
+    vi.resetModules();
+    const fresh = await import('./api');
+    const { logger } = await import('../lib/logger');
+    const logError = vi.spyOn(logger, 'error').mockImplementation(() => {});
+    getSupabase.mockRejectedValue(new TypeError('Failed to fetch dynamically imported module'));
+    try {
+      await expect(fresh.request('/orders')).rejects.toBeInstanceOf(fresh.ApiError);
+      await expect(fresh.request('/orders')).rejects.toBeInstanceOf(fresh.ApiError);
+      const calls = logError.mock.calls.filter(
+        ([message]) => message === 'Sign-in module failed to load',
+      );
+      expect(calls).toEqual([['Sign-in module failed to load', { name: 'TypeError' }]]);
+    } finally {
+      getSupabase.mockReset();
+      getSupabase.mockImplementation(async () => ({
+        auth: { getSession: async () => ({ data: { session: null } }) },
+      }));
+      logError.mockRestore();
+    }
   });
 });

@@ -1,0 +1,32 @@
+name: browsers
+
+# The e2e specs (client/e2e/*.spec.ts) on WebKit: Safari's engine, which no other check exercises. Weekly and on demand,
+# not on every PR: installing WebKit costs minutes (GitHub Free, ADR-011). Informational.
+on:
+  schedule:
+    - cron: '30 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  webkit:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/setup-pnpm
+        with:
+          cache-dependency-path: client/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps webkit
+      # The spec mocks every /api call; the Vite dev server is all it needs (playwright.config.ts starts it).
+      - run: pnpm run e2e:webkit
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: failure()
+        with:
+          name: webkit-smoke
+          path: client/test-results/

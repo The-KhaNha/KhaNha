@@ -1,11 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
+import { Store as StoreIcon } from 'lucide-react';
+import { ButtonLink, buttonClasses } from '../components/Button';
+import { Card } from '../components/Card';
+import { EmptyState } from '../components/EmptyState';
 import type { Order, OrderStatus } from '../types/api';
 import { useAuthStore } from '../features/auth/authStore';
-import { useStore } from '../features/menu/useStore';
+import { PauseControl } from '../features/orders/PauseControl';
+import { useStoreByRef } from '../features/stores/useStores';
+import { useConfig } from '../features/config/useConfig';
 import {
   STAFF_FILTERS,
-  isTerminal,
   matchesFilter,
   type StaffFilter,
   type StaffFilterKey,
@@ -14,36 +19,56 @@ import { StaffBoard } from '../features/orders/StaffBoard';
 import { StaffFilters } from '../features/orders/StaffFilters';
 import { StaffHeader } from '../features/orders/StaffHeader';
 import { useOrders } from '../features/orders/useOrders';
+import {
+  countByFilter,
+  queueOrder,
+  visibleActionErrors,
+  type StaffActionError,
+} from '../features/orders/staffBoardRules';
 import { ApiError } from '../services/api';
 import { updateOrderStatus } from '../services/orders';
-import { useNow } from '../lib/useNow';
+import { StockList } from '../features/stock/StockList';
+import { canSeeStock } from '../features/stock/stockRules';
+import { useMyBrands } from '../features/manage/useManage';
+import { ownedBranch } from '../features/manage/manageRules';
+import { ErrorState } from '../components/ErrorState';
 
-const STAFF_POLL_MS = 4000;
 /** The 200ms --animate-card-leave plus a 20ms margin, so the card is removed just after it finishes fading. */
 const LEAVE_MS = 220;
 
-/** Active orders oldest-first (fair queue); finished orders newest-first after them. */
-function queueOrder(a: Order, b: Order): number {
-  const aDone = isTerminal(a.status) ? 1 : 0;
-  const bDone = isTerminal(b.status) ? 1 : 0;
-  if (aDone !== bDone) return aDone - bDone;
-  const diff = Date.parse(a.createdAt) - Date.parse(b.createdAt);
-  return aDone ? -diff : diff;
-}
-
 /** The kitchen board: owns polling, filtering and status changes; the header, filters and grid are presentational. */
 export function StaffDashboardPage() {
+  const { storeSlug = '' } = useParams();
+  const membership = useAuthStore((s) =>
+    (s.user?.memberships ?? []).find((m) => m.storeSlug === storeSlug),
+  );
+  // A brand owner works any branch with no membership (orders.view, orders.transition, stock.update).
+  const isOwner = useAuthStore((s) => (s.user?.ownedBrands ?? []).length > 0);
+  // Resolved even with a membership: the server gives OWNER precedence for stock.update over a STAFF row's switch.
+  const brands = useMyBrands(isOwner);
+  const branch = ownedBranch(brands.data, storeSlug);
+  const storeId = membership?.storeId ?? branch?.id;
+  const maySeeStock = branch !== null || canSeeStock(membership);
+  const { polling } = useConfig();
+  // Keeps polling in the Stock view: an unchanged list is a bodiless 304, and the board is current when staff switch back.
   const { orders, isLoading, error, retry, mutate, updatedAt } = useOrders({
-    pollMs: STAFF_POLL_MS,
+    audience: 'staff',
+    storeId,
   });
-  const { store } = useStore();
+  const {
+    store,
+    mutate: mutateStore,
+    error: storeError,
+    retry: retryStore,
+  } = useStoreByRef(storeSlug, polling.staffBoardMs);
   const logout = useAuthStore((s) => s.logout);
   const navigate = useNavigate();
-  const now = useNow(1000);
 
   const [filterKey, setFilterKey] = useState<StaffFilterKey>('ALL');
+  const [view, setView] = useState<'orders' | 'stock'>('orders');
+  const stockView = view === 'stock' && maySeeStock;
   const [pendingIds, setPendingIds] = useState<ReadonlySet<string>>(new Set());
-  const [actionErrors, setActionErrors] = useState<Record<string, string>>({});
+  const [actionErrors, setActionErrors] = useState<Record<string, StaffActionError>>({});
   const [leavingIds, setLeavingIds] = useState<ReadonlySet<string>>(new Set());
   const leaveTimers = useRef<number[]>([]);
 
@@ -68,19 +93,7 @@ export function StaffDashboardPage() {
 
   const filter: StaffFilter = STAFF_FILTERS.find((f) => f.key === filterKey) ?? STAFF_FILTERS[0]!;
 
-  const counts = useMemo(() => {
-    const result: Record<StaffFilterKey, number> = {
-      ALL: 0,
-      NEW: 0,
-      PREPARING: 0,
-      READY: 0,
-      COLLECTED: 0,
-    };
-    for (const order of orders ?? []) {
-      for (const f of STAFF_FILTERS) if (matchesFilter(order.status, f)) result[f.key] += 1;
-    }
-    return result;
-  }, [orders]);
+  const counts = useMemo(() => countByFilter(orders ?? []), [orders]);
 
   const visible = useMemo(
     () =>
@@ -108,18 +121,23 @@ export function StaffDashboardPage() {
   }
 
   async function changeStatus(order: Order, status: OrderStatus) {
+    if (!storeId) return;
     setPendingIds((prev) => new Set(prev).add(order.id));
     setActionErrors((prev) => {
       const { [order.id]: _removed, ...rest } = prev;
       return rest;
     });
     try {
-      const updated = await updateOrderStatus(order.id, status);
+      const updated = await updateOrderStatus(storeId, order.id, status);
       if (!matchesFilter(updated.status, filter)) scheduleLeave(updated.id);
       mutate((list) => list.map((o) => (o.id === updated.id ? updated : o)));
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Something went wrong.';
-      setActionErrors((prev) => ({ ...prev, [order.id]: message }));
+      const unreachable = err instanceof ApiError && err.isUnreachable;
+      setActionErrors((prev) => ({
+        ...prev,
+        [order.id]: { message, unreachable, at: Date.now() },
+      }));
       if (err instanceof ApiError && err.code === 'INVALID_STATUS_TRANSITION') retry();
     } finally {
       setPendingIds((prev) => {
@@ -130,39 +148,137 @@ export function StaffDashboardPage() {
     }
   }
 
+  // One function for the board's whole life, so memoised cards are not re-rendered by a new prop on every poll; it
+  // reaches the current changeStatus (the filter, the store) through the ref.
+  const changeStatusRef = useRef(changeStatus);
+  useEffect(() => {
+    changeStatusRef.current = changeStatus;
+  });
+  const onChangeStatus = useCallback((o: Order, status: OrderStatus) => {
+    void changeStatusRef.current(o, status);
+  }, []);
+
   function handleLogout() {
     logout();
     navigate('/login', { replace: true });
   }
 
+  // Not this store's member, and not the owner of a branch by this name: nothing to show here.
+  if (!membership && (!isOwner || (brands.data && !branch))) return <Navigate to="/" replace />;
+  if (!membership && !branch && brands.error)
+    return (
+      <ErrorState
+        title="Unable to load your stores."
+        message={brands.error.message}
+        onRetry={brands.reload}
+        unreachable={brands.error.isUnreachable}
+      />
+    );
+
   return (
     <div className="min-h-dvh">
       <StaffHeader
-        storeName={store?.name}
-        now={now}
+        storeName={membership?.storeName ?? branch?.name}
         updatedAt={updatedAt}
         offline={error !== null}
         onLogout={handleLogout}
+        pause={
+          storeId && (
+            <PauseControl
+              storeId={storeId}
+              store={store ?? undefined}
+              mutate={mutateStore}
+              loadFailed={Boolean(storeError)}
+              onRetry={retryStore}
+            />
+          )
+        }
       >
-        <StaffFilters value={filterKey} counts={counts} onChange={selectFilter} />
+        {maySeeStock && (
+          <div role="group" aria-label="View" className="flex gap-1 pt-2">
+            {(['orders', 'stock'] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                aria-pressed={view === v}
+                onClick={() => setView(v)}
+                className={buttonClasses({ variant: view === v ? 'primary' : 'ghost' })}
+              >
+                {v === 'orders' ? 'Orders' : 'Stock'}
+              </button>
+            ))}
+          </div>
+        )}
+        {!stockView && <StaffFilters value={filterKey} counts={counts} onChange={selectFilter} />}
       </StaffHeader>
 
       <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
-        <StaffBoard
-          orders={orders}
-          visible={visible}
-          isLoading={isLoading}
-          error={error}
-          filter={filter}
-          pendingIds={pendingIds}
-          actionErrors={actionErrors}
-          freshIds={freshIds}
-          leavingIds={leavingIds}
-          onRetry={retry}
-          onShowAll={() => selectFilter('ALL')}
-          onChangeStatus={(o, status) => void changeStatus(o, status)}
-        />
+        {stockView && storeId ? (
+          <div className="mx-auto max-w-2xl">
+            <StockList store={{ id: storeId, slug: storeSlug }} />
+          </div>
+        ) : (
+          <StaffBoard
+            orders={orders}
+            visible={visible}
+            isLoading={isLoading}
+            error={error}
+            filter={filter}
+            pendingIds={pendingIds}
+            actionErrors={visibleActionErrors(actionErrors, updatedAt)}
+            freshIds={freshIds}
+            leavingIds={leavingIds}
+            onRetry={retry}
+            onShowAll={() => selectFilter('ALL')}
+            onChangeStatus={onChangeStatus}
+          />
+        )}
       </main>
     </div>
+  );
+}
+
+const NO_MEMBERSHIPS: never[] = [];
+
+/** `/staff`: the stores this account works at. With one there is nothing to choose, so it goes straight to its board. */
+export function StaffStoresPage() {
+  // The fallback outside the selector: a new [] on every read would re-render without end (zustand v5).
+  const memberships = useAuthStore((s) => s.user?.memberships) ?? NO_MEMBERSHIPS;
+  if (memberships.length === 1)
+    return <Navigate to={`/staff/${memberships[0]!.storeSlug}`} replace />;
+  return (
+    <main className="mx-auto max-w-md px-4 py-8">
+      <h1 className="mb-4 text-xl font-bold">Choose a store</h1>
+      {memberships.length === 0 ? (
+        <EmptyState
+          icon={StoreIcon}
+          title="You are not on a store's team."
+          description="Ask a manager to invite you."
+          action={
+            <ButtonLink to="/" variant="secondary" fullWidth>
+              Browse stores
+            </ButtonLink>
+          }
+        />
+      ) : (
+        <ul className="space-y-3">
+          {memberships.map((m) => (
+            <li key={m.storeId}>
+              <Card padding="none">
+                <Link
+                  to={`/staff/${m.storeSlug}`}
+                  className="flex min-h-14 items-center justify-between gap-3 px-4 py-3 font-semibold"
+                >
+                  {m.storeName}
+                  <span className="text-xs font-normal text-muted">
+                    {m.role === 'MANAGER' ? 'Manager' : 'Staff'}
+                  </span>
+                </Link>
+              </Card>
+            </li>
+          ))}
+        </ul>
+      )}
+    </main>
   );
 }

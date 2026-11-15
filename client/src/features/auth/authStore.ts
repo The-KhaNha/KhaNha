@@ -2,11 +2,17 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { User } from '../../types/api';
 import { logger } from '../../lib/logger';
-import { supabase } from '../../lib/supabase';
-import { ApiError } from '../../services/api';
+import { safeJSONStorage } from '../../lib/safeStorage';
+import { mayHaveSession } from '../../lib/supabase';
+import { ApiError, loadSupabase } from '../../services/api';
 import { fetchMe, register as registerRequest, signIn, signOut } from '../../services/auth';
 import type { RegisterInput } from '../../services/auth';
 import { clearActivity, isIdleExpired, markActive, readLastActive } from './sessionActivity';
+import { clearSessionDraft } from '../../lib/sessionDraft';
+import { useCheckoutDraftStore } from '../checkout/checkoutDraftStore';
+
+/** The sign-up form's draft (pages/Register.tsx): typed before any account exists. */
+export const REGISTER_DRAFT_KEY = 'fp_register';
 
 interface AuthState {
   user: User | null;
@@ -22,6 +28,8 @@ interface AuthState {
   hydrate: () => Promise<void>;
   /** Drops the session locally (used by the API layer on 401). */
   clearSession: () => void;
+  /** Records a membership the API just granted (an accepted invite), so the guards see it without a profile reload. */
+  addMembership: (membership: User['memberships'][number]) => void;
 }
 
 let hydrating: Promise<void> | null = null;
@@ -39,6 +47,8 @@ export const useAuthStore = create<AuthState>()(
       token: null,
 
       async login(email, password) {
+        // signIn loads the same module and puts its failure in the form; this copy would only be an unhandled rejection.
+        watchAuth().catch(() => undefined);
         const session = await signIn(email, password);
         try {
           const { user } = await fetchMe();
@@ -69,6 +79,13 @@ export const useAuthStore = create<AuthState>()(
         void signOut();
       },
 
+      addMembership(membership) {
+        const user = get().user;
+        if (!user) return;
+        const others = (user.memberships ?? []).filter((m) => m.storeId !== membership.storeId);
+        set({ user: { ...user, memberships: [...others, membership] } });
+      },
+
       hydrate() {
         // One run at a time: a second call (StrictMode's double effect, a quick remount) waits for the first, so it
         // never sees a session the first run is still signing out.
@@ -78,7 +95,21 @@ export const useAuthStore = create<AuthState>()(
         return hydrating;
 
         async function runHydrate() {
-          // Refreshes an expired access token when the refresh token is still valid.
+          // A visitor who never signed in on this browser: nothing to check, and supabase-js stays unloaded.
+          if (!get().token && !mayHaveSession()) {
+            set({ user: null, token: null });
+            return;
+          }
+          // Refreshes an expired access token when the refresh token is still valid. If supabase-js cannot load
+          // (CLIENT_RELOAD_REQUIRED, a network condition, not a crash), keep the persisted session like a server that
+          // is down: the first request that needs it shows Reload.
+          let supabase;
+          try {
+            supabase = await watchAuth();
+          } catch (err) {
+            if (err instanceof ApiError && err.code === 'CLIENT_RELOAD_REQUIRED') return;
+            throw err;
+          }
           const { data } = await supabase.auth.getSession();
           if (!data.session) {
             set({ user: null, token: null });
@@ -108,16 +139,29 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'fp_auth',
+      storage: safeJSONStorage(),
       partialize: (state) => ({ user: state.user, token: state.token }),
     },
   ),
 );
 
-// Keeps `token` in step with supabase-js: refreshed tokens, sign-out in another tab, or a session that ended.
-supabase.auth.onAuthStateChange((_event, session) => {
-  if (session) useAuthStore.setState({ token: session.access_token });
-  else useAuthStore.setState({ user: null, token: null });
-});
+let watching = false;
+
+/**
+ * Loads supabase-js and, once, keeps `token` in step with it: refreshed tokens, sign-out in another tab, or a session
+ * that ended. Runs when a session may exist (hydrate) or is about to (login); anonymous visitors never load it.
+ */
+async function watchAuth() {
+  const supabase = await loadSupabase();
+  if (!watching) {
+    watching = true;
+    supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) useAuthStore.setState({ token: session.access_token });
+      else useAuthStore.setState({ user: null, token: null });
+    });
+  }
+  return supabase;
+}
 
 // Coming back to an open tab counts as use: sign out if the week ran out while it sat in the background, otherwise
 // restart the week.
@@ -131,3 +175,14 @@ document.addEventListener('visibilitychange', () => {
 });
 
 export const selectUser = (state: AuthState) => state.user;
+
+/**
+ * What one person typed on this device never reaches the next: every user-typed draft is dropped when a session ends
+ * (log out, a 401, the idle expiry, a sign-out in another tab) and when one starts. Lives here because this module is
+ * always loaded; lib/storageKeys.test.ts fails for a new storage key nobody classified.
+ */
+useAuthStore.subscribe((state, previous) => {
+  if (Boolean(previous.user) === Boolean(state.user)) return;
+  useCheckoutDraftStore.getState().reset();
+  clearSessionDraft(REGISTER_DRAFT_KEY);
+});

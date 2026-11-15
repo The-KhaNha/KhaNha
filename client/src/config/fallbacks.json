@@ -1,0 +1,67 @@
+{
+  "minClientVersion": "0.0.0",
+  "features": {
+    "modifiers": false
+  },
+  "payment": null,
+  "limits": {
+    "maxLinesPerOrder": 30
+  },
+  "storeDefaults": {
+    "maxQuantityPerItem": 10,
+    "lowStockThreshold": 5
+  },
+  "polling": {
+    "orderMs": 4000,
+    "ordersMs": 8000,
+    "staffBoardMs": 4000
+  },
+  "session": {
+    "idleDays": 7
+  },
+  "clientErrors": {
+    "samplePercent": 100
+  },
+  "validation": {
+    "nameMin": 2,
+    "nameMax": 60,
+    "noteMax": 200,
+    "password": {
+      "min": 6,
+      "max": 72
+    },
+    "phoneDigits": {
+      "min": 10,
+      "max": 15
+    },
+    "pollMs": {
+      "min": 2000,
+      "max": 60000
+    },
+    "clientErrors": {
+      "reportsMax": 5,
+      "messageMax": 500,
+      "stackMax": 3500,
+      "routeMax": 200
+    },
+    "menuItem": {
+      "nameMin": 2,
+      "nameMax": 80,
+      "descriptionMax": 300,
+      "categoryMax": 40,
+      "priceMin": 1,
+      "priceMax": 100000,
+      "stockMax": 100000
+    },
+    "store": {
+      "nameMin": 2,
+      "nameMax": 80,
+      "slugMin": 3,
+      "slugMax": 48,
+      "taglineMax": 120,
+      "descriptionMax": 300,
+      "areaMax": 60,
+      "addressMax": 200
+    }
+  }
+}

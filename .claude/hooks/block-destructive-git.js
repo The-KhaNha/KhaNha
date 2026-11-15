@@ -47,7 +47,7 @@ if (process.argv.includes('--self-test')) {
     'git checkout main',
     'git restore --staged a.ts',
     'git commit -m x',
-    'git merge origin/main',
+    'git merge origin/dev',
     'git rebase main',
     'git push origin feat',
     'git branch -d merged',

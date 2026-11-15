@@ -1,7 +1,11 @@
+import { useParams } from 'react-router-dom';
 import { ChefHat, PackageCheck, ShoppingBag, type LucideIcon } from 'lucide-react';
 import { ErrorState } from '../components/ErrorState';
+import { cardClasses } from '../components/Card';
+import { NotFoundPage } from './NotFound';
 import { StoreCard, StoreCardSkeleton } from '../components/StoreCard';
-import { useStore } from '../features/menu/useStore';
+import { HomeHero } from '../features/stores/HomeHero';
+import { useStoreByRef } from '../features/stores/useStores';
 
 const steps: { icon: LucideIcon; title: string; copy: string }[] = [
   { icon: ShoppingBag, title: 'Order ahead', copy: 'Pick your food, pay in a tap.' },
@@ -10,30 +14,23 @@ const steps: { icon: LucideIcon; title: string; copy: string }[] = [
 ];
 
 /**
- * Home: the paprika field runs from the top of the viewport (TopBar tone="brand") and the
+ * A store's page (`/s/:storeSlug`): the paprika field runs from the top of the viewport (TopBar tone="brand") and the
  * store card overlaps it so the storefront photo sits on red — the hunger cue.
  */
 export function HomePage() {
-  const { store, isLoading, error, retry } = useStore();
+  const { storeSlug = '' } = useParams();
+  const { store, isLoading, error, retry } = useStoreByRef(storeSlug);
 
   return (
-    <div className="pb-6 animate-fade-up">
-      {/* The one permitted decorative gradient in the app. */}
-      <section className="-mx-4 rounded-b-[28px] bg-[linear-gradient(180deg,#d13711,#b72e0e)] text-white lg:mx-[calc(50%-50vw)]">
-        <div className="mx-auto w-full max-w-md px-4 pb-[72px] pt-4 md:max-w-lg">
-          <p className="eyebrow text-white">Campus pickup</p>
-          <h1 className="mt-2 text-[44px] font-extrabold leading-none tracking-[-0.02em]">
-            Skip the queue.
-          </h1>
-          <p className="mt-3 max-w-sm text-[16px] font-medium leading-relaxed text-white">
-            Order ahead. We&rsquo;ll prepare it while you make your way.
-          </p>
-        </div>
-      </section>
+    // No page-level fade: the store card's cover is the page's largest paint, and a fading ancestor delays it.
+    <div className="pb-6">
+      <HomeHero />
 
       <div className="relative -mt-14">
         {isLoading ? (
           <StoreCardSkeleton />
+        ) : error?.status === 404 && !store ? (
+          <NotFoundPage />
         ) : error && !store ? (
           <ErrorState
             compact
@@ -63,26 +60,23 @@ export function HomePage() {
         )}
       </div>
 
-      <section className="mt-8" aria-labelledby="how-it-works">
+      <section className="mt-8 animate-fade-up" aria-labelledby="how-it-works">
         <h2 id="how-it-works" className="eyebrow text-muted">
           How it works
         </h2>
-        <ol className="mt-3 grid grid-cols-3 gap-2">
+        <ol className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(min(100%,6rem),1fr))] gap-2">
           {steps.map(({ icon: Icon, title, copy }, index) => (
-            <li
-              key={title}
-              className="rounded-[20px] border border-line/70 bg-surface p-3.5 shadow-card"
-            >
+            <li key={title} className={cardClasses('p-3.5', 'tile')}>
               <div className="flex items-center justify-between">
                 <span className="grid h-9 w-9 place-items-center rounded-xl bg-brand-50 text-brand-600">
                   <Icon className="h-[18px] w-[18px]" aria-hidden />
                 </span>
-                <span className="text-xs font-extrabold tabular-nums text-gold-500">
+                <span className="text-xs font-extrabold tabular-nums text-gold-700">
                   0{index + 1}
                 </span>
               </div>
-              <p className="mt-3 text-[13px] font-bold leading-tight">{title}</p>
-              <p className="mt-1 text-[12px] leading-snug text-muted">{copy}</p>
+              <p className="mt-3 text-caption font-bold leading-tight">{title}</p>
+              <p className="mt-1 text-xs leading-snug text-muted">{copy}</p>
             </li>
           ))}
         </ol>

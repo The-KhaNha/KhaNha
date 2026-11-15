@@ -1,0 +1,2 @@
+# Copy to terraform.tfvars (untracked) and fill in. Never commit the copy.
+alert_email = "you@example.com"

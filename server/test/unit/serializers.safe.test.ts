@@ -5,12 +5,16 @@ import {
   toOrderDto,
   toStoreDto,
   toUserDto,
+  type ProfileWithStanding,
   type OrderWithDetails,
+  type StoreWithBrand,
 } from '../../src/utils/serializers';
 import type { Tables } from '../../src/types/database';
 
-function profile(overrides: Partial<Tables<'profiles'>> = {}): Tables<'profiles'> {
+function profile(overrides: Partial<ProfileWithStanding> = {}): ProfileWithStanding {
   return {
+    memberships: [],
+    brands: [],
     id: 'user-1',
     name: 'Ann',
     email: 'ann@example.test',
@@ -21,9 +25,19 @@ function profile(overrides: Partial<Tables<'profiles'>> = {}): Tables<'profiles'
   };
 }
 
-function store(overrides: Partial<Tables<'stores'>> = {}): Tables<'stores'> {
+function store(overrides: Partial<StoreWithBrand> = {}): StoreWithBrand {
   return {
     id: 'store-1',
+    slug: 'campus-cafe',
+    brand_id: 'brand-1',
+    brand: { id: 'brand-1', name: 'Campus Cafe', slug: 'campus-cafe' },
+    status: 'ACTIVE',
+    timezone: 'Asia/Kolkata',
+    area: 'Main Campus',
+    address_line: null,
+    contact_phone: null,
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
     name: 'Campus Cafe',
     tagline: 'Coffee • Snacks • Quick Bites',
     description: 'Quick bites, coffee and snacks.',
@@ -31,6 +45,16 @@ function store(overrides: Partial<Tables<'stores'>> = {}): Tables<'stores'> {
     is_open: true,
     prep_time_min_minutes: 10,
     prep_time_max_minutes: 15,
+    max_quantity_per_item: 10,
+    low_stock_threshold: 5,
+    staff_order_list_limit: 100,
+    last_order_minutes_before_close: 0,
+    staff_can_edit_stock: true,
+    accepting_orders: true,
+    paused_until: null,
+    pause_reason: null,
+    paused_by: null,
+    is_template: false,
     ...overrides,
   };
 }
@@ -42,12 +66,16 @@ function menuItem(overrides: Partial<Tables<'menu_items'>> = {}): Tables<'menu_i
     category: 'Coffee',
     name: 'Cold Coffee',
     description: 'Creamy chilled coffee',
-    price: 120,
+    price_paise: 12000,
     image_url: '/images/cold-coffee.jpg',
     is_available: true,
     is_popular: true,
     sort_order: 1,
     stock_quantity: null,
+    template_item_id: null,
+    archived_at: null,
+    diet: 'VEG',
+    image_variants: null,
     ...overrides,
   };
 }
@@ -58,24 +86,30 @@ function orderWithDetails(overrides: Partial<OrderWithDetails> = {}): OrderWithD
     order_number: 1001,
     status: 'PLACED',
     payment_status: 'PAID',
-    total: 240,
+    total_paise: 24000,
     customer_name: 'Ann',
     customer_phone: '9876543210',
     note: null,
     estimated_ready_at: '2026-09-25 10:15:00.000+00',
     created_at: '2026-09-25 10:00:00.000+00',
     updated_at: '2026-09-25 10:00:00.000+00',
-    stores: { id: 'store-1', name: 'Campus Cafe' },
+    user_id: 'user-1',
+    store_id: 'store-1',
+    store_name: 'Campus Cafe',
+    store: { slug: 'campus-cafe', brand_id: 'brand-1' },
     order_items: [
       {
         id: 'oi-1',
         line_number: 1,
         menu_item_id: 'item-1',
         name: 'Cold Coffee',
-        unit_price: 120,
+        unit_price_paise: 12000,
         quantity: 2,
-        line_total: 240,
-        menu_items: { image_url: '/images/cold-coffee.jpg' },
+        line_total_paise: 24000,
+        image_url: '/images/cold-coffee.jpg',
+        base_unit_price_paise: null,
+        order_item_modifiers: [],
+        requested_modifier_option_ids: [],
       },
     ],
     ...overrides,
@@ -91,7 +125,33 @@ describe('toUserDto', () => {
       phone: '9876543210',
       role: 'CUSTOMER',
       createdAt: new Date('2026-09-25 10:00:00.123+00').toISOString(),
+      memberships: [],
+      ownedBrands: [],
     });
+  });
+
+  it('maps the embedded memberships and owned brands', () => {
+    const dto = toUserDto(
+      profile({
+        memberships: [
+          {
+            role: 'MANAGER',
+            store: { id: 's-1', slug: 'north', name: 'North', staff_can_edit_stock: false },
+          },
+        ],
+        brands: [{ id: 'b-1', name: 'Brew', slug: 'brew' }],
+      }),
+    );
+    expect(dto.memberships).toEqual([
+      {
+        storeId: 's-1',
+        storeSlug: 'north',
+        storeName: 'North',
+        role: 'MANAGER',
+        staffCanEditStock: false,
+      },
+    ]);
+    expect(dto.ownedBrands).toEqual([{ id: 'b-1', name: 'Brew', slug: 'brew' }]);
   });
 
   it('passes through a null phone', () => {
@@ -99,22 +159,33 @@ describe('toUserDto', () => {
   });
 });
 
+const open = {
+  isOpen: true,
+  openState: 'OPEN',
+  nextChangeAt: null,
+  openLabel: null,
+} as const;
+
 describe('toStoreDto', () => {
   it('maps snake_case store fields to camelCase', () => {
-    expect(toStoreDto(store())).toEqual({
+    expect(toStoreDto(store(), open)).toEqual({
       id: 'store-1',
+      slug: 'campus-cafe',
       name: 'Campus Cafe',
+      brand: { id: 'brand-1', name: 'Campus Cafe', slug: 'campus-cafe' },
+      area: 'Main Campus',
+      address: null,
       tagline: 'Coffee • Snacks • Quick Bites',
       description: 'Quick bites, coffee and snacks.',
       imageUrl: '/images/cafe-cover.jpg',
-      isOpen: true,
+      ...open,
       prepTimeMinMinutes: 10,
       prepTimeMaxMinutes: 15,
     });
   });
 
   it('passes through a null image', () => {
-    expect(toStoreDto(store({ image_url: null })).imageUrl).toBeNull();
+    expect(toStoreDto(store({ image_url: null }), open).imageUrl).toBeNull();
   });
 });
 
@@ -144,6 +215,9 @@ describe('toMenuItemDto', () => {
       description: 'Creamy chilled coffee',
       price: 120,
       imageUrl: '/images/cold-coffee.jpg',
+      imageSrcSet: null,
+      modifierGroupIds: [],
+      diet: 'VEG',
       isAvailable: false,
       isPopular: true,
       sortOrder: 1,
@@ -154,10 +228,23 @@ describe('toMenuItemDto', () => {
   it('reports untracked stock as null', () => {
     expect(toMenuItemDto(menuItem()).stockQuantity).toBeNull();
   });
+
+  it("offers an uploaded photo's variants as a srcset", () => {
+    const key = (w: number) => `stores/s/variants/abc-${w}.webp`;
+    const dto = toMenuItemDto(
+      menuItem({
+        image_variants: [
+          { width: 400, height: 300, key: key(400) },
+          { width: 900, height: 675, key: key(900) },
+        ],
+      }),
+    );
+    expect(dto.imageSrcSet).toBe(`/media/${key(400)} 400w, /media/${key(900)} 900w`);
+  });
 });
 
 describe('toOrderDto', () => {
-  it('maps order, store reference, and lines, converting every timestamp', () => {
+  it('maps order, store snapshot, and lines with their photo snapshot, converting every timestamp', () => {
     const dto = toOrderDto(orderWithDetails());
     expect(dto).toEqual({
       id: 'order-1',
@@ -171,7 +258,7 @@ describe('toOrderDto', () => {
       estimatedReadyAt: new Date('2026-09-25 10:15:00.000+00').toISOString(),
       createdAt: new Date('2026-09-25 10:00:00.000+00').toISOString(),
       updatedAt: new Date('2026-09-25 10:00:00.000+00').toISOString(),
-      store: { id: 'store-1', name: 'Campus Cafe' },
+      store: { id: 'store-1', name: 'Campus Cafe', slug: 'campus-cafe' },
       items: [
         {
           id: 'oi-1',
@@ -181,6 +268,8 @@ describe('toOrderDto', () => {
           quantity: 2,
           lineTotal: 240,
           imageUrl: '/images/cold-coffee.jpg',
+          baseUnitPrice: null,
+          modifiers: [],
         },
       ],
     });
@@ -201,20 +290,26 @@ describe('toOrderDto', () => {
             line_number: 2,
             menu_item_id: 'item-2',
             name: 'Espresso',
-            unit_price: 90,
+            unit_price_paise: 9000,
             quantity: 1,
-            line_total: 90,
-            menu_items: { image_url: '/images/espresso.jpg' },
+            line_total_paise: 9000,
+            image_url: '/images/espresso.jpg',
+            base_unit_price_paise: null,
+            order_item_modifiers: [],
+            requested_modifier_option_ids: [],
           },
           {
             id: 'oi-1',
             line_number: 1,
             menu_item_id: 'item-1',
             name: 'Cold Coffee',
-            unit_price: 120,
+            unit_price_paise: 12000,
             quantity: 2,
-            line_total: 240,
-            menu_items: { image_url: '/images/cold-coffee.jpg' },
+            line_total_paise: 24000,
+            image_url: '/images/cold-coffee.jpg',
+            base_unit_price_paise: null,
+            order_item_modifiers: [],
+            requested_modifier_option_ids: [],
           },
         ] as OrderWithDetails['order_items'],
       }),

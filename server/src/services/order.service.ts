@@ -1,15 +1,37 @@
-import { MAX_QUANTITY_PER_ITEM, type CreateOrderInput } from '../schemas/order.schema';
-import type { AuthUser } from '../types/auth';
+import { accessFor, can, type Capability } from '../domain/permissions';
+import { LIMITS } from '../schemas/limits';
+import { type CreateOrderInput } from '../schemas/order.schema';
+import type { AuthUser, RequestContext } from '../types/auth';
 import type { Tables } from '../types/database';
 import { ORDER_STATUSES, type OrderStatus } from '../types/enums';
-import { invalidate } from '../utils/cache';
-import { AppError, insufficientStock, notFound, validationError } from '../utils/errors';
+import {
+  AppError,
+  idempotencyKeyReused,
+  insufficientStock,
+  itemUnavailable,
+  modifierInvalid,
+  modifierRequired,
+  notFound,
+  priceChanged,
+  storeClosed,
+  storePaused,
+  validationError,
+} from '../utils/errors';
 import { isUuid } from '../utils/ids';
+import { paiseToRupees } from '../utils/money';
 import { selectOrders, type OrderWithDetails } from '../utils/serializers';
 import { raisedByDatabase, supabaseAdmin } from '../utils/supabase';
+import { invalidate } from '../utils/cache';
+import { priceLine } from '../domain/pricing';
+import { isEnabled } from './flags.service';
+import { invalidateMenus } from './menu.service';
+import { loadItemModifiers, type ItemModifiers } from './modifier.service';
 import { simulatePayment } from './payment.service';
 import { getSettings } from './settings.service';
+import { describeWhen } from '../domain/schedule';
+import { computeOpenState, loadSchedule } from './schedule.service';
 import { getStore } from './store.service';
+import { getStoreSettings } from './storeSettings.service';
 
 /** The single source of truth for which status changes staff may make. */
 const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
@@ -20,50 +42,129 @@ const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   CANCELLED: [],
 };
 
+/** Statuses with somewhere left to go: the kitchen's live work (derived, so a new status is never forgotten). */
+const ACTIVE_STATUSES = ORDER_STATUSES.filter((s) => ALLOWED_TRANSITIONS[s].length > 0);
+const TERMINAL_STATUSES = ORDER_STATUSES.filter((s) => ALLOWED_TRANSITIONS[s].length === 0);
+
+/**
+ * A safety bound on active orders per staff request, far above any café's queue. Oldest first, so if it is ever hit
+ * the newest wait, never the ones that have waited longest.
+ */
+const ACTIVE_ORDERS_HARD_MAX = 500;
+
 type MenuItem = Tables<'menu_items'>;
 
-/** One priced line, in the shape the place_order database function takes. */
+/**
+ * One checked line, in the shape the place_order database function takes. `unit_price_paise` is the price this request
+ * charged for: place_order stores its own read of menu_items and refuses the order (PRICE_CHANGED) if that differs.
+ */
 type OrderLine = {
   menu_item_id: string;
   name: string;
-  unit_price: number;
   quantity: number;
+  unit_price_paise: number;
+  modifier_option_ids: string[];
 };
+
+/** What createOrder placed, and whether it was placed now or already existed under the same idempotency key. */
+interface PlacedOrder {
+  order: OrderWithDetails;
+  replayed: boolean;
+}
+
+interface UpdatedOrder {
+  order: OrderWithDetails;
+  /** It already had this status (a retried request, a second device): nothing changed and nothing was emitted. */
+  repeated: boolean;
+}
 
 /**
  * Places a paid order. Prices are read from the database, never from the request:
- * store must be open -> validate items -> price lines -> total -> simulated payment -> place_order.
+ * store must be open -> validate items -> price lines (and match any price the customer saw) -> total ->
+ * simulated payment -> place_order, which checks the store, availability and prices again under its own locks.
+ * A repeated `idempotencyKey` returns the order that key already placed (the fast path below; place_order settles
+ * the race of two simultaneous repeats), so a retry after a lost response never charges or reserves twice.
  *
- * place_order reserves the stock and writes the order in ONE transaction, so a refused order (sold out)
- * leaves no order rows and no stock decrements behind.
+ * place_order reserves the stock and writes the order in ONE transaction, so a refused order (sold out, or a price
+ * changed since the charge) leaves no order rows and no stock decrements behind.
  */
 export async function createOrder(
   user: AuthUser,
   input: CreateOrderInput,
-): Promise<OrderWithDetails> {
-  const store = await getStore();
-  if (!store.is_open) {
-    throw new AppError(
-      400,
-      'STORE_CLOSED',
-      `${store.name} is closed right now. Please come back when it opens.`,
-    );
-  }
-  const customerName = input.customerName ?? (await lookupUserName(user.id));
-
+  ctx: RequestContext,
+): Promise<PlacedOrder> {
   // Ids that are not UUIDs (e.g. a cart saved before the move to Supabase) cannot exist, so they are not queried.
   const ids = input.items.map((line) => line.menuItemId).filter(isUuid);
-  const { data: menuItems } = await supabaseAdmin
-    .from('menu_items')
-    .select()
-    .in('id', ids)
-    .throwOnError();
-  const byId = new Map(menuItems.map((item) => [item.id, item]));
+  // None of these reads depends on another, so they go out together: one round trip to the database instead of one
+  // each (test/api/order-reads.test.ts). The checks below still run in the same order.
+  const [existing, settings, store, schedule, customerName, menuItems, modifiersOn] =
+    await Promise.all([
+      input.idempotencyKey
+        ? selectOrders()
+            .eq('user_id', user.id)
+            .eq('idempotency_key', input.idempotencyKey)
+            .maybeSingle()
+            .throwOnError()
+            .then(({ data }) => data)
+        : null,
+      // A site setting, read through the cache: an admin's change can take up to the 10 s TTL on other instances, which
+      // is harmless for a cap this generous.
+      getSettings(),
+      getStore(input.storeId),
+      // Uncached, like the store: a write never reads through the cache.
+      loadSchedule(input.storeId),
+      input.customerName ?? lookupUserName(user.id),
+      supabaseAdmin
+        .from('menu_items')
+        .select()
+        .in('id', ids)
+        .throwOnError()
+        .then(({ data }) => data),
+      // Options (P3.2) where the store's flag is on, evaluated as the menu evaluates it (the store alone), so checkout
+      // never disagrees with what the menu showed; place_order is told the same answer.
+      isEnabled('modifiers', { storeId: input.storeId }),
+    ]);
 
-  const lines = priceLines(input.items, byId);
-  const total = lines.reduce((sum, line) => sum + line.unit_price * line.quantity, 0);
-  // A real gateway would be charged here. With one, a sold-out refusal from place_order must refund the charge.
-  const paymentStatus = await simulatePayment(total);
+  // A replay answers the order the key placed, even at a store that has stopped trading since.
+  if (existing && existing.store_id === store.id && matchesRequest(existing, input))
+    return { order: existing, replayed: true };
+  // A store that is not trading (a draft, suspended, archived) takes no orders and is not there to the public: refused
+  // before any other check, so no answer tells it apart from an unknown id.
+  if (store.status !== 'ACTIVE') throw notFound('Store not found.');
+  // The same key at another store, or for another order, is never a replay.
+  if (existing) throw idempotencyKeyReused(existing.id, existing.order_number);
+
+  const maxLines = settings.max_lines_per_order;
+  if (input.lineCount > maxLines)
+    throw validationError(`An order can have at most ${maxLines} items.`);
+
+  const now = new Date();
+  const { state, nextChangeAt } = computeOpenState(store, schedule, now);
+  if (state === 'PAUSED')
+    throw storePaused(store.name, pausedBack(nextChangeAt, now, store.timezone));
+  if (state !== 'OPEN' && state !== 'CLOSING_SOON')
+    throw storeClosed(
+      store.name,
+      nextChangeAt
+        ? { nextChangeAt, when: describeWhen(nextChangeAt, now, store.timezone) }
+        : undefined,
+    );
+  // Another store's item is not on this store's menu: it is "not found" here, so an order never mixes stores and
+  // never draws down another store's stock.
+  const byId = new Map(
+    menuItems.filter((item) => item.store_id === store.id).map((item) => [item.id, item]),
+  );
+  const modifiers = modifiersOn ? await loadItemModifiers(store.id, [...byId.keys()]) : null;
+
+  const { lines, totalPaise } = priceLines(
+    input.items,
+    byId,
+    store.id,
+    store.max_quantity_per_item,
+    modifiers,
+  );
+  // A real gateway would be charged here. With one, a refusal from place_order (sold out, price changed) must refund it.
+  const paymentStatus = await simulatePayment(totalPaise);
 
   let orderId: string;
   try {
@@ -76,6 +177,11 @@ export async function createOrder(
         p_note: input.note,
         p_payment_status: paymentStatus,
         p_lines: lines,
+        p_idempotency_key: input.idempotencyKey,
+        // Recorded with the order.placed event the function emits in the same transaction.
+        p_actor: ctx.actor,
+        p_request_id: ctx.requestId,
+        p_modifiers_enabled: modifiersOn,
       })
       .throwOnError());
   } catch (err) {
@@ -87,66 +193,216 @@ export async function createOrder(
         String(stock.name),
         Number(stock.available),
       );
+    // The price moved after this request charged for it: nothing was placed, and the customer sees the new price.
+    const changed = raisedByDatabase(err, 'PRICE_CHANGED');
+    if (changed)
+      throw priceChanged(String(changed.menuItemId), String(changed.name), Number(changed.price));
+    // An option changed between the check above and place_order's read (sold out, removed, a group's rule).
+    for (const [code, refuse] of [
+      ['MODIFIER_REQUIRED', modifierRequired],
+      ['MODIFIER_INVALID', modifierInvalid],
+    ] as const) {
+      const refused = raisedByDatabase(err, code);
+      if (refused)
+        throw refuse(
+          String(refused.menuItemId),
+          String(refused.name),
+          refused.group ? String(refused.group) : null,
+        );
+    }
+    // Switched off or closed after the checks above: the same refusals those checks give.
+    const unavailable = raisedByDatabase(err, 'ITEM_UNAVAILABLE');
+    if (unavailable)
+      throw itemUnavailable(String(unavailable.menuItemId), String(unavailable.name));
+    if (raisedByDatabase(err, 'STORE_CLOSED')) throw storeClosed(store.name);
+    // Paused or stopped trading while this request ran: the same answers as the checks above.
+    const paused = raisedByDatabase(err, 'STORE_PAUSED');
+    if (paused) {
+      const until = paused.pausedUntil ? new Date(String(paused.pausedUntil)) : null;
+      throw storePaused(store.name, pausedBack(until, new Date(), store.timezone));
+    }
+    if (raisedByDatabase(err, 'NOT_FOUND')) throw notFound('Store not found.');
     throw err;
   } finally {
     // Placed or refused for stock, the cached menu's stock counts are out of date either way.
-    invalidate('menu');
+    invalidateMenus(store.id);
   }
 
   const { data: order } = await selectOrders().eq('id', orderId).single().throwOnError();
-  return order;
+  // place_order answers a key it already saw (two requests racing past the check above) with the stored order, which
+  // must be the same order this request asked for.
+  if (input.idempotencyKey && !matchesRequest(order, input, customerName)) {
+    throw idempotencyKeyReused(order.id, order.order_number);
+  }
+  return { order, replayed: false };
+}
+
+/** When a pause ends, for STORE_PAUSED's message; null for a pause until resumed. */
+function pausedBack(until: Date | null, now: Date, timeZone: string) {
+  return until ? { pausedUntil: until, when: describeWhen(until, now, timeZone) } : null;
 }
 
 /**
- * Both lists are polled, so both are bounded to the newest orders. The sizes are site settings (admin dashboard):
- * a customer sees their newest `customer_order_history_limit`, staff the newest `staff_order_list_limit` across
- * everyone. Newest first.
+ * Whether a stored order is what this request asks for: the same items and quantities (after merging), and the same
+ * pickup details. `customerName` is the resolved name; without it, a request that sent none matches any name.
+ */
+function matchesRequest(
+  order: OrderWithDetails,
+  input: CreateOrderInput,
+  customerName = input.customerName,
+): boolean {
+  // Line by line: each requested line has its own stored line of the same item, quantity and requested options (as the
+  // request named them, sorted; the defaults place_order added are not part of the comparison, P3.2).
+  const unused = [...order.order_items];
+  const sameItems =
+    input.items.length === unused.length &&
+    input.items.every((asked) => {
+      const i = unused.findIndex(
+        (line) =>
+          line.menu_item_id === asked.menuItemId &&
+          line.quantity === asked.quantity &&
+          line.requested_modifier_option_ids.join(',') === asked.modifierOptionIds.join(','),
+      );
+      if (i < 0) return false;
+      unused.splice(i, 1);
+      return true;
+    });
+  return (
+    sameItems &&
+    (customerName === undefined || customerName === order.customer_name) &&
+    (input.customerPhone ?? null) === order.customer_phone &&
+    (input.note ?? null) === order.note
+  );
+}
+
+/**
+ * GET /api/orders: the caller's own orders, newest first, bounded to `customer_order_history_limit` (a site setting)
+ * because the list is polled. A store's board reads its orders through listStoreOrders.
  */
 export async function listOrders(
   user: AuthUser,
   status?: OrderStatus,
 ): Promise<OrderWithDetails[]> {
   const settings = await getSettings();
-  let query = selectOrders().order('created_at', { ascending: false });
-  if (user.role === 'STAFF') query = query.limit(settings.staff_order_list_limit);
-  else query = query.eq('user_id', user.id).limit(settings.customer_order_history_limit);
+  let query = selectOrders()
+    .order('created_at', { ascending: false })
+    .eq('user_id', user.id)
+    .limit(settings.customer_order_history_limit);
   if (status) query = query.eq('status', status);
-
   const { data: orders } = await query.throwOnError();
   return orders;
 }
 
-/** Someone else's order looks exactly like a missing one (404), so ids cannot be probed. */
+/**
+ * The kitchen board of `storeIds` (the caller was admitted to each): every active order, and the newest
+ * store's `staff_order_list_limit` finished ones (collected, cancelled) as history. One limit over every status used to cut the
+ * orders that had waited longest as soon as enough newer orders existed, collected ones included, with nothing on the
+ * board to say so. Newest first, as before; the board sorts.
+ */
+export async function listStoreOrders(
+  storeIds: string[],
+  status?: OrderStatus,
+): Promise<OrderWithDetails[]> {
+  if (storeIds.length === 0) return [];
+  const active = async (statuses: OrderStatus[]) =>
+    (
+      await selectOrders()
+        .in('store_id', storeIds)
+        .in('status', statuses)
+        .order('created_at', { ascending: true })
+        .limit(ACTIVE_ORDERS_HARD_MAX)
+        .throwOnError()
+    ).data;
+  const finished = async (statuses: OrderStatus[]) =>
+    // Each store keeps its own number of finished orders (its settings), so one query per store.
+    // ponytail: N queries per poll for a caller at N stores; one windowed RPC if owners run many stores.
+    (
+      await Promise.all(
+        storeIds.map(async (id) =>
+          selectOrders()
+            .eq('store_id', id)
+            .in('status', statuses)
+            .order('created_at', { ascending: false })
+            .limit((await getStoreSettings(id)).staff_order_list_limit)
+            .throwOnError(),
+        ),
+      )
+    ).flatMap(({ data }) => data);
+
+  if (status)
+    return ACTIVE_STATUSES.includes(status)
+      ? (await active([status])).reverse()
+      : (await finished([status])).sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const [open, done] = await Promise.all([active(ACTIVE_STATUSES), finished(TERMINAL_STATUSES)]);
+  return [...open, ...done].sort((a, b) => b.created_at.localeCompare(a.created_at));
+}
+
+/**
+ * The customer who placed it, or a caller whose access at its store holds `orders.view`. Any other order looks exactly
+ * like a missing one (404), so ids cannot be probed.
+ */
 export async function getOrder(user: AuthUser, id: string): Promise<OrderWithDetails> {
   if (!isUuid(id)) throw notFound('Order not found.');
-
-  let query = selectOrders().eq('id', id);
-  if (user.role !== 'STAFF') query = query.eq('user_id', user.id);
-
-  const { data: order } = await query.maybeSingle().throwOnError();
+  const { data: order } = await selectOrders().eq('id', id).maybeSingle().throwOnError();
   if (!order) throw notFound('Order not found.');
+  if (order.user_id !== user.id) accessToOrder(user, order, 'orders.view');
   return order;
 }
 
 /**
- * update_order_status is one conditional update, so two staff devices cannot overwrite each other:
- * the row only changes if its status is still one that ALLOWED_TRANSITIONS lets move to `nextStatus`.
- * Cancelling also puts the order's items back in stock, in the same transaction.
+ * The caller's access at the order's store, when it holds `capability`; otherwise the order is not theirs to know
+ * about, 404 like a missing one (CLAUDE.md §10), even where the store itself would answer 403.
+ */
+function accessToOrder(
+  user: AuthUser,
+  order: { store_id: string; store: { brand_id: string } },
+  capability: Capability,
+) {
+  const access = accessFor(user, { id: order.store_id, brandId: order.store.brand_id }, capability);
+  if (access === null || !can(access, capability)) throw notFound('Order not found.');
+  return access;
+}
+
+/**
+ * update_order_status locks the order and checks its status in one transaction, so two staff devices cannot overwrite
+ * each other: the row only changes if its status is still one that ALLOWED_TRANSITIONS lets move to `nextStatus`.
+ * A repeat of a change that already happened (a retried request, a second device) answers with the order unchanged.
+ * Cancelling also puts the order's items back in stock, and every change emits its `order.<status>` event, all in the
+ * same transaction.
  */
 export async function updateOrderStatus(
+  user: AuthUser,
   id: string,
   nextStatus: OrderStatus,
-): Promise<OrderWithDetails> {
+  requestCtx: RequestContext,
+  /** The store route's store: an order of any other store is 404 there. */
+  storeId?: string,
+): Promise<UpdatedOrder> {
   if (!isUuid(id)) throw notFound('Order not found.');
+  // The order's store decides who may move it. Its store never changes, so reading it first leaves no race.
+  const { data: placed } = await supabaseAdmin
+    .from('orders')
+    .select('store_id, store:stores!inner (brand_id)')
+    .eq('id', id)
+    .maybeSingle()
+    .throwOnError();
+  if (!placed || (storeId !== undefined && placed.store_id !== storeId))
+    throw notFound('Order not found.');
+  const access = accessToOrder(user, placed, 'orders.transition');
+  // The old route has no requireStore: the audit row and the event still record the caller's standing at the store.
+  const ctx = { ...requestCtx, actor: { ...requestCtx.actor, storeRole: access } };
 
+  let changed: boolean;
   try {
-    await supabaseAdmin
+    ({ data: changed } = await supabaseAdmin
       .rpc('update_order_status', {
         p_order_id: id,
         p_next_status: nextStatus,
         p_from_statuses: statusesLeadingTo(nextStatus),
+        p_actor: ctx.actor,
+        p_request_id: ctx.requestId,
       })
-      .throwOnError();
+      .throwOnError());
   } catch (err) {
     if (raisedByDatabase(err, 'NOT_FOUND')) throw notFound('Order not found.');
     const current = raisedByDatabase(err, 'INVALID_STATUS_TRANSITION');
@@ -159,11 +415,19 @@ export async function updateOrderStatus(
     }
     throw err;
   }
-  // Cancelling puts the items back in stock.
-  if (nextStatus === 'CANCELLED') invalidate('menu');
-
-  const { data: order } = await selectOrders().eq('id', id).single().throwOnError();
-  return order;
+  // Cancelling puts the items back in stock (a repeated cancel moved nothing, so a retry would not get here again).
+  const restocked = changed && nextStatus === 'CANCELLED';
+  let order: OrderWithDetails;
+  try {
+    ({ data: order } = await selectOrders().eq('id', id).single().throwOnError());
+  } catch (err) {
+    // The re-read names the order's store; without it, drop every cached read rather than leave a menu showing the
+    // restocked items as sold out until its TTL.
+    if (restocked) invalidate();
+    throw err;
+  }
+  if (restocked) invalidateMenus(order.store_id);
+  return { order, repeated: !changed };
 }
 
 /** Every status from which staff may move an order to `target`. */
@@ -172,15 +436,23 @@ function statusesLeadingTo(target: OrderStatus): OrderStatus[] {
 }
 
 /**
- * Snapshots each requested item's current name and price. Every refusal names the item (or, when the
- * item is gone, identifies it by id) so the client can point at the exact cart line.
- * Items arrive already merged by the schema, so the quantity cap applies to the real total per item.
+ * Checks each requested line and prices the order in paise from the items just read, for the payment. Every refusal
+ * names the item (or, when the item is gone, identifies it by id) so the client can point at the exact cart line.
+ * Lines arrive merged by item and options; the quantity cap counts all of an item's lines. A line's price is the item's
+ * plus its options' (domain/pricing.ts; with `modifiers` null, the store offers none and options sent are refused).
  */
 function priceLines(
   requested: CreateOrderInput['items'],
   byId: Map<string, MenuItem>,
-): OrderLine[] {
-  return requested.map(({ menuItemId, quantity }) => {
+  storeId: string,
+  maxQuantity: number,
+  modifiers: ItemModifiers | null,
+): { lines: OrderLine[]; totalPaise: number } {
+  const perItem = new Map<string, number>();
+  for (const { menuItemId, quantity } of requested)
+    perItem.set(menuItemId, (perItem.get(menuItemId) ?? 0) + quantity);
+  let totalPaise = 0;
+  const lines = requested.map(({ menuItemId, quantity, expectedUnitPrices, modifierOptionIds }) => {
     const item = byId.get(menuItemId);
     if (!item) {
       throw new AppError(400, 'ITEM_NOT_FOUND', 'One of the items is no longer on the menu.', {
@@ -188,21 +460,40 @@ function priceLines(
         available: 0,
       });
     }
-    if (!item.is_available) {
-      throw new AppError(
-        400,
-        'ITEM_UNAVAILABLE',
-        `${item.name} is currently unavailable. Please remove it from your cart.`,
-        { menuItemId, name: item.name, available: 0 },
-      );
-    }
-    if (quantity > MAX_QUANTITY_PER_ITEM) {
+    if (!item.is_available) throw itemUnavailable(menuItemId, item.name);
+    if ((perItem.get(menuItemId) ?? quantity) > maxQuantity) {
       throw validationError(
-        `You can order at most ${MAX_QUANTITY_PER_ITEM} of ${item.name}. Please reduce the quantity in your cart.`,
+        `You can order at most ${maxQuantity} of ${item.name}. Please reduce the quantity in your cart.`,
       );
     }
-    return { menu_item_id: menuItemId, name: item.name, unit_price: item.price, quantity };
+    const groups = (modifiers?.groupIds.get(menuItemId) ?? []).flatMap((id) => {
+      const group = modifiers?.groups.get(id);
+      return group ? [group] : [];
+    });
+    const priced = priceLine(item.price_paise, groups, modifierOptionIds, modifiers !== null);
+    if (!priced.ok) {
+      // As for a changed price: the checkout reloads the menu, which must not be the cached copy that offered it.
+      invalidateMenus(storeId);
+      const refuse = priced.code === 'MODIFIER_REQUIRED' ? modifierRequired : modifierInvalid;
+      throw refuse(menuItemId, item.name, priced.groupName ?? null);
+    }
+    // The customer saw another price (a cart kept from before a price change): refused before any charge.
+    const price = paiseToRupees(priced.unitPricePaise);
+    if (expectedUnitPrices.some((expected) => expected !== price)) {
+      // The checkout reloads the menu after this refusal: a cached menu would show the old price and be refused again.
+      invalidateMenus(storeId);
+      throw priceChanged(menuItemId, item.name, price);
+    }
+    totalPaise += priced.unitPricePaise * quantity;
+    return {
+      menu_item_id: menuItemId,
+      name: item.name,
+      quantity,
+      unit_price_paise: priced.unitPricePaise,
+      modifier_option_ids: modifierOptionIds,
+    };
   });
+  return { lines, totalPaise };
 }
 
 async function lookupUserName(userId: string): Promise<string> {
@@ -212,5 +503,8 @@ async function lookupUserName(userId: string): Promise<string> {
     .eq('id', userId)
     .single()
     .throwOnError();
-  return profile.name;
+  // A profile made before handle_new_user bounded the name may hold a longer one; the order still gets a valid name,
+  // and the cut never leaves half of a surrogate pair (a lone surrogate is not valid JSON for the RPC).
+  const name = profile.name.slice(0, LIMITS.nameMax);
+  return /[\uD800-\uDBFF]$/.test(name) ? name.slice(0, -1) : name;
 }

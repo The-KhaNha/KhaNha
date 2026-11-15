@@ -1,17 +1,50 @@
-import { createClient } from '@supabase/supabase-js';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
-// Set per mode in client/.env.<mode> (see client/.env.example); vite.config.ts refuses to build without them.
-const url = import.meta.env.VITE_SUPABASE_URL;
-const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+let client: Promise<SupabaseClient> | null = null;
 
-if (!url || !publishableKey) {
-  throw new Error(
-    'VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY must be set. See client/.env.example.',
-  );
+const load = () => import('./supabaseClient').then((module) => module.supabase);
+
+/**
+ * The supabase-js client, loaded on first use rather than with the app: it is 40% of the JavaScript, and a visitor who
+ * only browses the menu never needs it. A failed load is retried once with a fresh import(): Firefox and Safari fetch
+ * it again, so a dropped connection recovers there. Chromium caches a failed import() for the page's life, so its
+ * retry fails at once. A failure after the retry is kept: only a reload can load it (services/api.ts
+ * CLIENT_RELOAD_REQUIRED).
+ */
+export function getSupabase(): Promise<SupabaseClient> {
+  client ??= load().catch(load);
+  return client;
+}
+
+// supabase-js's own storage key for the session: `sb-<project ref>-auth-token` (plus `-code-verifier` for PKCE).
+const SESSION_KEY = /^sb-.+-auth-token$/;
+
+/**
+ * Whether this browser may hold a Supabase session, checked without loading supabase-js: its storage key is there.
+ * When storage cannot be read the answer is yes, so a signed-in user is never treated as signed out.
+ */
+export function mayHaveSession(): boolean {
+  try {
+    for (let i = 0; i < localStorage.length; i += 1) {
+      if (SESSION_KEY.test(localStorage.key(i) ?? '')) return true;
+    }
+    return false;
+  } catch {
+    return true;
+  }
 }
 
 /**
- * Used only for signing in and out. supabase-js keeps the session in localStorage and refreshes the access token
- * before it expires. All data comes from the API; the publishable key cannot read or write any table (RLS).
+ * Removes supabase-js's stored session without loading it: the local sign-out when its chunk failed to load. Left in
+ * storage, the session would come back on the reload that failure asks for.
  */
-export const supabase = createClient(url, publishableKey);
+export function clearStoredSession(): void {
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i -= 1) {
+      const key = localStorage.key(i);
+      if (key && SESSION_KEY.test(key)) localStorage.removeItem(key);
+    }
+  } catch {
+    // Storage blocked: supabase-js could not have stored a session either.
+  }
+}

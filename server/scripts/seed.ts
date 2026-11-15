@@ -1,200 +1,74 @@
-// Local and staging (`npm run seed`): an idempotent demo reset. Wipes all orders, then refreshes the single store,
-// its menu and the two test accounts. The store, menu items and test accounts keep their ids across re-seeds, so a
+// Local and staging (`pnpm run seed`): an idempotent demo reset. Wipes all orders, then refreshes the brands, their stores,
+// their menus and the test accounts. The store, menu items and test accounts keep their ids across re-seeds, so a
 // browser that is already signed in or has a saved cart keeps working.
 //
-// Production (`npm run seed -- --production`): first-time setup only. Creates the store and menu while production
+// Production (`pnpm run seed --production`): first-time setup only. Creates the store and menu while production
 // has no store yet, and nothing else: no wipes, and no test accounts with well-known passwords.
+import { IntegrationError } from '../src/utils/errors';
+import { migrateBundledPhotos } from './media-migration';
 import { env } from '../src/utils/env';
 import { logger } from '../src/utils/logger';
 import { supabaseAdmin as db } from '../src/utils/supabase';
-import type { Role } from '../src/types/enums';
-import type { Tables } from '../src/types/database';
-
-const STORE = {
-  name: 'Campus Cafe',
-  tagline: 'Coffee • Snacks • Quick Bites',
-  description: 'Quick bites, coffee and snacks.',
-  image_url: '/images/cafe-cover.jpg',
-  is_open: true,
-  prep_time_min_minutes: 10,
-  prep_time_max_minutes: 15,
-};
-
-interface SeedMenuItem {
-  category: string;
-  name: string;
-  price: number;
-  description: string;
-  imageUrl: string;
-  isPopular?: boolean;
-  isAvailable?: boolean;
-  /** Units in stock; omit for items that are not stock-limited. */
-  stockQuantity?: number;
-}
-
-// Array order defines sort_order (and therefore category order on the menu). Images live in client/public/images.
-// Three items are stock-limited to demo the "Only N left" flow; re-seeding resets their stock.
-const MENU: SeedMenuItem[] = [
-  {
-    category: 'Coffee',
-    name: 'Cold Coffee',
-    price: 120,
-    description: 'Creamy chilled coffee, blended smooth',
-    imageUrl: '/images/cold-coffee.jpg',
-    isPopular: true,
-  },
-  {
-    category: 'Coffee',
-    name: 'Espresso',
-    price: 90,
-    description: 'Bold double shot, freshly pulled',
-    imageUrl: '/images/espresso.jpg',
-  },
-  {
-    category: 'Coffee',
-    name: 'Cappuccino',
-    price: 140,
-    description: 'Velvety steamed milk over rich espresso',
-    imageUrl: '/images/cappuccino.jpg',
-    isPopular: true,
-  },
-  {
-    category: 'Snacks',
-    name: 'Veg Sandwich',
-    price: 150,
-    description: 'Grilled with fresh veggies, cheese and mint chutney',
-    imageUrl: '/images/veg-sandwich.jpg',
-    isPopular: true,
-  },
-  {
-    category: 'Snacks',
-    name: 'French Fries',
-    price: 120,
-    description: 'Crispy, golden, lightly salted',
-    imageUrl: '/images/french-fries.jpg',
-    isPopular: true,
-  },
-  {
-    category: 'Snacks',
-    name: 'Cheese Toast',
-    price: 130,
-    description: 'Buttery toast with melted cheese and herbs',
-    imageUrl: '/images/cheese-toast.jpg',
-    stockQuantity: 1,
-  },
-  {
-    category: 'Juices',
-    name: 'Orange Juice',
-    price: 100,
-    description: 'Freshly squeezed, no added sugar',
-    imageUrl: '/images/orange-juice.jpg',
-  },
-  {
-    category: 'Juices',
-    name: 'Watermelon Juice',
-    price: 110,
-    description: 'Cold-pressed and refreshing',
-    imageUrl: '/images/watermelon-juice.jpg',
-  },
-  {
-    category: 'Juices',
-    name: 'Berry Smoothie',
-    price: 150,
-    description: 'Mixed berries blended with yogurt',
-    imageUrl: '/images/berry-smoothie.jpg',
-    isAvailable: false,
-  },
-  {
-    category: 'Desserts',
-    name: 'Chocolate Brownie',
-    price: 110,
-    description: 'Fudgy, dense, with a crackly top',
-    imageUrl: '/images/chocolate-brownie.jpg',
-    stockQuantity: 2,
-  },
-  {
-    category: 'Desserts',
-    name: 'Blueberry Muffin',
-    price: 90,
-    description: 'Soft-baked with bursting blueberries',
-    imageUrl: '/images/blueberry-muffin.jpg',
-    stockQuantity: 5,
-  },
-];
-
-type StagingPasswordKey = 'SEED_STAFF_PASSWORD' | 'SEED_ADMIN_PASSWORD' | 'SEED_CUSTOMER_PASSWORD';
-
-// The published passwords (README.md "Test accounts") work locally only. Shared staging is reachable by anyone who
-// reads the README, so there every account's password comes from the deployment (seedDemo checks all of them first).
-const DEMO_ACCOUNTS: {
-  role: Role;
-  name: string;
-  email: string;
-  localPassword: string;
-  stagingPassword: StagingPasswordKey;
-  phone: string | null;
-}[] = [
-  {
-    role: 'STAFF',
-    name: 'Campus Cafe Staff',
-    email: 'staff@campuscafe.local',
-    localPassword: 'staff123',
-    stagingPassword: 'SEED_STAFF_PASSWORD',
-    phone: null,
-  },
-  {
-    // The site-wide admin dashboard (/admin). Not a restaurant role: it has no staff powers.
-    role: 'ADMIN',
-    name: 'Site Admin',
-    email: 'admin@campuscafe.local',
-    localPassword: 'admin123',
-    stagingPassword: 'SEED_ADMIN_PASSWORD',
-    phone: null,
-  },
-  {
-    role: 'CUSTOMER',
-    name: 'Anishka',
-    email: 'anishka@example.com',
-    localPassword: 'test1234',
-    stagingPassword: 'SEED_CUSTOMER_PASSWORD',
-    phone: '9876543210',
-  },
-];
+import type { Tables, TablesInsert } from '../src/types/database';
+import { BRANDS, DEMO_ACCOUNTS, type SeedBrand, type SeedMenuItem } from './seed-data';
 
 const ACCOUNTS = DEMO_ACCOUNTS.map(({ localPassword, stagingPassword, ...account }) => ({
   ...account,
   password: env.APP_ENV === 'staging' ? (env[stagingPassword] ?? '') : localPassword,
 }));
 
-async function seedStore(): Promise<Tables<'stores'>> {
+/** A brand, found by slug so a re-seed keeps its id. */
+async function upsertBrand(brand: SeedBrand, ownerIds: Map<string, string>): Promise<string> {
+  const row = {
+    name: brand.name,
+    slug: brand.slug,
+    description: brand.description,
+    status: 'ACTIVE' as const,
+    owner_id: ownerIds.get(brand.ownerEmail) ?? null,
+  };
+  const { data: saved } = await db
+    .from('brands')
+    .upsert(row, { onConflict: 'slug' })
+    .select('id')
+    .single()
+    .throwOnError();
+  return saved.id;
+}
+
+/** A later branch opens as a copy of the brand template, the way an owner opens one (P3.1); a re-seed keeps it. */
+async function openBranchIfMissing(brandId: string, name: string, slug: string): Promise<void> {
   const { data: existing } = await db
     .from('stores')
     .select('id')
-    .limit(1)
+    .eq('slug', slug)
     .maybeSingle()
     .throwOnError();
-  const { data: store } = existing
-    ? await db.from('stores').update(STORE).eq('id', existing.id).select().single().throwOnError()
-    : await db.from('stores').insert(STORE).select().single().throwOnError();
-  return store;
+  if (existing) return;
+  await db
+    .rpc('create_store_from_template', { p_brand_id: brandId, p_name: name, p_slug: slug })
+    .throwOnError();
 }
 
-async function seedMenu(storeId: string): Promise<Tables<'menu_items'>[]> {
+async function seedMenu(storeId: string, menu: SeedMenuItem[]): Promise<Tables<'menu_items'>[]> {
+  // By name, not the whole table: PostgREST caps a response at 1000 rows, so a large menu would hide seeded items and
+  // insert duplicates (server/test/api/menu-cap.test.ts).
+  const names = menu.map((item) => item.name);
   const { data: current } = await db
     .from('menu_items')
     .select('id, name')
     .eq('store_id', storeId)
+    .in('name', names)
     .throwOnError();
   const idByName = new Map(current.map((item) => [item.name, item.id]));
 
   const items: Tables<'menu_items'>[] = [];
-  for (const [index, item] of MENU.entries()) {
+  for (const [index, item] of menu.entries()) {
     const row = {
       store_id: storeId,
       category: item.category,
       name: item.name,
       description: item.description,
-      price: item.price,
+      price_paise: item.pricePaise,
       image_url: item.imageUrl,
       is_popular: item.isPopular ?? false,
       is_available: item.isAvailable ?? true,
@@ -209,14 +83,20 @@ async function seedMenu(storeId: string): Promise<Tables<'menu_items'>[]> {
     items.push(saved);
   }
 
-  // Items dropped from the list above disappear from the menu (safe: orders were wiped first).
-  const keep = new Set(MENU.map((item) => item.name));
-  const stale = current.filter((item) => !keep.has(item.name)).map((item) => item.id);
-  if (stale.length > 0) await db.from('menu_items').delete().in('id', stale).throwOnError();
+  // Everything else in the store goes: items dropped from the list and duplicates of seeded names (safe: orders were
+  // wiped first). Filtered by the ids just saved, a short list whatever the menu's size; listing the stale ids instead
+  // overflows the request URL on a large menu.
+  await db
+    .from('menu_items')
+    .delete()
+    .eq('store_id', storeId)
+    .not('id', 'in', `(${items.map((item) => item.id).join(',')})`)
+    .throwOnError();
   return items;
 }
 
-async function seedAccounts(): Promise<void> {
+async function seedAccounts(): Promise<Map<string, string>> {
+  const ids = new Map<string, string>();
   for (const { password, role, ...account } of ACCOUNTS) {
     const { data: existing } = await db
       .from('profiles')
@@ -242,14 +122,49 @@ async function seedAccounts(): Promise<void> {
       .update({ name: account.name, phone: account.phone, role })
       .eq('id', data.user.id)
       .throwOnError();
+    ids.set(account.email, data.user.id);
   }
 
-  // Accounts registered while testing are removed so the project is back to the two test accounts.
+  // Accounts registered while testing are removed so the project is back to the demo accounts.
   const keep = new Set(ACCOUNTS.map((account) => account.email));
   const { data: profiles } = await db.from('profiles').select('id, email').throwOnError();
   for (const profile of profiles.filter((p) => !keep.has(p.email))) {
     const { error } = await db.auth.admin.deleteUser(profile.id); // cascades to the profile
     if (error) throw new Error(`Could not remove the account ${profile.email}: ${error.message}`);
+  }
+  return ids;
+}
+
+/** Each demo account's store membership; any other membership of a demo account (a test's) is removed. */
+async function seedMemberships(accountIds: Map<string, string>): Promise<void> {
+  // Only the demo slugs: an unfiltered read is capped at 1000 rows, so a demo store could be missing.
+  const slugs = DEMO_ACCOUNTS.flatMap(({ store }) => (store ? [store.slug] : []));
+  const { data: stores } = await db
+    .from('stores')
+    .select('id, slug')
+    .in('slug', slugs)
+    .throwOnError();
+  const storeIds = new Map(stores.map((store) => [store.slug, store.id]));
+  const rows: TablesInsert<'store_memberships'>[] = [];
+  for (const { email, store } of DEMO_ACCOUNTS) {
+    const userId = accountIds.get(email);
+    if (!store || !userId) continue;
+    const storeId = storeIds.get(store.slug);
+    if (!storeId)
+      throw new Error(`${email} works at ${store.slug}, which the seed does not create.`);
+    rows.push({ user_id: userId, store_id: storeId, role: store.role });
+  }
+  // An unchanged row is no change, so a re-seed writes no audit rows for it.
+  await db
+    .from('store_memberships')
+    .upsert(rows, { onConflict: 'user_id,store_id' })
+    .throwOnError();
+  // Deleted by predicate per account: a read of every membership would be capped by the Data API.
+  const kept = new Map(rows.map((row) => [row.user_id, row.store_id]));
+  for (const userId of accountIds.values()) {
+    const stale = db.from('store_memberships').delete().eq('user_id', userId);
+    const storeId = kept.get(userId);
+    await (storeId ? stale.neq('store_id', storeId) : stale).throwOnError();
   }
 }
 
@@ -257,8 +172,32 @@ function describeMenu(store: Tables<'stores'>, menuItems: Tables<'menu_items'>[]
   const popular = menuItems.filter((item) => item.is_popular).length;
   const unavailable = menuItems.filter((item) => !item.is_available).length;
   const limited = menuItems.filter((item) => item.stock_quantity !== null);
-  return `  Store     ${store.name} — ${menuItems.length} menu items (${popular} popular, ${unavailable} unavailable)
-  Stock     ${limited.map((item) => `${item.name} ${item.stock_quantity}`).join(', ')} (everything else unlimited)`;
+  const stock = limited.map((item) => `${item.name} ${item.stock_quantity}`).join(', ');
+  return `  Store     ${store.name} (${store.area}) — ${menuItems.length} menu items (${popular} popular, ${unavailable} unavailable)${stock ? `\n  Stock     ${stock}` : ''}`;
+}
+
+/**
+ * Seeds brands with their stores and menus; `ownerIds` is empty in production, which has no demo accounts. A brand's
+ * first store is its template's source; the template is made once, from that store's menu.
+ */
+async function seedBrands(brands: SeedBrand[], ownerIds: Map<string, string>): Promise<string[]> {
+  const lines: string[] = [];
+  for (const brand of brands) {
+    const brandId = await upsertBrand(brand, ownerIds);
+    for (const [index, { menu, ...fields }] of brand.stores.entries()) {
+      if (index > 0) await openBranchIfMissing(brandId, fields.name, fields.slug);
+      const { data: store } = await db
+        .from('stores')
+        .upsert({ ...fields, brand_id: brandId, status: 'ACTIVE' }, { onConflict: 'slug' })
+        .select()
+        .single()
+        .throwOnError();
+      lines.push(describeMenu(store, await seedMenu(store.id, menu)));
+      if (index === 0)
+        await db.rpc('ensure_brand_template', { p_brand_id: brandId }).throwOnError();
+    }
+  }
+  return lines;
 }
 
 async function seedDemo(): Promise<void> {
@@ -273,16 +212,35 @@ async function seedDemo(): Promise<void> {
   }
   // Orders are demo data: wipe them so numbering starts from #1001 again.
   await db.rpc('reset_demo_orders').throwOnError();
+  // Hand-made stock changes are demo data too, and their rows would block deleting an item dropped from the menu.
+  await db.from('stock_movements').delete().gte('id', 0).throwOnError();
 
-  const store = await seedStore();
-  const menuItems = await seedMenu(store.id);
-  await seedAccounts();
+  const accountIds = await seedAccounts();
+  const stores = await seedBrands(BRANDS, accountIds);
+  await seedMemberships(accountIds);
   // Back to the defaults, so every demo reset (and every test run) starts from the same limits.
   await db
     .from('site_settings')
-    .update({ customer_order_history_limit: 20, staff_order_list_limit: 100, updated_by: null })
+    .update({
+      customer_order_history_limit: 20,
+      max_lines_per_order: 30,
+      order_poll_ms: 4000,
+      orders_poll_ms: 8000,
+      staff_board_poll_ms: 4000,
+      client_error_sample_percent: 100,
+      min_client_version: '0.0.0',
+      updated_by: null,
+    })
     .eq('id', true)
     .throwOnError();
+
+  // The menus point at the bundled photos (seed-data.ts); move them to the media store as an operator would
+  // (migrate:media), so a fresh database never shows /images/. Without a reachable store (staging until P8 gives it a
+  // bucket) they stay bundled.
+  await migrateBundledPhotos(logger).catch((err: unknown) => {
+    if (!(err instanceof IntegrationError)) throw err;
+    logger.warn({ err }, 'Photos left bundled: the media store is not available');
+  });
 
   // Never log emails or passwords, in any environment (CWE-532): logs can be centralized and read by more people
   // than the terminal that ran the seed. Demo logins are documented in README.md "Test accounts" instead.
@@ -290,7 +248,7 @@ async function seedDemo(): Promise<void> {
 
   logger.info(`
 Seeded Food Pickup (${env.APP_ENV}: ${env.SUPABASE_URL})
-${describeMenu(store, menuItems)}
+${stores.join('\n')}
   Orders    next order number is #1001
 
 Test accounts (${accounts}) — see README.md "Test accounts" for logins
@@ -311,14 +269,14 @@ async function setUpProduction(): Promise<void> {
     return;
   }
 
-  const store = await seedStore();
-  const menuItems = await seedMenu(store.id);
+  const stores = await seedBrands(BRANDS.slice(0, 1), new Map());
   logger.info(`
 Set up Food Pickup (production: ${env.SUPABASE_URL})
-${describeMenu(store, menuItems)}
+${stores.join('\n')}
 
 No accounts were created. To add a staff member: Supabase dashboard → Authentication → Add user (auto-confirm),
-then in the SQL editor: update public.profiles set role = 'STAFF' where email = '<their email>';
+then in the SQL editor: insert into public.store_memberships (user_id, store_id, role) select id, '<store id>', 'STAFF'
+from public.profiles where email = '<their email>';  -- or invite them from /manage once an owner or manager exists
 `);
 }
 
@@ -331,7 +289,7 @@ async function main(): Promise<void> {
   if (!productionFlag) {
     throw new Error(
       'APP_ENV is production, and the demo seed wipes every order and account. ' +
-        'For first-time setup of an empty production project run `npm run seed -- --production` instead.',
+        'For first-time setup of an empty production project run `pnpm run seed --production` instead.',
     );
   }
   return setUpProduction();

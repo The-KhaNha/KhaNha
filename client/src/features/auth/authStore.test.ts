@@ -1,5 +1,8 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Session } from '@supabase/supabase-js';
 import type { User } from '../../types/api';
+import { signIn } from '../../services/auth';
+import { fillStorage } from '../../test/storage';
 import { SESSION_IDLE_TTL_MS, markActive, readLastActive } from './sessionActivity';
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -12,14 +15,17 @@ const me: User = {
   phone: null,
   role: 'CUSTOMER',
   createdAt: '2026-09-27T00:00:00Z',
+  memberships: [],
+  ownedBrands: [],
 };
 vi.mock('../../lib/supabase', () => ({
-  supabase: {
+  getSupabase: async () => ({
     auth: {
       getSession: async () => ({ data: { session: null } }),
       onAuthStateChange: () => {},
     },
-  },
+  }),
+  mayHaveSession: () => true,
 }));
 vi.mock('../../services/auth', () => ({
   fetchMe: async () => ({ user: me }),
@@ -27,7 +33,10 @@ vi.mock('../../services/auth', () => ({
   signOut: () => signOut(),
   register: vi.fn(),
 }));
-vi.mock('../../services/api', () => ({ ApiError: class ApiError extends Error {} }));
+vi.mock('../../services/api', () => ({
+  ApiError: class ApiError extends Error {},
+  loadSupabase: async () => (await import('../../lib/supabase')).getSupabase(),
+}));
 
 // A visibilitychange listener is registered once, as a side effect of importing this module.
 const { useAuthStore } = await import('./authStore');
@@ -89,5 +98,49 @@ describe('authStore: visibilitychange idle check', () => {
     setHidden(false);
     fireVisibilityChange();
     expect(signOut).not.toHaveBeenCalled();
+  });
+});
+
+// A full quota (older iOS private mode, some WebViews) made every set() throw through zustand's persist: a correct
+// password showed "Something went wrong." and the catch's clearSession() threw again.
+describe('authStore with browser storage full', () => {
+  let full: ReturnType<typeof fillStorage>;
+  beforeEach(() => {
+    full = fillStorage();
+  });
+  afterEach(() => {
+    full.mockRestore();
+    localStorage.clear();
+    useAuthStore.setState({ user: null, token: null });
+  });
+
+  it('login signs in (in memory)', async () => {
+    vi.mocked(signIn).mockResolvedValueOnce({ access_token: 'tok' } as Session);
+    await expect(useAuthStore.getState().login('t@example.test', 'pw')).resolves.toEqual(me);
+    expect(useAuthStore.getState()).toMatchObject({ user: me, token: 'tok' });
+    expect(full).toHaveBeenCalled();
+  });
+
+  it('hydrate and clearSession do not throw', async () => {
+    await expect(useAuthStore.getState().hydrate()).resolves.toBeUndefined();
+    useAuthStore.setState({ user: me, token: 'tok' });
+    expect(() => useAuthStore.getState().clearSession()).not.toThrow();
+    expect(useAuthStore.getState()).toMatchObject({ user: null, token: null });
+  });
+});
+
+describe('authStore.addMembership', () => {
+  const cafe = { storeId: 's1', storeSlug: 'cafe', storeName: 'Cafe', role: 'STAFF' as const };
+
+  it('adds the store once, replacing an older role there', () => {
+    useAuthStore.setState({ user: { ...me, memberships: [cafe] }, token: 't' });
+    useAuthStore.getState().addMembership({ ...cafe, role: 'MANAGER' });
+    expect(useAuthStore.getState().user?.memberships).toEqual([{ ...cafe, role: 'MANAGER' }]);
+  });
+
+  it('does nothing when nobody is signed in', () => {
+    useAuthStore.setState({ user: null, token: null });
+    useAuthStore.getState().addMembership(cafe);
+    expect(useAuthStore.getState().user).toBeNull();
   });
 });

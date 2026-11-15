@@ -1,16 +1,29 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Clock } from 'lucide-react';
+import { cn } from '../lib/cn';
+import { LazyGroup } from '../components/LazyGroup';
+import { CARD_GROUP, chunked } from '../lib/chunked';
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useParams } from 'react-router-dom';
+import { Clock, UtensilsCrossed } from 'lucide-react';
 import type { MenuItem } from '../types/api';
+import { EmptyState } from '../components/EmptyState';
 import { ErrorState } from '../components/ErrorState';
 import { FoodCard, FoodCardSkeleton } from '../components/FoodCard';
+import { FoodPhotoGate } from '../components/FoodPhoto';
 import { OpenPill } from '../components/OpenPill';
 import { PopularRail, PopularRailSkeleton } from '../components/PopularRail';
 import { Skeleton } from '../components/Skeleton';
 import { CategoryChips, type MenuSection } from '../features/menu/CategoryChips';
+import { AddToCartProvider } from '../features/cart/AddToCart';
 import { ItemDetailSheet } from '../features/menu/ItemDetailSheet';
-import { useMenu } from '../features/menu/useMenu';
+import { useStoreMenu } from '../features/stores/useStoreMenu';
+import { NotFoundPage } from './NotFound';
 import { formatPrepRange } from '../lib/format';
-import { photoSrcSet } from '../lib/photo';
+import { LCP_IMAGE_PROPS, photoSrcSet } from '../lib/photo';
+import { useImagePainted } from '../lib/useImagePainted';
+import { scrollBehavior } from '../lib/useReducedMotion';
+
+/** Longest the food photos wait for the cover before loading anyway (a stalled cover must not hide the food). */
+const COVER_MAX_WAIT_MS = 2000;
 
 interface Section extends MenuSection {
   items: MenuItem[];
@@ -26,7 +39,9 @@ function slugify(value: string): string {
 }
 
 export function MenuPage() {
-  const { menu, isLoading, error, retry } = useMenu();
+  const { storeSlug = '' } = useParams();
+  const { menu, isLoading, error, retry } = useStoreMenu(storeSlug);
+  const { ref: coverRef, painted: coverPainted } = useImagePainted(COVER_MAX_WAIT_MS);
   const [selected, setSelected] = useState<MenuItem | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [scrolled, setScrolled] = useState(false);
@@ -70,11 +85,13 @@ export function MenuPage() {
     const el = document.getElementById(`section-${id}`);
     if (!el) return;
     const top = el.getBoundingClientRect().top + window.scrollY - SCROLL_OFFSET;
-    window.scrollTo({ top, behavior: 'smooth' });
+    window.scrollTo({ top, behavior: scrollBehavior() });
   }
 
   if (isLoading) return <MenuSkeleton />;
 
+  // No such store: a retry cannot fix it, so the 404 page, as on the store's own page.
+  if (error?.status === 404 && !menu) return <NotFoundPage />;
   if (error && !menu) {
     return (
       <ErrorState
@@ -89,8 +106,11 @@ export function MenuPage() {
   if (!menu) return null;
   const { store } = menu;
 
+  // Counts card groups as they render, so only the first two (on screen at load) mount at once.
+  let groupsBefore = 0;
   return (
-    <div className="animate-fade-up">
+    // The storefront header paints at once (it holds the page's largest paint); only the lists below fade in.
+    <AddToCartProvider store={store} rules={menu.rules}>
       {/* The saved menu stays usable when a refresh fails; say so instead of hiding it (checkout re-checks stock). */}
       {error && (
         <ErrorState
@@ -105,25 +125,34 @@ export function MenuPage() {
       )}
       {/* Storefront header: name + tagline live on the photo so food appears sooner. */}
       <section className="pt-4">
-        <div className="relative aspect-[21/9] overflow-hidden rounded-[28px] bg-surface-2 shadow-card">
+        {/* In-flow pills and title, and no overflow clip, so enlarged text makes the cover taller instead of stacking
+            the title under the pills (the photo and scrim carry the rounding). */}
+        <div className="relative flex aspect-[21/9] flex-col justify-between rounded-card bg-surface-2 shadow-card">
           {store.imageUrl && (
             <img
+              ref={coverRef}
               src={store.imageUrl}
               srcSet={photoSrcSet(store.imageUrl)}
               sizes="(min-width: 768px) 640px, calc(100vw - 32px)"
+              {...LCP_IMAGE_PROPS}
               alt=""
-              className="h-full w-full object-cover"
+              className="absolute inset-0 h-full w-full rounded-card object-cover"
             />
           )}
-          <div aria-hidden className="absolute inset-x-0 bottom-0 h-[72%] store-scrim" />
-          <OpenPill isOpen={store.isOpen} className="absolute left-3 top-3" />
-          <span className="absolute right-3 top-3 inline-flex h-9 items-center gap-1.5 rounded-full bg-surface/92 px-3 text-[13px] font-semibold text-ink shadow-sm backdrop-blur-md">
-            <Clock className="h-4 w-4 text-brand-600" strokeWidth={2.5} aria-hidden />
-            {formatPrepRange(store.prepTimeMinMinutes, store.prepTimeMaxMinutes)}
-          </span>
-          <div className="absolute inset-x-4 bottom-4 text-white">
-            <h1 className="text-[26px] font-extrabold leading-[1.15]">{store.name}</h1>
-            <p className="mt-0.5 text-[14px] font-semibold text-white">{store.tagline}</p>
+          <div
+            aria-hidden
+            className="absolute inset-x-0 bottom-0 h-[72%] rounded-b-card store-scrim"
+          />
+          <div className="relative flex flex-wrap items-start justify-between gap-2 p-3">
+            <OpenPill state={store.openState} label={store.openLabel} />
+            <span className="inline-flex h-9 items-center gap-1.5 rounded-full bg-surface/92 px-3 text-caption font-semibold text-ink shadow-sm backdrop-blur-md">
+              <Clock className="h-4 w-4 text-brand-600" strokeWidth={2.5} aria-hidden />
+              {formatPrepRange(store.prepTimeMinMinutes, store.prepTimeMaxMinutes)}
+            </span>
+          </div>
+          <div className="relative px-4 pb-4 text-white">
+            <h1 className="text-title font-extrabold leading-[1.15]">{store.name}</h1>
+            <p className="mt-0.5 text-sm font-semibold text-white">{store.tagline}</p>
           </div>
         </div>
       </section>
@@ -137,42 +166,80 @@ export function MenuPage() {
         scrolled={scrolled}
       />
 
-      {sections.map((section) =>
-        section.isPopular ? (
-          <PopularRail
-            key={section.id}
-            id={section.id}
-            items={section.items}
-            onOpen={setSelected}
-          />
-        ) : (
-          <section
-            key={section.id}
-            id={`section-${section.id}`}
-            aria-labelledby={`heading-${section.id}`}
-            className="pt-6"
-          >
-            <h2 id={`heading-${section.id}`} className="eyebrow mb-3 text-muted">
-              {section.name}
-            </h2>
-            <div className="space-y-3 md:grid md:grid-cols-2 md:gap-3 md:space-y-0">
-              {section.items.map((item) => (
-                <FoodCard key={item.id} item={item} onOpen={setSelected} />
-              ))}
-            </div>
-          </section>
-        ),
-      )}
+      {/* Food photos wait until the cover (the page's largest paint) is on screen, so it gets the bandwidth first. */}
+      <FoodPhotoGate held={Boolean(store.imageUrl) && !coverPainted}>
+        <div className="animate-fade-up">
+          {sections.length === 0 && (
+            <EmptyState
+              icon={UtensilsCrossed}
+              title="Nothing on the menu right now."
+              description="The kitchen is updating it. Check back in a little while."
+            />
+          )}
+          {sections.map((section) =>
+            section.isPopular ? (
+              <PopularRail
+                key={section.id}
+                id={section.id}
+                items={section.items}
+                onOpen={setSelected}
+              />
+            ) : (
+              <section
+                key={section.id}
+                id={`section-${section.id}`}
+                aria-labelledby={`heading-${section.id}`}
+                className="pt-6"
+              >
+                <h2 id={`heading-${section.id}`} className="eyebrow mb-3 text-muted">
+                  {section.name}
+                </h2>
+                {/* A menu can hold 500 items (MENU_ITEMS_MAX): a group of cards off screen skips style, layout and
+                    paint, so an Add tap redraws what is visible (about 60 ms at 500 items, as at 14, against 200+
+                    without), and one category of hundreds skips as well as many small ones. Groups, not cards or
+                    sections: WebKit could not scroll a contained card, or a group inside a contained section, into
+                    view to tap it. The containment clips paint to the group, so it reaches out to the side and 40px
+                    below the last card (-mx/px, pb/-mb; the hover shadow reaches 42px down). The size stands in until
+                    the group is first drawn, then `auto` keeps the real one; rem, so it scales with the text. */}
+                {chunked(section.items, CARD_GROUP).map((group, at) => (
+                  <LazyGroup
+                    // By place, not by first item: an archived item would otherwise re-key every later group and
+                    // remount its cards, losing their remembered sizes.
+                    key={at}
+                    // The first two groups of the menu are on screen at load: mounted at once.
+                    eager={groupsBefore++ < 2}
+                    placeholderClassName="md:col-span-2 [height:calc(var(--cards)*9.25rem)] md:[height:calc(var(--cards)*4.625rem)]"
+                    className={cn(
+                      // pt-2/-mt-2: room above the first card for its hover lift and shadow (paint is clipped here).
+                      '-mx-4 -mb-10 space-y-3 px-4 pt-2 pb-10 md:-mx-6 md:grid md:grid-cols-2 md:gap-3 md:space-y-0 md:px-6 [content-visibility:auto]',
+                      at > 0 ? 'mt-1' : '-mt-2',
+                      // A card's row is ~9.25rem: one per row on a phone, two from md.
+                      '[contain-intrinsic-size:auto_calc(var(--cards)*9.25rem)] md:[contain-intrinsic-size:auto_calc(var(--cards)*4.625rem)]',
+                    )}
+                    style={{ '--cards': group.length } as CSSProperties}
+                  >
+                    {() =>
+                      group.map((item) => (
+                        <FoodCard key={item.id} item={item} onOpen={setSelected} />
+                      ))
+                    }
+                  </LazyGroup>
+                ))}
+              </section>
+            ),
+          )}
+        </div>
+      </FoodPhotoGate>
 
-      <ItemDetailSheet item={selected} onClose={closeSheet} />
-    </div>
+      <ItemDetailSheet item={selected} onClose={closeSheet} groups={menu.modifierGroups} />
+    </AddToCartProvider>
   );
 }
 
 function MenuSkeleton() {
   return (
     <div className="pt-4" aria-busy aria-label="Loading menu">
-      <Skeleton className="aspect-[21/9] w-full rounded-[28px]" />
+      <Skeleton className="aspect-[21/9] w-full rounded-card" />
       <div className="mt-3 flex gap-2 py-3">
         <Skeleton className="h-11 w-20" round />
         <Skeleton className="h-11 w-24" round />

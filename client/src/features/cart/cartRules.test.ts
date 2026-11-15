@@ -1,18 +1,24 @@
 import { describe, expect, it } from 'vitest';
+import type { ModifierGroup } from '../../types/api';
 import {
-  MAX_LINE_QUANTITY,
   availableQuantity,
   describeProblem,
   describeProblems,
   isItemErrorCode,
   isLowStock,
   limitCaption,
+  orderItems,
   lineLimit,
   lineProblem,
+  optionsUnorderable,
   problemLabel,
   unavailableLabel,
+  type CartLimits,
 } from './cartRules';
 import type { CartLine } from './cartStore';
+
+const LIMITS: CartLimits = { maxQuantityPerItem: 10, lowStockThreshold: 5 };
+const CAP = LIMITS.maxQuantityPerItem;
 
 describe('availableQuantity', () => {
   it('is 0 when the item is unavailable, regardless of stock', () => {
@@ -31,14 +37,20 @@ describe('availableQuantity', () => {
 
 describe('isLowStock', () => {
   it('is true for a tracked item at or below the threshold', () => {
-    expect(isLowStock({ isAvailable: true, stockQuantity: 5 })).toBe(true);
-    expect(isLowStock({ isAvailable: true, stockQuantity: 1 })).toBe(true);
+    expect(isLowStock({ isAvailable: true, stockQuantity: 5 }, LIMITS)).toBe(true);
+    expect(isLowStock({ isAvailable: true, stockQuantity: 1 }, LIMITS)).toBe(true);
+  });
+
+  it('uses the store’s own threshold', () => {
+    const store = { ...LIMITS, lowStockThreshold: 2 };
+    expect(isLowStock({ isAvailable: true, stockQuantity: 3 }, store)).toBe(false);
+    expect(isLowStock({ isAvailable: true, stockQuantity: 2 }, store)).toBe(true);
   });
 
   it('is false above the threshold, when unavailable, or when untracked', () => {
-    expect(isLowStock({ isAvailable: true, stockQuantity: 6 })).toBe(false);
-    expect(isLowStock({ isAvailable: false, stockQuantity: 1 })).toBe(false);
-    expect(isLowStock({ isAvailable: true, stockQuantity: null })).toBe(false);
+    expect(isLowStock({ isAvailable: true, stockQuantity: 6 }, LIMITS)).toBe(false);
+    expect(isLowStock({ isAvailable: false, stockQuantity: 1 }, LIMITS)).toBe(false);
+    expect(isLowStock({ isAvailable: true, stockQuantity: null }, LIMITS)).toBe(false);
   });
 });
 
@@ -53,39 +65,48 @@ describe('unavailableLabel', () => {
   });
 });
 
-describe('MAX_LINE_QUANTITY', () => {
-  it('is fixed at 10, matching the server cap', () => {
-    expect(MAX_LINE_QUANTITY).toBe(10);
-  });
-});
-
 describe('lineLimit', () => {
   it('is the per-order cap when there is no stock limit', () => {
-    expect(lineLimit(null)).toBe(MAX_LINE_QUANTITY);
-    expect(lineLimit(undefined)).toBe(MAX_LINE_QUANTITY);
+    expect(lineLimit(null, LIMITS)).toBe(CAP);
+    expect(lineLimit(undefined, LIMITS)).toBe(CAP);
+  });
+
+  it('is limited by the store’s own cap, whatever the stock', () => {
+    const store = { ...LIMITS, maxQuantityPerItem: 3 };
+    expect(lineLimit(null, store)).toBe(3);
+    expect(lineLimit(8, store)).toBe(3);
+    expect(lineLimit(2, store)).toBe(2);
+    expect(lineProblem(cartLine({ quantity: 4 }), store)).toEqual({
+      kind: 'over-limit',
+      available: 3,
+    });
   });
 
   it('is the smaller of stock and the per-order cap', () => {
-    expect(lineLimit(3)).toBe(3);
-    expect(lineLimit(999)).toBe(MAX_LINE_QUANTITY);
+    expect(lineLimit(3, LIMITS)).toBe(3);
+    expect(lineLimit(999, LIMITS)).toBe(CAP);
   });
 });
 
-function cartLine(overrides: Partial<CartLine> = {}): Pick<CartLine, 'quantity' | 'maxQuantity'> {
-  return { quantity: 1, maxQuantity: null, ...overrides };
+function cartLine(
+  overrides: Partial<CartLine> = {},
+): Pick<CartLine, 'lineKey' | 'menuItemId' | 'quantity' | 'maxQuantity'> {
+  return { lineKey: 'm1', menuItemId: 'm1', quantity: 1, maxQuantity: null, ...overrides };
 }
 
 describe('lineProblem', () => {
   it('is null when the quantity is within the limit', () => {
-    expect(lineProblem(cartLine({ quantity: 2, maxQuantity: 5 }))).toBeNull();
+    expect(lineProblem(cartLine({ quantity: 2, maxQuantity: 5 }), LIMITS)).toBeNull();
   });
 
   it('is "sold-out" when the limit is 0', () => {
-    expect(lineProblem(cartLine({ quantity: 1, maxQuantity: 0 }))).toEqual({ kind: 'sold-out' });
+    expect(lineProblem(cartLine({ quantity: 1, maxQuantity: 0 }), LIMITS)).toEqual({
+      kind: 'sold-out',
+    });
   });
 
   it('is "over-limit" with the available count when the quantity exceeds the limit', () => {
-    expect(lineProblem(cartLine({ quantity: 3, maxQuantity: 2 }))).toEqual({
+    expect(lineProblem(cartLine({ quantity: 3, maxQuantity: 2 }), LIMITS)).toEqual({
       kind: 'over-limit',
       available: 2,
     });
@@ -110,7 +131,9 @@ describe('describeProblems', () => {
   it('joins one sentence per flagged line and skips lines with no problem', () => {
     const lines: CartLine[] = [
       {
+        lineKey: '1',
         menuItemId: '1',
+        options: [],
         name: 'Cheese Toast',
         unitPrice: 130,
         imageUrl: null,
@@ -118,7 +141,9 @@ describe('describeProblems', () => {
         maxQuantity: 1,
       },
       {
+        lineKey: '2',
         menuItemId: '2',
+        options: [],
         name: 'Cold Coffee',
         unitPrice: 120,
         imageUrl: null,
@@ -126,7 +151,9 @@ describe('describeProblems', () => {
         maxQuantity: null,
       },
       {
+        lineKey: '3',
         menuItemId: '3',
+        options: [],
         name: 'Brownie',
         unitPrice: 110,
         imageUrl: null,
@@ -134,13 +161,15 @@ describe('describeProblems', () => {
         maxQuantity: 0,
       },
     ];
-    expect(describeProblems(lines)).toBe('Only 1 Cheese Toast left. Brownie is sold out.');
+    expect(describeProblems(lines, LIMITS)).toBe('Only 1 Cheese Toast left. Brownie is sold out.');
   });
 
   it('is empty when nothing is flagged', () => {
     const lines: CartLine[] = [
       {
+        lineKey: '1',
         menuItemId: '1',
+        options: [],
         name: 'Cold Coffee',
         unitPrice: 120,
         imageUrl: null,
@@ -148,23 +177,23 @@ describe('describeProblems', () => {
         maxQuantity: null,
       },
     ];
-    expect(describeProblems(lines)).toBe('');
+    expect(describeProblems(lines, LIMITS)).toBe('');
   });
 });
 
 describe('limitCaption', () => {
   it('names the stock left when it is below the per-order cap', () => {
-    expect(limitCaption(3)).toBe('Only 3 available');
+    expect(limitCaption(3, LIMITS)).toBe('Only 3 available');
   });
 
   it('names the per-order cap otherwise', () => {
-    expect(limitCaption(null)).toBe(`Max ${MAX_LINE_QUANTITY} per order`);
-    expect(limitCaption(undefined)).toBe(`Max ${MAX_LINE_QUANTITY} per order`);
-    expect(limitCaption(MAX_LINE_QUANTITY)).toBe(`Max ${MAX_LINE_QUANTITY} per order`);
+    expect(limitCaption(null, LIMITS)).toBe(`Max ${CAP} per order`);
+    expect(limitCaption(undefined, LIMITS)).toBe(`Max ${CAP} per order`);
+    expect(limitCaption(CAP, LIMITS)).toBe(`Max ${CAP} per order`);
   });
 
-  it('reads "Max 10 per order" (the fixed cap, spelled out)', () => {
-    expect(limitCaption(null)).toBe('Max 10 per order');
+  it('reads the store’s own cap, not a fixed one', () => {
+    expect(limitCaption(null, { ...LIMITS, maxQuantityPerItem: 3 })).toBe('Max 3 per order');
   });
 });
 
@@ -178,5 +207,184 @@ describe('isItemErrorCode', () => {
   it('is false for anything else', () => {
     expect(isItemErrorCode('VALIDATION_ERROR')).toBe(false);
     expect(isItemErrorCode('STORE_CLOSED')).toBe(false);
+  });
+});
+
+describe('orderItems', () => {
+  const line = (unitPrice: number): CartLine => ({
+    lineKey: 'm1',
+    menuItemId: 'm1',
+    options: [],
+    name: 'Cheese Toast',
+    unitPrice,
+    imageUrl: null,
+    quantity: 2,
+    maxQuantity: null,
+  });
+
+  it('sends the price on screen as expectedUnitPrice', () => {
+    expect(orderItems([line(120)])).toEqual([
+      { menuItemId: 'm1', quantity: 2, expectedUnitPrice: 120 },
+    ]);
+  });
+
+  it('omits a price the server would reject (0, fractional, negative) instead of failing every retry', () => {
+    for (const bad of [0, 49.5, -10, Number.NaN]) {
+      expect(orderItems([line(bad)])).toEqual([{ menuItemId: 'm1', quantity: 2 }]);
+    }
+  });
+});
+
+describe('lines of one item share its limit', () => {
+  const store = { ...LIMITS, maxQuantityPerItem: 10 };
+  it('flags the line past what the others leave', () => {
+    const a = cartLine({ lineKey: 'm1', quantity: 2, maxQuantity: 3 });
+    const b = cartLine({ lineKey: 'm1:o', quantity: 2, maxQuantity: 3 });
+    expect(lineProblem(a, store, [a, b])).toEqual({ kind: 'over-limit', available: 1 });
+    expect(
+      lineProblem(cartLine({ lineKey: 'm1:o', quantity: 1, maxQuantity: 2 }), store, [a, b]),
+    ).toEqual({
+      kind: 'sold-out',
+    });
+    expect(lineProblem(a, store)).toBeNull();
+  });
+});
+
+describe('orderItems with options', () => {
+  const base: CartLine = {
+    lineKey: 'm1:o1',
+    menuItemId: 'm1',
+    options: [{ id: 'o1', groupName: 'Size', name: 'Small', priceDelta: -30 }],
+    name: 'Chai',
+    unitPrice: 0,
+    imageUrl: null,
+    quantity: 1,
+    maxQuantity: null,
+  };
+  it("names the line's options, and sends a ₹0 price only when options made it", () => {
+    expect(orderItems([base])).toEqual([
+      { menuItemId: 'm1', quantity: 1, expectedUnitPrice: 0, modifierOptionIds: ['o1'] },
+    ]);
+    expect(orderItems([{ ...base, lineKey: 'm1', options: [] }])).toEqual([
+      { menuItemId: 'm1', quantity: 1 },
+    ]);
+  });
+});
+
+describe('optionsUnorderable', () => {
+  const group = (
+    id: string,
+    minSelect: number,
+    maxSelect: number,
+    options: { id: string; isDefault?: boolean; isAvailable?: boolean }[],
+  ) => ({
+    id,
+    name: id,
+    minSelect,
+    maxSelect,
+    options: options.map((o) => ({
+      name: o.id,
+      priceDelta: 0,
+      isDefault: false,
+      isAvailable: true,
+      ...o,
+    })),
+  });
+  const groups = {
+    size: group('size', 1, 1, [{ id: 'reg', isDefault: true }, { id: 'lg' }]),
+    milk: group('milk', 1, 1, [{ id: 'oat' }, { id: 'soy' }]),
+    extras: group('extras', 0, 2, [
+      { id: 'shot' },
+      { id: 'off', isAvailable: false },
+      { id: 'syrup' },
+    ]),
+  };
+  const item = (ids: string[], price = 100) => ({ modifierGroupIds: ids, price });
+  const opts = (...ids: string[]) => ids.map((id) => ({ id }));
+
+  it('is fine as chosen, and when a required group left out has a default to fill it', () => {
+    expect(optionsUnorderable(item(['size', 'extras']), groups, opts('lg', 'shot'))).toBe(false);
+    expect(optionsUnorderable(item(['size']), groups, [])).toBe(false);
+    expect(optionsUnorderable(item([]), groups, [])).toBe(false);
+  });
+
+  it('flags an option switched off, gone, or no longer the item’s', () => {
+    expect(optionsUnorderable(item(['extras']), groups, opts('off'))).toBe(true);
+    expect(optionsUnorderable(item(['extras']), groups, opts('gone'))).toBe(true);
+    expect(optionsUnorderable(item(['size']), groups, opts('shot'))).toBe(true);
+  });
+
+  it('flags a required group with no default, and a group past its most', () => {
+    expect(optionsUnorderable(item(['milk']), groups, [])).toBe(true);
+    expect(optionsUnorderable(item(['size']), groups, opts('reg', 'lg'))).toBe(true);
+  });
+
+  it('flags a line whose price would be negative, defaults included', () => {
+    const priced = {
+      size: {
+        ...group('size', 1, 1, [{ id: 'reg', isDefault: true }, { id: 'lg' }]),
+        options: [
+          { id: 'reg', name: 'reg', priceDelta: -150, isDefault: true, isAvailable: true },
+          { id: 'lg', name: 'lg', priceDelta: 0, isDefault: false, isAvailable: true },
+        ],
+      },
+    };
+    expect(optionsUnorderable(item(['size'], 100), priced, [])).toBe(true);
+    expect(optionsUnorderable(item(['size'], 100), priced, opts('reg'))).toBe(true);
+    expect(optionsUnorderable(item(['size'], 100), priced, opts('lg'))).toBe(false);
+    expect(optionsUnorderable(item(['size'], 150), priced, [])).toBe(false);
+  });
+});
+
+describe('optionsUnorderable edges', () => {
+  const opt = (id: string, over: Partial<ModifierGroup['options'][number]> = {}) => ({
+    id,
+    name: id,
+    priceDelta: 0,
+    isDefault: false,
+    isAvailable: true,
+    ...over,
+  });
+  const grp = (over: Partial<ModifierGroup> & Pick<ModifierGroup, 'id' | 'options'>) => ({
+    name: over.id,
+    minSelect: 0,
+    maxSelect: 1,
+    ...over,
+  });
+
+  it('an item with no group list, or a group not in the map, offers nothing', () => {
+    expect(optionsUnorderable({ price: 100 } as never, {}, [])).toBe(false);
+    expect(optionsUnorderable({ price: 100 } as never, {}, [{ id: 'x' }])).toBe(true);
+    expect(optionsUnorderable({ modifierGroupIds: ['missing'], price: 100 }, {}, [])).toBe(false);
+  });
+
+  it('an unavailable default does not fill a required group', () => {
+    const g = grp({
+      id: 'g',
+      minSelect: 1,
+      options: [opt('d', { isDefault: true, isAvailable: false })],
+    });
+    expect(optionsUnorderable({ modifierGroupIds: ['g'], price: 100 }, { g }, [])).toBe(true);
+  });
+
+  it('a negative delta on a non-required pick that takes the price below zero is flagged; exactly zero is not', () => {
+    const g = grp({ id: 'g', options: [opt('cheap', { priceDelta: -100 })] });
+    const item = (price: number) => ({ modifierGroupIds: ['g'], price });
+    expect(optionsUnorderable(item(100), { g }, [{ id: 'cheap' }])).toBe(false);
+    expect(optionsUnorderable(item(99), { g }, [{ id: 'cheap' }])).toBe(true);
+  });
+
+  it('a required group with more defaults than its most fills only that many', () => {
+    const g = grp({
+      id: 'g',
+      minSelect: 1,
+      maxSelect: 1,
+      options: [
+        opt('a', { isDefault: true, priceDelta: -60 }),
+        opt('b', { isDefault: true, priceDelta: -60 }),
+      ],
+    });
+    // Only the first default is added: 100 - 60 = 40, not 100 - 120.
+    expect(optionsUnorderable({ modifierGroupIds: ['g'], price: 100 }, { g }, [])).toBe(false);
   });
 });

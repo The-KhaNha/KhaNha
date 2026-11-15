@@ -15,11 +15,18 @@ vi.stubGlobal('IntersectionObserver', NoopObserver);
 const menu: MenuResponse = {
   store: {
     id: 's1',
+    slug: 'cafe',
+    brand: { id: 'b1', name: 'Cafe', slug: 'cafe' },
+    area: null,
+    address: null,
     name: 'Campus Cafe',
     tagline: 'Coffee',
     description: '',
     imageUrl: null,
     isOpen: true,
+    openState: 'OPEN',
+    nextChangeAt: null,
+    openLabel: null,
     prepTimeMinMinutes: 10,
     prepTimeMaxMinutes: 15,
   },
@@ -30,8 +37,8 @@ const state = vi.hoisted(() => ({
   error: null as null | { message: string; isUnreachable: boolean },
   retry: () => {},
 }));
-vi.mock('../features/menu/useMenu', () => ({
-  useMenu: () => ({ menu, isLoading: false, error: state.error, retry: state.retry }),
+vi.mock('../features/stores/useStoreMenu', () => ({
+  useStoreMenu: () => ({ menu, isLoading: false, error: state.error, retry: state.retry }),
 }));
 const { MenuPage } = await import('./Menu');
 
@@ -51,6 +58,8 @@ describe('MenuPage with a saved menu', () => {
   it('shows the saved menu with no notice when the refresh succeeded', () => {
     renderMenu();
     expect(screen.getByRole('heading', { name: 'Campus Cafe' })).toBeInTheDocument();
+    // An empty menu (this one has no items) is an EmptyState, never a blank page under the cover.
+    expect(screen.getByText('Nothing on the menu right now.')).toBeInTheDocument();
     expect(screen.queryByText('Showing your saved menu')).not.toBeInTheDocument();
   });
 

@@ -1,0 +1,49 @@
+version: 2
+updates:
+  # `npm` is Dependabot's ecosystem name for pnpm too: it reads the pnpm-lock.yaml next to each package.json.
+  - package-ecosystem: npm
+    directory: /client
+    schedule: { interval: weekly }
+    # A version must be a week old before it is proposed (a hijacked release is usually caught by then); security
+    # updates are not delayed.
+    cooldown: { default-days: 7 }
+    target-branch: dev
+    labels: [dependencies, no-release]
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: npm
+    directory: /server
+    schedule: { interval: weekly }
+    # A version must be a week old before it is proposed (a hijacked release is usually caught by then); security
+    # updates are not delayed.
+    cooldown: { default-days: 7 }
+    target-branch: dev
+    labels: [dependencies, no-release]
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    # The workflows, and the local composite action they share.
+    directories: [/, /.github/actions/setup-pnpm]
+    schedule: { interval: weekly }
+    # A version must be a week old before it is proposed (a hijacked release is usually caught by then); security
+    # updates are not delayed.
+    cooldown: { default-days: 7 }
+    target-branch: dev
+    labels: [dependencies, no-release]
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+  # Finds nothing until the Dockerfiles land (P0 PR 09).
+  - package-ecosystem: docker
+    directories: [/client, /server]
+    schedule: { interval: weekly }
+    # A version must be a week old before it is proposed (a hijacked release is usually caught by then); security
+    # updates are not delayed.
+    cooldown: { default-days: 7 }
+    target-branch: dev
+    labels: [dependencies, no-release]
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]

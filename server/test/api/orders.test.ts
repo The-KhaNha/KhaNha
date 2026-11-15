@@ -1,11 +1,13 @@
 import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { MAX_QUANTITY_PER_ITEM } from '../../src/schemas/order.schema';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { OrderStatus } from '../../src/types/enums';
+import { invalidate } from '../../src/utils/cache';
+import { paiseToRupees } from '../../src/utils/money';
 import { supabaseAdmin } from '../../src/utils/supabase';
 import {
   createTestUser,
   deleteTestUser,
+  oldestStoreId,
   resetDemoData,
   testAuthMatrix,
   type TestUser,
@@ -37,16 +39,24 @@ beforeAll(async () => {
   const { data: store } = await supabaseAdmin
     .from('stores')
     .select('id')
+    .order('created_at')
+    .order('id')
     .limit(1)
     .single()
     .throwOnError();
   storeId = store.id;
   const { data: rows } = await supabaseAdmin
     .from('menu_items')
-    .select('id, name, price, stock_quantity, is_available')
+    .select('id, name, price_paise, stock_quantity, is_available')
     .eq('store_id', storeId)
     .throwOnError();
-  items = Object.fromEntries(rows.map((row) => [row.name, row]));
+  // Rupees, as the API speaks them.
+  items = Object.fromEntries(
+    rows.map(({ price_paise, ...row }) => [
+      row.name,
+      { ...row, price: paiseToRupees(price_paise) },
+    ]),
+  );
 
   [customer1, customer2, staff] = await Promise.all([
     createTestUser('CUSTOMER'),
@@ -81,6 +91,7 @@ function menuItem(name: string): MenuItemRow {
 
 function orderBody(overrides: OrderBodyOverrides = {}): OrderBodyOverrides {
   return {
+    storeId,
     items: [{ menuItemId: menuItem('Cold Coffee').id, quantity: 1 }],
     ...overrides,
   };
@@ -91,7 +102,10 @@ function placeOrder(user: TestUser, overrides: OrderBodyOverrides = {}) {
 }
 
 function patchStatus(orderId: string, status: string, token = staff.token) {
-  return api().patch(`/api/orders/${orderId}/status`).set(auth(token)).send({ status });
+  return api()
+    .patch(`/api/stores/${storeId}/orders/${orderId}/status`)
+    .set(auth(token))
+    .send({ status });
 }
 
 const NO_STACK_TRACE = /\bat .*\.(ts|js)|stack|PGRST|SQLSTATE|select |insert |update /i;
@@ -103,8 +117,8 @@ const NO_STACK_TRACE = /\bat .*\.(ts|js)|stack|PGRST|SQLSTATE|select |insert |up
 testAuthMatrix('POST /api/orders', (http) => http.post('/api/orders').send(orderBody()));
 testAuthMatrix('GET /api/orders', (http) => http.get('/api/orders'));
 testAuthMatrix('GET /api/orders/:id', (http) => http.get(`/api/orders/${randomUUID()}`));
-testAuthMatrix('PATCH /api/orders/:id/status', (http) =>
-  http.patch(`/api/orders/${randomUUID()}/status`).send({ status: 'PREPARING' }),
+testAuthMatrix('PATCH /api/stores/:storeId/orders/:id/status', (http) =>
+  http.patch(`/api/stores/${storeId}/orders/${randomUUID()}/status`).send({ status: 'PREPARING' }),
 );
 
 // ---------------------------------------------------------------------------
@@ -139,11 +153,51 @@ describe('validation', () => {
       expect(res.body.error.code).toBe('VALIDATION_ERROR');
     });
 
-    it('31 items -> 400 VALIDATION_ERROR (rejected before the service runs)', async () => {
+    it('31 items -> 400 VALIDATION_ERROR naming the site setting (max_lines_per_order, default 30)', async () => {
       const fake = Array.from({ length: 31 }, () => ({ menuItemId: randomUUID(), quantity: 1 }));
       const res = await placeOrder(customer1, { items: fake });
       expect(res.status).toBe(400);
-      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      expect(res.body.error).toEqual({
+        code: 'VALIDATION_ERROR',
+        message: 'An order can have at most 30 items.',
+      });
+    });
+
+    it('counts lines as sent, before duplicates merge', async () => {
+      const id = randomUUID();
+      const same = Array.from({ length: 31 }, () => ({ menuItemId: id, quantity: 1 }));
+      const res = await placeOrder(customer1, { items: same });
+      expect(res.status).toBe(400);
+      expect(res.body.error.message).toBe('An order can have at most 30 items.');
+    });
+
+    it('a lowered limit applies to the next order', async () => {
+      await supabaseAdmin
+        .from('site_settings')
+        .update({ max_lines_per_order: 2 })
+        .eq('id', true)
+        .throwOnError();
+      invalidate('site_settings');
+      try {
+        const fake = Array.from({ length: 3 }, () => ({ menuItemId: randomUUID(), quantity: 1 }));
+        const res = await placeOrder(customer1, { items: fake });
+        expect(res.status).toBe(400);
+        expect(res.body.error.message).toBe('An order can have at most 2 items.');
+      } finally {
+        await supabaseAdmin
+          .from('site_settings')
+          .update({ max_lines_per_order: 30 })
+          .eq('id', true)
+          .throwOnError();
+        invalidate('site_settings');
+      }
+    });
+
+    it('101 items -> 400 from the schema hard cap, before the service runs', async () => {
+      const fake = Array.from({ length: 101 }, () => ({ menuItemId: randomUUID(), quantity: 1 }));
+      const res = await placeOrder(customer1, { items: fake });
+      expect(res.status).toBe(400);
+      expect(res.body.error.message).toBe('An order can have at most 100 items.');
     });
 
     it('30 items passes the count check (fails downstream as ITEM_NOT_FOUND for unknown ids)', async () => {
@@ -179,16 +233,24 @@ describe('validation', () => {
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
     expect(res.body.error.message).toContain('Cold Coffee');
-    expect(res.body.error.message).toContain(String(MAX_QUANTITY_PER_ITEM));
+    expect(res.body.error.message).toContain('10');
   });
 
-  describe('MAX_QUANTITY_PER_ITEM boundary (10)', () => {
+  describe('per-item cap boundary (the default, 10)', () => {
     it('a single line at exactly 10 passes', async () => {
-      expect(MAX_QUANTITY_PER_ITEM).toBe(10);
       const res = await placeOrder(customer1, {
         items: [{ menuItemId: menuItem('Cold Coffee').id, quantity: 10 }],
       });
       expect(res.status).toBe(201);
+    });
+
+    it('upper-case ids are the same item and store (ids are case-insensitive UUIDs)', async () => {
+      const res = await placeOrder(customer1, {
+        storeId: storeId.toUpperCase(),
+        items: [{ menuItemId: menuItem('Cold Coffee').id.toUpperCase(), quantity: 1 }],
+      });
+      expect(res.status).toBe(201);
+      expect(res.body.order.store.id).toBe(storeId);
     });
 
     it('a single line at 11 is refused', async () => {
@@ -342,6 +404,41 @@ describe('not found', () => {
     expect(res.body.error.code).toBe('NOT_FOUND');
   });
 
+  it("another store's item -> 400 ITEM_NOT_FOUND, and that store's stock is untouched", async () => {
+    const { data: foreign } = await supabaseAdmin
+      .from('menu_items')
+      .select('id, stock_quantity')
+      .neq('store_id', storeId)
+      .order('id')
+      .limit(1)
+      .single()
+      .throwOnError();
+    // A real stock count, so a decrement would show (the seed leaves the other stores' items uncounted).
+    await supabaseAdmin
+      .from('menu_items')
+      .update({ stock_quantity: 5 })
+      .eq('id', foreign.id)
+      .throwOnError();
+    try {
+      const res = await placeOrder(customer1, { items: [{ menuItemId: foreign.id, quantity: 1 }] });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('ITEM_NOT_FOUND');
+      const { data: after } = await supabaseAdmin
+        .from('menu_items')
+        .select('stock_quantity')
+        .eq('id', foreign.id)
+        .single()
+        .throwOnError();
+      expect(after.stock_quantity).toBe(5);
+    } finally {
+      await supabaseAdmin
+        .from('menu_items')
+        .update({ stock_quantity: foreign.stock_quantity })
+        .eq('id', foreign.id)
+        .throwOnError();
+    }
+  });
+
   it('/api/orders/%E0 -> 400 BAD_REQUEST (bad percent-encoding)', async () => {
     const res = await api().get('/api/orders/%E0').set(auth(customer1.token));
     expect(res.status).toBe(400);
@@ -452,6 +549,12 @@ describe('business rules', () => {
       return ALLOWED.some(([f, t]) => f === from && t === to);
     }
 
+    // A repeat of a transition that already happened answers 200 with the order unchanged: every status some
+    // transition leads to, so all but PLACED (PLACED -> PLACED is not a transition, and stays 409).
+    function isRepeat(from: OrderStatus, to: OrderStatus): boolean {
+      return from === to && ALLOWED.some(([, t]) => t === to);
+    }
+
     async function createOrderInStatus(from: OrderStatus): Promise<string> {
       const placed = await placeOrder(customer1);
       const orderId = placed.body.order.id as string;
@@ -471,7 +574,7 @@ describe('business rules', () => {
     it.each(pairs)('%s -> %s', async (from, to) => {
       const orderId = await createOrderInStatus(from);
       const res = await patchStatus(orderId, to);
-      if (isAllowed(from, to)) {
+      if (isAllowed(from, to) || isRepeat(from, to)) {
         expect(res.status).toBe(200);
         expect(res.body.order.status).toBe(to);
       } else {
@@ -482,7 +585,7 @@ describe('business rules', () => {
   });
 
   describe('cancelling restores stock', () => {
-    it('restores tracked stock exactly once; a second cancel is 409 and stock is unchanged', async () => {
+    it('restores tracked stock exactly once; a second cancel is a repeat (200) and stock is unchanged', async () => {
       const item = menuItem('Blueberry Muffin');
       await supabaseAdmin
         .from('menu_items')
@@ -516,8 +619,8 @@ describe('business rules', () => {
         expect(afterCancel.stock_quantity).toBe(5);
 
         const secondCancel = await patchStatus(orderId, 'CANCELLED');
-        expect(secondCancel.status).toBe(409);
-        expect(secondCancel.body.error.code).toBe('INVALID_STATUS_TRANSITION');
+        expect(secondCancel.status).toBe(200);
+        expect(secondCancel.body.order.status).toBe('CANCELLED');
 
         const { data: afterSecond } = await supabaseAdmin
           .from('menu_items')
@@ -548,6 +651,39 @@ describe('business rules', () => {
         .single()
         .throwOnError();
       expect(data.stock_quantity).toBeNull();
+    });
+
+    // A cancel gives back only what its order took: an item that was untracked when ordered and is tracked (here:
+    // sold out) by the time the order is cancelled must not gain stock it never lost.
+    it('does not restock an item that was untracked when the order was placed', async () => {
+      const item = menuItem('Cold Coffee');
+      try {
+        const placed = await placeOrder(customer1, {
+          items: [{ menuItemId: item.id, quantity: 2 }],
+        });
+        expect(placed.status).toBe(201);
+        await supabaseAdmin
+          .from('menu_items')
+          .update({ stock_quantity: 0 })
+          .eq('id', item.id)
+          .throwOnError();
+
+        const cancelled = await patchStatus(placed.body.order.id as string, 'CANCELLED');
+        expect(cancelled.status).toBe(200);
+        const { data } = await supabaseAdmin
+          .from('menu_items')
+          .select('stock_quantity')
+          .eq('id', item.id)
+          .single()
+          .throwOnError();
+        expect(data.stock_quantity).toBe(0);
+      } finally {
+        await supabaseAdmin
+          .from('menu_items')
+          .update({ stock_quantity: null })
+          .eq('id', item.id)
+          .throwOnError();
+      }
     });
   });
 });
@@ -667,15 +803,33 @@ describe('envelope and DTO keys', () => {
     );
     for (const item of res.body.order.items as Record<string, unknown>[]) {
       expect(Object.keys(item).sort()).toEqual(
-        ['id', 'menuItemId', 'name', 'unitPrice', 'quantity', 'lineTotal', 'imageUrl'].sort(),
+        [
+          'id',
+          'menuItemId',
+          'name',
+          'unitPrice',
+          'quantity',
+          'lineTotal',
+          'imageUrl',
+          'baseUnitPrice',
+          'modifiers',
+        ].sort(),
       );
     }
   });
 
-  it('every error body matches { error: { code, message } }, with details only on item errors', async () => {
+  it('every error body matches { error: { code, message, details? } }, details in a documented shape only', async () => {
+    // A validation error names its field and nothing else.
     const validationRes = await placeOrder(customer1, { items: [] });
     expect(validationRes.body).toEqual({
-      error: { code: expect.any(String), message: expect.any(String) },
+      error: { code: 'VALIDATION_ERROR', message: expect.any(String), details: { field: 'items' } },
+    });
+    // A service-level rule with no single field carries no details.
+    const tooMany = await placeOrder(customer1, {
+      items: Array.from({ length: 31 }, () => ({ menuItemId: randomUUID(), quantity: 1 })),
+    });
+    expect(tooMany.body).toEqual({
+      error: { code: 'VALIDATION_ERROR', message: expect.any(String) },
     });
 
     const item = menuItem('Cheese Toast');
@@ -709,5 +863,215 @@ describe('envelope and DTO keys', () => {
     expect(JSON.stringify(success.body)).not.toMatch(NO_STACK_TRACE);
     const failure = await placeOrder(customer1, { items: [] });
     expect(JSON.stringify(failure.body)).not.toMatch(NO_STACK_TRACE);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 8. Idempotency (place_order + the service's fast path)
+// ---------------------------------------------------------------------------
+
+describe('the staff board keeps every active order', () => {
+  const FINISHED_LIMIT = 2;
+  const setLimit = async (limit: number) => {
+    // The board's length is the store's own setting (P2 PR 05); the staff here work at the oldest store.
+    await supabaseAdmin
+      .from('stores')
+      .update({ staff_order_list_limit: limit })
+      .eq('id', await oldestStoreId())
+      .throwOnError();
+    invalidate();
+  };
+  afterAll(() => setLimit(100));
+
+  it('shows the order that has waited longest however many newer orders exist, and caps only finished ones', async () => {
+    await supabaseAdmin.rpc('reset_demo_orders').throwOnError();
+    await setLimit(FINISHED_LIMIT);
+    const oldest = (await placeOrder(customer1)).body.order.id as string;
+    const newer: string[] = [];
+    for (let i = 0; i < FINISHED_LIMIT + 3; i += 1)
+      newer.push((await placeOrder(customer1)).body.order.id);
+    // All the newer ones are collected: before the fix they filled the limit and pushed the waiting one out.
+    await supabaseAdmin
+      .from('orders')
+      .update({ status: 'COLLECTED' })
+      .in('id', newer)
+      .throwOnError();
+
+    const res = await api().get(`/api/stores/${storeId}/orders`).set(auth(staff.token));
+    expect(res.status).toBe(200);
+    const ids = (res.body.orders as { id: string; status: OrderStatus }[]).map((o) => o.id);
+    expect(ids).toContain(oldest);
+    const finished = (res.body.orders as { status: OrderStatus }[]).filter(
+      (o) => o.status === 'COLLECTED',
+    );
+    expect(finished).toHaveLength(FINISHED_LIMIT);
+  });
+
+  it('shows every active order even when there are more than the limit', async () => {
+    await supabaseAdmin.rpc('reset_demo_orders').throwOnError();
+    await setLimit(FINISHED_LIMIT);
+    for (let i = 0; i < FINISHED_LIMIT + 2; i += 1) await placeOrder(customer1);
+    const res = await api().get(`/api/stores/${storeId}/orders`).set(auth(staff.token));
+    expect(res.body.orders).toHaveLength(FINISHED_LIMIT + 2);
+    const placed = await api()
+      .get(`/api/stores/${storeId}/orders?status=PLACED`)
+      .set(auth(staff.token));
+    expect(placed.body.orders).toHaveLength(FINISHED_LIMIT + 2);
+  });
+});
+
+describe('field details on a validation error', () => {
+  it('names the request field at fault, so the form can show the message on it', async () => {
+    const phone = await placeOrder(customer1, { customerPhone: '12' });
+    expect(phone.status).toBe(400);
+    expect(phone.body.error).toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: { field: 'customerPhone' },
+    });
+    const note = await placeOrder(customer1, { note: 'x'.repeat(201) });
+    expect(note.body.error.details).toEqual({ field: 'note' });
+    // A nested issue is named by its top-level field.
+    const qty = await placeOrder(customer1, { items: [{ menuItemId: 'x', quantity: 0 }] });
+    expect(qty.body.error.details).toEqual({ field: 'items' });
+  });
+});
+
+describe('idempotencyKey', () => {
+  /** A seeded item that tracks stock, so a double reservation would show; stock is topped up before each case. */
+  function stockedItem(): MenuItemRow {
+    return menuItem('Cheese Toast');
+  }
+  beforeEach(async () => {
+    await supabaseAdmin
+      .from('menu_items')
+      .update({ stock_quantity: 5 })
+      .eq('id', stockedItem().id)
+      .throwOnError();
+    invalidate('menu');
+  });
+  afterAll(async () => {
+    await supabaseAdmin
+      .from('menu_items')
+      .update({ stock_quantity: stockedItem().stock_quantity })
+      .eq('id', stockedItem().id)
+      .throwOnError();
+    invalidate('menu');
+  });
+  async function stockOf(id: string): Promise<number | null> {
+    const { data } = await supabaseAdmin
+      .from('menu_items')
+      .select('stock_quantity')
+      .eq('id', id)
+      .single()
+      .throwOnError();
+    return data.stock_quantity;
+  }
+
+  it('the same key twice answers the same order once and reserves stock once', async () => {
+    const item = stockedItem();
+    const before = await stockOf(item.id);
+    const body = { items: [{ menuItemId: item.id, quantity: 1 }], idempotencyKey: randomUUID() };
+
+    const first = await placeOrder(customer1, body);
+    const second = await placeOrder(customer1, body);
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(201);
+    expect(second.body.order.id).toBe(first.body.order.id);
+    expect(await stockOf(item.id)).toBe((before ?? 0) - 1);
+  });
+
+  it('two simultaneous requests with one key place exactly one order', async () => {
+    const item = stockedItem();
+    const before = await stockOf(item.id);
+    const body = { items: [{ menuItemId: item.id, quantity: 1 }], idempotencyKey: randomUUID() };
+
+    const [a, b] = await Promise.all([placeOrder(customer1, body), placeOrder(customer1, body)]);
+    expect([a.status, b.status]).toEqual([201, 201]);
+    expect(a.body.order.id).toBe(b.body.order.id);
+    expect(await stockOf(item.id)).toBe((before ?? 0) - 1);
+  });
+
+  it('the same key from two users, or no key at all, places two orders', async () => {
+    const key = randomUUID();
+    const [a, b] = await Promise.all([
+      placeOrder(customer1, { idempotencyKey: key }),
+      placeOrder(customer2, { idempotencyKey: key }),
+    ]);
+    expect(a.body.order.id).not.toBe(b.body.order.id);
+
+    const [c, d] = await Promise.all([placeOrder(customer1), placeOrder(customer1)]);
+    expect(c.body.order.id).not.toBe(d.body.order.id);
+  });
+
+  it('the same key with a different cart -> 409 IDEMPOTENCY_KEY_REUSED naming the placed order; nothing else changes', async () => {
+    const item = stockedItem();
+    const before = await stockOf(item.id);
+    const key = randomUUID();
+    const first = await placeOrder(customer1, {
+      items: [{ menuItemId: item.id, quantity: 1 }],
+      idempotencyKey: key,
+    });
+    expect(first.status).toBe(201);
+
+    const changed = await placeOrder(customer1, {
+      items: [{ menuItemId: item.id, quantity: 2 }],
+      idempotencyKey: key,
+    });
+    expect(changed.status).toBe(409);
+    expect(changed.body.error).toEqual({
+      code: 'IDEMPOTENCY_KEY_REUSED',
+      message: `Your earlier order #${first.body.order.orderNumber} already went through. Pay again to order what is in your cart now.`,
+      details: { orderId: first.body.order.id, orderNumber: first.body.order.orderNumber },
+    });
+    expect(await stockOf(item.id)).toBe((before ?? 0) - 1);
+  });
+
+  it('the same key with the same cart but a different note or name -> 409', async () => {
+    const key = randomUUID();
+    const first = await placeOrder(customer1, { idempotencyKey: key, note: 'Less spicy' });
+    expect(first.status).toBe(201);
+    const note = await placeOrder(customer1, { idempotencyKey: key, note: 'Extra spicy' });
+    expect(note.status).toBe(409);
+    const name = await placeOrder(customer1, {
+      idempotencyKey: key,
+      note: 'Less spicy',
+      customerName: 'Someone Else',
+    });
+    expect(name.status).toBe(409);
+    const same = await placeOrder(customer1, { idempotencyKey: key, note: 'Less spicy' });
+    expect(same.status).toBe(201);
+    expect(same.body.order.id).toBe(first.body.order.id);
+  });
+
+  it('two simultaneous requests with one key and different carts -> one order and one 409', async () => {
+    const item = stockedItem();
+    const before = await stockOf(item.id);
+    const key = randomUUID();
+    const results = await Promise.all([
+      placeOrder(customer1, { items: [{ menuItemId: item.id, quantity: 1 }], idempotencyKey: key }),
+      placeOrder(customer1, { items: [{ menuItemId: item.id, quantity: 2 }], idempotencyKey: key }),
+    ]);
+    expect(results.map((r) => r.status).sort()).toEqual([201, 409]);
+    const placed = results.find((r) => r.status === 201);
+    const stock = await stockOf(item.id);
+    expect(stock).toBe((before ?? 0) - (placed?.body.order.items[0].quantity as number));
+  });
+
+  it('a key that is not a UUID -> 400 VALIDATION_ERROR; the key never appears in the response', async () => {
+    const res = await placeOrder(customer1, { idempotencyKey: 'attempt-1' });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+
+    const key = randomUUID();
+    const ok = await placeOrder(customer1, { idempotencyKey: key });
+    expect(JSON.stringify(ok.body)).not.toContain(key);
+  });
+
+  describe('POST /api/orders after the multi-store contract', () => {
+    it('no storeId -> 400 VALIDATION_ERROR naming the field (there is no default store any more)', async () => {
+      const res = await placeOrder(customer1, { storeId: undefined });
+      expect(res.status).toBe(400);
+      expect(res.body.error.details).toEqual({ field: 'storeId' });
+    });
   });
 });

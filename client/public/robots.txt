@@ -1,0 +1,10 @@
+# The menu and home page may be indexed; carts, orders, accounts and the staff and admin screens are private.
+User-agent: *
+Disallow: /cart
+Disallow: /checkout
+Disallow: /orders
+Disallow: /profile
+Disallow: /login
+Disallow: /register
+Disallow: /staff
+Disallow: /admin

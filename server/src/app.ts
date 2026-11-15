@@ -1,15 +1,54 @@
 import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { resolve } from 'node:path';
+import compression from 'compression';
 import cors from 'cors';
 import express, { type Express } from 'express';
+import pino from 'pino';
 import { pinoHttp } from 'pino-http';
-import { errorHandler, notFoundHandler } from './middleware/errorHandler';
+import { readClientVersion } from './middleware/clientVersion';
+import { errorHandler, loggedAtDebug, notFoundHandler } from './middleware/errorHandler';
+import { floodLimiter } from './middleware/rateLimit';
+import { securityHeaders } from './middleware/securityHeaders';
+import { MEDIA_UPLOAD } from './schemas/limits';
+import { payloadTooLarge } from './utils/errors';
 import { apiRouter } from './routes/index';
 import { env } from './utils/env';
-import { logger } from './utils/logger';
+import { LOG_SERIALIZERS, logger } from './utils/logger';
 
 // A caller-supplied id is kept only if it is short and plain, so it cannot forge log content.
 const REQUEST_ID = /^[\w.-]{1,64}$/;
+
+/** Largest JSON body accepted (docs/API.md "Headers and limits"); the web image's nginx enforces the same. */
+export const JSON_BODY_LIMIT_BYTES = 100 * 1024;
+
+// The local-mode photo upload route under /api (store.routes MEDIA_FILE_ROUTE).
+const MEDIA_FILE_PATH = /^\/stores\/[^/]+\/media\/uploads\/[^/]+\/file\/?$/i;
+
+// An upload refused for its declared size is read and thrown away before the 413, up to these bounds. Answering with it
+// unread made the OS reset the connection, and a client still sending could lose the 413 to the reset (nginx in front
+// drains the same way: its lingering close). Past either bound the 413 goes out anyway and the connection closes.
+const REFUSED_UPLOAD_DRAIN_BYTES = 1024 * 1024;
+const REFUSED_UPLOAD_DRAIN_MS = 2000;
+
+/** Reads the rest of a refused upload and throws it away, then calls `answer` once, within the drain bounds. */
+function drainThen(req: IncomingMessage, answer: () => void): void {
+  let read = 0;
+  let answered = false;
+  const finish = () => {
+    if (answered) return;
+    answered = true;
+    clearTimeout(timer);
+    answer();
+  };
+  const timer = setTimeout(finish, REFUSED_UPLOAD_DRAIN_MS);
+  req.on('data', (chunk: Buffer) => {
+    read += chunk.length;
+    if (read > REFUSED_UPLOAD_DRAIN_BYTES) finish();
+  });
+  req.once('end', finish);
+  req.once('close', finish);
+}
 
 function requestId(req: IncomingMessage, res: ServerResponse): string {
   const incoming = req.headers['x-request-id'];
@@ -20,11 +59,32 @@ function requestId(req: IncomingMessage, res: ServerResponse): string {
 
 /**
  * One access line per request. Successful reads are debug: the customer and staff screens poll, and at info they
- * would flood production logs. Writes and every failure are info; the error handler adds the detail.
+ * would flood production logs. Writes and every failure are info, and the error handler adds the detail, except a
+ * failure it logged at debug (an expected repeat): that access line goes down with it.
  */
-function accessLevel(req: IncomingMessage, res: ServerResponse): 'debug' | 'info' {
+export function accessLevel(req: IncomingMessage, res: ServerResponse): 'debug' | 'info' {
   const read = req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS';
-  return read && res.statusCode < 400 ? 'debug' : 'info';
+  return (read && res.statusCode < 400) || loggedAtDebug.has(res) ? 'debug' : 'info';
+}
+
+const QUERY_AND_HASH = /[?#][\s\S]*$/;
+
+/**
+ * The access line's request, as a path only. A query string can carry an email, a phone or a token, and REDACT_PATHS
+ * blanks keys, never the inside of a URL; the parsed `query` the standard serializer adds is dropped for the same
+ * reason (`req.query.email` sits deeper than `*.email` reaches). The `Referer` header is the page's full URL (same
+ * origin, so the browser sends its query), and is cut the same way; the headers are copied, never edited in place.
+ */
+function pathOnly(req: IncomingMessage) {
+  const { query: _query, ...rest } = pino.stdSerializers.req(req);
+  const { referer } = rest.headers;
+  return {
+    ...rest,
+    url: rest.url.replace(QUERY_AND_HASH, ''),
+    headers: referer
+      ? { ...rest.headers, referer: referer.replace(QUERY_AND_HASH, '') }
+      : rest.headers,
+  };
 }
 
 /** The whole request pipeline, without `listen`, so tests can drive it with Supertest. */
@@ -32,6 +92,10 @@ export function createApp(): Express {
   const app = express();
 
   app.disable('x-powered-by');
+  // req.ip from X-Forwarded-For only through the proxies we run (TRUST_PROXY_HOPS; compose's nginx is one).
+  app.set('trust proxy', env.TRUST_PROXY_HOPS);
+  // First, so a 404, a CORS preflight and every error response carry them too.
+  app.use(securityHeaders);
 
   // Every API response is revalidated before reuse: the browser keeps its copy and sends If-None-Match, Express's
   // ETag check answers 304 with no body when nothing changed. That saves the whole payload on every poll on metered
@@ -43,10 +107,64 @@ export function createApp(): Express {
     res.vary('Authorization');
     next();
   });
-  app.use(pinoHttp({ logger, genReqId: requestId, customLogLevel: accessLevel }));
+  // JSON gzipped: a menu or a staff board at its cap (500 items or orders) is ~270 KB raw and ~10x less gzipped, on
+  // slow, metered phones (perf-auditor, P3 close). The ETag is the uncompressed body's, so a poll's 304 is unchanged;
+  // bodies under 1 KB (the threshold) go as they are.
+  app.use('/api', compression({ threshold: 1024 }));
+  app.use(
+    pinoHttp({
+      logger,
+      genReqId: requestId,
+      // Unwrapped: pino-http would otherwise run the standard err serializer first, which drops err.cause before
+      // errWithCause (LOG_SERIALIZERS) sees it. req/res are then named explicitly.
+      wrapSerializers: false,
+      serializers: {
+        ...LOG_SERIALIZERS,
+        req: pathOnly,
+        res: pino.stdSerializers.res,
+      },
+      customLogLevel: accessLevel,
+      // Which client build made the request: tells a stale tab from a current one when reading logs.
+      customProps: (req) => ({ clientVersion: readClientVersion(req) ?? 'none' }),
+    }),
+  );
+  // Preflights are counted here, before cors() answers them itself and ends the request: a limiter mounted only after
+  // it never saw one, so a scripted flood of OPTIONS went uncounted. Every other request is counted below.
+  app.use('/api', (req, res, next) =>
+    req.method === 'OPTIONS' ? floodLimiter(req, res, next) : next(),
+  );
   app.use(cors({ origin: env.CLIENT_ORIGIN }));
-  app.use(express.json());
+  // After the access log (a refused request still gets its line) and before the body is parsed (a flood is refused
+  // before it costs anything). The probes in routes/index.ts count too: they are only cheaper, not exempt.
+  app.use('/api', floodLimiter);
+  // body-parser reads an oversized body to its end, however long, before answering 413. Refusing on the declared
+  // length reads at most the drain bounds instead, then answers and closes the connection.
+  app.use('/api', (req, res, next) => {
+    // The local-mode photo route takes up to MEDIA_UPLOAD.maxBytes of raw bytes (store.routes); still refused on its
+    // declared length past that, so a huge body is never read.
+    const mediaFile = req.method === 'PUT' && MEDIA_FILE_PATH.test(req.path);
+    const limit = mediaFile ? MEDIA_UPLOAD.maxBytes : JSON_BODY_LIMIT_BYTES;
+    if (Number(req.headers['content-length']) > limit) {
+      res.set('Connection', 'close');
+      drainThen(req, () => next(payloadTooLarge()));
+      return;
+    }
+    next();
+  });
+  app.use(express.json({ limit: JSON_BODY_LIMIT_BYTES }));
   app.use('/api', apiRouter);
+  // Local media (development): the uploaded photos, by their keys. Off unless MEDIA_STORAGE=local; in production a CDN
+  // serves them. Keys never change once written, so they are cached for good.
+  const localMedia = express.static(resolve(env.MEDIA_LOCAL_DIR), {
+    index: false,
+    dotfiles: 'deny',
+    fallthrough: true,
+    immutable: true,
+    maxAge: '365d',
+  });
+  app.use('/media', (req, res, next) =>
+    env.MEDIA_STORAGE === 'local' ? localMedia(req, res, next) : next(),
+  );
 
   // Express 5 no longer accepts "*" paths; a bare app.use() is the catch-all.
   app.use(notFoundHandler);

@@ -1,55 +1,164 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { MenuItem } from '../../types/api';
-import { availableQuantity, lineLimit } from './cartRules';
+import { safeJSONStorage } from '../../lib/safeStorage';
+import type { MenuItem, MenuResponse, ModifierGroup } from '../../types/api';
+import { CACHE_PREFIX } from '../../lib/useResource';
+import fallbacks from '../../config/fallbacks.json';
+import { availableQuantity, lineLimit, optionsUnorderable, type CartLimits } from './cartRules';
 
-export { MAX_LINE_QUANTITY } from './cartRules';
+/** The limits used until a menu says otherwise (config/fallbacks.json, parity-tested against the store defaults). */
+const DEFAULT_LIMITS: CartLimits = fallbacks.storeDefaults;
+
+/** The cart's localStorage key: persist writes it, the cross-tab listener watches it. */
+const CART_KEY = 'fp_cart';
+
+/** A modifier option on a cart line, as the menu showed it when added (P3.2). */
+export interface CartOption {
+  id: string;
+  groupName: string;
+  name: string;
+  /** Whole rupees, may be negative. */
+  priceDelta: number;
+}
 
 export interface CartLine {
+  /** The item and its options (lineKeyOf): two lines of one item with different options are two lines. */
+  lineKey: string;
   menuItemId: string;
   name: string;
+  /** The item's price plus its options' deltas, as the cart shows and the order expects it. */
   unitPrice: number;
+  options: CartOption[];
   imageUrl: string | null;
   quantity: number;
   /**
    * How many the shop can sell right now, from the last menu the app saw or the server's answer at checkout:
-   * null = no stock limit, 0 = sold out / off the menu. Prices are deliberately never refreshed this way.
+   * null = no stock limit, 0 = sold out / off the menu. Prices are deliberately never refreshed this way (only `syncPrices`, after a PRICE_CHANGED refusal).
    */
   maxQuantity: number | null;
+  /**
+   * The line's options can no longer be ordered as chosen (one switched off or gone, a required choice with no
+   * default to fill it), from the last menu the app saw. Missing on carts saved before it existed: fine.
+   */
+  optionsStale?: boolean;
+}
+
+/** An item's line key: its id alone without options, so a plain item's line is addressed by the item id. */
+export function lineKeyOf(menuItemId: string, optionIds: string[]): string {
+  return optionIds.length ? `${menuItemId}:${[...optionIds].sort().join(',')}` : menuItemId;
+}
+
+/** How many of an item the cart holds in its other lines (stock and the per-item cap are the item's, not a line's). */
+function otherQuantity(lines: CartLine[], line: Pick<CartLine, 'menuItemId' | 'lineKey'>): number {
+  return lines.reduce(
+    (sum, l) =>
+      l.menuItemId === line.menuItemId && l.lineKey !== line.lineKey ? sum + l.quantity : sum,
+    0,
+  );
+}
+
+/** A required group of `item` that `chosen` has nothing in gets its available defaults, at most maxSelect. */
+function requiredDefaults(
+  item: MenuItem,
+  groups: Record<string, ModifierGroup>,
+  chosen: CartOption[],
+): CartOption[] {
+  return (item.modifierGroupIds ?? []).flatMap((id) => {
+    const group = groups[id];
+    if (!group || group.minSelect === 0) return [];
+    if (group.options.some((o) => chosen.some((c) => c.id === o.id))) return [];
+    return group.options
+      .filter((o) => o.isDefault && o.isAvailable)
+      .slice(0, group.maxSelect)
+      .map((o) => ({ id: o.id, groupName: group.name, name: o.name, priceDelta: o.priceDelta }));
+  });
+}
+
+/** The store a cart belongs to: one cart holds one store's items (P2). */
+export interface CartStoreRef {
+  id: string;
+  slug: string;
+  name: string;
 }
 
 interface CartState {
+  storeId: string | null;
+  storeSlug: string | null;
+  storeName: string | null;
   lines: CartLine[];
-  /** Adds `quantity` (default 1) of a menu item, never past its stock or MAX_LINE_QUANTITY. */
-  add: (item: MenuItem, quantity?: number) => void;
-  /** No-op once the line is at its limit (the stepper shakes instead). */
-  increment: (menuItemId: string) => void;
+  /** The store's limits from its last menu (`MenuResponse.rules`); persisted so the cart page has them without a menu. */
+  limits: CartLimits;
+  /** Records a loaded menu's rules; an older menu without them keeps the defaults. */
+  setLimits: (rules: CartLimits | undefined) => void;
+  /**
+   * Adds `quantity` (default 1) of a menu item, never past its stock or the store's per-item cap. `store` is the
+   * menu's store: an empty cart takes it, and a cart holding another store's items refuses (the caller confirms the
+   * replacement first, then clears).
+   */
+  /** Every line belongs to `store`: an order is placed for exactly one store, so a cart never holds lines without one. */
+  add: (item: MenuItem, quantity: number, store: CartStoreRef, options?: CartOption[]) => void;
+  /** No-op once the item is at its limit across its lines (the stepper shakes instead). */
+  increment: (lineKey: string) => void;
   /** Never goes below 1: at quantity 1 the line is removed instead. */
-  decrement: (menuItemId: string) => void;
-  remove: (menuItemId: string) => void;
+  decrement: (lineKey: string) => void;
+  remove: (lineKey: string) => void;
   clear: () => void;
-  /** Resolves a flagged line: trims it to what is available, or removes it when sold out. */
-  fix: (menuItemId: string) => void;
-  /** Records what the server said is left of one line (a checkout error's `details.available`). */
+  /** Resolves a flagged line: trims it to what its item has left, or removes it when nothing is. */
+  fix: (lineKey: string) => void;
+  /** Records what the server said is left of one item, on every line of it (a checkout error's `details.available`). */
   setAvailability: (menuItemId: string, available: number | null) => void;
   /** Refreshes every line's limit from a freshly loaded menu. Prices, names and photos are left alone. */
-  syncAvailability: (items: MenuItem[]) => void;
+  syncAvailability: (items: MenuItem[], groups?: Record<string, ModifierGroup>) => void;
+  syncOptions: (items: MenuItem[], groups?: Record<string, ModifierGroup>) => void;
+  /**
+   * Sets every line's price to the menu's, its options' deltas included (an option gone from `groups` keeps its
+   * delta). Only after the server refused an order over a price change (PRICE_CHANGED).
+   */
+  syncPrices: (items: MenuItem[], groups?: Record<string, ModifierGroup>) => void;
 }
 
 /** What survives a reload; the actions are recreated by the store. */
 interface PersistedCart {
+  storeId: string | null;
+  storeSlug: string | null;
+  storeName: string | null;
   lines: CartLine[];
+  limits?: CartLimits;
+}
+
+/** The store of the saved (persisted) menu that lists this item, if any menu on this device does. */
+function storeOfSavedMenuItem(menuItemId: string): CartStoreRef | null {
+  const keys: string[] = [];
+  try {
+    for (let i = 0; i < localStorage.length; i += 1) keys.push(localStorage.key(i) ?? '');
+  } catch {
+    return null; // storage blocked
+  }
+  for (const key of keys.filter((k) => k.startsWith(`${CACHE_PREFIX}menu`))) {
+    // Per entry: a damaged or odd-shaped copy (a throw here) must not hide a good one further on.
+    try {
+      const menu = JSON.parse(localStorage.getItem(key) ?? 'null') as Partial<MenuResponse> | null;
+      if (
+        menu?.store?.id &&
+        menu.categories?.some((c) => c.items.some((it) => it.id === menuItemId))
+      )
+        return { id: menu.store.id, slug: menu.store.slug, name: menu.store.name };
+    } catch {
+      // next entry
+    }
+  }
+  return null;
 }
 
 /** Applies `update` to one line; returns the SAME array when nothing changed so the store can skip the update. */
 function updateLine(
   lines: CartLine[],
-  menuItemId: string,
+  lineKey: string,
   update: (line: CartLine) => CartLine | null,
 ): CartLine[] {
   let changed = false;
   const next = lines.flatMap((line) => {
-    if (line.menuItemId !== menuItemId) return [line];
+    if (line.lineKey !== lineKey) return [line];
     const updated = update(line);
     if (updated === line) return [line];
     changed = true;
@@ -63,79 +172,125 @@ function withLines(state: CartState, lines: CartLine[]): CartState | Pick<CartSt
   return lines === state.lines ? state : { lines };
 }
 
+/**
+ * A line's `optionsStale` by this menu. A menu without choices (an older API, persisted before P3.2) says nothing
+ * about them, so the line keeps what it had.
+ */
+function staleOptions(
+  line: CartLine,
+  item: MenuItem | undefined,
+  groups: Record<string, ModifierGroup> | undefined,
+): boolean | undefined {
+  return item && groups ? optionsUnorderable(item, groups, line.options) : line.optionsStale;
+}
+
 export const useCartStore = create<CartState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
+      storeId: null,
+      storeSlug: null,
+      storeName: null,
       lines: [],
+      limits: DEFAULT_LIMITS,
 
-      add(item, quantity = 1) {
+      setLimits(rules) {
+        const limits = rules ?? DEFAULT_LIMITS;
+        set((state) =>
+          state.limits.maxQuantityPerItem === limits.maxQuantityPerItem &&
+          state.limits.lowStockThreshold === limits.lowStockThreshold
+            ? state
+            : { limits },
+        );
+      },
+
+      add(item, quantity = 1, store, options = []) {
         set((state) => {
+          if (state.lines.length > 0 && state.storeId !== store.id) return state;
           const maxQuantity = availableQuantity(item);
-          const limit = lineLimit(maxQuantity);
-          if (limit <= 0) return state;
+          const lineKey = lineKeyOf(
+            item.id,
+            options.map((o) => o.id),
+          );
+          // The stock just seen is the item's: every line of it takes it, or a sibling keeps a stale higher limit.
+          let synced = false;
+          const lines = state.lines.map((l) => {
+            if (l.menuItemId !== item.id || l.maxQuantity === maxQuantity) return l;
+            synced = true;
+            return { ...l, maxQuantity };
+          });
+          const limit =
+            lineLimit(maxQuantity, state.limits) -
+            otherQuantity(lines, { menuItemId: item.id, lineKey });
+          if (limit <= 0) return synced ? { lines } : state;
 
-          const existing = state.lines.find((line) => line.menuItemId === item.id);
+          const existing = lines.find((line) => line.lineKey === lineKey);
           if (!existing) {
             const line: CartLine = {
+              lineKey,
               menuItemId: item.id,
               name: item.name,
-              unitPrice: item.price,
+              unitPrice: options.reduce((sum, o) => sum + o.priceDelta, item.price),
+              options,
               imageUrl: item.imageUrl,
               quantity: Math.min(limit, Math.max(1, quantity)),
               maxQuantity,
             };
-            return { lines: [...state.lines, line] };
+            return {
+              lines: [...lines, line],
+              storeId: store.id,
+              storeSlug: store.slug,
+              storeName: store.name,
+            };
           }
           // A line already over its limit is left as is (the cart flags it); otherwise top it up to the limit.
           const nextQuantity =
             existing.quantity >= limit
               ? existing.quantity
               : Math.min(limit, existing.quantity + quantity);
-          return withLines(
-            state,
-            updateLine(state.lines, item.id, (l) =>
-              l.quantity === nextQuantity && l.maxQuantity === maxQuantity
-                ? l
-                : { ...l, quantity: nextQuantity, maxQuantity },
-            ),
+          const next = updateLine(lines, lineKey, (l) =>
+            l.quantity === nextQuantity ? l : { ...l, quantity: nextQuantity },
           );
+          return next === state.lines ? state : { lines: next };
         });
       },
 
-      increment(menuItemId) {
+      increment(lineKey) {
         set((state) =>
           withLines(
             state,
-            updateLine(state.lines, menuItemId, (l) =>
-              l.quantity >= lineLimit(l.maxQuantity) ? l : { ...l, quantity: l.quantity + 1 },
+            updateLine(state.lines, lineKey, (l) =>
+              l.quantity + otherQuantity(state.lines, l) >= lineLimit(l.maxQuantity, state.limits)
+                ? l
+                : { ...l, quantity: l.quantity + 1 },
             ),
           ),
         );
       },
 
-      decrement(menuItemId) {
+      decrement(lineKey) {
         set((state) => ({
-          lines: updateLine(state.lines, menuItemId, (l) =>
+          lines: updateLine(state.lines, lineKey, (l) =>
             l.quantity <= 1 ? null : { ...l, quantity: l.quantity - 1 },
           ),
         }));
       },
 
-      remove(menuItemId) {
-        set((state) => ({ lines: state.lines.filter((l) => l.menuItemId !== menuItemId) }));
+      remove(lineKey) {
+        set((state) => ({ lines: state.lines.filter((l) => l.lineKey !== lineKey) }));
       },
 
       clear() {
-        set({ lines: [] });
+        set({ lines: [], storeId: null, storeSlug: null, storeName: null });
       },
 
-      fix(menuItemId) {
+      fix(lineKey) {
         set((state) =>
           withLines(
             state,
-            updateLine(state.lines, menuItemId, (l) => {
-              const limit = lineLimit(l.maxQuantity);
-              if (limit <= 0) return null;
+            updateLine(state.lines, lineKey, (l) => {
+              const limit = lineLimit(l.maxQuantity, state.limits) - otherQuantity(state.lines, l);
+              // Options that can't be ordered: the customer adds the item again with new choices.
+              if (limit <= 0 || l.optionsStale) return null;
               return l.quantity > limit ? { ...l, quantity: limit } : l;
             }),
           ),
@@ -143,50 +298,173 @@ export const useCartStore = create<CartState>()(
       },
 
       setAvailability(menuItemId, available) {
-        set((state) =>
-          withLines(
-            state,
-            updateLine(state.lines, menuItemId, (l) =>
-              l.maxQuantity === available ? l : { ...l, maxQuantity: available },
-            ),
-          ),
-        );
-      },
-
-      syncAvailability(items) {
         set((state) => {
-          const byId = new Map(items.map((item) => [item.id, item]));
           let changed = false;
-          const lines = state.lines.map((line) => {
-            const item = byId.get(line.menuItemId);
-            // An item that vanished from the menu can't be ordered either.
-            const maxQuantity = item ? availableQuantity(item) : 0;
-            if (maxQuantity === line.maxQuantity) return line;
+          const lines = state.lines.map((l) => {
+            if (l.menuItemId !== menuItemId || l.maxQuantity === available) return l;
             changed = true;
-            return { ...line, maxQuantity };
+            return { ...l, maxQuantity: available };
           });
           return changed ? { lines } : state;
         });
       },
+
+      // persist writes after every `set`, even a no-op one: a stale tab must not write its old lines over another
+      // tab's newer ones, so `set` is called only when a line changed.
+      syncAvailability(items, groups) {
+        const state = get();
+        const byId = new Map(items.map((item) => [item.id, item]));
+        let changed = false;
+        const lines = state.lines.map((line) => {
+          const item = byId.get(line.menuItemId);
+          // An item that vanished from the menu can't be ordered either.
+          const maxQuantity = item ? availableQuantity(item) : 0;
+          const optionsStale = staleOptions(line, item, groups);
+          if (maxQuantity === line.maxQuantity && !!optionsStale === !!line.optionsStale)
+            return line;
+          changed = true;
+          return { ...line, maxQuantity, optionsStale };
+        });
+        if (changed) set({ lines });
+      },
+
+      // Only `optionsStale`: stock (maxQuantity) is left alone so a checkout correction survives a later lines change.
+      syncOptions(items, groups) {
+        const state = get();
+        const byId = new Map(items.map((item) => [item.id, item]));
+        let changed = false;
+        const lines = state.lines.map((line) => {
+          const optionsStale = staleOptions(line, byId.get(line.menuItemId), groups);
+          if (!!optionsStale === !!line.optionsStale) return line;
+          changed = true;
+          return { ...line, optionsStale };
+        });
+        if (changed) set({ lines });
+      },
+
+      syncPrices(items, groups = {}) {
+        set((state) => {
+          const byId = new Map(items.map((item) => [item.id, item]));
+          const deltas = new Map(
+            Object.values(groups).flatMap((g) =>
+              g.options.map((o) => [o.id, o.priceDelta] as const),
+            ),
+          );
+          let changed = false;
+          const repriced = state.lines.map((line) => {
+            const item = byId.get(line.menuItemId);
+            if (!item) return line;
+            const kept = line.options.map((o) => {
+              const priceDelta = deltas.get(o.id) ?? o.priceDelta;
+              return priceDelta === o.priceDelta ? o : { ...o, priceDelta };
+            });
+            // A required group the line chose nothing in (a line saved before the item had choices) takes the
+            // defaults place_order would apply (priceLine's rule), so the price shown is the price charged.
+            const filled = requiredDefaults(item, groups, kept);
+            const options = [...kept, ...filled];
+            const price = options.reduce((sum, o) => sum + o.priceDelta, item.price);
+            if (
+              filled.length === 0 &&
+              price === line.unitPrice &&
+              options.every((o, i) => o === line.options[i])
+            )
+              return line;
+            changed = true;
+            const lineKey = filled.length
+              ? lineKeyOf(
+                  item.id,
+                  options.map((o) => o.id),
+                )
+              : line.lineKey;
+            return { ...line, lineKey, unitPrice: price, options };
+          });
+          if (!changed) return state;
+          // A re-keyed line may now match another: one line per key, quantities summed.
+          const lines: CartLine[] = [];
+          for (const line of repriced) {
+            const same = lines.findIndex((l) => l.lineKey === line.lineKey);
+            if (same < 0) lines.push(line);
+            else lines[same] = { ...lines[same]!, quantity: lines[same]!.quantity + line.quantity };
+          }
+          return { lines };
+        });
+      },
     }),
     {
-      name: 'fp_cart',
-      version: 1,
-      partialize: (state): PersistedCart => ({ lines: state.lines }),
-      // Carts saved before stock limits existed have no maxQuantity: treat them as unlimited until a menu load says otherwise.
-      migrate: (persisted) => {
-        const lines = (persisted as Partial<PersistedCart> | undefined)?.lines ?? [];
-        return { lines: lines.map((line) => ({ ...line, maxQuantity: line.maxQuantity ?? null })) };
+      name: CART_KEY,
+      version: 3,
+      storage: safeJSONStorage(),
+      partialize: (state): PersistedCart => ({
+        storeId: state.storeId,
+        storeSlug: state.storeSlug,
+        storeName: state.storeName,
+        // `optionsStale` is derived per tab from that tab's menu: persisting it makes two tabs with different menus
+        // flip it back and forth through storage events.
+        lines: state.lines.map(({ optionsStale: _stale, ...line }) => line),
+        limits: state.limits,
+      }),
+      // Carts saved before stock limits existed have no maxQuantity: treat them as unlimited until a menu load says
+      // otherwise. A version-1 cart names no store: it takes the one whose saved menu holds its first line, and is
+      // emptied when none does (a cart is cheap to rebuild; one sent to the wrong store is not). Before version 3 a
+      // line had no options: its key is its item's id.
+      migrate: (persisted, version) => {
+        // Lines of an older version lack the fields added since.
+        type SavedLine = Omit<CartLine, 'lineKey' | 'options' | 'maxQuantity'> &
+          Partial<Pick<CartLine, 'lineKey' | 'options' | 'maxQuantity'>>;
+        const saved = persisted as
+          (Partial<Omit<PersistedCart, 'lines'>> & { lines?: SavedLine[] }) | undefined;
+        const lines = (saved?.lines ?? []).map((line) => ({
+          ...line,
+          lineKey: line.lineKey ?? line.menuItemId,
+          options: line.options ?? [],
+          maxQuantity: line.maxQuantity ?? null,
+        }));
+        if (version >= 2 && saved?.storeId)
+          return {
+            storeId: saved.storeId,
+            storeSlug: saved.storeSlug ?? null,
+            storeName: saved.storeName ?? null,
+            lines,
+            limits: saved.limits ?? DEFAULT_LIMITS,
+          };
+        const store = lines[0] && storeOfSavedMenuItem(lines[0].menuItemId);
+        return {
+          storeId: store ? store.id : null,
+          storeSlug: store ? store.slug : null,
+          storeName: store ? store.name : null,
+          lines: store ? lines : [],
+          limits: saved?.limits ?? DEFAULT_LIMITS,
+        };
       },
     },
   ),
 );
 
+// Another tab's write reaches this one: without it a second checkout tab could pay the cart again after the first
+// paid and emptied it, and a stale tab's add at another store would skip "Start a new cart?" (/break, P3 close). The
+// event fires only in the other tabs; `key` is null when storage was cleared.
+window.addEventListener('storage', (e) => {
+  if (e.key !== CART_KEY && e.key !== null) return;
+  // Removed or cleared: rehydrate() finds nothing and would keep this tab's stale lines, so empty explicitly. Decide
+  // from what is stored now, not e.newValue: a queued removal can arrive after the other tab wrote a new cart.
+  let current: string | null = null;
+  try {
+    current = localStorage.getItem(CART_KEY);
+  } catch {
+    // Storage unreadable: treat as absent.
+  }
+  if (current === null) useCartStore.getState().clear();
+  else void useCartStore.persist.rehydrate();
+});
+
 /* Derived selectors — count and total are never stored. */
+export const selectStoreName = (state: CartState) => state.storeName;
+export const selectLimits = (state: CartState) => state.limits;
 export const selectLines = (state: CartState) => state.lines;
 export const selectCount = (state: CartState) =>
   state.lines.reduce((sum, l) => sum + l.quantity, 0);
 export const selectTotal = (state: CartState) =>
   state.lines.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0);
+/** How many of an item the cart holds, across its lines. */
 export const selectQuantityOf = (menuItemId: string) => (state: CartState) =>
-  state.lines.find((l) => l.menuItemId === menuItemId)?.quantity ?? 0;
+  state.lines.reduce((sum, l) => (l.menuItemId === menuItemId ? sum + l.quantity : sum), 0);

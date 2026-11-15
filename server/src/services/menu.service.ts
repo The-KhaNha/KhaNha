@@ -1,31 +1,107 @@
+import { mediaStore } from '../integrations/media';
+import { processedVariants, type MediaVariant } from './media.service';
+import type {
+  BulkAvailabilityInput,
+  CreateMenuItemInput,
+  ReorderMenuInput,
+  UpdateMenuItemInput,
+} from '../schemas/menuItem.schema';
+import type { RequestContext } from '../types/auth';
 import type { MenuCategoryDto, MenuItemDto, MenuResponse } from '../types/api';
-import { cached, PUBLIC_READ_TTL_MS } from '../utils/cache';
-import { supabaseAdmin } from '../utils/supabase';
-import { toMenuItemDto, toStoreDto } from '../utils/serializers';
-import { getStore } from './store.service';
+import type { Tables, TablesUpdate } from '../types/database';
+import { MANAGED_ITEMS_MAX } from '../schemas/limits';
+import { cached, invalidate, PUBLIC_READ_TTL_MS } from '../utils/cache';
+import { menuFull, notFound, validationError } from '../utils/errors';
+import { isUuid } from '../utils/ids';
+import { logger } from '../utils/logger';
+import { rupeesToPaise } from '../utils/money';
+import { raisedByDatabase, supabaseAdmin } from '../utils/supabase';
+import {
+  toMenuItemDto,
+  toModifierGroupDto,
+  toStoreDto,
+  type StoreWithBrand,
+} from '../utils/serializers';
+import { isEnabled } from './flags.service';
+import { loadItemModifiers } from './modifier.service';
+import { getOpenFields } from './schedule.service';
 
 /**
- * Full menu including unavailable items (the client greys them out). Cached for PUBLIC_READ_TTL_MS; order.service
- * drops the cache whenever stock changes through this API (an order placed or cancelled).
+ * Most live items a store may have, and so most one menu response carries (docs/CONFIGURATION.md, platform constant).
+ * A campus café lists tens; the cap keeps a runaway import from turning the menu into a multi-megabyte payload on a
+ * metered connection. The database enforces it (the menu_items_enforce_cap trigger, a literal 500 kept equal by
+ * server/test/api/menu-cap.test.ts), so the read's cut only bites on a store older than that trigger.
  */
-export function getMenu(): Promise<MenuResponse> {
-  return cached('menu', PUBLIC_READ_TTL_MS, loadMenu);
+export const MENU_ITEMS_MAX = 500;
+
+/** The menu of one ACTIVE store (the caller resolved it through getActiveStore), cached under `menu:<storeId>`. */
+export async function getStoreMenu(store: StoreWithBrand): Promise<MenuResponse> {
+  const menu = await cached(`menu:${store.id}`, PUBLIC_READ_TTL_MS, () => loadMenu(store));
+  // The flag is evaluated per read, after the cache, so turning it on or off needs no menu invalidation.
+  const offered = await isEnabled('modifiers', { storeId: store.id });
+  return withOpenFields(offered ? menu : withoutModifiers(menu), store);
 }
 
-async function loadMenu(): Promise<MenuResponse> {
-  const store = await getStore();
-  const { data: rows } = await supabaseAdmin
+/** The menu as it is while the store's `modifiers` flag is off: no groups, and no item naming any. */
+function withoutModifiers(menu: MenuResponse): MenuResponse {
+  const plain = (item: MenuItemDto): MenuItemDto =>
+    item.modifierGroupIds.length ? { ...item, modifierGroupIds: [] } : item;
+  return {
+    ...menu,
+    modifierGroups: {},
+    popular: menu.popular.map(plain),
+    categories: menu.categories.map((c) => ({ ...c, items: c.items.map(plain) })),
+  };
+}
+
+/** The open state changes with the clock, not with the menu: computed on every read, never cached with the menu. */
+async function withOpenFields(menu: MenuResponse, store: StoreWithBrand): Promise<MenuResponse> {
+  return { ...menu, store: { ...menu.store, ...(await getOpenFields(store)) } };
+}
+
+/** Drops the store's cached menu: stock changed through this API (an order placed or cancelled). */
+export function invalidateMenus(storeId: string): void {
+  invalidate(`menu:${storeId}`);
+}
+
+async function loadMenu(store: StoreWithBrand): Promise<MenuResponse> {
+  // id breaks sort_order ties (an import leaves every row at the default 0), so the cut is the same on every load.
+  const { data: rows, count } = await supabaseAdmin
     .from('menu_items')
-    .select()
+    .select('*', { count: 'exact' })
     .eq('store_id', store.id)
+    .is('archived_at', null)
     .order('sort_order')
+    .order('id')
+    .limit(MENU_ITEMS_MAX)
     .throwOnError();
-  const items = rows.map(toMenuItemDto);
+  // The cap is a safety valve, not a feature: say so when it bites, or the missing items are a silent mystery. At
+  // most once per cache load (PUBLIC_READ_TTL_MS), never per request.
+  if (count !== null && count > MENU_ITEMS_MAX) {
+    logger.warn({ storeId: store.id, total: count, shown: MENU_ITEMS_MAX }, 'Menu truncated');
+  }
+  const modifiers = await loadItemModifiers(
+    store.id,
+    rows.map((row) => row.id),
+  );
+  const items = rows.map((row) => ({
+    ...toMenuItemDto(row),
+    modifierGroupIds: modifiers.groupIds.get(row.id) ?? [],
+  }));
 
   return {
-    store: toStoreDto(store),
+    // The cart rules the client applies: the store's own cap and "only N left" threshold, off the store row (its
+    // cache keys are dropped by updateStoreSettings with the menu's).
+    rules: {
+      maxQuantityPerItem: store.max_quantity_per_item,
+      lowStockThreshold: store.low_stock_threshold,
+    },
+    store: toStoreDto(store, await getOpenFields(store)),
     popular: items.filter((item) => item.isPopular),
     categories: groupByCategory(items),
+    modifierGroups: Object.fromEntries(
+      [...modifiers.groups].map(([id, group]) => [id, toModifierGroupDto(group)]),
+    ),
   };
 }
 
@@ -38,4 +114,248 @@ function groupByCategory(items: MenuItemDto[]): MenuCategoryDto[] {
     else groups.set(item.category, [item]);
   }
   return [...groups].map(([name, categoryItems]) => ({ name, items: categoryItems }));
+}
+
+/** Every item of the store for the editor, archived ones included. Never cached: the editor must see its own write. */
+export async function listManagedItems(storeId: string): Promise<Tables<'menu_items'>[]> {
+  const { data, count } = await supabaseAdmin
+    .from('menu_items')
+    .select('*', { count: 'exact' })
+    .eq('store_id', storeId)
+    // Unarchived first: archived rows pile up forever, and must never push a live item past the cap (a reorder needs
+    // every live item).
+    .order('archived_at', { nullsFirst: true })
+    .order('sort_order')
+    .order('id')
+    .limit(MANAGED_ITEMS_MAX)
+    .throwOnError();
+  if (count !== null && count > MANAGED_ITEMS_MAX) {
+    logger.warn({ storeId, total: count, shown: MANAGED_ITEMS_MAX }, 'Managed menu truncated');
+  }
+  return data;
+}
+
+/** The fields both writes share, in row form; undefined stays undefined, so an edit changes only what was sent. */
+function toRow(input: UpdateMenuItemInput): TablesUpdate<'menu_items'> {
+  return {
+    name: input.name,
+    description: input.description,
+    price_paise: input.price === undefined ? undefined : rupeesToPaise(input.price),
+    category: input.category,
+    diet: input.diet,
+    is_popular: input.isPopular,
+    is_available: input.isAvailable,
+  };
+}
+
+/**
+ * The photo columns for `imageUploadId`: a processed upload of this store shows its largest variant (and offers all of
+ * them as a srcset); null removes the photo; undefined changes nothing.
+ */
+async function photoRow(
+  storeId: string,
+  imageUploadId: string | null | undefined,
+): Promise<Pick<TablesUpdate<'menu_items'>, 'image_url' | 'image_variants'>> {
+  if (imageUploadId === undefined) return {};
+  if (imageUploadId === null) return { image_url: null, image_variants: null };
+  const variants = await processedVariants(storeId, imageUploadId);
+  // processedVariants never answers an empty list; the last is the widest.
+  const largest = variants[variants.length - 1] as MediaVariant;
+  return { image_url: mediaStore().publicPath(largest.key), image_variants: variants };
+}
+
+/**
+ * The sort_order that puts an item last in `category`, or last on the menu for a new category. A category's place is
+ * its first item's (groupByCategory), so an item keeping its old place in a new category could move the whole category.
+ */
+async function lastPlaceIn(storeId: string, category: string): Promise<number> {
+  const last = async (inCategory: boolean) => {
+    let query = supabaseAdmin
+      .from('menu_items')
+      .select('sort_order')
+      .eq('store_id', storeId)
+      .is('archived_at', null);
+    if (inCategory) query = query.eq('category', category);
+    const { data } = await query
+      .order('sort_order', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .throwOnError();
+    return data?.sort_order;
+  };
+  return ((await last(true)) ?? (await last(false)) ?? 0) + 1;
+}
+
+/** A new item, last in its category (a new category goes last on the menu). It has no photo until one is uploaded. */
+export async function createMenuItem(
+  storeId: string,
+  input: CreateMenuItemInput,
+  ctx: RequestContext,
+): Promise<Tables<'menu_items'>> {
+  const { data } = await supabaseAdmin
+    .from('menu_items')
+    .insert({
+      ...toRow(input),
+      name: input.name,
+      description: input.description,
+      price_paise: rupeesToPaise(input.price),
+      category: input.category,
+      stock_quantity: input.stockQuantity,
+      ...(await photoRow(storeId, input.imageUploadId)),
+      store_id: storeId,
+      sort_order: await lastPlaceIn(storeId, input.category),
+    })
+    .select('*')
+    .single()
+    // The audit and menu.changed triggers read who and which request from these.
+    .setHeader('x-actor', JSON.stringify(ctx.actor))
+    .setHeader('x-request-id', ctx.requestId)
+    .throwOnError()
+    .then(
+      (res) => res,
+      (err: unknown) => {
+        if (raisedByDatabase(err, 'MENU_FULL')) throw menuFull(MENU_ITEMS_MAX);
+        throw err;
+      },
+    );
+  invalidateMenus(storeId);
+  return data;
+}
+
+/** Edits one of this store's items. Another store's item, an unknown id or an archived item (read-only) is 404. */
+export async function updateMenuItem(
+  storeId: string,
+  itemId: string,
+  input: UpdateMenuItemInput,
+  ctx: RequestContext,
+): Promise<Tables<'menu_items'>> {
+  if (!isUuid(itemId)) throw notFound('Item not found.');
+  const row = { ...toRow(input), ...(await photoRow(storeId, input.imageUploadId)) };
+  if (input.category !== undefined) {
+    const { data: current } = await supabaseAdmin
+      .from('menu_items')
+      .select('category')
+      .eq('id', itemId)
+      .eq('store_id', storeId)
+      .maybeSingle()
+      .throwOnError();
+    if (current && current.category !== input.category) {
+      row.sort_order = await lastPlaceIn(storeId, input.category);
+    }
+  }
+  const { data } = await supabaseAdmin
+    .from('menu_items')
+    .update(row)
+    .eq('id', itemId)
+    .eq('store_id', storeId)
+    .is('archived_at', null)
+    .select('*')
+    .maybeSingle()
+    .setHeader('x-actor', JSON.stringify(ctx.actor))
+    .setHeader('x-request-id', ctx.requestId)
+    .throwOnError();
+  if (!data) throw notFound('Item not found.');
+  invalidateMenus(storeId);
+  return data;
+}
+
+/**
+ * Archives one of this store's items: it leaves the menu and is switched off (a check constraint keeps it off), and
+ * the row stays for the orders and copies that point at it. Archiving it again changes nothing; another store's item
+ * or an unknown id is 404.
+ */
+export async function archiveMenuItem(
+  storeId: string,
+  itemId: string,
+  ctx: RequestContext,
+): Promise<void> {
+  if (!isUuid(itemId)) throw notFound('Item not found.');
+  const { data } = await supabaseAdmin
+    .from('menu_items')
+    .update({ archived_at: new Date().toISOString(), is_available: false })
+    .eq('id', itemId)
+    .eq('store_id', storeId)
+    .is('archived_at', null)
+    .select('id')
+    .maybeSingle()
+    .setHeader('x-actor', JSON.stringify(ctx.actor))
+    .setHeader('x-request-id', ctx.requestId)
+    .throwOnError();
+  if (data) {
+    invalidateMenus(storeId);
+    return;
+  }
+  const { data: existing } = await supabaseAdmin
+    .from('menu_items')
+    .select('id')
+    .eq('id', itemId)
+    .eq('store_id', storeId)
+    .maybeSingle()
+    .throwOnError();
+  if (!existing) throw notFound('Item not found.');
+}
+
+/**
+ * Switches items on or off at once ("sold out: all juices"): the listed ones, or every item of a category
+ * (set_menu_availability). Archived items are never touched. A list naming anything but this store's unarchived items,
+ * or a category with none, is 404 and changes nothing. Returns how many items the edit covered.
+ */
+export async function setAvailability(
+  storeId: string,
+  input: BulkAvailabilityInput,
+  ctx: RequestContext,
+): Promise<number> {
+  let updated: number;
+  try {
+    const { data } = await supabaseAdmin
+      .rpc('set_menu_availability', {
+        p_store_id: storeId,
+        p_is_available: input.isAvailable,
+        p_item_ids: input.itemIds?.map((id) => id.toLowerCase()),
+        p_category: input.category,
+        p_actor: ctx.actor,
+        p_request_id: ctx.requestId,
+      })
+      .throwOnError();
+    updated = data;
+  } catch (err) {
+    if (raisedByDatabase(err, 'NOT_FOUND'))
+      throw notFound(
+        input.itemIds ? 'Some of those items were not found.' : 'No items in that category.',
+      );
+    throw err;
+  }
+  invalidateMenus(storeId);
+  return updated;
+}
+
+/**
+ * Puts the whole menu in the order of `itemIds` (reorder_menu: every unarchived item of the store, each once). An id
+ * that is not this store's item is 404; a stale list is VALIDATION_ERROR. Either changes nothing.
+ */
+export async function reorderMenu(
+  storeId: string,
+  input: ReorderMenuInput,
+  ctx: RequestContext,
+): Promise<void> {
+  try {
+    await supabaseAdmin
+      .rpc('reorder_menu', {
+        p_store_id: storeId,
+        p_item_ids: input.itemIds.map((id) => id.toLowerCase()),
+        p_actor: ctx.actor,
+        p_request_id: ctx.requestId,
+      })
+      .throwOnError();
+  } catch (err) {
+    if (raisedByDatabase(err, 'NOT_FOUND')) throw notFound('Some of those items were not found.');
+    // Almost always a stale list: someone added or archived an item since the editor loaded the menu.
+    if (raisedByDatabase(err, 'VALIDATION_ERROR'))
+      throw validationError(
+        'The menu changed since you opened it. Reload it and try again.',
+        'itemIds',
+      );
+    throw err;
+  }
+  invalidateMenus(storeId);
 }

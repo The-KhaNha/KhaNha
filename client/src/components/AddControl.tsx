@@ -1,8 +1,10 @@
 import type { RefObject } from 'react';
 import type { MenuItem } from '../types/api';
 import { availableQuantity, lineLimit, unavailableLabel } from '../features/cart/cartRules';
-import { selectQuantityOf, useCartStore } from '../features/cart/cartStore';
+import { useAddToCart } from '../features/cart/useAddToCart';
+import { selectLimits, selectQuantityOf, useCartStore } from '../features/cart/cartStore';
 import { flyToCart } from '../lib/flyToCart';
+import { isCustomisable } from '../features/menu/modifierRules';
 import { AddButton } from './AddButton';
 import { QuantityStepper, StepperNote } from './QuantityStepper';
 
@@ -10,6 +12,8 @@ interface AddControlProps {
   item: MenuItem;
   /** The card's photo: where the fly-to-cart clone takes off from. */
   photoRef: RefObject<HTMLElement>;
+  /** Opens the item sheet: an item with choices is added from there, with them (P3.2). */
+  onCustomise: () => void;
 }
 
 /**
@@ -17,15 +21,16 @@ interface AddControlProps {
  * a Sold out / Unavailable pill, the filled paprika Add, or the stepper once the item is in the cart.
  * The stepper stops at the item's stock (or the per-order cap) and says so underneath.
  */
-export function AddControl({ item, photoRef }: AddControlProps) {
+export function AddControl({ item, photoRef, onCustomise }: AddControlProps) {
   const quantity = useCartStore(selectQuantityOf(item.id));
-  const add = useCartStore((s) => s.add);
+  const limits = useCartStore(selectLimits);
+  const addToCart = useAddToCart();
   const increment = useCartStore((s) => s.increment);
   const decrement = useCartStore((s) => s.decrement);
 
   function handleAdd() {
+    if (!addToCart(item)) return;
     if (photoRef.current) flyToCart(photoRef.current, item.imageUrl);
-    add(item);
   }
 
   if (!item.isAvailable) {
@@ -36,8 +41,12 @@ export function AddControl({ item, photoRef }: AddControlProps) {
     );
   }
 
+  // Its lines differ by their options, so one stepper here could not say which line it steps: the sheet adds.
+  if (isCustomisable(item))
+    return <AddButton onAdd={onCustomise} label={`Choose options for ${item.name}`} />;
+
   const maxQuantity = availableQuantity(item);
-  const limit = lineLimit(maxQuantity);
+  const limit = lineLimit(maxQuantity, limits);
 
   if (quantity > 0) {
     return (

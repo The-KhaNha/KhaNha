@@ -1,22 +1,35 @@
 import { useCallback, useEffect, useRef, useState, type AnimationEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, ShoppingBag, X } from 'lucide-react';
-import type { MenuItem } from '../../types/api';
+import type { MenuItem, ModifierGroup } from '../../types/api';
 import { Button } from '../../components/Button';
 import { FoodPhoto } from '../../components/FoodPhoto';
 import { PopularBadge } from '../../components/PopularBadge';
 import { Price } from '../../components/Price';
 import { QuantityStepper, StepperNote } from '../../components/QuantityStepper';
 import { StockPill } from '../../components/StockPill';
+import { IconButton } from '../../components/IconButton';
 import { cn } from '../../lib/cn';
 import { useFocusTrap } from '../../lib/useFocusTrap';
-import { useReducedMotion } from '../../lib/useReducedMotion';
+import { useBackToClose } from '../../lib/useBackToClose';
+import { scrollBehavior, useReducedMotion } from '../../lib/useReducedMotion';
+import { useAddToCart } from '../cart/useAddToCart';
 import { availableQuantity, lineLimit } from '../cart/cartRules';
-import { selectQuantityOf, useCartStore } from '../cart/cartStore';
+import { selectLimits, selectQuantityOf, useCartStore } from '../cart/cartStore';
+import { ModifierPicker } from './ModifierPicker';
+import {
+  chosenOptions,
+  defaultSelection,
+  itemGroups,
+  missingGroups,
+  type Selection,
+} from './modifierRules';
 
 interface ItemDetailSheetProps {
   item: MenuItem | null;
   onClose: () => void;
+  /** The menu's modifier groups (`MenuResponse.modifierGroups`): the item's choices are picked here. */
+  groups?: Record<string, ModifierGroup>;
 }
 
 type Phase = 'open' | 'added' | 'closing';
@@ -32,16 +45,24 @@ const CLOSE_FALLBACK_MS = 400;
  * "Add to Cart" flips the CTA green, holds, then the sheet animates out before unmounting.
  * The local count can only go as high as what is left after what the cart already holds.
  */
-export function ItemDetailSheet({ item, onClose }: ItemDetailSheetProps) {
-  const add = useCartStore((s) => s.add);
+export function ItemDetailSheet({ item, onClose, groups }: ItemDetailSheetProps) {
+  const addToCart = useAddToCart();
   const inCart = useCartStore(selectQuantityOf(item?.id ?? ''));
+  const limits = useCartStore(selectLimits);
   const reducedMotion = useReducedMotion();
   const [quantity, setQuantity] = useState(1);
   const [phase, setPhase] = useState<Phase>('open');
+  // The first item starts at its defaults too: the reset below runs only when the item changes.
+  const [selection, setSelection] = useState<Selection>(() =>
+    item ? defaultSelection(itemGroups(item, groups)) : {},
+  );
+  // Set once the customer tries to add with a required choice still open: those groups then say so.
+  const [tried, setTried] = useState(false);
   const holdTimer = useRef<number | undefined>(undefined);
   const fallbackTimer = useRef<number | undefined>(undefined);
   const dialogRef = useRef<HTMLDivElement>(null);
   useFocusTrap(dialogRef, item !== null);
+  useBackToClose(item !== null, onClose);
 
   const requestClose = useCallback(() => setPhase('closing'), []);
 
@@ -51,6 +72,8 @@ export function ItemDetailSheet({ item, onClose }: ItemDetailSheetProps) {
     setShownItem(item);
     setQuantity(1);
     setPhase('open');
+    setSelection(item ? defaultSelection(itemGroups(item, groups)) : {});
+    setTried(false);
   }
 
   useEffect(() => {
@@ -81,17 +104,29 @@ export function ItemDetailSheet({ item, onClose }: ItemDetailSheetProps) {
   const unavailable = !item.isAvailable;
   const maxQuantity = availableQuantity(item);
   // How many more can still go in the cart: the stock (or per-order cap) minus what is already there.
-  const room = Math.max(0, lineLimit(maxQuantity) - inCart);
+  const room = Math.max(0, lineLimit(maxQuantity, limits) - inCart);
   const canAdd = !unavailable && room > 0;
   // The stepper's note explains the limit; while it shows, the "Only N left" chip would only repeat it.
   const showNote = canAdd ? quantity >= room : !unavailable;
   const closing = phase === 'closing';
   const added = phase === 'added';
   const titleId = `item-${item.id}-title`;
+  const choices = itemGroups(item, groups);
+  const options = chosenOptions(choices, selection);
+  const unitPrice = options.reduce((sum, o) => sum + o.priceDelta, item.price);
+  const missing = missingGroups(choices, selection);
 
   function handleAdd() {
     if (!item || phase !== 'open' || !canAdd) return;
-    add(item, Math.min(quantity, room));
+    if (missing.length > 0) {
+      setTried(true);
+      dialogRef.current
+        ?.querySelector(`[data-group="${missing[0]?.id}"]`)
+        ?.scrollIntoView?.({ block: 'center', behavior: scrollBehavior() });
+      return;
+    }
+    // Asked first (another store's cart): the replace sheet takes over, so this one just closes.
+    if (!addToCart(item, Math.min(quantity, room), options)) return requestClose();
     setPhase('added');
     holdTimer.current = window.setTimeout(requestClose, ADDED_HOLD_MS);
   }
@@ -108,7 +143,7 @@ export function ItemDetailSheet({ item, onClose }: ItemDetailSheetProps) {
         onClick={requestClose}
         tabIndex={-1}
         className={cn(
-          'absolute inset-0 bg-ink/45 backdrop-blur-[2px]',
+          'absolute inset-0 bg-overlay/45 backdrop-blur-[2px]',
           closing ? 'animate-fade-out' : 'animate-fade-in',
         )}
       />
@@ -120,7 +155,7 @@ export function ItemDetailSheet({ item, onClose }: ItemDetailSheetProps) {
         tabIndex={-1}
         onAnimationEnd={handleAnimationEnd}
         className={cn(
-          'relative flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-[28px] bg-surface shadow-float outline-none md:max-w-[480px] md:rounded-[28px]',
+          'relative flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-card bg-surface shadow-float outline-none md:max-w-[480px] md:rounded-card',
           closing
             ? 'animate-sheet-down md:animate-fade-out'
             : 'animate-sheet-up md:animate-scale-in',
@@ -129,6 +164,7 @@ export function ItemDetailSheet({ item, onClose }: ItemDetailSheetProps) {
         <div className="relative shrink-0">
           <FoodPhoto
             src={item.imageUrl}
+            srcSet={item.imageSrcSet}
             alt={item.name}
             eager
             muted={unavailable}
@@ -137,7 +173,7 @@ export function ItemDetailSheet({ item, onClose }: ItemDetailSheetProps) {
             imgClassName={cn('origin-center', !reducedMotion && 'animate-photo-zoom')}
           >
             {item.isPopular && !unavailable && (
-              <PopularBadge className="left-4 top-4 px-2 py-1 text-[11px]" />
+              <PopularBadge className="left-4 top-4 px-2 py-1 text-2xs" />
             )}
           </FoodPhoto>
           {/* Cream fade so the photo melts into the text (no dark scrim on food). */}
@@ -149,26 +185,25 @@ export function ItemDetailSheet({ item, onClose }: ItemDetailSheetProps) {
             aria-hidden
             className="absolute left-1/2 top-2 h-1 w-9 -translate-x-1/2 rounded-full bg-white/85 md:hidden"
           />
-          <button
-            type="button"
+          <IconButton
+            label="Close"
+            tone="floating"
             onClick={requestClose}
-            aria-label="Close"
             data-autofocus
-            className="absolute right-3 top-3 grid h-11 w-11 place-items-center rounded-full bg-surface/95 text-ink shadow-sm transition-transform duration-[120ms] active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
-          >
-            <X className="h-5 w-5" aria-hidden />
-          </button>
+            className="absolute right-3 top-3"
+            icon={<X className="h-5 w-5" aria-hidden />}
+          />
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 pt-1 animate-fade-up [animation-delay:40ms]">
           <p className="eyebrow text-muted">{item.category}</p>
-          <h2 id={titleId} className="mt-1 wrap-anywhere text-[28px] font-extrabold leading-tight">
+          <h2 id={titleId} className="mt-1 wrap-anywhere text-title font-extrabold leading-tight">
             {item.name}
           </h2>
-          <p className="mt-2 text-[15px] leading-relaxed text-muted">{item.description}</p>
+          <p className="mt-2 text-body leading-relaxed text-muted">{item.description}</p>
           <div className="mt-5 flex items-center justify-between gap-4">
             <div className="flex flex-col items-start">
-              <Price value={item.price} className="text-[28px] font-extrabold leading-none" />
+              <Price value={unitPrice} className="text-title font-extrabold leading-none" />
               {!showNote && <StockPill item={item} className="mt-2.5" />}
             </div>
             {unavailable ? (
@@ -193,6 +228,16 @@ export function ItemDetailSheet({ item, onClose }: ItemDetailSheetProps) {
               </div>
             )}
           </div>
+          {choices.length > 0 && !unavailable && (
+            <ModifierPicker
+              groups={choices}
+              selection={selection}
+              onChange={setSelection}
+              missing={new Set(tried ? missing.map((g) => g.id) : [])}
+              itemId={item.id}
+            />
+          )}
+          <div className="h-4" aria-hidden />
         </div>
 
         <div className="shrink-0 border-t border-line/70 p-4 pb-safe animate-fade-up [animation-delay:80ms]">
@@ -224,7 +269,7 @@ export function ItemDetailSheet({ item, onClose }: ItemDetailSheetProps) {
               ) : (
                 <>
                   Add to Cart <span className="text-white/70">·</span>{' '}
-                  <Price value={item.price * Math.min(quantity, room)} />
+                  <Price value={unitPrice * Math.min(quantity, room)} />
                 </>
               )}
             </Button>

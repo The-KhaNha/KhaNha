@@ -1,0 +1,75 @@
+// Who may do what at a store (P2.2, ADR-001). One map from capability to the roles that hold it; a capability is
+// added with the route that checks it. docs/PERMISSIONS.md "Store roles" is the table in prose.
+import type { AuthUser } from '../types/auth';
+import type { StoreRole } from '../types/enums';
+
+/** The caller's standing at one store: the brand's owner, a membership, the platform admin, or nothing. */
+export type StoreAccess = 'OWNER' | StoreRole | 'ADMIN';
+
+const MATRIX = {
+  'orders.view': ['STAFF', 'MANAGER', 'OWNER'],
+  'orders.transition': ['STAFF', 'MANAGER', 'OWNER'],
+  // ADMIN pauses a store as support and reads its audit; it has no other store power (CLAUDE.md §2), not even the
+  // team: an admin who could invite would make itself STAFF or MANAGER anywhere (/break, P3 close).
+  'store.pause': ['STAFF', 'MANAGER', 'OWNER', 'ADMIN'],
+  'hours.edit': ['MANAGER', 'OWNER'],
+  'settings.edit': ['MANAGER', 'OWNER'],
+  'menu.edit': ['MANAGER', 'OWNER'],
+  'store.profile': ['MANAGER', 'OWNER'],
+  // Making a store public (P3.1, D6) is the brand's call: its owner, not a manager or an operator.
+  'store.publish': ['OWNER'],
+  'team.manageStaff': ['MANAGER', 'OWNER'],
+  'team.manageManagers': ['OWNER'],
+  'audit.store': ['MANAGER', 'OWNER', 'ADMIN'],
+  // STAFF only while the store lets staff edit stock (stores.staff_can_edit_stock): see can().
+  'stock.update': ['STAFF', 'MANAGER', 'OWNER'],
+} as const satisfies Record<string, readonly StoreAccess[]>;
+
+export type Capability = keyof typeof MATRIX;
+
+// A brand template (P3.1) has no kitchen and no team: only its owner works on it, and only on what a copy inherits.
+const TEMPLATE_CAPABILITIES: readonly Capability[] = [
+  'settings.edit',
+  'audit.store',
+  'menu.edit',
+  // The tagline and description a new branch copies.
+  'store.profile',
+];
+
+/** Whether `access` may use `capability` at a brand template; anything else there is 404, like a store not seen. */
+export function canAtTemplate(access: StoreAccess | null, capability: Capability): boolean {
+  return access === 'OWNER' && TEMPLATE_CAPABILITIES.includes(capability);
+}
+
+/** The store settings a cell depends on; a caller that does not pass them gets the stricter answer. */
+export interface StoreRules {
+  staffCanEditStock?: boolean;
+}
+
+export function can(
+  access: StoreAccess | null,
+  capability: Capability,
+  rules: StoreRules = {},
+): boolean {
+  if (access === 'STAFF' && capability === 'stock.update' && rules.staffCanEditStock !== true)
+    return false;
+  return access !== null && (MATRIX[capability] as readonly StoreAccess[]).includes(access);
+}
+
+/**
+ * The caller's access at `store` for `capability`: of their standings there (the brand's owner, their membership, the
+ * platform admin), the first that holds the capability, else the first they have, else null. An admin who also works
+ * a store keeps both: the membership for the kitchen, ADMIN for support.
+ */
+export function accessFor(
+  user: Pick<AuthUser, 'role' | 'memberships' | 'ownedBrandIds'>,
+  store: { id: string; brandId: string } & StoreRules,
+  capability: Capability,
+): StoreAccess | null {
+  const standings: StoreAccess[] = [];
+  if (user.ownedBrandIds.includes(store.brandId)) standings.push('OWNER');
+  const membership = user.memberships.find((m) => m.storeId === store.id);
+  if (membership) standings.push(membership.role);
+  if (user.role === 'ADMIN') standings.push('ADMIN');
+  return standings.find((access) => can(access, capability, store)) ?? standings[0] ?? null;
+}
