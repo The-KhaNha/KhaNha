@@ -41,7 +41,10 @@ vi.mock('../features/stock/StockList', () => ({
 vi.mock('../features/stores/useStores', () => ({
   useStoreByRef: () => ({ store: undefined, mutate: () => {} }),
 }));
+const myBrands = vi.hoisted(() => ({ data: null as unknown, error: null, reload: () => {} }));
+vi.mock('../features/manage/useManage', () => ({ useMyBrands: () => myBrands }));
 const { useAuthStore } = await import('../features/auth/authStore');
+const { RequireMembership } = await import('../features/auth/RequireMembership');
 const { StaffDashboardPage, StaffStoresPage } = await import('./StaffDashboard');
 
 const member = (slug: string, role: 'STAFF' | 'MANAGER' = 'STAFF') => ({
@@ -172,5 +175,69 @@ describe('the Stock view', () => {
   it('stays for a manager whatever the setting', () => {
     renderBoard({ role: 'MANAGER', staffCanEditStock: false });
     expect(screen.getByRole('button', { name: 'Stock' })).toBeInTheDocument();
+  });
+});
+
+describe("a brand owner on a branch's board (no membership)", () => {
+  function signInAsOwner() {
+    signInAt();
+    const user = useAuthStore.getState().user!;
+    useAuthStore.setState({
+      user: { ...user, ownedBrands: [{ id: 'b1', name: 'Brew', slug: 'brew' }] },
+    });
+    myBrands.data = [
+      {
+        id: 'b1',
+        name: 'Brew',
+        slug: 'brew',
+        template: { id: 'id-tpl', slug: 'brew-template', name: 'Brew' },
+        stores: [{ id: 'id-north', slug: 'north', name: 'Brew North' }],
+      },
+    ];
+  }
+  const at = (path: string) =>
+    render(
+      <MemoryRouter initialEntries={[path]}>
+        <Routes>
+          <Route
+            path="/staff/:storeSlug"
+            element={
+              <RequireMembership>
+                <StaffDashboardPage />
+              </RequireMembership>
+            }
+          />
+          <Route path="/" element={<p>home</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+  it('opens the board of their own branch, with its stock view', () => {
+    signInAsOwner();
+    at('/staff/north');
+    expect(ordersFor).toHaveBeenLastCalledWith({ audience: 'staff', storeId: 'id-north' });
+    expect(screen.getByRole('button', { name: /stock/i })).toBeInTheDocument();
+  });
+
+  it('keeps the stock view when they also hold a STAFF membership with stock editing off', () => {
+    signInAsOwner();
+    const user = useAuthStore.getState().user!;
+    useAuthStore.setState({
+      user: {
+        ...user,
+        memberships: [{ ...member('north'), storeId: 'id-north', staffCanEditStock: false }],
+      },
+    });
+    at('/staff/north');
+    expect(screen.getByRole('button', { name: /stock/i })).toBeInTheDocument();
+  });
+
+  it('is sent home from a store that is not one of their branches, or their template (no kitchen)', () => {
+    signInAsOwner();
+    const { unmount } = at('/staff/elsewhere');
+    expect(screen.getByText('home')).toBeInTheDocument();
+    unmount();
+    at('/staff/brew-template');
+    expect(screen.getByText('home')).toBeInTheDocument();
   });
 });

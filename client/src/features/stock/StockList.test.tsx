@@ -109,6 +109,23 @@ describe('StockList', () => {
     expect(api.fetchStock).toHaveBeenCalledTimes(2);
   });
 
+  it('a change with no answer never says "try again" (it may have landed) and checks the count again', async () => {
+    api.changeStock.mockRejectedValue(
+      new ApiError(
+        0,
+        'UNREACHABLE',
+        "We couldn't reach the server. Check your connection and try again.",
+      ),
+    );
+    render(<StockList store={store} />);
+    await screen.findByText('Samosa');
+    fireEvent.click(screen.getByRole('button', { name: 'One more Samosa' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent("couldn't confirm the change");
+    expect(alert).not.toHaveTextContent(/try again/i);
+    expect(api.fetchStock).toHaveBeenCalledTimes(2);
+  });
+
   it('"Mark sold out" sets the count to zero', async () => {
     api.changeStock.mockResolvedValue(0);
     render(<StockList store={store} />);

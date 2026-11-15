@@ -57,8 +57,14 @@ export function useStock(store: { id: string; slug: string }) {
     } catch (err) {
       // Undo only our own guess: a poll that landed meanwhile has the newer count.
       if (guess !== undefined) setLocal(itemId, before.stockQuantity, guess);
+      // A change that never got an answer may still have landed, and a relative one (+1) applied twice is a wrong
+      // count: never say "try again" for it, show what the reload finds (/break, P3 close).
       setWriteError(
-        err instanceof ApiError ? err.message : 'Something went wrong. Please try again.',
+        err instanceof ApiError && err.isUnreachable
+          ? "No connection: we couldn't confirm the change, so the count is being checked again."
+          : err instanceof ApiError
+            ? err.message
+            : 'Something went wrong. Please try again.',
       );
       reload();
     } finally {

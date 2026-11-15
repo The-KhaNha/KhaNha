@@ -2,6 +2,7 @@
 // race included), the events and audit rows it leaves, and place_order's other store checks re-created with it.
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { describeWhen } from '../../src/domain/schedule';
 import { supabaseAdmin } from '../../src/utils/supabase';
 import { api } from '../setup/api';
 import {
@@ -136,11 +137,21 @@ describe('pause and resume', () => {
     const paused = await pause({ minutes: 30, reason: 'Restocking' });
     expect(paused.status).toBe(200);
     expect(paused.body.store).toMatchObject({ openState: 'PAUSED', isOpen: false });
+    const sentAt = new Date();
     const refused = await order();
+    const answeredAt = new Date();
     expect(refused.status).toBe(409);
     expect(refused.body.error.code).toBe('STORE_PAUSED');
-    expect(refused.body.error.message).toMatch(/^Pause a has paused new orders\. Back at /);
-    expect(Date.parse(refused.body.error.details.pausedUntil)).toBeGreaterThan(Date.now());
+    const until = new Date(refused.body.error.details.pausedUntil);
+    expect(until.getTime()).toBeGreaterThan(sentAt.getTime());
+    // Built the way the server words it: near midnight in the store's zone the end reads "tomorrow at …", so a fixed
+    // "Back at" failed every night around 23:30 UTC. The server read its clock somewhere between these two
+    // timestamps, so a request that crosses midnight may legitimately carry either wording.
+    expect(
+      [sentAt, answeredAt].map(
+        (now) => `Pause a has paused new orders. Back ${describeWhen(until, now, 'UTC')}.`,
+      ),
+    ).toContain(refused.body.error.message);
     expect((await api().get(`/api/stores/pause-a-${tag}`)).body.store.openState).toBe('PAUSED');
 
     expect((await resume()).body.store.openState).toBe('OPEN');

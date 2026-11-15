@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fillStorage } from '../../test/storage';
 import type { MenuItem } from '../../types/api';
 import { CACHE_PREFIX } from '../../lib/useResource';
@@ -239,6 +239,69 @@ describe('one cart per store', () => {
   });
 });
 
+describe('another tab', () => {
+  it("takes another tab's cart when it changes, so a paid cart is not paid again here", async () => {
+    useCartStore.getState().add(menuItem(), 1, cafe);
+    expect(selectCount(useCartStore.getState())).toBe(1);
+    // The other tab paid and emptied the cart: only its storage write reaches this tab.
+    const emptied = JSON.stringify({
+      state: {
+        storeId: null,
+        storeSlug: null,
+        storeName: null,
+        lines: [],
+        limits: { maxQuantityPerItem: CAP, lowStockThreshold: 5 },
+      },
+      version: 3,
+    });
+    localStorage.setItem('fp_cart', emptied);
+    window.dispatchEvent(new StorageEvent('storage', { key: 'fp_cart', newValue: emptied }));
+    await vi.waitFor(() => expect(useCartStore.getState().lines).toEqual([]));
+    expect(useCartStore.getState().storeId).toBeNull();
+  });
+
+  it('keeps a replacement cart when a queued removal arrives after it was written', async () => {
+    useCartStore.getState().add(menuItem(), 1, cafe);
+    const replacement = JSON.stringify({
+      state: {
+        storeId: cafe.id,
+        storeSlug: cafe.slug,
+        storeName: cafe.name,
+        lines: [
+          {
+            lineKey: 'item-9',
+            menuItemId: 'item-9',
+            name: 'Tea',
+            unitPrice: 20,
+            options: [],
+            imageUrl: null,
+            quantity: 3,
+            maxQuantity: null,
+          },
+        ],
+        limits: { maxQuantityPerItem: CAP, lowStockThreshold: 5 },
+      },
+      version: 3,
+    });
+    localStorage.setItem('fp_cart', replacement);
+    window.dispatchEvent(new StorageEvent('storage', { key: 'fp_cart', newValue: null }));
+    await vi.waitFor(() =>
+      expect(useCartStore.getState().lines.map((l) => l.menuItemId)).toEqual(['item-9']),
+    );
+  });
+
+  it.each([
+    ['removes fp_cart', 'fp_cart'],
+    ['clears storage', null],
+  ])('empties the cart when another tab %s', (_label, key) => {
+    useCartStore.getState().add(menuItem(), 1, cafe);
+    localStorage.removeItem('fp_cart');
+    window.dispatchEvent(new StorageEvent('storage', { key, newValue: null }));
+    expect(useCartStore.getState().lines).toEqual([]);
+    expect(useCartStore.getState().storeId).toBeNull();
+  });
+});
+
 describe('migration from version 1', () => {
   const line = {
     menuItemId: 'item-1',
@@ -420,5 +483,26 @@ describe('migration from version 2', () => {
     ]);
     useCartStore.getState().increment('item-1');
     expect(selectQuantityOf('item-1')(useCartStore.getState())).toBe(3);
+  });
+});
+
+describe('persistence across tabs', () => {
+  it('a sync that changes nothing does not write fp_cart', () => {
+    useCartStore.getState().add(menuItem(), 1, cafe);
+    const write = vi.spyOn(Storage.prototype, 'setItem');
+    useCartStore.getState().syncAvailability([menuItem()]);
+    useCartStore.getState().syncOptions([menuItem()], {});
+    expect(write).not.toHaveBeenCalled();
+    write.mockRestore();
+  });
+
+  it('persists a line without optionsStale', () => {
+    useCartStore.getState().add(menuItem(), 1, cafe);
+    useCartStore.setState((s) => ({ lines: s.lines.map((l) => ({ ...l, optionsStale: true })) }));
+    const saved = JSON.parse(localStorage.getItem('fp_cart') ?? '{}') as {
+      state: { lines: object[] };
+    };
+    expect(saved.state.lines).toHaveLength(1);
+    expect(saved.state.lines[0]).not.toHaveProperty('optionsStale');
   });
 });
