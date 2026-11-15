@@ -1,6 +1,13 @@
 import { expect, test } from '@playwright/test';
 import type { ModifierGroup, Order } from '../src/types/api';
-import { menu, mockApi, noHorizontalOverflow, signIn, store } from './fixtures';
+import {
+  menu,
+  mockApi,
+  noHorizontalOverflow,
+  signIn,
+  store,
+  sheetHistorySettled,
+} from './fixtures';
 
 // P3.2 end to end, on mocked answers: a manager adds "Extra cheese +₹20" to Cheese Toast, a customer orders the toast
 // with it, and the kitchen ticket names it.
@@ -108,6 +115,8 @@ test('a customer orders the item with Extra cheese, and Pay sends the option', a
     .getByRole('dialog')
     .getByRole('button', { name: /Add to Cart/ })
     .click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await sheetHistorySettled(page);
 
   await page.goto('/cart');
   await expect(page.getByText('Extra cheese')).toBeVisible();

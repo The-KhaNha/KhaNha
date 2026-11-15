@@ -299,3 +299,14 @@ export async function signIn(
     );
   }, user);
 }
+
+/**
+ * After a sheet closes, its own history.back() is still landing for a moment (useBackToClose), and a page.goto in
+ * that moment is aborted (net::ERR_ABORTED). A person never navigates that fast; a test must wait for it.
+ */
+export async function sheetHistorySettled(page: Page): Promise<void> {
+  await page.waitForFunction(() => {
+    const state = window.history.state as { fpSheet?: number } | null;
+    return !state || state.fpSheet === undefined;
+  });
+}
