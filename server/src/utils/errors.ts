@@ -18,6 +18,7 @@ export type ErrorCode =
   | 'MODIFIER_REQUIRED'
   | 'MODIFIER_INVALID'
   | 'SLUG_TAKEN'
+  | 'MENU_FULL'
   | 'STORE_NOT_READY'
   | 'UPLOAD_INVALID'
   | 'CLIENT_OUTDATED'
@@ -80,6 +81,12 @@ export interface UploadInvalidDetails {
   reason: 'type' | 'sizeMismatch' | 'content' | 'notUploaded' | 'state';
 }
 
+/** A menu at its cap (MENU_FULL): the most live items a store may have. */
+export interface MenuFullDetails {
+  kind: 'menuFull';
+  max: number;
+}
+
 /** Which cart line's options were refused (P3.2), and the group when the refusal is about one. */
 export interface ModifierErrorDetails {
   kind: 'modifier';
@@ -97,7 +104,8 @@ export type ErrorDetails =
   | StoreClosedDetails
   | StorePausedDetails
   | StoreNotReadyDetails
-  | UploadInvalidDetails;
+  | UploadInvalidDetails
+  | MenuFullDetails;
 
 /**
  * A dependency (Supabase's database or Auth, later the payment provider) failed or could not be reached. The error
@@ -275,6 +283,18 @@ export const itemUnavailable = (menuItemId: string, name: string): AppError =>
       name,
       available: 0,
     },
+  );
+
+/**
+ * The store already has the most live items it may (MENU_ITEMS_MAX, enforced by the menu_items_enforce_cap trigger):
+ * from a new item, a new branch copying a template, or a template push. Nothing is created.
+ */
+export const menuFull = (max: number): AppError =>
+  new AppError(
+    409,
+    'MENU_FULL',
+    `A menu can have at most ${max} items. Archive one before adding another.`,
+    { kind: 'menuFull', max },
   );
 
 /** Another store already has the slug a new branch asked for (or was given from its name). */
