@@ -57,6 +57,7 @@ jobs:
               - 'client/**'
               - 'server/**'
               - 'compose.yaml'
+              - 'scripts/ci/image-smoke.sh'
               - '.github/workflows/ci.yml'
 
   client:

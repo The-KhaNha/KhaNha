@@ -213,7 +213,7 @@ skipped jobs as passed. The workflow has no `paths:` filter, so every PR reports
 | ----------------------------------------------- | --------------------------------------------------------------------------- |
 | `client/**`                                     | `client`, `images`                                                          |
 | `server/**`, `client/src/config/fallbacks.json` | `server-static`, `server-tests`, `migrations` (PRs), `images`               |
-| `compose.yaml`                                  | `images`                                                                    |
+| `compose.yaml`, `scripts/ci/image-smoke.sh`     | `images`                                                                    |
 | `.github/workflows/ci.yml`, `.node-version`     | all of them                                                                 |
 | only docs, plans, `scripts/**`, `.claude/**`    | none                                                                        |
 
