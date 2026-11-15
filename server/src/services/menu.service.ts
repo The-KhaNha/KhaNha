@@ -11,7 +11,7 @@ import type { MenuCategoryDto, MenuItemDto, MenuResponse } from '../types/api';
 import type { Tables, TablesUpdate } from '../types/database';
 import { MANAGED_ITEMS_MAX } from '../schemas/limits';
 import { cached, invalidate, PUBLIC_READ_TTL_MS } from '../utils/cache';
-import { notFound, validationError } from '../utils/errors';
+import { menuFull, notFound, validationError } from '../utils/errors';
 import { isUuid } from '../utils/ids';
 import { logger } from '../utils/logger';
 import { rupeesToPaise } from '../utils/money';
@@ -27,9 +27,10 @@ import { loadItemModifiers } from './modifier.service';
 import { getOpenFields } from './schedule.service';
 
 /**
- * Most items one menu response carries (docs/CONFIGURATION.md, platform constant). A campus café lists tens; the cap
- * keeps a runaway import from turning the menu into a multi-megabyte payload on a metered connection. Pagination
- * arrives with the multi-branch catalog (P3.1).
+ * Most live items a store may have, and so most one menu response carries (docs/CONFIGURATION.md, platform constant).
+ * A campus café lists tens; the cap keeps a runaway import from turning the menu into a multi-megabyte payload on a
+ * metered connection. The database enforces it (the menu_items_enforce_cap trigger, a literal 500 kept equal by
+ * server/test/api/menu-cap.test.ts), so the read's cut only bites on a store older than that trigger.
  */
 export const MENU_ITEMS_MAX = 500;
 
@@ -209,7 +210,14 @@ export async function createMenuItem(
     // The audit and menu.changed triggers read who and which request from these.
     .setHeader('x-actor', JSON.stringify(ctx.actor))
     .setHeader('x-request-id', ctx.requestId)
-    .throwOnError();
+    .throwOnError()
+    .then(
+      (res) => res,
+      (err: unknown) => {
+        if (raisedByDatabase(err, 'MENU_FULL')) throw menuFull(MENU_ITEMS_MAX);
+        throw err;
+      },
+    );
   invalidateMenus(storeId);
   return data;
 }

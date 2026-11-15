@@ -251,7 +251,10 @@ export interface ApiErrorDetails {
   orderId?: string;
   orderNumber?: number;
   /** Shapes added since P1 carry a `kind`; the ones above predate it and are told apart by `code`. */
-  kind?: 'rateLimit' | 'storeClosed' | 'storePaused' | 'storeNotReady' | 'uploadInvalid';
+  kind?:
+    'rateLimit' | 'storeClosed' | 'storePaused' | 'storeNotReady' | 'uploadInvalid' | 'menuFull';
+  /** MENU_FULL: the most live items a store may have. */
+  max?: number;
   /** STORE_CLOSED: when the store next opens, when known. */
   nextChangeAt?: string;
   /** STORE_PAUSED: when the pause ends, or null when it lasts until someone resumes. */

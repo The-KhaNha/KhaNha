@@ -146,6 +146,15 @@ export function localSql<Row>(sql: string): Row[] {
   return rows;
 }
 
+/** Runs one statement that returns no rows (a `do` block) on the local database as `postgres`. Local only. */
+export function localExec(sql: string): void {
+  if (resolveTestTarget() !== 'local')
+    throw new Error('localExec reaches past the API: local only.');
+  execFileSync('pnpm', ['exec', 'supabase', 'db', 'query', sql], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+}
+
 /** Deletes an account created through `POST /api/auth/register` (not `createTestUser`), by email. */
 export async function deleteAccountByEmail(email: string): Promise<void> {
   const { data: profile } = await supabaseAdmin

@@ -462,7 +462,7 @@ is 400 `UPLOAD_INVALID` `state` and nothing is written; `null` removes the photo
 is trimmed and counted as in [Shared field rules](#shared-field-rules); an unknown field is 400 `VALIDATION_ERROR`. The
 item goes last in its category (a new category last on the menu), with no photo (`imageUrl: null`) unless it names an
 upload. A store may hold
-two items with the same name. Answers 201 `{ item: ManagedMenuItemDto }`.
+two items with the same name. A store at `MENU_ITEMS_MAX` (500) live items is 409 `MENU_FULL` (archive one first). Answers 201 `{ item: ManagedMenuItemDto }`.
 
 ### PATCH /stores/:storeId/menu-items/:itemId
 
@@ -675,7 +675,7 @@ modifier groups (a group copy the branch already has is reused as it is). `modif
 availability stays the branch's; a group the branch made itself is kept), and counts each copy it changed. Stock, availability,
 order and popularity are never pushed. An item that is not a live item of the brand's template, or a store that is not
 one of its live branches (another brand's, the template, a `SUSPENDED` or `ARCHIVED` one), is 404 `NOT_FOUND` "An item or a store is not part of this
-brand." and nothing changes anywhere. Answers `{ updated }`, the copies changed or created (a copy that already matched is not written: a repeat answers 0 and leaves no event); drops each store's cached
+brand." and nothing changes anywhere; so is a push whose new copies would take a branch past 500 live items, 409 `MENU_FULL`. Answers `{ updated }`, the copies changed or created (a copy that already matched is not written: a repeat answers 0 and leaves no event); drops each store's cached
 menu. One `menu.changed` per changed store; the audit rows share the request id.
 
 ### GET /stores/:storeId/manage, /stores/:storeId/manage/hours
@@ -1150,6 +1150,7 @@ shape carries a `kind`, and the client narrows on it.
 | 404    | `NOT_FOUND`                 | missing store, order or profile; an unmatched route ("No route matches <METHOD> <path>.")                                                                                                                                                                                                                                                                                                                                          |
 | 409    | `EMAIL_TAKEN`               | `POST /auth/register`                                                                                                                                                                                                                                                                                                                                                                                                              |
 | 409    | `SLUG_TAKEN`                | `POST /brands/:brandId/stores`: another store already uses the slug (given, or made from the name); `details: { field: 'slug' }`                                                                                                                                                                                                                                                                                                   |
+| 409    | `MENU_FULL`                 | `POST /stores/:storeId/menu-items`, `POST /brands/:brandId/stores` (a template past the cap) and `POST /brands/:brandId/template/push` (a branch the new copies would pass it): the store already has `MENU_ITEMS_MAX` (500) live items; nothing is created (a push is refused whole); `details: { kind: 'menuFull', max }`                                                                                                        |
 | 409    | `STORE_NOT_READY`           | `POST /stores/:storeId/publish`: no address, no weekly hours or no orderable item; `details: { kind: 'storeNotReady', missing }`                                                                                                                                                                                                                                                                                                   |
 | 400    | `UPLOAD_INVALID`            | a photo upload refused: the bytes are not the declared type, size or format, the upload is not finished, or it is already done; `details: { kind: 'uploadInvalid', reason }`                                                                                                                                                                                                                                                       |
 | 409    | `INVALID_STATUS_TRANSITION` | `PATCH /orders/:id/status` (from `update_order_status`); `POST /stores/:storeId/publish` and `/unpublish` on a `SUSPENDED` or `ARCHIVED` store (from `set_store_status`)                                                                                                                                                                                                                                                           |

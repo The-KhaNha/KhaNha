@@ -3,13 +3,13 @@ import { LIMITS, STORE_LIST_MAX } from '../schemas/limits';
 import { NEW_STORE_SLUG_PATTERN, type CreateStoreInput } from '../schemas/store.schema';
 import type { AuthUser, RequestContext } from '../types/auth';
 import type { ManagedStoreDto, MyBrandDto } from '../types/api';
-import { notFound, slugTaken, validationError } from '../utils/errors';
+import { menuFull, notFound, slugTaken, validationError } from '../utils/errors';
 import { isUuid } from '../utils/ids';
 import { logger } from '../utils/logger';
 import { toManagedStoreDto } from '../utils/serializers';
 import type { PushTemplateInput } from '../schemas/menuItem.schema';
 import { raisedByDatabase, supabaseAdmin } from '../utils/supabase';
-import { invalidateMenus } from './menu.service';
+import { invalidateMenus, MENU_ITEMS_MAX } from './menu.service';
 import { getStore } from './store.service';
 
 /** A brand route is its owner's alone: anyone else, an admin included, gets the 404 of a brand they cannot see. */
@@ -96,6 +96,8 @@ export async function createStore(
   } catch (err) {
     // The one unique column a new branch can collide on (the function rolls back, so nothing is left behind).
     if (err instanceof PostgrestError && err.code === '23505') throw slugTaken();
+    // A template past the cap (one older than it) cannot be copied whole.
+    if (raisedByDatabase(err, 'MENU_FULL')) throw menuFull(MENU_ITEMS_MAX);
     throw err;
   }
   return toManagedStoreDto(await getStore(storeId));
@@ -130,6 +132,8 @@ export async function pushTemplate(
   } catch (err) {
     if (raisedByDatabase(err, 'NOT_FOUND'))
       throw notFound('An item or a store is not part of this brand.');
+    // A branch the new copies would take past the cap: the whole push is refused.
+    if (raisedByDatabase(err, 'MENU_FULL')) throw menuFull(MENU_ITEMS_MAX);
     throw err;
   }
   storeIds.forEach(invalidateMenus);
