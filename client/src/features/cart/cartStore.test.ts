@@ -485,3 +485,24 @@ describe('migration from version 2', () => {
     expect(selectQuantityOf('item-1')(useCartStore.getState())).toBe(3);
   });
 });
+
+describe('persistence across tabs', () => {
+  it('a sync that changes nothing does not write fp_cart', () => {
+    useCartStore.getState().add(menuItem(), 1, cafe);
+    const write = vi.spyOn(Storage.prototype, 'setItem');
+    useCartStore.getState().syncAvailability([menuItem()]);
+    useCartStore.getState().syncOptions([menuItem()], {});
+    expect(write).not.toHaveBeenCalled();
+    write.mockRestore();
+  });
+
+  it('persists a line without optionsStale', () => {
+    useCartStore.getState().add(menuItem(), 1, cafe);
+    useCartStore.setState((s) => ({ lines: s.lines.map((l) => ({ ...l, optionsStale: true })) }));
+    const saved = JSON.parse(localStorage.getItem('fp_cart') ?? '{}') as {
+      state: { lines: object[] };
+    };
+    expect(saved.state.lines).toHaveLength(1);
+    expect(saved.state.lines[0]).not.toHaveProperty('optionsStale');
+  });
+});

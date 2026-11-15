@@ -171,7 +171,7 @@ function withLines(state: CartState, lines: CartLine[]): CartState | Pick<CartSt
 
 export const useCartStore = create<CartState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       storeId: null,
       storeSlug: null,
       storeName: null,
@@ -294,41 +294,41 @@ export const useCartStore = create<CartState>()(
         });
       },
 
+      // persist writes after every `set`, even a no-op one: a stale tab must not write its old lines over another
+      // tab's newer ones, so `set` is called only when a line changed.
       syncAvailability(items, groups) {
-        set((state) => {
-          const byId = new Map(items.map((item) => [item.id, item]));
-          let changed = false;
-          const lines = state.lines.map((line) => {
-            const item = byId.get(line.menuItemId);
-            // An item that vanished from the menu can't be ordered either.
-            const maxQuantity = item ? availableQuantity(item) : 0;
-            // A menu without choices (an older API, persisted before P3.2) says nothing about them.
-            const optionsStale =
-              item && groups ? optionsUnorderable(item, groups, line.options) : line.optionsStale;
-            if (maxQuantity === line.maxQuantity && !!optionsStale === !!line.optionsStale)
-              return line;
-            changed = true;
-            return { ...line, maxQuantity, optionsStale };
-          });
-          return changed ? { lines } : state;
+        const state = get();
+        const byId = new Map(items.map((item) => [item.id, item]));
+        let changed = false;
+        const lines = state.lines.map((line) => {
+          const item = byId.get(line.menuItemId);
+          // An item that vanished from the menu can't be ordered either.
+          const maxQuantity = item ? availableQuantity(item) : 0;
+          // A menu without choices (an older API, persisted before P3.2) says nothing about them.
+          const optionsStale =
+            item && groups ? optionsUnorderable(item, groups, line.options) : line.optionsStale;
+          if (maxQuantity === line.maxQuantity && !!optionsStale === !!line.optionsStale)
+            return line;
+          changed = true;
+          return { ...line, maxQuantity, optionsStale };
         });
+        if (changed) set({ lines });
       },
 
       // Only `optionsStale`: stock (maxQuantity) is left alone so a checkout correction survives a later lines change.
       syncOptions(items, groups) {
-        set((state) => {
-          const byId = new Map(items.map((item) => [item.id, item]));
-          let changed = false;
-          const lines = state.lines.map((line) => {
-            const item = byId.get(line.menuItemId);
-            const optionsStale =
-              item && groups ? optionsUnorderable(item, groups, line.options) : line.optionsStale;
-            if (!!optionsStale === !!line.optionsStale) return line;
-            changed = true;
-            return { ...line, optionsStale };
-          });
-          return changed ? { lines } : state;
+        const state = get();
+        const byId = new Map(items.map((item) => [item.id, item]));
+        let changed = false;
+        const lines = state.lines.map((line) => {
+          const item = byId.get(line.menuItemId);
+          const optionsStale =
+            item && groups ? optionsUnorderable(item, groups, line.options) : line.optionsStale;
+          if (!!optionsStale === !!line.optionsStale) return line;
+          changed = true;
+          return { ...line, optionsStale };
         });
+        if (changed) set({ lines });
       },
 
       syncPrices(items, groups = {}) {
@@ -387,7 +387,9 @@ export const useCartStore = create<CartState>()(
         storeId: state.storeId,
         storeSlug: state.storeSlug,
         storeName: state.storeName,
-        lines: state.lines,
+        // `optionsStale` is derived per tab from that tab's menu: persisting it makes two tabs with different menus
+        // flip it back and forth through storage events.
+        lines: state.lines.map(({ optionsStale: _stale, ...line }) => line),
         limits: state.limits,
       }),
       // Carts saved before stock limits existed have no maxQuantity: treat them as unlimited until a menu load says

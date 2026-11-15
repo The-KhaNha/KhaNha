@@ -193,11 +193,11 @@ Code: `client/src/features/auth/RequireAuth.tsx`, `RequireRole.tsx`, `useAuthRed
 | Guard                                       | No token                               | Signed in, wrong role                                                                         | Matching role |
 | ------------------------------------------- | -------------------------------------- | --------------------------------------------------------------------------------------------- | ------------- |
 | `RequireAuth`                               | redirect to `/login?next=<path+query>` | render                                                                                        | render        |
-| `RequireMembership` (`/staff[/:storeSlug]`) | redirect to `/login?next=<path+query>` | `/staff`: render; `/staff/:storeSlug`: to `/` unless a member there or the owner of its brand | render        |
+| `RequireMembership` (`/staff[/:storeSlug]`) | redirect to `/login?next=<path+query>` | `/staff`: render; `/staff/:storeSlug`: to `/` unless a member there or an owner (board check) | render        |
 | `RequireRole role="ADMIN"`                  | redirect to `/login?next=<path+query>` | redirect to `/`                                                                               | render        |
 
 `RequireStaff.tsx` was replaced by the generic `RequireRole.tsx` (one role prop instead of one component per role);
-`/staff` renders `<RequireMembership>` (a store role from `user.memberships`, at the route's store) and `/admin` renders `<RequireRole role="ADMIN">`.
+`/staff` renders `<RequireMembership>` (a store role from `user.memberships`, at the route's store) and `/admin` renders `<RequireRole role="ADMIN">`. The guard does not know brands: `StaffDashboard` sends a brand owner home when the slug is not one of their branches.
 
 - Guards read `token` (and `user.role` for a role guard) from `authStore`, which mirrors the supabase-js session so
   the check is synchronous.

@@ -28,7 +28,7 @@ export function useStoreMenu(storeRef: string, enabled = true) {
   }, [data]);
 
   // Lines that arrive later (another tab's cart rehydrated into this one) get only their choices checked.
-  // syncOptions hands back the same state when nothing changed, so this settles after one pass.
+  // syncOptions sets nothing (and so writes nothing) when no line changed, so this settles after one pass.
   const lines = useCartStore((s) => s.lines);
   useEffect(() => {
     if (!data) return;
