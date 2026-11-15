@@ -136,3 +136,35 @@ function loadEnv(): Env {
 }
 
 export const env = loadEnv();
+
+/**
+ * What a production API or worker must not start without (P8). Checked by the serving processes only, not by the
+ * schema: `pnpm run seed --production` runs from a laptop with APP_ENV=production, a localhost origin and no commit.
+ */
+export function productionProblems(
+  e: Pick<Env, 'APP_ENV' | 'CLIENT_ORIGIN' | 'GIT_COMMIT' | 'TRUST_PROXY_HOPS'>,
+): string[] {
+  if (e.APP_ENV !== 'production') return [];
+  const problems: string[] = [];
+  if (!e.CLIENT_ORIGIN.startsWith('https://'))
+    problems.push('CLIENT_ORIGIN must be https in production (the CloudFront origin).');
+  if (e.GIT_COMMIT === 'unknown')
+    problems.push(
+      'GIT_COMMIT must be set in production (the image build arg), or /api/health cannot name the release.',
+    );
+  if (e.TRUST_PROXY_HOPS < 1)
+    problems.push(
+      "TRUST_PROXY_HOPS must be at least 1 in production, or every request shares the proxy's address in the rate limits.",
+    );
+  return problems;
+}
+
+/** Called first by server.ts and worker.ts: a production process with an unsafe environment never starts. */
+export function refuseUnsafeProduction(): void {
+  const problems = productionProblems(env);
+  if (problems.length === 0) return;
+  process.stderr.write(
+    `Refusing to start in production:\n${problems.map((p) => `  - ${p}`).join('\n')}\n`,
+  );
+  process.exit(1);
+}
