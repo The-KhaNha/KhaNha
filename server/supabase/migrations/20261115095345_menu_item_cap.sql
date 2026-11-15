@@ -4,6 +4,10 @@
 -- could never succeed. One trigger covers every way an item is made: the API's insert (createMenuItem), a new branch
 -- (create_store_from_template, ensure_brand_template) and a template push (push_template_items).
 
+-- Holds to the end of this transaction: no insert can commit between the ranking below and the trigger's creation. It
+-- blocks writes to menu_items only for the migration's own few milliseconds (reads and place_order's row locks go on).
+lock table public.menu_items in share row exclusive mode;
+
 -- 1. A store already past the cap keeps the 500 its customers see (the public menu's order: sort_order, then id) and
 -- the rest are archived, as a manager archiving them would (archived items stay for orders and lineage).
 with ranked as (
