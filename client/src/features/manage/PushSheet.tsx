@@ -4,6 +4,7 @@ import { Button } from '../../components/Button';
 import { ErrorState } from '../../components/ErrorState';
 import { Skeleton } from '../../components/Skeleton';
 import { useFocusTrap } from '../../lib/useFocusTrap';
+import { useBackToClose } from '../../lib/useBackToClose';
 import { useResource } from '../../lib/useResource';
 import { ApiError } from '../../services/api';
 import { fetchManagedMenu } from '../../services/manageMenu';
@@ -68,6 +69,7 @@ export function PushSheet({
   const [done, setDone] = useState<number | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   useFocusTrap(dialogRef, true);
+  useBackToClose(true, onClose);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => event.key === 'Escape' && onClose();

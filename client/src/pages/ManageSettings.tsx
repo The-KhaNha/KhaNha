@@ -15,6 +15,7 @@ import { useStoreSettings } from '../features/manage/useManage';
 import { ApiError } from '../services/api';
 import { updateStoreSettings } from '../services/manage';
 import type { StoreSettings } from '../types/api';
+import { useLeaveWarning } from '../lib/useLeaveWarning';
 
 /** `/manage/:storeSlug/settings`: the store's four limits. Not persisted: it is the manager's own data. */
 export function ManageSettingsTab({ storeId }: { storeId: string }) {
@@ -55,6 +56,7 @@ function SettingsForm({
   const valid = STORE_SETTING_KEYS.every((k) => validateStoreSetting(draft[k]) === null);
   const changes = valid ? changedStoreSettings(settings, draft) : {};
   const dirty = Object.keys(changes).length > 0;
+  useLeaveWarning(dirty);
 
   async function submit(event: FormEvent) {
     event.preventDefault();

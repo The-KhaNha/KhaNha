@@ -12,6 +12,7 @@ import {
 } from '../features/manage/storeProfileRules';
 import { updateStoreProfile } from '../services/manageStores';
 import type { ManagedStore } from '../types/api';
+import { useLeaveWarning } from '../lib/useLeaveWarning';
 
 const { nameMax, taglineMax, descriptionMax, areaMax, addressMax } = VALIDATION.store;
 
@@ -37,6 +38,7 @@ export function ManageProfileTab({ store, onSaved }: { store: ManagedStore; onSa
   const [saved, setSaved] = useState(false);
   const changes = profileChanges(before, draft);
   const dirty = Object.keys(changes).length > 0;
+  useLeaveWarning(dirty);
 
   const set = (key: keyof ProfileDraft) => (e: { target: { value: string } }) => {
     setDraft((d) => ({ ...d, [key]: e.target.value }));

@@ -168,3 +168,34 @@ test('the kitchen ticket names the options at full size', async ({ page }) => {
   await expect(page.getByText('Extra cheese')).toBeVisible();
   await noHorizontalOverflow(page);
 });
+
+test('Back closes the options sheet and stays on the menu; the next Back leaves (Android Back)', async ({
+  page,
+}) => {
+  await mockApi(page);
+  const withChoice = { ...toast, modifierGroupIds: ['g1'] };
+  await page.route('**/api/stores/cafe/menu', (route) =>
+    route.fulfill({
+      json: {
+        ...menu,
+        categories: [menu.categories[0]!, { name: 'Snacks', items: [withChoice] }],
+        modifierGroups: { g1: addOns },
+      },
+    }),
+  );
+  await page.goto('/s/cafe');
+  await page.goto('/s/cafe/menu');
+  await page.getByRole('button', { name: `Choose options for ${toast.name}` }).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+
+  await page.goBack();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page).toHaveURL(/\/s\/cafe\/menu$/);
+
+  // Closed with its own button, the sheet leaves no entry behind: one Back leaves the page.
+  await page.getByRole('button', { name: `Choose options for ${toast.name}` }).click();
+  await page.getByRole('dialog').getByRole('button', { name: /close/i }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/s\/cafe$/);
+});

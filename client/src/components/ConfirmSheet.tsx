@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Button } from './Button';
 import { useFocusTrap } from '../lib/useFocusTrap';
+import { useBackToClose } from '../lib/useBackToClose';
 
 interface ConfirmSheetProps {
   title: string;
@@ -24,6 +25,7 @@ export function ConfirmSheet({
 }: ConfirmSheetProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   useFocusTrap(dialogRef, true);
+  useBackToClose(true, onCancel);
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;

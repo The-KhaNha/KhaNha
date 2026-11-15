@@ -25,6 +25,7 @@ import {
   saveStoreHours,
 } from '../services/stores';
 import type { StoreSummary } from '../types/api';
+import { useLeaveWarning } from '../lib/useLeaveWarning';
 
 const messageOf = (err: unknown) =>
   err instanceof ApiError ? err.message : 'Something went wrong. Please try again.';
@@ -56,6 +57,8 @@ export function ManageHoursPage({ store, onChanged }: ManageHoursPageProps) {
     setSynced(data);
     if (clean) setWeek(data ? weekFromHours(data.hours) : null);
   }
+  // Before the early returns (a hook); the same test as `dirty` below.
+  useLeaveWarning(!!data && !!week && !sameWeek(week, weekFromHours(data.hours)));
 
   if (!allowed)
     return (
