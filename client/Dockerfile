@@ -2,7 +2,7 @@
 # The web image: the built SPA behind nginx, configured at start from the environment (docs/DEPLOYMENT.md
 # "Containers"). Build from client/:  docker build -t fp-web --build-arg GIT_COMMIT=$(git rev-parse --short HEAD) client
 
-FROM node:24-alpine AS build
+FROM node:25-alpine AS build
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 # corepack (shipped with Node 24) fetches the pnpm that package.json's packageManager pins.
