@@ -164,7 +164,8 @@ describe('the team list', () => {
     );
     expect(JSON.stringify(res.body)).not.toMatch(/token/i);
     expect((await members(staff)).status).toBe(403);
-    expect((await members(admin)).status).toBe(200);
+    // A site admin holds no team power (it could otherwise make itself staff anywhere): 403, the store is visible.
+    expect((await members(admin)).status).toBe(403);
   });
 });
 
@@ -197,14 +198,19 @@ describe('inviting', () => {
     expect(JSON.stringify(audit)).not.toContain(row.token_hash);
   });
 
-  it('a manager cannot invite a manager (403); the owner and an admin can', async () => {
+  it('a manager cannot invite a manager (403); the owner can', async () => {
     const res = await invite({ email: `m1-${tag}@example.test`, role: 'MANAGER' }, manager);
     expect(res.status).toBe(403);
     expect(res.body.error.code).toBe('FORBIDDEN');
     expect((await invite({ email: `m1-${tag}@example.test`, role: 'MANAGER' })).status).toBe(201);
-    expect((await invite({ email: `m2-${tag}@example.test`, role: 'MANAGER' }, admin)).status).toBe(
-      201,
-    );
+  });
+
+  it('a site admin cannot invite anyone, itself included (403)', async () => {
+    for (const role of ['MANAGER', 'STAFF'] as const) {
+      const res = await invite({ email: admin.email, role }, admin);
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('FORBIDDEN');
+    }
   });
 
   it('an existing member or an open invite → 409 MEMBERSHIP_EXISTS; an expired one is replaced', async () => {

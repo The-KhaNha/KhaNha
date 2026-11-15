@@ -11,7 +11,12 @@ import { STORE_SETTING_BOUNDS } from './storeSettings.schema';
 export const MAX_ITEM_LINES_HARD = 100;
 
 const orderItemInput = z.object({
-  menuItemId: z.string().min(1, 'Menu item id is required.'),
+  // Ids are lower-cased here, once: the service keys items by the database's lower-case uuid text, and the flag rules
+  // compare store ids as strings, so an upper-case id would read as unknown (/break, P3 close).
+  menuItemId: z
+    .string()
+    .min(1, 'Menu item id is required.')
+    .transform((id) => id.toLowerCase()),
   quantity: z
     .number()
     .int('Quantity must be a whole number.')
@@ -97,7 +102,10 @@ export const createOrderSchema = z
     // that sends none keeps working.
     idempotencyKey: z.string().uuid('idempotencyKey must be a UUID.').optional(),
     // The store the order is for: required (400 without), every order belongs to one store.
-    storeId: z.string('storeId is required.').uuid('storeId must be a UUID.'),
+    storeId: z
+      .string('storeId is required.')
+      .uuid('storeId must be a UUID.')
+      .transform((id) => id.toLowerCase()),
   })
   // Lines are counted as sent, before duplicates merge (docs/API.md): the lines limit applies to lineCount.
   .transform((input) => ({

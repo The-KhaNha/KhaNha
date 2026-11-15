@@ -269,6 +269,16 @@ describe('/manage/:storeSlug shell', () => {
     expect(screen.queryByRole('navigation', { name: 'Manage' })).toBeNull();
   });
 
+  it('offers an admin neither the settings nor the team tab (it holds no team power)', () => {
+    state.user = user({ role: 'ADMIN' });
+    state.store = summary('a') as unknown as Store;
+    renderAt('/manage/a/hours');
+    const nav = screen.getByRole('navigation', { name: 'Manage' });
+    expect(nav.querySelector('a[href="/manage/a/team"]')).toBeNull();
+    expect(nav.querySelector('a[href="/manage/a/settings"]')).toBeNull();
+    expect(nav.querySelector('a[href="/manage/a/hours"]')).not.toBeNull();
+  });
+
   it('is not found when the store does not exist', () => {
     state.user = user({ role: 'ADMIN' });
     state.storeError = { status: 404, message: 'Not found', isUnreachable: false };
