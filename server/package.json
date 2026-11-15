@@ -39,7 +39,7 @@
     "@supabase/supabase-js": "^2.119.0",
     "compression": "^1.8.2",
     "cors": "^2.8.5",
-    "dotenv": "^16.4.5",
+    "dotenv": "^18.0.9",
     "express": "^5.3.0",
     "express-rate-limit": "^8.7.3",
     "pino": "^10.4.0",
