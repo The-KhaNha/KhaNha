@@ -57,7 +57,10 @@ If the answer to 2 or 3 changes the budget's picture, the plan is revised before
   to another account (bootstrap there, apply, deploy the last release, move DNS). Whether the account stays open
   when the credits end, and whether they cover every service listed, is still to be read in the console: the
   account is on the **Paid** plan (the user, 15 November 2026), so it stays open when the credits end.
-- **3:** not checked yet. **PR 01 waits for it.**
+- **3:** checked on 15 November 2026 with AWS's console assistant for Mumbai: **about $20.30 a month with no free
+  allowances applied** (EC2 with its disk $6.09, CloudWatch $5.40, the public address $3.65, CloudFront $3.38, Route
+  53 $0.90, the secret $0.45, S3 $0.22, ECR $0.20). CloudWatch's and CloudFront's always-free allowances cover this
+  usage, which brings it to about $11.50. Under $35 either way, so PR 01 went ahead.
 - **4:** one account, the one holding the credits (D1). The setup stays movable to another account (row 2).
 - **5:** **as soon as PRs 01 and 02 are applied** (D11): the 95 days to the expiry would use only about $35 to $40
   of the credits, so waiting saves nothing and costs drill time.
@@ -255,7 +258,7 @@ marked **decided** follow from the user's decisions of 11 November 2026.
 
 ### PR 00 — The decisions, written down
 
-- [ ] Merged
+- [x] Merged
 
 Docs only (`no-release`). The two ADR amendments P8 needed are **made** (the user, 11 November 2026; see
 [ADRs this plan touches](#adrs-this-plan-touches)), so this PR brings the rest into line with them:
@@ -300,7 +303,7 @@ second plan is empty.
 
 ### PR 03 — arm64 images, proven in CI (P8.2)
 
-- [ ] Merged
+- [x] Merged
 
 No AWS involved, so it can land before the account exists.
 
@@ -375,7 +378,7 @@ refused; nothing on the host answers plain HTTP from outside the VPC; an object 
 
 ### PR 06 — Production guards in the server (P8.6)
 
-- [ ] Merged
+- [x] Merged
 
 `server/src/utils/env.ts`: with `APP_ENV=production` the server refuses to start unless `CLIENT_ORIGIN` is `https`,
 `GIT_COMMIT` is set, and `TRUST_PROXY_HOPS` is at least 1. (`staging` is left alone: a local stack pointed at the
