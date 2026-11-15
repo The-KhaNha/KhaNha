@@ -95,4 +95,16 @@ describe('menu re-renders', () => {
       expect(section.getAttribute('style')).toMatch(/contain-intrinsic-size:\s*auto [\d.]+rem/);
     }
   });
+
+  // One category of hundreds fills the screen, so its section never skips: each card does (/break, P3 close).
+  it('lets a card off screen skip rendering, inside one long category too', () => {
+    window.history.pushState({}, '', '/s/cafe/menu');
+    const { container } = render(<App />);
+    const cards = container.querySelectorAll<HTMLElement>('section[id^="section-"] article');
+    expect(cards.length).toBeGreaterThan(0);
+    for (const card of cards) {
+      expect(card.className).toContain('[content-visibility:auto]');
+      expect(card.getAttribute('style')).toMatch(/contain-intrinsic-size:\s*auto [\d.]+rem/);
+    }
+  });
 });

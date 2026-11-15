@@ -60,3 +60,15 @@ describe('StaffOrderCard', () => {
     expect(options).not.toHaveClass('text-muted');
   });
 });
+
+describe('StaffOrderCard on a long board', () => {
+  // Hundreds of orders scrolled and polled at 4x CPU dropped frames: a card off screen skips rendering (/break).
+  it('skips rendering while off screen, with a size estimate that grows with its lines', () => {
+    const { container } = render(
+      <StaffOrderCard order={order} pending={false} onChangeStatus={() => {}} />,
+    );
+    const card = container.querySelector('article')!;
+    expect(card.className).toContain('[content-visibility:auto]');
+    expect(card.getAttribute('style')).toMatch(/contain-intrinsic-size:\s*auto [\d.]+rem/);
+  });
+});

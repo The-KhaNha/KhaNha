@@ -133,6 +133,9 @@ export async function mockApi(page: Page): Promise<void> {
           staffCanEditStock: true,
         },
       });
+    // The menu editor's list (every item, with its own switch).
+    if (path === '/api/stores/s1/menu-items')
+      return json({ items: items.map((i) => ({ ...i, isEnabled: true, archivedAt: null })) });
     if (path === '/api/stores/s1/modifier-groups') return json({ groups: [], itemGroupIds: {} });
     // The manage screen reads its own store and hours at any status (GET /manage, /manage/hours).
     if (path === '/api/stores/s1/manage')

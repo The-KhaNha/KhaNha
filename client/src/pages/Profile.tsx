@@ -53,11 +53,12 @@ export function ProfilePage() {
   return (
     <div className="space-y-4 pt-4 animate-fade-up">
       <Card padding="lg">
-        <div className="flex items-center gap-4">
+        {/* Wraps at large text: beside the 4rem avatar the name was squeezed to a letter at 200%. */}
+        <div className="flex flex-wrap items-center gap-4">
           <span className="grid h-16 w-16 shrink-0 place-items-center rounded-full bg-brand-50 text-2xl font-extrabold text-brand-700">
             {initialOf(user.name)}
           </span>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1 basis-32">
             <h2 className="truncate text-xl font-extrabold">{user.name}</h2>
             {user.role !== 'CUSTOMER' && (
               <span className="mt-1 inline-block rounded-full bg-surface-2 px-2 py-0.5 text-2xs font-bold uppercase tracking-wider text-muted">
