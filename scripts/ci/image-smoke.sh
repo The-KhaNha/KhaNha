@@ -8,10 +8,15 @@ commit=${1:?usage: image-smoke.sh <git-commit>}
 tmp=${RUNNER_TEMP:-$(mktemp -d)}
 
 # /api/health never touches the database, so dummy Supabase values are enough.
+# Each container is tracked only once its `docker run` succeeded, so a rerun never removes one it did not create.
+started=()
+trap '[ ${#started[@]} -eq 0 ] || docker rm -f "${started[@]}" >/dev/null 2>&1 || true' EXIT
 docker run -d --name api -p 8000:8000 -e APP_ENV=local -e SUPABASE_URL=http://127.0.0.1:1 \
   -e SUPABASE_SECRET_KEY=sb_secret_ci fp-api:ci
+started+=(api)
 docker run -d --name web -p 8080:8080 -e API_UPSTREAM=http://127.0.0.1:1 \
   -e SUPABASE_URL=https://ci.supabase.co -e SUPABASE_PUBLISHABLE_KEY=sb_publishable_ci fp-web:ci
+started+=(web)
 
 for url in localhost:8000/api/health localhost:8080/healthz localhost:8080/runtime-env.js; do
   for _ in $(seq 1 20); do curl -fs -o /dev/null "$url" && break; sleep 1; done
