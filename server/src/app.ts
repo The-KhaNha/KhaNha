@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { resolve } from 'node:path';
+import compression from 'compression';
 import cors from 'cors';
 import express, { type Express } from 'express';
 import pino from 'pino';
@@ -106,6 +107,10 @@ export function createApp(): Express {
     res.vary('Authorization');
     next();
   });
+  // JSON gzipped: a menu or a staff board at its cap (500 items or orders) is ~270 KB raw and ~10x less gzipped, on
+  // slow, metered phones (perf-auditor, P3 close). The ETag is the uncompressed body's, so a poll's 304 is unchanged;
+  // bodies under 1 KB (the threshold) go as they are.
+  app.use('/api', compression({ threshold: 1024 }));
   app.use(
     pinoHttp({
       logger,

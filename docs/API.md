@@ -1249,6 +1249,11 @@ Express's default ETag support turns this into a real saving: when the client se
 body has not changed, the response is a bodiless `304 Not Modified` instead of the full JSON — on every poll
 (customer 8 s, staff 4 s), on a metered connection.
 
+A body of 1 KB or more is gzipped for a client that sends `Accept-Encoding: gzip` (`compression`, mounted on `/api`
+right after these headers; it adds `Vary: Accept-Encoding`). A menu or staff board at its cap (500 items or orders)
+is ~270 KB of JSON and about a tenth of that gzipped. The ETag is the uncompressed body's, so a poll's `304` is
+unchanged (`caching.safe.test.ts`).
+
 ### Server read cache (`server/src/utils/cache.ts`)
 
 The three `GET /api/stores` routes and the `site_settings` row (read by every `GET /api/orders`, by
