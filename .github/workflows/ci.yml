@@ -57,6 +57,7 @@ jobs:
               - 'client/**'
               - 'server/**'
               - 'compose.yaml'
+              - 'scripts/ci/image-smoke.sh'
               - '.github/workflows/ci.yml'
 
   client:
@@ -234,10 +235,22 @@ jobs:
   images:
     needs: changes
     if: needs.changes.outputs.images == 'true'
-    runs-on: ubuntu-latest
+    # arm64 is the production host's architecture (P8): the Alpine runtime stage and native modules are proven there
+    # on every pull request that touches an image. GitHub's arm64 runners are free for a public repository.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    name: images (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: hadolint
+        if: matrix.arch == 'amd64'
         run: |
           for f in server/Dockerfile client/Dockerfile; do
             docker run --rm -i hadolint/hadolint:v2.15.1 < "$f"
@@ -250,8 +263,8 @@ jobs:
           load: true
           tags: fp-api:ci
           build-args: GIT_COMMIT=${{ github.sha }}
-          cache-from: type=gha,scope=api
-          cache-to: type=gha,mode=max,scope=api
+          cache-from: type=gha,scope=api-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=api-${{ matrix.arch }}
       - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: client
@@ -259,44 +272,10 @@ jobs:
           load: true
           tags: fp-web:ci
           build-args: GIT_COMMIT=${{ github.sha }}
-          cache-from: type=gha,scope=web
-          cache-to: type=gha,mode=max,scope=web
-      # /api/health never touches the database, so dummy Supabase values are enough.
-      - name: Smoke test
-        run: |
-          docker run -d --name api -p 8000:8000 -e APP_ENV=local -e SUPABASE_URL=http://127.0.0.1:1 \
-            -e SUPABASE_SECRET_KEY=sb_secret_ci fp-api:ci
-          docker run -d --name web -p 8080:8080 -e API_UPSTREAM=http://127.0.0.1:1 \
-            -e SUPABASE_URL=https://ci.supabase.co -e SUPABASE_PUBLISHABLE_KEY=sb_publishable_ci fp-web:ci
-          for url in localhost:8000/api/health localhost:8080/healthz localhost:8080/runtime-env.js; do
-            for _ in $(seq 1 20); do curl -fs -o /dev/null "$url" && break; sleep 1; done
-            curl -fsS -o /dev/null -w "$url %{http_code}\n" "$url"
-          done
-          curl -fsS localhost:8000/api/health | grep -q '"commit":"${{ github.sha }}"'
-          # The web manifest goes out as a manifest (nginx's own MIME table says octet-stream).
-          curl -fsSI localhost:8080/manifest.webmanifest | grep -qi '^content-type: application/manifest+json' \
-            || { echo "manifest served with the wrong content type"; exit 1; }
-          # nginx refuses a body over the API's 100 kB limit itself, in the API's JSON envelope.
-          head -c 200000 /dev/zero | tr '\0' 'x' > "$RUNNER_TEMP/big.json"
-          code=$(curl -s -o "$RUNNER_TEMP/413.json" -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
-            --data-binary @"$RUNNER_TEMP/big.json" localhost:8080/api/orders)
-          [ "$code" = 413 ] && grep -q '"PAYLOAD_TOO_LARGE"' "$RUNNER_TEMP/413.json" \
-            || { echo "nginx body limit: got $code"; cat "$RUNNER_TEMP/413.json"; exit 1; }
-          # Both images send the browser-hardening headers (server/src/middleware/securityHeaders.ts, client/nginx/).
-          for url in localhost:8000/api/health localhost:8080/healthz; do
-            curl -fsSI "$url" | grep -qi '^x-frame-options: DENY' || { echo "$url: no X-Frame-Options"; exit 1; }
-            curl -fsSI "$url" | grep -qi '^x-content-type-options: nosniff' || { echo "$url: no nosniff"; exit 1; }
-          done
-      - name: Image sizes
-        run: |
-          # Exact to 0.1 MB: a rounded "50 MB (budget 50 MB)" once hid a 50.4 MB image that failed the check.
-          check() {
-            size=$(docker image inspect --format '{{.Size}}' "$1")
-            awk -v n="$1" -v s="$size" -v b="$2" 'BEGIN { printf "%s: %.1f MB (budget %d MB)\n", n, s / 1e6, b }'
-            [ "$size" -le $(($2 * 1000000)) ]
-          }
-          check fp-web:ci 50
-          check fp-api:ci 300
+          cache-from: type=gha,scope=web-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=web-${{ matrix.arch }}
+      - name: Smoke test and size budgets
+        run: scripts/ci/image-smoke.sh "${{ github.sha }}"
 
   ci-ok:
     if: always()
