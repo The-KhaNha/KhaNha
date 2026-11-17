@@ -309,7 +309,9 @@ Modules, each small and used by `envs/production`:
   which the host accepts traffic from CloudFront only and nothing accepts SSH.
 - `ecr`: `food-pickup/web` and `food-pickup/server` (the names come from a module variable, so the staging PR can
   give its own), immutable tags, scan on push, keep the newest 10 images; only production's own images are pushed
-  to them (releases, and rehearsal builds while it is dark), never staging's.
+  to them (releases, and rehearsal builds while it is dark), never staging's. Because tags are immutable, every
+  workflow that builds an image first looks for its tag and reuses the image when it is already there, so a retried
+  run for the same commit does not fail on the push.
 - `iam`: the instance role (pull from ECR, Session Manager, write its own log groups, read its own parameters and
   secret, read and write the media bucket).
 
@@ -546,14 +548,22 @@ ceiling):
    and `food-pickup/staging/server`, each with its own keep-newest-10 rule, so no number of merges to `dev` can evict
    a production release image; production's repositories hold production's images only. The repository names are a
    variable of `modules/ecr`, not a literal in it.
-2. **`deploy-staging.yml`**: when `ci.yml` finishes green for a push to `dev`: build and push `dev-<sha7>`,
-   migrate the staging database (the Supabase access token and database password as secrets of the GitHub
-   Environment `staging`, which the user approved on 11 November 2026, ADR-007 as amended), deploy, run
-   `deploy-smoke.sh`. A run deploys only while its commit is still the head of `dev`, checked immediately before the
-   deploy command is sent. Overlapping runs share one concurrency group with `cancel-in-progress` off, as production's
-   do, so a deploy that has started is never cancelled: runs queue and deploy one at a time, GitHub keeps only the
-   newest waiting run, and a queued run that is no longer the head of `dev` when its turn comes does not deploy. This
+2. **`deploy-staging.yml`**: started when `ci.yml` finishes green for a push to `dev`. **A run deploys the current
+   head of `dev`, not the commit that started it**, so it does not matter which run is the one left waiting. All runs
+   share one concurrency group with `cancel-in-progress` off, as production's do: they go one at a time, and a run
+   that has started is never cancelled. When its turn comes, a run:
+   1. reads the head of `dev`, and stops, changing nothing, if `ci-ok` is not green for that commit (that commit's own
+      CI will start a run) or if staging already runs it (staging's release parameter names it);
+   2. builds and pushes `dev-<sha7>` to staging's repositories, or reuses the image when that tag is already there, so
+      a retry for the same commit never pushes twice;
+   3. migrates the staging database (the Supabase access token and database password as secrets of the GitHub
+      Environment `staging`, which the user approved on 11 November 2026, ADR-007 as amended);
+   4. deploys, runs `deploy-smoke.sh`, and writes staging's release parameter.
+
+   The choice in step 1 is made before anything changes. From step 3 on, the run finishes whatever is pushed
+   meanwhile, so a migration is never left without its deploy, and the next run brings staging to the newer head. This
    is the day "`dev` deploys staging" becomes true, and the day manual staging pushes end.
+
 3. **A browser smoke test** after each staging deploy: one Playwright order on a phone viewport as the seeded
    customer, whose password is the third secret of that Environment.
 
