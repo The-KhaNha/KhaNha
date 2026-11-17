@@ -561,11 +561,22 @@ ceiling):
    4. deploys, runs `deploy-smoke.sh`, and writes staging's release parameter.
 
    The choice in step 1 is made before anything changes. From step 3 on, the run finishes whatever is pushed
-   meanwhile, so a migration is never left without its deploy, and the next run brings staging to the newer head. This
-   is the day "`dev` deploys staging" becomes true, and the day manual staging pushes end.
+   meanwhile, so a migration is never left without its deploy, and the next run brings staging to the newer head.
+
+   **When the deploy or the smoke fails after the migration**, the run fails and writes nothing: staging's release
+   parameter stays on the previous release and the host returns to it, as production's does. The migration stays, and
+   nothing in the staging database is rolled back: expand and contract keeps the previous release working on the newer
+   schema. Staging is then fixed forward. A rerun for the same commit reuses its image and finds the migration already
+   applied; a new push deploys the new head.
+
+   This is the day "`dev` deploys staging" becomes true, and the day manual staging pushes end.
 
 3. **A browser smoke test** after each staging deploy: one Playwright order on a phone viewport as the seeded
    customer, whose password is the third secret of that Environment.
+
+This section is a sketch, not the staging PRs' specification. Review points raised on it after 17 November 2026 are
+recorded on pull request #149 and are settled by the staging PRs themselves, the first of which starts by reading that
+pull request's threads.
 
 With a hosted worker polling it, the staging Supabase project also stops pausing after seven idle days.
 
