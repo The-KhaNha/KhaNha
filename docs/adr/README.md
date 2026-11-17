@@ -21,7 +21,7 @@ and later phases link to the ADRs they depend on.
 | [002] | Background work: outbox, pgmq and pg_cron                          | Accepted          | [P1.2][p1.2]                 |
 | [003] | The payment aggregator and money model are chosen in P4            | Proposed          | [P4][p4], [P5][p5]           |
 | [004] | Money in paise in the database, rupees at the API                  | Accepted, amended | [P5.1][p5.1], [P5.6][p5.6]   |
-| [005] | A modular monolith with three processes                            | Accepted          | [P1.2][p1.2], [P5.10][p5.10] |
+| [005] | A modular monolith with three processes                            | Accepted, amended | [P1.2][p1.2], [P5.10][p5.10] |
 | [006] | Media in S3 behind CloudFront                                      | Accepted, amended | [P3.3][p3.3], [P8.3][p8.3]   |
 | [007] | Pilot on EC2 with docker compose                                   | Accepted, amended | [P0.6][p0.6], [P8.4][p8.4]   |
 | [008] | Semantic versioning from change intents                            | Accepted          | [P0.3][p0.3]                 |

@@ -54,7 +54,9 @@ deliver it.
     the KYC policy pages and the SMS DLT registration have no code dependency and are the longest lead items in the
     plan. Only the sandbox spike (P4.6) waits for the P5.1 port shape. P4 must finish before P5.
   - **P8** (infrastructure) builds production only, before the pilot. P5's webhook work tests against a tunnel to a
-    local stack or an AWS staging brought forward; the P5 plan chooses (D12 in the P8 plan).
+    local stack or an AWS staging brought forward; the P5 plan chooses (D12 in the P8 plan). Amended on 17 November
+    2026: the AWS staging is brought forward, built once P8's PRs 02, 04, 05 and 07 are applied, so sandbox webhooks
+    are tested there with no tunnel (D8 and D12 in the P8 plan).
 
   **P11** and **P12** were added after the pilot plan, so they sit at the end, but they need only P6 (P11) and P2 plus
   P7 (P12); either can start once those ship.
@@ -75,7 +77,7 @@ deliver it.
   5. Run `/post-change` for major changes; every product step here is one.
   6. Record a version intent ([P0.3](#p03-semantic-versioning-with-change-intents)) and update the owning docs in
      the same change (CLAUDE.md §6).
-- **Branches.** Feature branches → PR into `dev` (CI required; staging is the Supabase staging project, nothing deploys from `dev` until the AWS staging exists) → a release PR into `main`
+- **Branches.** Feature branches → PR into `dev` (CI required; staging is the Supabase staging project, nothing deploys from `dev` until the AWS staging exists, which is brought forward, P8.5) → a release PR into `main`
   (production, merged by the user) → a back-merge PR into `dev`. Hotfixes branch off `main`. Details in
   [P0.2](#p02-continuous-integration), [P0.3](#p03-semantic-versioning-with-change-intents) and
   [P8.5](#p85-continuous-deployment).
@@ -336,7 +338,7 @@ flowchart LR
 | `web`        | `client/Dockerfile` (nginx) | serves the SPA with the cache headers from DEPLOYMENT.md, and proxies `/api/*` to `api` so calls stay same-origin, as today | with `api`                                                         |
 | `api`        | `server/src/server.ts`      | HTTP: every request/response endpoint and the payment webhook receiver; no long-running work                                | horizontally; stateless                                            |
 | `worker`     | `server/src/worker.ts`      | consumes the pgmq queues: notifications, analytics, payment side effects, refunds, media, recommendations                   | horizontally; each queue's visibility timeout prevents double work |
-| `reconciler` | `server/src/reconciler.ts`  | payment reconciliation only (R29): stuck-state sweeps, daily settlement matching, ledger integrity                          | one active instance, held by a database lease                      |
+| `reconciler` | `server/src/reconciler.ts`  | payment reconciliation only (R29): stuck-state sweeps, daily settlement matching, ledger integrity                          | one instance does each piece of work, via its own queue (ADR-005)  |
 | scheduler    | `pg_cron` inside Postgres   | time-based transitions (expired holds, acceptance timeouts, SLA breaches, pickup windows), and enqueues periodic jobs       | runs in the database                                               |
 
 **One codebase, three processes.** `api`, `worker` and `reconciler` share `server/` (its domain logic, SQL functions
@@ -397,7 +399,7 @@ three folders:
 | reviews         | `store_reviews`, `item_ratings`, `rating_aggregates`                                                       | `review.service.ts`                                                                  | `review.submitted`              |
 | analytics       | `analytics_*` rollups, `eta_stats`, `catalog_item_costs`, `store_expenses`                                 | `analytics.service.ts`, `jobs/analytics.ts`                                          | –                               |
 | recommendations | `item_associations`, `item_popularity`                                                                     | `recommendation.service.ts`, `jobs/recommendations.ts`                               | –                               |
-| platform        | `site_settings`, `feature_flags`, `audit_log`, `idempotency_keys`, `domain_events`, `leases`               | `settings.service.ts`, `flags.service.ts`, `audit.service.ts`                        | `settings.changed`              |
+| platform        | `site_settings`, `feature_flags`, `audit_log`, `idempotency_keys`, `domain_events`                         | `settings.service.ts`, `flags.service.ts`, `audit.service.ts`                        | `settings.changed`              |
 | reconciliation  | `recon_runs`, `recon_items`, `recon_exceptions`                                                            | `reconciler.ts`, `jobs/reconcile.ts`                                                 | `recon.exception`               |
 
 ### Data model (target)
@@ -808,7 +810,7 @@ a temp file and a script applies the bump.
 
   Docs-only changes need no intent.
 
-- **Branches.** Feature branches → PR into `dev` (CI required; staging is the Supabase staging project, nothing deploys from `dev` until the AWS staging exists, P8.5) → a release PR into
+- **Branches.** Feature branches → PR into `dev` (CI required; staging is the Supabase staging project, nothing deploys from `dev` until the AWS staging exists, which is brought forward, P8.5) → a release PR into
   `main` (production) → a back-merge PR into `dev`. Hotfixes branch off `main` as `hotfix/*`, carry their own intent
   and their own release run, and are back-merged the same way. Only the user merges into `main`. Migrations are
   immutable once merged into `dev`.
@@ -2252,6 +2254,13 @@ The product owner set three constraints:
 starts now, in parallel with P0; only the sandbox spike waits for the P5.1 port shape. It runs alongside P0–P3,
 because sales, KYC and legal review take weeks. **Blocks:** P5. **Size:** M.
 
+> **How it is built:** [P4_PAYMENT_SELECTION.md](P4_PAYMENT_SELECTION.md): who does each step, what each one gates
+> in P5, and the five pull requests the repository needs. Decided on 17 November 2026 (the user): the spike covers
+> Cashfree, Paytm and Razorpay, each adapter merged into `dev` and refused in production; sandbox webhooks are
+> tested on an AWS staging, brought forward; the DLT registration is dropped, because the pilot sends no SMS.
+> Nothing in P4 had been answered on that date. Where the
+> plan and this section disagree, the plan is newer.
+
 **Output:**
 
 - ADR-003 accepted, naming the provider, the money model and the hold mechanism;
@@ -2449,6 +2458,16 @@ The full ladder with its trade-offs is in
 **Items:** R2, R4, R4.1, R4.2, R5, R12, R28.3–R28.6, R29. **Depends on:** P4 (the provider and the money model), P2,
 P3, and P8's staging environment (a public webhook URL). **Size:** XL. **Flags:** `real_payments` (per store),
 `acceptance_flow`, `cancellation_by_customer`.
+
+> **How it is built:** [P5_PAYMENTS.md](P5_PAYMENTS.md), PR by PR straight into `dev`, with no phase branch, so
+> staging always runs what `dev` holds (the user, 17 November 2026). Its PRs 01–21 are the
+> same for every provider and both money models and are built against a fake gateway; the provider's adapter,
+> payouts and go-live wait for P4 ([the plan's gates](P5_PAYMENTS.md#gates)). Decided on 17 November 2026 (the
+> user): surplus and deals (P3.6) and partial line refunds wait until after the pilot; custom cancellation rules
+> are built; the agent merges each work PR except those that move money. The full list of what P5 builds
+> differently, with what picks each item up, is the plan's
+> [Where P5 differs from the roadmap](P5_PAYMENTS.md#where-p5-differs-from-the-roadmap). Where the plan and this
+> section disagree, the plan is newer.
 
 Provider details below use P4's recommendation (Cashfree) as the worked example. The gateway port keeps the other
 finalists a configuration change.
@@ -2738,7 +2757,8 @@ stateDiagram-v2
   If it cannot, the order becomes `REJECTED` with the reason `STOCK_UNAVAILABLE_AFTER_PAYMENT`, and a full refund is
   requested automatically.
 - **Local development.** The fake gateway posts signed webhooks to the same route. A tunnel (cloudflared) to a laptop
-  is needed only for testing the real sandbox; staging has a public URL (P8).
+  is needed only for testing the real sandbox; staging has a public URL (P8). Amended on 17 November 2026: the sandbox
+  is tested on the AWS staging, brought forward, with no tunnel.
 
 ### P5.5 Restaurant acceptance for limited items
 
@@ -2987,8 +3007,9 @@ when the customer does not collect within the window. R28.4: expired pickup wind
 
 ### P5.10 Payment reconciliation service
 
-R29: a separate service, `server/src/reconciler.ts`, in its own container. One instance is active at a time, held by
-the `reconciler` lease (P8.4).
+R29: a separate service, `server/src/reconciler.ts`, in its own container. One instance does each piece of work: it
+consumes its own queue, `q_reconciliation`, where a message is visible to one consumer at a time (ADR-005 as amended
+on 17 November 2026; first written as a `reconciler` lease).
 
 ```mermaid
 flowchart TD
@@ -3098,6 +3119,13 @@ is planned rather than improvised.
 **Goal:** an honest wait time, a pickup that cannot hand food to the wrong person, notifications at the moments that
 matter, and a staff board built for a rush. **Items:** R11.1, R13, R15, R25, R28.1. **Depends on:** P5 (the v2
 lifecycle). **Size:** L. **Flags:** `pickup_qr`, `notifications_push`.
+
+> **How it is built:** [P6_ORDER_EXPERIENCE.md](P6_ORDER_EXPERIENCE.md), PR by PR on the `feat/P6` branch. It needs
+> P5's lifecycle and none of P5's gates. Decided on 17 November 2026 (the user): notifications are in-app and Web
+> Push only (no SMS, no email); the counter screen is built. The rush factor and the history correction wait for
+> P7.1's tables. The full list is the plan's
+> [Where P6 builds less than the roadmap](P6_ORDER_EXPERIENCE.md#where-p6-builds-less-than-the-roadmap). Where the
+> plan and this section disagree, the plan is newer.
 
 ### P6.1 ETA engine
 
@@ -3615,13 +3643,17 @@ R22 (similarity, popularity, other users' orders) and R28.7 (recommendation upda
 to it by a pipeline: `main`'s release tags deploy production, after the user's approval (P8.5). Staging stays the
 Supabase staging project with the app run locally against it; an AWS staging follows one to two months after the
 first release. This is a parallel track, finished before the pilot. P5's webhook testing does not wait for it: the
-P5 plan chooses a tunnel to a local stack or brings the AWS staging forward (D12 in the P8 plan). **Items:** R16,
+P5 plan chooses a tunnel to a local stack or brings the AWS staging forward (D12 in the P8 plan). Amended on 17
+November 2026 (ADR-007 as amended; D8 and D12 in the P8 plan): the AWS staging is brought forward. It is built as
+soon as P8's PRs 02, 04, 05 and 07 are applied and deploys `dev` on every merge, and sandbox webhooks are tested
+there with no tunnel. **Items:** R16,
 R17, R18, R21, R3 (secrets), R6 (observability), R14 (usage load). **Depends on:** P0.6. **Size:** L.
 
 > **How it is built:** [P8_INFRASTRUCTURE.md](P8_INFRASTRUCTURE.md), PR by PR straight into `dev`. Decided on
 > 11 November 2026 (ADR-007 and ADR-011 as amended): production only to start, on one small host with no load
 > balancer, inside a budget of about $35 a month; a staging on AWS follows one to two months after the first
-> release. The credits expire on 18 February 2027 (the user, 15 November 2026). Each subsection below opens with
+> release (amended on 17 November 2026: brought forward, see the goal above). The credits expire on 18 February 2027
+> (the user, 15 November 2026). Each subsection below opens with
 > what was decided where it differs; the full list, with what picks each item up, is the plan's
 > [Where P8 builds less than the roadmap](P8_INFRASTRUCTURE.md#where-p8-builds-less-than-the-roadmap). Where the
 > plan and this section disagree, the plan is newer.
@@ -3691,15 +3723,15 @@ R17, R18, R21, R3 (secrets), R6 (observability), R14 (usage load). **Depends on:
 
 > **Decided:** one `t4g.micro` host (1 GB, standard CPU credits, a memory limit per container, a swap file), no Auto
 > Scaling group and no ALB, so a deploy is a few seconds of errors; `web`, `api` and `worker` only (the reconciler
-> and its lease come with P5.10); no backups in P8 (P9.5).
+> comes with P5.10, with no lease table); no backups in P8 (P9.5).
 
 R18.
 
 - **Auto Scaling group.** Minimum 1 and maximum 2 hosts for the pilot. The launch template uses Amazon Linux 2023. Its
   user data installs Docker, the compose plugin and the CloudWatch agent, and fetches `compose.prod.yml`.
-- **Services** on each host: `web`, `api`, `worker` and `reconciler`. The reconciler runs on every host, but only the
-  holder of the `reconciler` lease works: a `leases (name, holder, expires_at)` row with `acquire_lease` and
-  `renew_lease` RPCs, renewed every 30 s.
+- **Services** on each host: `web`, `api`, `worker` and `reconciler`. The reconciler may run on every host; it consumes
+  its own queue, so one of them does each piece of work, and no lease table is built (ADR-005 as amended on 17
+  November 2026; first written as a `leases` row with `acquire_lease` and `renew_lease`).
 - **Environment.** A start script renders each service's environment from Secrets Manager and SSM
   (`/food-pickup/<env>/*`) into a tmpfs file. Secrets never go into images or onto disk.
 - **ALB.** A target group points at the `web` container on each host. Its health check is `GET /api/ready` through
@@ -4021,7 +4053,7 @@ flowchart LR
     ING --> WEB["web Deployment"]
     ING --> API["api Deployment<br/>HPA on CPU and RPS"]
     WK["worker Deployment<br/>KEDA on queue depth"]
-    RC["reconciler Deployment<br/>1 replica with lease"]
+    RC["reconciler Deployment<br/>1 replica"]
     ES["External Secrets Operator"]
   end
   API --> SB[("Supabase")]
@@ -4039,7 +4071,7 @@ flowchart LR
   - The API scales by HPA on CPU and requests per second.
   - The worker scales by **KEDA** on pgmq queue depth, through the Postgres scaler (this needs a read-only direct
     database connection for the metric query).
-  - The reconciler stays at one replica, plus the lease.
+  - The reconciler stays at one replica (its queue already keeps work to one consumer).
 - **Access.** Pod Identity for S3, and External Secrets Operator syncing from Secrets Manager.
 - **GitOps.** Argo CD watches `infra/k8s/envs/*`. The CD pipeline opens image-tag bump PRs instead of running SSM
   commands.

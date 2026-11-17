@@ -13,6 +13,7 @@ PR merges, tick its box here and in the roadmap.
 > - **Production only, to start.** One small host, no load balancer. **There is no staging on AWS at first**:
 >   staging stays what it is today, the Supabase staging project with the app run locally against it. An AWS
 >   staging follows one to two months after the first release ([Later: staging on AWS](#later-staging-on-aws)).
+>   (Changed on 17 November 2026: both staging sentences are superseded by the revision below.)
 > - **Scaling comes with funding**: larger instances, replicas, possibly EKS
 >   ([When there is funding to scale](#when-there-is-funding-to-scale)).
 >
@@ -22,6 +23,10 @@ PR merges, tick its box here and in the roadmap.
 >
 > **Revised 15 November 2026:** the credits are about $130 and **expire on 18 February 2027**, so the date, not the
 > monthly figure, is what runs out first (answer 2 below). The $35 ceiling and the budget alert stay as they are.
+>
+> **Revised 17 November 2026:** staging on AWS is brought forward. It is built as soon as PRs 02, 04, 05 and 07 are
+> applied, for the payment providers' sandbox webhooks; it deploys `dev`, takes infrastructure changes before
+> production does, and its bill is reviewed in early February 2027 ([Later: staging on AWS](#later-staging-on-aws)).
 
 ## Ask the user before starting
 
@@ -80,7 +85,9 @@ The standing rules apply (CLAUDE.md §13–§21), with these differences from a 
   then work stops until the user says it is merged.
 - **Every PR that adds something to AWS states what it costs a month**, in its description, against the
   [budget](#the-budget). A PR that would take the month past $35 is put to the user before it is opened.
-- **Nothing here is tried on a staging first, so each piece is proven before it reaches the host**: host scripts
+- **Until the AWS staging exists (brought forward on 17 November 2026, see
+  [Later: staging on AWS](#later-staging-on-aws)), nothing here is tried on a staging first, so each piece is proven
+  before it reaches the host**: host scripts
   under test with a fake `docker`, the compose file held to `compose.yaml` by a parity test, the deploy smoke run
   against the local compose stack in CI, the images smoke-tested on arm64 in CI. Then production runs **dark**
   (deployed, no users) until launch, and the drills in [Closing P8](#closing-p8) happen in that window.
@@ -111,9 +118,10 @@ with nothing else able to; images in **ECR**; media in **S3**; logs, metrics and
 Actions planning, applying and deploying through OIDC roles and SSM, each run approved by the user. One AWS account,
 where the credits are, in the Supabase projects' region.
 
-There is no load balancer, no Auto Scaling group, no second host and no AWS staging. The Terraform is still cut as
-modules used by one small root per environment, so the staging that follows the release is the same modules with
-other variables, and a load balancer later replaces one module's inside, not the layout.
+There is no load balancer, no Auto Scaling group, no second host and, at first, no AWS staging (brought forward on
+17 November 2026, [below](#later-staging-on-aws)). The Terraform is still cut as modules used by one small root per
+environment, so the AWS staging is the same modules with other variables, and a load balancer later replaces one
+module's inside, not the layout.
 
 ```text
 infra/
@@ -121,7 +129,7 @@ infra/
   terraform/
     bootstrap/                   run once by the user: state bucket, GitHub OIDC, the roles, the $35 budget alert
     modules/{network,ecr,iam,compute,secrets,media,cdn,observability}/
-    envs/production/             the one root, for now (envs/staging follows the release)
+    envs/production/             the one root, for now (envs/staging: see Later)
   host/
     compose.prod.yml             web, api, worker from ECR tags, each with a memory limit
     render-env.sh                Parameter Store and Secrets Manager -> an env file on tmpfs
@@ -147,7 +155,7 @@ Decided by the user on 11 November 2026 and recorded in
 | A DNS zone                                                            | $0.50            | the domain's own registration (about $10 a year) is not payable from credits; register it outside AWS |
 | Encryption keys                                                       | $0               | AWS-managed keys only; a customer-managed KMS key would add $1 a month each                           |
 | **Production, as planned**                                            | **about $11**    | read against Mumbai's prices on 15 November 2026; the credits expire before they run out              |
-| With a staging on AWS later                                           | about $22        | still under $35                                                                                       |
+| With the staging on AWS (brought forward, 17 November 2026)           | about $22        | still under $35                                                                                       |
 
 Not in the table: **18% GST** on whatever is billed after credits, if the billing address is Indian; and CloudFront
 past its free 1 TB and 10 million requests a month, at $0.109 a GB from India (pilot traffic stays far below).
@@ -193,7 +201,11 @@ to deploy to; and observability lands on a running, dark production, where its a
   because of it, and the bootstrap's budget alert (50%, 80% and 100% of $35) is the guard.
 - **Staging is not on AWS.** Until the staging that follows the release, staging is the Supabase staging project,
   with the app run locally against it (`./run.sh staging`), exactly as today. Its migrations are still pushed by
-  hand (`pnpm run db:push:staging`). Nothing in P8 changes how a phase is tested.
+  hand (`pnpm run db:push:staging`). Nothing in P8 changes how a phase is tested. (First decided on 11 November 2026.
+  **Revised 17 November 2026:** once the AWS staging exists, phases are tried there, since it runs `dev`;
+  infrastructure and pipeline changes go to staging before production; and staging's migrations run in its deploy
+  (D5) instead of by hand. Until it exists, the guidance above still applies: the Supabase staging project with a
+  locally run app, migrations pushed by hand.)
 - **One Terraform root per environment, shared modules, no workspaces.** State lives in one S3 bucket, a key per
   environment, with S3's native lock file; no DynamoDB table.
 - **Three GitHub roles, each tied to a GitHub Environment** in its trust policy, never to a branch name or a pull
@@ -207,12 +219,13 @@ to deploy to; and observability lands on a running, dark production, where its a
   Tags are immutable.
 - **arm64 host, arm64 images**, built on GitHub's arm64 runners, which are free for a public repository. Nothing is
   ever built on the host: 1 GB is for running the app.
-- **The release is one small parameter.** `/food-pickup/production/release` in Parameter Store holds the two image
-  tags of **the last release that passed**, and it is written last. A deploy sends the candidate tags to the host as
-  the command's own parameters; the host applies them, and only after the public smoke passes does the workflow write
-  them to the parameter. A failed deploy leaves the parameter alone, so a replaced host, which reads it when it
-  boots, can never pick up a release that failed. Rolling back is a deploy of the earlier tags. The compose file and
-  the host scripts travel inside the deploy document, so changing them updates the document, not the machine.
+- **The release is one small parameter.** `/food-pickup/<environment>/release` (production's in production) in Parameter
+  Store holds the two image tags of **the last release that passed**, and it is written last. A deploy sends the
+  candidate tags to the host as the command's own parameters; the host applies them, and only after the public smoke
+  passes does the workflow write them to the parameter. A failed deploy leaves the parameter alone, so a replaced
+  host, which reads it when it boots, can never pick up a release that failed. Rolling back is a deploy of the earlier
+  tags. The compose file and the host scripts travel inside the deploy document, so changing them updates the
+  document, not the machine.
 - **A deploy is a short outage, by decision.** With one host and no load balancer, `docker compose up -d` means a
   few seconds of errors. The smoke test waits for it. This is the first thing a second host removes.
 - **Migrations before code, only forwards, and by the user.** The production workflow waits while the user runs
@@ -228,31 +241,31 @@ to deploy to; and observability lands on a running, dark production, where its a
 Approved with the plan. The roadmap's P8 section and its deployment diagram are updated to match in PR 00. Rows
 marked **decided** follow from the user's decisions of 11 November 2026.
 
-| Roadmap says                                                                                | P8 does                                                                                                                                                                                      | Picked up by                                                               |
-| ------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| P8 "reproducible staging and production"; `dev` deploys staging on every merge              | **decided:** production only. Staging stays the Supabase project with a locally run app; no `deploy-staging.yml`                                                                             | one to two months after the first release ([below](#later-staging-on-aws)) |
-| P8 staging ready before P5.4, because webhooks need a public HTTPS address                  | not available from P8. P5's plan chooses: a tunnel to a local stack for the provider's sandbox, or the AWS staging brought forward                                                           | the P5 plan                                                                |
-| P8.1 separate AWS accounts for staging and production under an Organization                 | **decided:** one account, where the credits are                                                                                                                                              | funding; a second account when staging and real payments share AWS         |
-| P8.1 CI runs `tflint` and `checkov`                                                         | `terraform fmt`, `validate`, and the `trivy config` scan `ci.yml` already runs, extended to `infra/`                                                                                         | a class of mistake those two would have caught                             |
-| P8.1 remote state "with locking" (implies a lock table)                                     | S3's own lock file                                                                                                                                                                           | –                                                                          |
-| P8.1 private subnets reserved for later                                                     | not created (nothing uses them)                                                                                                                                                              | the load balancer, when it returns                                         |
-| P8.2 staging images `dev-<sha7>` built on every merge to `dev`                              | **decided:** not built; `ci.yml` builds and smoke-tests arm64 images on pull requests, pushing nothing                                                                                       | the AWS staging                                                            |
-| P8.2 keep the last 30 images; every push scanned by Inspector                               | **decided:** keep the newest 10; ECR's basic scan on push, plus `security.yml`'s weekly `trivy image`                                                                                        | P9.3 (security review)                                                     |
-| P8.3 a release-assets bucket serving `/assets/*`, old chunks kept 30 days                   | `/assets/*` comes from the web container through CloudFront (immutable, cached a year at the edge); a tab left open across a deploy reloads once (`PageBoundary`, the reload P1 PR 21 added) | client error reports showing chunk failures after deploys                  |
-| P8.3 the WAF web ACL                                                                        | not attached (about $5 a month and up)                                                                                                                                                       | P9.3, with its price put to the user                                       |
-| P8.4 an Auto Scaling group of 1 to 2 hosts behind a load balancer; rolling deploys          | **decided:** one EC2 host, CloudFront straight to it, a deploy with a few seconds of errors (ADR-007 as amended)                                                                             | funding, or P9.1 showing one host is not enough                            |
-| P8.4 `t4g.small` (2 GB)                                                                     | **decided:** `t4g.micro` (1 GB), standard credits, memory limits per container, a swap file                                                                                                  | the memory alarm (PR 08); `t4g.small` still fits                           |
-| P8.4 services `web`, `api`, `worker` **and `reconciler`**, with a `leases` table            | three services; no reconciler and no lease                                                                                                                                                   | P5.10                                                                      |
-| P8.4 backups: Supabase daily backups and PITR                                               | not in P8: the free tier has neither (ADR-011)                                                                                                                                               | P9.5 (a scheduled dump), roadmap decision 14                               |
-| P8.5 smoke: a Playwright golden path and a k6 run after each staging deploy                 | HTTP checks after each production deploy (PR 07); production gets no test orders                                                                                                             | the AWS staging (browser smoke), P9.1 (k6)                                 |
-| P8.5 hotfix flow                                                                            | unchanged from P0.3; it deploys through the same production workflow                                                                                                                         | –                                                                          |
-| P8.6 secrets for payments, pickup codes, push, SMS and email; their guards                  | one secret holding one key today (`SUPABASE_SECRET_KEY`); each later secret is one more key in it, added by its phase                                                                        | P5, P6                                                                     |
-| P8.6 rotation runbooks                                                                      | the "how to change a secret" paragraph in `infra/README.md`                                                                                                                                  | P9.5                                                                       |
-| P8.7 metrics as Embedded Metric Format lines; business and pipeline metrics                 | metric filters on existing log lines for HTTP and queues, kept to about ten metrics; business metrics arrive with the features that produce them                                             | P5, P6                                                                     |
-| P8.7 tracing through OpenTelemetry                                                          | not built (the roadmap marks it optional)                                                                                                                                                    | P10.4                                                                      |
-| P8.7 real-user performance (`web-vitals`, `POST /api/client-metrics`, `rum_sample_percent`) | not built: there are no real users to measure before the pilot                                                                                                                               | P9, with the launch checklist                                              |
-| P8.7 alarms on payments, webhooks, reconciliation and failed cron runs                      | the alarms whose signals exist: errors, latency, dead letters, queue age, the host down, memory, CPU credits, the certificate                                                                | P5 (money), P9.5 (cron)                                                    |
-| P8.7 the SLOs                                                                               | written into `docs/DEPLOYMENT.md` as targets; measured from the pilot                                                                                                                        | P9                                                                         |
+| Roadmap says                                                                                | P8 does                                                                                                                                                                                            | Picked up by                                                       |
+| ------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| P8 "reproducible staging and production"; `dev` deploys staging on every merge              | **first decided (11 November 2026):** production only, staging left for after the release. **Brought forward on 17 November 2026:** staging on AWS is built once PRs 02, 04, 05 and 07 are applied | the three PRs in [Later: staging on AWS](#later-staging-on-aws)    |
+| P8 staging ready before P5.4, because webhooks need a public HTTPS address                  | not available from P8. P5's plan chooses: a tunnel to a local stack for the provider's sandbox, or the AWS staging brought forward                                                                 | the P5 plan                                                        |
+| P8.1 separate AWS accounts for staging and production under an Organization                 | **decided:** one account, where the credits are                                                                                                                                                    | funding; a second account when staging and real payments share AWS |
+| P8.1 CI runs `tflint` and `checkov`                                                         | `terraform fmt`, `validate`, and the `trivy config` scan `ci.yml` already runs, extended to `infra/`                                                                                               | a class of mistake those two would have caught                     |
+| P8.1 remote state "with locking" (implies a lock table)                                     | S3's own lock file                                                                                                                                                                                 | –                                                                  |
+| P8.1 private subnets reserved for later                                                     | not created (nothing uses them)                                                                                                                                                                    | the load balancer, when it returns                                 |
+| P8.2 staging images `dev-<sha7>` built on every merge to `dev`                              | **decided:** not built; `ci.yml` builds and smoke-tests arm64 images on pull requests, pushing nothing                                                                                             | the AWS staging                                                    |
+| P8.2 keep the last 30 images; every push scanned by Inspector                               | **decided:** keep the newest 10; ECR's basic scan on push, plus `security.yml`'s weekly `trivy image`                                                                                              | P9.3 (security review)                                             |
+| P8.3 a release-assets bucket serving `/assets/*`, old chunks kept 30 days                   | `/assets/*` comes from the web container through CloudFront (immutable, cached a year at the edge); a tab left open across a deploy reloads once (`PageBoundary`, the reload P1 PR 21 added)       | client error reports showing chunk failures after deploys          |
+| P8.3 the WAF web ACL                                                                        | not attached (about $5 a month and up)                                                                                                                                                             | P9.3, with its price put to the user                               |
+| P8.4 an Auto Scaling group of 1 to 2 hosts behind a load balancer; rolling deploys          | **decided:** one EC2 host, CloudFront straight to it, a deploy with a few seconds of errors (ADR-007 as amended)                                                                                   | funding, or P9.1 showing one host is not enough                    |
+| P8.4 `t4g.small` (2 GB)                                                                     | **decided:** `t4g.micro` (1 GB), standard credits, memory limits per container, a swap file                                                                                                        | the memory alarm (PR 08); `t4g.small` still fits                   |
+| P8.4 services `web`, `api`, `worker` **and `reconciler`**, with a `leases` table            | three services; no reconciler and no lease                                                                                                                                                         | P5.10                                                              |
+| P8.4 backups: Supabase daily backups and PITR                                               | not in P8: the free tier has neither (ADR-011)                                                                                                                                                     | P9.5 (a scheduled dump), roadmap decision 14                       |
+| P8.5 smoke: a Playwright golden path and a k6 run after each staging deploy                 | HTTP checks after each production deploy (PR 07); production gets no test orders                                                                                                                   | the AWS staging (browser smoke), P9.1 (k6)                         |
+| P8.5 hotfix flow                                                                            | unchanged from P0.3; it deploys through the same production workflow                                                                                                                               | –                                                                  |
+| P8.6 secrets for payments, pickup codes, push, SMS and email; their guards                  | one secret holding one key today (`SUPABASE_SECRET_KEY`); each later secret is one more key in it, added by its phase                                                                              | P5, P6                                                             |
+| P8.6 rotation runbooks                                                                      | the "how to change a secret" paragraph in `infra/README.md`                                                                                                                                        | P9.5                                                               |
+| P8.7 metrics as Embedded Metric Format lines; business and pipeline metrics                 | metric filters on existing log lines for HTTP and queues, kept to about ten metrics; business metrics arrive with the features that produce them                                                   | P5, P6                                                             |
+| P8.7 tracing through OpenTelemetry                                                          | not built (the roadmap marks it optional)                                                                                                                                                          | P10.4                                                              |
+| P8.7 real-user performance (`web-vitals`, `POST /api/client-metrics`, `rum_sample_percent`) | not built: there are no real users to measure before the pilot                                                                                                                                     | P9, with the launch checklist                                      |
+| P8.7 alarms on payments, webhooks, reconciliation and failed cron runs                      | the alarms whose signals exist: errors, latency, dead letters, queue age, the host down, memory, CPU credits, the certificate                                                                      | P5 (money), P9.5 (cron)                                            |
+| P8.7 the SLOs                                                                               | written into `docs/DEPLOYMENT.md` as targets; measured from the pilot                                                                                                                              | P9                                                                 |
 
 ## The pull requests
 
@@ -263,8 +276,8 @@ marked **decided** follow from the user's decisions of 11 November 2026.
 Docs only (`no-release`). The two ADR amendments P8 needed are **made** (the user, 11 November 2026; see
 [ADRs this plan touches](#adrs-this-plan-touches)), so this PR brings the rest into line with them:
 `docs/DEPLOYMENT.md` gains a "Hosted environments" section (the account, ap-south-1, the domain, the size, the
-budget, and that staging is not hosted); `plans/ROADMAP.md` P8, its deployment diagram, the "P8 before P5.4" note
-and the ADR-007 row of its architecture-decisions table match the
+budget, and that staging is not hosted until the AWS staging is built); `plans/ROADMAP.md` P8, its deployment
+diagram, the "P8 before P5.4" note and the ADR-007 row of its architecture-decisions table match the
 [table above](#where-p8-builds-less-than-the-roadmap); roadmap decisions 11, 12 and 13 are marked answered.
 
 ### PR 01 — Terraform skeleton, the bootstrap, and their CI (P8.1)
@@ -294,7 +307,11 @@ Modules, each small and used by `envs/production`:
 - `network`: a VPC with public subnets in two zones (the host has a public address for outbound traffic only: a
   NAT gateway alone would cost more than the whole budget); an S3 gateway endpoint (free); a security group in
   which the host accepts traffic from CloudFront only and nothing accepts SSH.
-- `ecr`: `food-pickup/web` and `food-pickup/server`, immutable tags, scan on push, keep the newest 10 images.
+- `ecr`: `food-pickup/web` and `food-pickup/server` (the names come from a module variable, so the staging PR can
+  give its own), immutable tags, scan on push, keep the newest 10 images; only production's own images are pushed
+  to them (releases, and rehearsal builds while it is dark), never staging's. Because tags are immutable, every
+  workflow that builds an image first looks for its tag and reuses the image when it is already there, so a retried
+  run for the same commit does not fail on the push.
 - `iam`: the instance role (pull from ECR, Session Manager, write its own log groups, read its own parameters and
   secret, read and write the media bucket).
 
@@ -326,8 +343,10 @@ Waits for D11: the first PR with an hourly price, about $11.50 a month from its 
   the host down (with Node's own heap limit set below it for `api` and `worker`).
   `scripts/ci/compose-parity.test.mjs` (new) fails when the two compose files disagree on a service's command,
   health check or the ports between services.
-- `infra/host/render-env.sh`: reads `/food-pickup/production/*` from Parameter Store and the one secret
-  `food-pickup/production/app` from Secrets Manager into an environment file on tmpfs, readable by root only.
+- `infra/host/render-env.sh`: reads `/food-pickup/<environment>/*` from Parameter Store and the one secret
+  `food-pickup/<environment>/app` from Secrets Manager into an environment file on tmpfs, readable by root only.
+  `<environment>` comes from the host's own environment, which `modules/compute` sets from the root's variable, as the
+  `modules/secrets` names do; production's are `/food-pickup/production/*` and `food-pickup/production/app`.
   `infra/host/apply-release.sh`: take candidate tags from the command's parameters, or, with none, the release
   parameter's tags; pull, `up -d`, wait for `/api/ready` through nginx; if it does not answer in time, return to the
   tags the release parameter names (the last release that passed) and exit non-zero. It never writes the parameter.
@@ -338,7 +357,10 @@ Waits for D11: the first PR with an hourly price, about $11.50 a month from its 
 - `modules/secrets`: the parameters (`APP_ENV`, the Supabase URL and publishable key, `CLIENT_ORIGIN`,
   `TRUST_PROXY_HOPS`, `LOG_LEVEL`, the rate limits, sized for one API instance) from the environment's variables,
   and the secret's container with a placeholder the user replaces; Terraform ignores the value afterwards.
-- The SSM document `food-pickup-deploy`, with the three host files rendered into it: write the files, then run
+- The SSM document, one per environment, with the three host files rendered into it. Production's keeps the name
+  `food-pickup-deploy`, which the bootstrap's deploy role is already scoped to
+  (`infra/terraform/bootstrap/main.tf`); staging's is `food-pickup-staging-deploy`, under staging's own role. The
+  document's name is a variable of the module, not a literal in it. It does this: write the files, then run
   `apply-release.sh`, with the candidate tags as the command's parameters (none means the parameter's release). A
   State Manager association runs it once on a new host with none, so a replaced machine comes up on the last release
   that passed without anyone deploying.
@@ -467,7 +489,8 @@ roadmap calls SLOs), `docs/CONFIGURATION.md`, `docs/JOBS.md` (the runbook points
 ## Closing P8
 
 P8 is closed when production is deployed and healthy, **dark** (no announcement, no real users), from a pipeline
-run the user approved, and these have been done on it while it is dark, since there is no staging to do them on:
+run the user approved, and these have been done on it while it is dark, since there is no AWS staging yet to do them on
+(it is built after PRs 02, 04, 05 and 07):
 
 - **A rehearsal deploy** of a `dev` commit, start to finish, with the smoke green.
 - **The way back**: a rehearsal of a commit whose API cannot start; the host returns to the previous tags, the run
@@ -502,18 +525,58 @@ Everything since P0 reaches `main` for the first time (P1's and later plans' "at
 
 ## Later: staging on AWS
 
-Decided by the user (11 November 2026): one to two months after the first release, not before. Until then the
-staging Supabase project and a locally run app are staging. When it comes it is three small PRs, about $11 a month
-more (about $26 in all, still under the ceiling):
+> **Brought forward (the user, 17 November 2026).** Staging on AWS is now built as soon as PRs 02, 04, 05 and 07
+> are applied, because P4's sandbox spike and P5's webhooks need a fixed public address
+> ([P4 plan](P4_PAYMENT_SELECTION.md#the-aws-staging-brought-forward), D8 and D12 below). The three PRs are the
+> ones described here, unchanged: staging deploys `dev` and nothing else (P5 therefore has no phase branch). Two
+> things follow, both in ADR-007 and ADR-011 as the user amended them that day: **from the day staging exists,
+> every infrastructure and pipeline change is applied to staging first**, and only then to production; and staging
+> **runs continuously, with its bill reviewed in early February 2027**, before the credits expire.
+
+First decided by the user (11 November 2026), and superseded on 17 November 2026 (above): one to two months after the
+first release, not before. Until then the staging Supabase project and a locally run app are staging. When it comes
+it is three small PRs, about $11 a month more (about $22 in all at the prices read on 15 November, still under the
+ceiling):
 
 1. **The environment**: `infra/terraform/envs/staging/`, the same modules with staging's variables, in the same
-   account, kept apart from production by name, tag and role; its own `apply` Environment.
-2. **`deploy-staging.yml`**: when `ci.yml` finishes green for a push to `dev`: build and push `dev-<sha7>`,
-   migrate the staging database (the Supabase access token and database password as secrets of the GitHub
-   Environment `staging`, which the user approved on 11 November 2026, ADR-007 as amended), deploy, run
-   `deploy-smoke.sh`. This is the day "`dev` deploys staging" becomes true, and the day manual staging pushes end.
+   account, kept apart from production by name, tag and role; its own `apply` Environment. The host files and the
+   deploy document take their parameter prefix, secret name and document name from the environment, so staging's host
+   reads `/food-pickup/staging/*` and its own secret; this is settled in PR 04, before the staging PRs. Staging's
+   deploy role, scoped to `food-pickup-staging-deploy`, `/food-pickup/staging/release` and the repositories
+   `food-pickup/staging/*` only, is an addition to the bootstrap, which the user applies (production's deploy role
+   pushes to `repository/food-pickup/*`). Staging's images go to repositories of their own, `food-pickup/staging/web`
+   and `food-pickup/staging/server`, each with its own keep-newest-10 rule, so no number of merges to `dev` can evict
+   a production release image; production's repositories hold production's images only. The repository names are a
+   variable of `modules/ecr`, not a literal in it.
+2. **`deploy-staging.yml`**: started when `ci.yml` finishes green for a push to `dev`. **A run deploys the current
+   head of `dev`, not the commit that started it**, so it does not matter which run is the one left waiting. All runs
+   share one concurrency group with `cancel-in-progress` off, as production's do: they go one at a time, and a run
+   that has started is never cancelled. When its turn comes, a run:
+   1. reads the head of `dev`, and stops, changing nothing, if `ci-ok` is not green for that commit (that commit's own
+      CI will start a run) or if staging already runs it (staging's release parameter names it);
+   2. builds and pushes `dev-<sha7>` to staging's repositories, or reuses the image when that tag is already there, so
+      a retry for the same commit never pushes twice;
+   3. migrates the staging database (the Supabase access token and database password as secrets of the GitHub
+      Environment `staging`, which the user approved on 11 November 2026, ADR-007 as amended);
+   4. deploys, runs `deploy-smoke.sh`, and writes staging's release parameter.
+
+   The choice in step 1 is made before anything changes. From step 3 on, the run finishes whatever is pushed
+   meanwhile, so a migration is never left without its deploy, and the next run brings staging to the newer head.
+
+   **When the deploy or the smoke fails after the migration**, the run fails and writes nothing: staging's release
+   parameter stays on the previous release and the host returns to it, as production's does. The migration stays, and
+   nothing in the staging database is rolled back: expand and contract keeps the previous release working on the newer
+   schema. Staging is then fixed forward. A rerun for the same commit reuses its image and finds the migration already
+   applied; a new push deploys the new head.
+
+   This is the day "`dev` deploys staging" becomes true, and the day manual staging pushes end.
+
 3. **A browser smoke test** after each staging deploy: one Playwright order on a phone viewport as the seeded
    customer, whose password is the third secret of that Environment.
+
+This section is a sketch, not the staging PRs' specification. Review points raised on it after 17 November 2026 are
+recorded on pull request #149 and are settled by the staging PRs themselves, the first of which starts by reading that
+pull request's threads.
 
 With a hosted worker polling it, the staging Supabase project also stops pausing after seven idle days.
 
@@ -561,11 +624,11 @@ answered, or have a default the plan follows.
 | D5   | Staging migrations inside a pipeline            | **answered (the user, 11 November 2026): yes**, with staging's credentials in a GitHub Environment; it takes effect with the AWS staging. Until then, by hand                                                                                                                                                                                                                                                                                                                                 | later      |
 | D6   | Production migrations (roadmap decision 11)     | manual, by the user, while the deploy waits                                                                                                                                                                                                                                                                                                                                                                                                                                                   | 07         |
 | D7   | Compose on EC2, or ECS (roadmap decision 12)    | compose on EC2 (ADR-007)                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | 04         |
-| D8   | A staging on AWS                                | **answered (the user, 11 November 2026):** not at first; one to two months after the first release                                                                                                                                                                                                                                                                                                                                                                                            | later      |
+| D8   | A staging on AWS                                | **answered (the user, 11 November 2026):** not at first; one to two months after the first release. **Changed (the user, 17 November 2026): brought forward**, for P4's sandbox spike and P5's webhooks ([below](#later-staging-on-aws))                                                                                                                                                                                                                                                      | later      |
 | D9   | Production hosts                                | **answered (the user, 11 November 2026):** a single host; replicas come with funding                                                                                                                                                                                                                                                                                                                                                                                                          | 04         |
 | D10  | Where alarms and the budget alert go            | **answered (the user, 15 November 2026):** one address, kept out of the repository (answer 1)                                                                                                                                                                                                                                                                                                                                                                                                 | 01, 08     |
 | D11  | When the host is created (PR 04)                | **answered (the user, 15 November 2026):** as soon as PRs 01 and 02 are applied, so the dark-period drills run on credits that would otherwise expire on 18 February 2027. If launch is after that date, the host may be destroyed after the drills and rebuilt a month before launch                                                                                                                                                                                                         | 04         |
-| D12  | Where webhooks are tested before an AWS staging | for the P5 plan: a tunnel to a local stack for the provider's sandbox, or the AWS staging brought forward                                                                                                                                                                                                                                                                                                                                                                                     | P5         |
+| D12  | Where webhooks are tested before an AWS staging | **answered (the user, 17 November 2026): the AWS staging, brought forward** ([P4 plan](P4_PAYMENT_SELECTION.md#the-aws-staging-brought-forward)); no tunnel                                                                                                                                                                                                                                                                                                                                   | P5         |
 | D13  | Where the AWS spend is recorded                 | **answered (the user, 11 November 2026):** $140 of credits, at least four months; recorded as an amendment to ADR-011                                                                                                                                                                                                                                                                                                                                                                         | 00         |
 | D14  | Who applies Terraform                           | **answered (the user, 11 November 2026):** the pipeline, after the user's approval (ADR-007 as amended)                                                                                                                                                                                                                                                                                                                                                                                       | 01         |
 
@@ -587,7 +650,8 @@ answered, or have a default the plan follows.
 - Confirm the SNS subscription email (PR 08).
 - Buy or delegate the domain when it is chosen (D3); its registration is probably not payable from credits.
 - Look at the bill at the end of the first month against the budget table.
-- Staging, unchanged: push its migrations and seed it by hand, as today.
+- Staging, unchanged until the AWS staging exists (brought forward on 17 November 2026): push its migrations and
+  seed it by hand, as today.
 
 ## Risks and gotchas
 
@@ -629,10 +693,12 @@ answered, or have a default the plan follows.
 - **A public repository with cloud credentials.** The roles trust a GitHub Environment, not a branch or a PR, the
   Environments that can change anything need the user's approval, and the workflow guard (PR 01) keeps a future
   workflow from loosening that. Fork PRs get no token that can assume a role.
-- **The staging database is still migrated by hand**, so it can drift from `dev`. `docs/DEPLOYMENT.md`'s existing
-  steps stand; `supabase migration list` against staging is the check before testing a phase on it.
-- **Webhooks need a public address** that P8 no longer provides for staging. This is the P5 plan's to solve (D12);
-  it must not be solved by pointing a payment sandbox at production.
+- **The staging database is migrated by hand until the AWS staging exists**, so it can drift from `dev`.
+  `docs/DEPLOYMENT.md`'s existing steps stand; `supabase migration list` against staging is the check before testing
+  a phase on it. (Revised 17 November 2026: from the AWS staging's first deploy its migrations run in the pipeline,
+  D5.)
+- **Webhooks need a public address**, which P8 did not at first provide for staging. Solved on 17 November 2026 by
+  bringing the AWS staging forward (D12); it must not be solved by pointing a payment sandbox at production.
 - **State and drift.** A change made in the AWS console is undone or fought by the next apply. The rule is in
   `infra/README.md`: change the Terraform, or do not change it.
 - **Terraform plans are public.** Names and ARNs appear in job summaries. Nothing secret is ever a Terraform input;
