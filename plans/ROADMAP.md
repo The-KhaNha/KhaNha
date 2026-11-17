@@ -2252,6 +2252,13 @@ The product owner set three constraints:
 starts now, in parallel with P0; only the sandbox spike waits for the P5.1 port shape. It runs alongside P0–P3,
 because sales, KYC and legal review take weeks. **Blocks:** P5. **Size:** M.
 
+> **How it is built:** [P4_PAYMENT_SELECTION.md](P4_PAYMENT_SELECTION.md): who does each step, what each one gates
+> in P5, and the five pull requests the repository needs. Decided on 17 November 2026 (the user): the spike covers
+> Cashfree, Paytm and Razorpay, each adapter merged into `dev` and refused in production; sandbox webhooks are
+> tested on an AWS staging, brought forward; the DLT registration is dropped, because the pilot sends no SMS.
+> Nothing in P4 had been answered on that date. Where the
+> plan and this section disagree, the plan is newer.
+
 **Output:**
 
 - ADR-003 accepted, naming the provider, the money model and the hold mechanism;
@@ -2449,6 +2456,16 @@ The full ladder with its trade-offs is in
 **Items:** R2, R4, R4.1, R4.2, R5, R12, R28.3–R28.6, R29. **Depends on:** P4 (the provider and the money model), P2,
 P3, and P8's staging environment (a public webhook URL). **Size:** XL. **Flags:** `real_payments` (per store),
 `acceptance_flow`, `cancellation_by_customer`.
+
+> **How it is built:** [P5_PAYMENTS.md](P5_PAYMENTS.md), PR by PR straight into `dev`, with no phase branch, so
+> staging always runs what `dev` holds (the user, 17 November 2026). Its PRs 01–21 are the
+> same for every provider and both money models and are built against a fake gateway; the provider's adapter,
+> payouts and go-live wait for P4 ([the plan's gates](P5_PAYMENTS.md#gates)). Decided on 17 November 2026 (the
+> user): surplus and deals (P3.6) and partial line refunds wait until after the pilot; custom cancellation rules
+> are built; the agent merges each work PR except those that move money. The full list of what P5 builds
+> differently, with what picks each item up, is the plan's
+> [Where P5 differs from the roadmap](P5_PAYMENTS.md#where-p5-differs-from-the-roadmap). Where the plan and this
+> section disagree, the plan is newer.
 
 Provider details below use P4's recommendation (Cashfree) as the worked example. The gateway port keeps the other
 finalists a configuration change.
@@ -3098,6 +3115,13 @@ is planned rather than improvised.
 **Goal:** an honest wait time, a pickup that cannot hand food to the wrong person, notifications at the moments that
 matter, and a staff board built for a rush. **Items:** R11.1, R13, R15, R25, R28.1. **Depends on:** P5 (the v2
 lifecycle). **Size:** L. **Flags:** `pickup_qr`, `notifications_push`.
+
+> **How it is built:** [P6_ORDER_EXPERIENCE.md](P6_ORDER_EXPERIENCE.md), PR by PR on the `feat/P6` branch. It needs
+> P5's lifecycle and none of P5's gates. Decided on 17 November 2026 (the user): notifications are in-app and Web
+> Push only (no SMS, no email); the counter screen is built. The rush factor and the history correction wait for
+> P7.1's tables. The full list is the plan's
+> [Where P6 builds less than the roadmap](P6_ORDER_EXPERIENCE.md#where-p6-builds-less-than-the-roadmap). Where the
+> plan and this section disagree, the plan is newer.
 
 ### P6.1 ETA engine
 

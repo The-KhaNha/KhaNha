@@ -11,15 +11,28 @@ Amended (2026-11-11), by the user:
   with no load balancer**; the load balancer, the second host and rolling deploys this ADR first decided return
   when there is funding to scale.
 - **No staging on AWS at first.** Staging stays the Supabase staging project with the app run locally against it.
-  A staging environment on AWS follows one to two months after the first release.
+  A staging environment on AWS follows one to two months after the first release. (Changed on 2026-11-17, below.)
 - **The pipeline applies the infrastructure.** GitHub Actions plans and applies Terraform through OIDC roles, as
   well as deploying; every run that changes production waits for the user's approval.
 - **Staging's credentials may live in GitHub**, once staging is hosted on AWS: the staging database credentials and
   the staging smoke test's password as secrets of a GitHub Environment. Production's never are.
 
+Amended (2026-11-17), by the user:
+
+- **Staging on AWS is brought forward.** It is built as soon as production's network, host, CDN and deploy pipeline
+  are applied, not one to two months after the first release: the payment providers' sandbox webhooks (P4's spike,
+  P5) need a fixed public address. It runs continuously and is reviewed before the credits expire
+  ([ADR-011][adr-011]).
+- **Staging first.** From the day staging is hosted, every infrastructure and pipeline change is applied to
+  staging, checked, and only then to production.
+- **Staging is exactly `dev`.** Only `dev` is deployed there, on every merge. P5's pull requests go straight into
+  `dev`, with no phase branch, so what they build can be tried on staging pull request by pull request.
+- **The host is sized up before a process is dropped.** If the reconciler does not fit beside the other three
+  containers, the host goes to `t4g.small` ([ADR-005][adr-005] as amended).
+
 ## Date
 
-2026-09-28 (accepted), 2026-11-11 (amended)
+2026-09-28 (accepted), 2026-11-11 and 2026-11-17 (amended)
 
 ## Context
 
@@ -48,8 +61,9 @@ Kubernetes (EKS) comes only after a measured gate in P10.1.
 - Production runs on one EC2 host (`t4g.micro`, standard CPU credits so a burst can never add to the bill), running
   `web`, `api` and `worker`; the `reconciler` joins with P5.10. No Auto Scaling group and no load balancer:
   CloudFront reaches the host directly, and nothing else can.
-- Staging is not hosted on AWS at first. One to two months after the first release it gets the same shape: one small
-  host of its own, in the same account, deployed on every merge to `dev`.
+- Staging gets the same shape: one small host of its own, in the same account, deployed on every merge to `dev`
+  (amended 2026-11-17: as soon as production's network, host, CDN and pipeline are applied; first decided as one
+  to two months after the first release).
 - A deploy runs on that host: `docker compose pull && up -d`, then a wait for `/api/ready`; if it never answers, the
   host returns to the tags that last worked. A deploy is a few seconds of errors, accepted at this size.
 - Rolling back runs the same command with the previous tags; expand/contract migrations mean no database rollback.
@@ -78,14 +92,15 @@ the EKS gate below.
   (so staging migrates itself on every merge) and the staging smoke test's customer password. Production's database
   credentials never enter GitHub: production migrations stay a step the user runs. All of this works on GitHub Free
   ([ADR-011][adr-011]).
-- **With no hosted staging, infrastructure and pipeline changes are first run on production.** They are tested
+- **Until staging is hosted, infrastructure and pipeline changes are first run on production.** They are tested
   before they reach the host (scripts under test, the image and deploy smoke tests in CI), production runs dark
   until launch, and a rehearsal deploy that only works while it is dark exercises the pipeline before the first
-  release ([P8 plan][p8-plan]).
+  release ([P8 plan][p8-plan]). **From the day staging is hosted, they go to staging first** (amended 2026-11-17).
 - **One host is a single point of failure.** A failed host means an outage until it is replaced, and every deploy is
   a short one. That is accepted for 0 to 50 users and is the first thing funding removes.
 - **1 GB of memory** holds today's three containers with little to spare. Memory is watched from the first day; the
-  next size up (`t4g.small`) still fits the budget.
+  next size up (`t4g.small`) still fits the budget, and is the step taken if the fourth container (the reconciler,
+  P5.10) does not fit (amended 2026-11-17).
 - Cost: Secrets Manager charges per secret per month; SSM Parameter Store standard parameters are free. Keep the
   secret count at one per environment, and put everything that is not a secret in Parameter Store. The whole budget
   is in [ADR-011][adr-011] and the [P8 plan][p8-plan].
