@@ -136,10 +136,10 @@ shown.
   engine (`domain/cancellation.ts`, pure, property-tested) decides only the _percentage_ and whether the customer
   may cancel; SQL applies it under the lock, refuses a percentage outside 0–100, and forces 100% for every
   restaurant-fault reason.
-- **Only an order with a `PAID` payment row has money.** `post_order_settled` and every refund request act only on
-  an order that has a `payments` row in state `PAID`. Orders placed before PR 08 were never charged and have no
-  `PAYMENT_CONFIRMED` posting, so collecting, rejecting or cancelling one moves status and stock only;
-  `ledger_integrity()` skips them by the same test.
+- **Only an order with a `PAID` payment row has money.** `post_order_settled`, every refund request and every
+  other ledger posting act only on an order that has a `payments` row in state `PAID`. Orders placed before PR 08
+  were never charged and have no `PAYMENT_CONFIRMED` posting, so collecting, rejecting or cancelling one moves
+  status and stock only; `ledger_integrity()` skips them by the same test.
 - **`payments.state` is the truth about a payment.** `orders.payment_status` stays `PENDING | PAID` (the API field
   the client already reads) and is set by `confirm_payment`; it gains no new values. Refunds are their own rows.
 - **Every payment records its provider.** Status checks, refunds and reconciliation use the payment's own provider,
@@ -408,8 +408,9 @@ Migration `<ts>_checkout_holds.sql`:
   `order.placed`), so there is one body and the old route still works until PR 09;
 - `abandon_checkout(p_order_id, p_reason, p_actor, p_request_id, p_release_key boolean default false)`: under the
   order's lock, a `PENDING_PAYMENT` order becomes `ABANDONED`, its stock goes back and each line's
-  `reserved_quantity` becomes 0, and when `p_release_key` is true its `idempotency_key` is set to null; a repeat is
-  a no-op with no event;
+  `reserved_quantity` becomes 0, and when `p_release_key` is true its `idempotency_key` is set to null, except that
+  with `p_release_key` it refuses (returns false, changes nothing) when a payment is attached to the order (PR 06's
+  migration adds that check); a repeat is a no-op with no event;
 - `expire_holds(p_now, p_limit)`: abandons orders whose hold has passed, `for update skip locked`, a bounded batch;
 - `run_order_deadlines()` calling it, scheduled every minute as `order-deadlines`, and
   `purge_cron_history()` (keeps two days of `cron.job_run_details`), scheduled nightly.
@@ -430,8 +431,10 @@ expected NEW TABLE (`payments`). Skills: `/new-endpoint`, `agent-skills:api-and-
 
 Migration `<ts>_payments.sql`: `payment_state` and `payments` as the roadmap has them (`order_id` unique,
 `gateway_order_id` unique, `provider`, `amount_paise`, `state`, `method`, `paid_at`, `refunded_paise`), and
-`attach_payment(p_order_id, p_provider, p_gateway_order_id, p_amount_paise)`, which refuses any order that is not
-`PENDING_PAYMENT`.
+`attach_payment(p_order_id, p_provider, p_gateway_order_id, p_amount_paise)`, which takes the order's row lock and
+refuses any order that is not `PENDING_PAYMENT`. The same migration re-creates `abandon_checkout` so that, with
+`p_release_key`, it changes nothing and returns false when a `payments` row exists for the order. Both functions
+take the order's lock, so one of them always goes first.
 
 Server:
 
@@ -440,10 +443,13 @@ Server:
 | `POST /api/checkout`           | `requireAuth`, `writeLimiter` | `createOrder`'s checks (lines limit, open state, friendly pricing errors), then `create_checkout`, then `gateway.createOrder` **outside the transaction**, then `attach_payment`. Answers `201 { order, payment: { provider, session, expiresAt } }`. `storeId`, `idempotencyKey` and `policyVersion` are required |
 | `POST /api/orders/:id/abandon` | `requireAuth`, the owner      | `abandon_checkout`; someone else's order is 404; an order past `PENDING_PAYMENT` is 409 `INVALID_STATUS_TRANSITION`                                                                                                                                                                                                |
 
-- If the gateway call fails, the service abandons the checkout at once and answers 503 `PAYMENT_UNAVAILABLE`. That
-  abandonment also clears the order's `idempotency_key` (`abandon_checkout` takes `p_release_key`), so a retry with
-  the same key starts a fresh checkout and gets a session instead of replaying an order that can no longer be paid;
-  a checkout the customer abandons keeps its key. If the process dies between the two calls, the hold expires by
+- If the gateway call fails, the service abandons the checkout at once, but only an order with no payment attached,
+  and answers 503 `PAYMENT_UNAVAILABLE`. That abandonment also clears the order's `idempotency_key`
+  (`abandon_checkout` takes `p_release_key`), so a retry with the same key starts a fresh checkout and gets a session
+  instead of replaying an order that can no longer be paid; a checkout the customer abandons keeps its key. When
+  another request with the same key has already attached a payment, `abandon_checkout` with `p_release_key` changes
+  nothing and returns false; this request still answers 503 `PAYMENT_UNAVAILABLE`, and the order stays payable
+  through the session the other request holds. If the process dies between the two calls, the hold expires by
   itself.
 - A replay of the same key answers the same order and a session for it while that order is still `PENDING_PAYMENT`
   (the gateway's create is idempotent on our order id). With a real provider configured, a store without
@@ -452,8 +458,9 @@ Server:
 - The order DTO gains `holdExpiresAt` and `payment: { state, provider } | null`, for the owner.
 
 Tests: the endpoint matrix (auth, bounds, another user's order 404, the business refusals); the gateway failing
-releases the stock, and a retry with the same key then succeeds with a new order and a session; a replay; a
-rate-limited caller; the DTO parity with the client's `Order`.
+releases the stock, and a retry with the same key then succeeds with a new order and a session; a replay; two
+requests with the same key, one attaches and the other's gateway call fails, leave the order `PENDING_PAYMENT` with
+its key, its stock and its session; a rate-limited caller; the DTO parity with the client's `Order`.
 
 Docs: `docs/API.md` (routes, the new codes `PAYMENT_UNAVAILABLE`, `PAYMENTS_NOT_ENABLED`, `POLICY_CHANGED`,
 `CHECKOUT_EXPIRED`), `docs/SCHEMA.md`, `docs/PAYMENTS.md` (the checkout sequence). Intent: `--server minor`.
@@ -495,8 +502,9 @@ p_acceptance_enabled boolean, p_promised_minutes integer default null, p_actor, 
   2. an amount that is not the order's total raises `PAYMENT_AMOUNT_MISMATCH` and changes nothing;
   3. an `ABANDONED` order takes its stock again with the same conditional decrement, all lines or none: when any
      line fails, the lines already taken go back to stock and their `reserved_quantity` returns to 0, and then the
-     order becomes `REJECTED` (`STOCK_UNAVAILABLE_AFTER_PAYMENT`), the payment is marked `PAID`, the ledger gets
-     `PAYMENT_CONFIRMED`, and `request_refund` asks for the whole amount (`LATE_PAYMENT`);
+     order becomes `REJECTED` (`STOCK_UNAVAILABLE_AFTER_PAYMENT`), the payment is marked `PAID`,
+     `orders.payment_status` is `PAID`, the ledger gets `PAYMENT_CONFIRMED`, and `request_refund` asks for the whole
+     amount (`LATE_PAYMENT`);
   4. otherwise the payment is `PAID`, `orders.payment_status` is `PAID`, the commission is snapshotted, the promise
      is `now() + coalesce(p_promised_minutes, prep_time_max_minutes)` with `sla_deadline` one buffer later, and
      the ledger gets `PAYMENT_CONFIRMED` (`GATEWAY_CLEARING` → `CUSTOMER_FUNDS`);
@@ -511,9 +519,9 @@ turns the flag's reading on.
 
 Tests (`test/api/confirm-payment.test.ts`, at the RPC): confirm twice and concurrently, one event and one journal;
 the amount mismatch; a late payment with stock left, and with the last unit gone (refund row for the full amount,
-ledger balanced); a late payment for a two-line order whose second line is sold out leaves the first line's stock
-and `reserved_quantity` as they were; the acceptance branch for a tracked-stock line under each mode; the
-failed-then-paid retry; `ledger_integrity()` empty at the end.
+ledger balanced, the order's `payment_status` `PAID`); a late payment for a two-line order whose second line is
+sold out leaves the first line's stock and `reserved_quantity` as they were; the acceptance branch for a
+tracked-stock line under each mode; the failed-then-paid retry; `ledger_integrity()` empty at the end.
 
 Docs: `docs/PAYMENTS.md` (the function's branches), `docs/SCHEMA.md`, `docs/CONFIGURATION.md`.
 Intent: `--server minor`.
@@ -686,8 +694,9 @@ p_reason, p_note, p_actor, p_request_id)`. Under the lock it requires the order 
 `PREPARING`, **forces 100% for a store's cancel and for any cancel after a breach**, computes the refund in SQL
 from `total_paise` and the percentage, calls `request_refund` only when the computed refund is above zero (a policy
 that keeps the whole amount creates no refund row), and when a fee is kept posts it to the ledger (the store keeps
-the fee less commission, the platform the commission on it). The refund is requested only for an order with a
-`PAID` payment row (the cross-cutting rule). It replaces the `CANCELLED` branch of `update_order_status`.
+the fee less commission, the platform the commission on it). The refund and the fee's posting happen only for an
+order with a `PAID` payment row (the cross-cutting rule); cancelling an order without one moves status and stock
+only. It replaces the `CANCELLED` branch of `update_order_status`.
 
 Server:
 
@@ -699,7 +708,8 @@ Server:
 
 Tests: every template at every stage gives the documented amount; a cancel racing "start preparing" either
 refunds by the earlier stage or is refused, never both; the fee's ledger lines; a cancellation that refunds
-nothing posts the fee and creates no refund; a store's cancel is always 100%; another customer's order is 404.
+nothing posts the fee and creates no refund; cancelling an order with no `PAID` payment row under a policy that
+keeps a fee posts nothing to the ledger; a store's cancel is always 100%; another customer's order is 404.
 
 Docs: `docs/API.md`, `docs/PAYMENTS.md` (the fee's postings), `docs/PERMISSIONS.md`. Intent: `--server minor`.
 

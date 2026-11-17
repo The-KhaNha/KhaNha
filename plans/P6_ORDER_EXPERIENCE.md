@@ -47,7 +47,7 @@ What the code has when P5's PRs 01–21 are in (P5 as planned), and what P6 adds
 | P6.3 notifications | `q_notifications` receives `order.*`; its handler only logs "Order event". No `notifications` table, no push, no service worker. `manifest.webmanifest` exists and is linked. The order page vibrates when a poll finds the order ready. ADR-010 chose polling plus Web Push                                                                                                   | all of it                                                     |
 | P6.4 staff board   | one grid narrowed by toggle filters (All, To accept, New, Preparing, Ready, Done), cards with one primary action, an inline cancel and (P5) accept and reject; no detail sheet; no sound; **the card shows the customer's phone, and the list payload carries it for every order**; one generic `PATCH …/status` beside P5's accept, reject and cancel routes                  | lanes, search, the detail sheet, commands, privacy            |
 | P6.4 polling       | the board polls the full list every `staffBoardMs` (4 s) with ETag 304s and pauses when hidden; cards mount near the viewport (`LazyGroup`) and re-render only when changed                                                                                                                                                                                                    | nothing new ([below](#where-p6-builds-less-than-the-roadmap)) |
-| P6.5 order page    | `Order.tsx` with the hero, the tracker, items with options, and P5's states (confirming, awaiting, rejected, cancel, late, not collected); it shows `#orderNumber` and the promise as one time                                                                                                                                                                                 | the pickup card, the range, the receipt                       |
+| P6.5 order page    | `Order.tsx` with the hero, the tracker, items with options, and P5's states (confirming, awaiting, rejected, cancel, late, not collected); it shows `#orderNumber` and the promise as one time                                                                                                                                                                                 | the pickup card, the receipt                                  |
 | Sheets             | six sheets, each with its own portal, backdrop and Escape handling; `useFocusTrap`, `useBackToClose` and `useLeaveWarning` are shared                                                                                                                                                                                                                                          | one more sheet, and the shell they share                      |
 | Profile            | name, email, phone, three links and Log out; no preference of any kind                                                                                                                                                                                                                                                                                                         | the notifications row                                         |
 | Budgets            | initial JS about 97 KiB gzip of 170; client runtime dependencies: `@supabase/supabase-js`, `lucide-react`, `react`, `react-dom`, `react-router-dom`, `zustand`                                                                                                                                                                                                                 | one small lazy dependency (the QR encoder)                    |
@@ -87,7 +87,8 @@ tracks produced, and the contract (15) removes what the new board no longer read
   store's fallback). The promise is money-adjacent (it starts the SLA clock), so the one caller is
   `confirmPaidOrder()`, which every confirm path already goes through.
 - **A promise is made once.** `promised_ready_at` is set at payment and never moves; the SLA and the customer's
-  screen both use it. Live re-estimates are not built ([below](#where-p6-builds-less-than-the-roadmap)).
+  screen both use it, and the order page shows that one time, not a range. Live re-estimates are not built
+  ([below](#where-p6-builds-less-than-the-roadmap)).
 - **The token is public, the code is secret.** The token (`A-017`) is called out and shown on a screen. The
   6-digit code proves the order is yours: it is derived (`HMAC-SHA256(PICKUP_CODE_SECRET, order id)`), never
   stored, sent only to the order's owner, and never to staff, who can only check one.
@@ -136,30 +137,30 @@ create unique index orders_store_day_token_idx on public.orders (store_id, busin
 
 **The estimate** (PR 01), for a cart at a store:
 
-| Term  | Formula                                                                                 | From                                                       |
-| ----- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| Base  | `eta_base_minutes`                                                                      | store setting, seeded from `prep_time_max_minutes`         |
-| Items | the largest `prep_offset_minutes` of the lines + `eta_extra_item_minutes` × (units − 1) | the menu item; store setting                               |
-| Queue | `ceil(orders ahead / eta_parallel_orders)` × `eta_queue_minutes`                        | a count of `PLACED` and `PREPARING` orders; store settings |
-| Low   | `clamp(Base + Items + Queue, Base, eta_max_minutes)`                                    | –                                                          |
-| High  | `min(Low + eta_buffer_minutes, eta_max_minutes)`: **the promise**                       | store setting                                              |
+| Term  | Formula                                                                                 | From                                                        |
+| ----- | --------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| Base  | `eta_base_minutes`                                                                      | store setting, seeded from `prep_time_max_minutes`, clamped |
+| Items | the largest `prep_offset_minutes` of the lines + `eta_extra_item_minutes` × (units − 1) | the menu item; store setting                                |
+| Queue | `ceil(orders ahead / eta_parallel_orders)` × `eta_queue_minutes`                        | a count of `PLACED` and `PREPARING` orders; store settings  |
+| Low   | `clamp(Base + Items + Queue, Base, eta_max_minutes)`                                    | –                                                           |
+| High  | `min(Low + eta_buffer_minutes, eta_max_minutes)`: **the promise**                       | store setting                                               |
 
 **Settings P6 adds**, each with its check constraint, its TypeScript bound, the parity test and its row in
 `docs/CONFIGURATION.md`:
 
-| Setting                                                  | Tier                                     | Default                 | Bounds                         | PR  |
-| -------------------------------------------------------- | ---------------------------------------- | ----------------------- | ------------------------------ | --- |
-| `eta_base_minutes`                                       | store                                    | `prep_time_max_minutes` | 1–120                          | 01  |
-| `eta_extra_item_minutes`                                 | store                                    | 1                       | 0–10                           | 01  |
-| `eta_parallel_orders`                                    | store                                    | 2                       | 1–20                           | 01  |
-| `eta_queue_minutes`                                      | store                                    | 3                       | 0–20                           | 01  |
-| `eta_buffer_minutes`                                     | store                                    | 3                       | 0–30                           | 01  |
-| `eta_max_minutes`                                        | store                                    | 90                      | 10–240, and not below the base | 01  |
-| `token_prefix`                                           | store                                    | `A`                     | 1–3 capital letters            | 04  |
-| the business day's start                                 | platform constant                        | 04:00, store-local      | –                              | 04  |
-| `PICKUP_CODE_SECRET`                                     | deployment (secret)                      | –                       | at least 32 bytes              | 05  |
-| `RATE_LIMIT_PICKUP_VERIFY_MAX`                           | deployment                               | 30 per window           | –                              | 05  |
-| `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | deployment (the private key is a secret) | –                       | all three or none              | 09  |
+| Setting                                                  | Tier                                     | Default                          | Bounds                         | PR  |
+| -------------------------------------------------------- | ---------------------------------------- | -------------------------------- | ------------------------------ | --- |
+| `eta_base_minutes`                                       | store                                    | `prep_time_max_minutes`, clamped | 1–120                          | 01  |
+| `eta_extra_item_minutes`                                 | store                                    | 1                                | 0–10                           | 01  |
+| `eta_parallel_orders`                                    | store                                    | 2                                | 1–20                           | 01  |
+| `eta_queue_minutes`                                      | store                                    | 3                                | 0–20                           | 01  |
+| `eta_buffer_minutes`                                     | store                                    | 3                                | 0–30                           | 01  |
+| `eta_max_minutes`                                        | store                                    | 90                               | 10–240, and not below the base | 01  |
+| `token_prefix`                                           | store                                    | `A`                              | 1–3 capital letters            | 04  |
+| the business day's start                                 | platform constant                        | 04:00, store-local               | –                              | 04  |
+| `PICKUP_CODE_SECRET`                                     | deployment (secret)                      | –                                | at least 32 bytes              | 05  |
+| `RATE_LIMIT_PICKUP_VERIFY_MAX`                           | deployment                               | 30 per window                    | –                              | 05  |
+| `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | deployment (the private key is a secret) | –                                | all three or none              | 09  |
 
 **Flags** (migration rows, off): `pickup_qr` (per store: the code is required at collection), `notifications_push`.
 
@@ -192,6 +193,7 @@ Approved with the plan. Each row is written into the roadmap's P6 section by the
 | P6.4 "mark a line unavailable" in the detail sheet                                        | not built: partial line refunds are deferred (P5 D9)                                                                                                                     | after the pilot                                              |
 | P6.4 search                                                                               | a filter over the orders the board already holds; no search route                                                                                                        | –                                                            |
 | P6.4 masked calling through a telephony provider                                          | a `tel:` link after an audited reveal                                                                                                                                    | the roadmap's "possible later improvement"                   |
+| P6.5 the live ETA and its range on the order page                                         | the promise as one time after payment; the range is shown before payment (store card, menu, checkout), where the server computes both ends                               | P7.1, with the history's spread                              |
 | P6.5 deal savings on the receipt; the rating prompt                                       | neither: no deals, no ratings yet                                                                                                                                        | with deals; P7.5                                             |
 | P5.3 `POST /api/checkout/quote` (deferred from P5)                                        | built here, in PR 02                                                                                                                                                     | –                                                            |
 
@@ -205,9 +207,9 @@ Approved with the plan. Each row is written into the roadmap's P6 section by the
 (`STORE_SETTING_BOUNDS`, the item write's schema, the template copy functions).
 
 Migration `<ts>_eta_settings.sql`: the six store columns of [the table](#the-model-p6-builds) with their checks,
-`eta_base_minutes` filled from `prep_time_max_minutes`; a table check `eta_max_minutes >= eta_base_minutes` on
-`stores`, with the migration setting `eta_max_minutes` to the greater of 90 and the store's base;
-`menu_items.prep_offset_minutes`; the template copy and push functions carry both.
+`eta_base_minutes` filled from `prep_time_max_minutes` clamped to 1–120; a table check
+`eta_max_minutes >= eta_base_minutes` on `stores`, with the migration setting `eta_max_minutes` to the greater of 90
+and the store's base; `menu_items.prep_offset_minutes`; the template copy and push functions carry both.
 
 Server:
 
@@ -220,7 +222,8 @@ Server:
 
 Tests: properties (`fast-check`): never below the base; never above the maximum; non-decreasing in the orders
 ahead, in the units and in an item's offset; `high − low` is the buffer unless the maximum cuts it. The settings
-route's bounds, and a maximum below the base is refused naming the field; `limits-parity`.
+route's bounds, and a maximum below the base is refused naming the field; a store whose old preparation time is
+outside the bounds migrates to a value inside them; `limits-parity`.
 
 Docs: `docs/CONFIGURATION.md`, `docs/SCHEMA.md`, `docs/API.md`. Intent: `--server minor`.
 
@@ -445,17 +448,18 @@ Server:
   `*.notify.windows.com`, `*.push.apple.com`); anything else is 400 and is never stored. The sender checks the
   allowlist again before each send and never follows a redirect, so a stored endpoint cannot be pointed at an
   internal address, and the push service's status is not reported back to the user who subscribed;
-- the handler for `push.send` sends that one push. Each subscription is retried, revoked (404 or 410) or
-  dead-lettered on its own, so a failure on one never repeats or loses another. A send whose result is unknown (a
-  timeout) is retried: the notification's `tag` is its id and the push carries the same `Topic`, so a duplicate
-  replaces the first on the device instead of stacking. The payload is the title, the body and a path, never a
-  phone number or a pickup code.
+- the handler for `push.send` first confirms the subscription still belongs to the notification's user and is not
+  revoked; on a mismatch it sends nothing and the message is done. Otherwise it sends that one push. Each subscription
+  is retried, revoked (404 or 410) or dead-lettered on its own, so a failure on one never repeats or loses another. A
+  send whose result is unknown (a timeout) is retried: the notification's `tag` is its id and the push carries the same
+  `Topic`, so a duplicate replaces the first on the device instead of stacking. The payload is the title, the body and a
+  path, never a phone number or a pickup code.
 
-Tests: one queued push per subscription per event however often the event arrives; one subscription failing
-retryably is retried alone while the other's push is sent once; an endpoint over `http`, on an unlisted host, or
-on a loopback or private address is refused; a redirect is not followed; a gone endpoint is revoked and not
-tried again; a subscription posted by one user and then by another belongs to the second; no push when the flag
-is off or the keys are missing; the payload's fields.
+Tests: one queued push per subscription per event however often the event arrives; one subscription failing retryably is
+retried alone while the other's push is sent once; an endpoint over `http`, on an unlisted host, or on a loopback or
+private address is refused; a redirect is not followed; a gone endpoint is revoked and not tried again; a subscription
+posted by one user and then by another belongs to the second; a push queued for one user is not sent after its endpoint
+is re-bound to another user; no push when the flag is off or the keys are missing; the payload's fields.
 
 Docs: `docs/API.md`, `docs/CONFIGURATION.md` (it lists the push-service allowlist), `docs/DEPLOYMENT.md`
 (generating the keys), `docs/JOBS.md`,
@@ -555,11 +559,11 @@ Docs: `docs/COMPONENTS.md` (`Sheet`, `OrderDetailSheet`). Intent: `--client mino
 - [ ] Merged
 
 An implementer builds it. The page P5 left gains what the tracks produced: the token in the hero from payment on; "Ready
-around 1:30–1:35 pm" from the promise and its buffer, and after a breach the late banner P5 built; the pickup card at
-`READY`; a timeline from the owner's order read (PR 11), and for an order older than the 30 days `domain_events` are
-kept, the moments the order itself stores (placed, paid, ready, collected); and a receipt (lines with options, the
-total, any cancellation fee, each refund with its state and reference). Copy and colours come from `orderStatus.ts`;
-polling stops at the terminal states as today.
+by about 1:35 pm", the promise itself (one time: the range is shown before payment, where the server computes both
+ends), and after a breach the late banner P5 built; the pickup card at `READY`; a timeline from the owner's order read
+(PR 11), and for an order older than the 30 days `domain_events` are kept, the moments the order itself stores (placed,
+paid, ready, collected); and a receipt (lines with options, the total, any cancellation fee, each refund with its state
+and reference). Copy and colours come from `orderStatus.ts`; polling stops at the terminal states as today.
 
 Tests: each state's page in `orderStatus.test.ts` and a component test; the order-page LCP case in
 `e2e/layout.spec.ts` still passes on the throttled 360px profile; the visual gate.

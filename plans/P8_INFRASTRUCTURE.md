@@ -118,9 +118,10 @@ with nothing else able to; images in **ECR**; media in **S3**; logs, metrics and
 Actions planning, applying and deploying through OIDC roles and SSM, each run approved by the user. One AWS account,
 where the credits are, in the Supabase projects' region.
 
-There is no load balancer, no Auto Scaling group, no second host and no AWS staging. The Terraform is still cut as
-modules used by one small root per environment, so the staging that follows the release is the same modules with
-other variables, and a load balancer later replaces one module's inside, not the layout.
+There is no load balancer, no Auto Scaling group, no second host and, at first, no AWS staging (brought forward on
+17 November 2026, [below](#later-staging-on-aws)). The Terraform is still cut as modules used by one small root per
+environment, so the AWS staging is the same modules with other variables, and a load balancer later replaces one
+module's inside, not the layout.
 
 ```text
 infra/
@@ -128,7 +129,7 @@ infra/
   terraform/
     bootstrap/                   run once by the user: state bucket, GitHub OIDC, the roles, the $35 budget alert
     modules/{network,ecr,iam,compute,secrets,media,cdn,observability}/
-    envs/production/             the one root, for now (envs/staging follows the release)
+    envs/production/             the one root, for now (envs/staging: see Later)
   host/
     compose.prod.yml             web, api, worker from ECR tags, each with a memory limit
     render-env.sh                Parameter Store and Secrets Manager -> an env file on tmpfs
@@ -200,7 +201,11 @@ to deploy to; and observability lands on a running, dark production, where its a
   because of it, and the bootstrap's budget alert (50%, 80% and 100% of $35) is the guard.
 - **Staging is not on AWS.** Until the staging that follows the release, staging is the Supabase staging project,
   with the app run locally against it (`./run.sh staging`), exactly as today. Its migrations are still pushed by
-  hand (`pnpm run db:push:staging`). Nothing in P8 changes how a phase is tested.
+  hand (`pnpm run db:push:staging`). Nothing in P8 changes how a phase is tested. (First decided on 11 November 2026.
+  **Revised 17 November 2026:** once the AWS staging exists, phases are tried there, since it runs `dev`;
+  infrastructure and pipeline changes go to staging before production; and staging's migrations run in its deploy
+  (D5) instead of by hand. Until it exists, the guidance above still applies: the Supabase staging project with a
+  locally run app, migrations pushed by hand.)
 - **One Terraform root per environment, shared modules, no workspaces.** State lives in one S3 bucket, a key per
   environment, with S3's native lock file; no DynamoDB table.
 - **Three GitHub roles, each tied to a GitHub Environment** in its trust policy, never to a branch name or a pull
@@ -270,8 +275,8 @@ marked **decided** follow from the user's decisions of 11 November 2026.
 Docs only (`no-release`). The two ADR amendments P8 needed are **made** (the user, 11 November 2026; see
 [ADRs this plan touches](#adrs-this-plan-touches)), so this PR brings the rest into line with them:
 `docs/DEPLOYMENT.md` gains a "Hosted environments" section (the account, ap-south-1, the domain, the size, the
-budget, and that staging is not hosted); `plans/ROADMAP.md` P8, its deployment diagram, the "P8 before P5.4" note
-and the ADR-007 row of its architecture-decisions table match the
+budget, and that staging is not hosted until the AWS staging is built); `plans/ROADMAP.md` P8, its deployment
+diagram, the "P8 before P5.4" note and the ADR-007 row of its architecture-decisions table match the
 [table above](#where-p8-builds-less-than-the-roadmap); roadmap decisions 11, 12 and 13 are marked answered.
 
 ### PR 01 — Terraform skeleton, the bootstrap, and their CI (P8.1)
@@ -474,7 +479,8 @@ roadmap calls SLOs), `docs/CONFIGURATION.md`, `docs/JOBS.md` (the runbook points
 ## Closing P8
 
 P8 is closed when production is deployed and healthy, **dark** (no announcement, no real users), from a pipeline
-run the user approved, and these have been done on it while it is dark, since there is no staging to do them on:
+run the user approved, and these have been done on it while it is dark, since there is no AWS staging yet to do them on
+(it is built after PRs 02, 04, 05 and 07):
 
 - **A rehearsal deploy** of a `dev` commit, start to finish, with the smoke green.
 - **The way back**: a rehearsal of a commit whose API cannot start; the host returns to the previous tags, the run
@@ -646,10 +652,12 @@ answered, or have a default the plan follows.
 - **A public repository with cloud credentials.** The roles trust a GitHub Environment, not a branch or a PR, the
   Environments that can change anything need the user's approval, and the workflow guard (PR 01) keeps a future
   workflow from loosening that. Fork PRs get no token that can assume a role.
-- **The staging database is still migrated by hand**, so it can drift from `dev`. `docs/DEPLOYMENT.md`'s existing
-  steps stand; `supabase migration list` against staging is the check before testing a phase on it.
-- **Webhooks need a public address** that P8 no longer provides for staging. This is the P5 plan's to solve (D12);
-  it must not be solved by pointing a payment sandbox at production.
+- **The staging database is migrated by hand until the AWS staging exists**, so it can drift from `dev`.
+  `docs/DEPLOYMENT.md`'s existing steps stand; `supabase migration list` against staging is the check before testing
+  a phase on it. (Revised 17 November 2026: from the AWS staging's first deploy its migrations run in the pipeline,
+  D5.)
+- **Webhooks need a public address**, which P8 did not at first provide for staging. Solved on 17 November 2026 by
+  bringing the AWS staging forward (D12); it must not be solved by pointing a payment sandbox at production.
 - **State and drift.** A change made in the AWS console is undone or fought by the next apply. The rule is in
   `infra/README.md`: change the Terraform, or do not change it.
 - **Terraform plans are public.** Names and ARNs appear in job summaries. Nothing secret is ever a Terraform input;
