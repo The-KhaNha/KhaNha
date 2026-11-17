@@ -449,17 +449,22 @@ Server:
   allowlist again before each send and never follows a redirect, so a stored endpoint cannot be pointed at an
   internal address, and the push service's status is not reported back to the user who subscribed;
 - the handler for `push.send` first confirms the subscription still belongs to the notification's user and is not
-  revoked; on a mismatch it sends nothing and the message is done. Otherwise it sends that one push. Each subscription
-  is retried, revoked (404 or 410) or dead-lettered on its own, so a failure on one never repeats or loses another. A
-  send whose result is unknown (a timeout) is retried: the notification's `tag` is its id and the push carries the same
-  `Topic`, so a duplicate replaces the first on the device instead of stacking. The payload is the title, the body and a
-  path, never a phone number or a pickup code.
+  revoked; on a mismatch it sends nothing and the message is done (the check is made immediately before the send; what
+  remains is in Risks). Before every send, including each retry, it also applies the same quiet rules as the event's
+  handler (older than ten minutes, or overtaken by the order's state) and sends nothing when one holds; the message is
+  then done. Otherwise it sends that one push. Each subscription is retried, revoked (404 or 410) or dead-lettered on
+  its own, so a failure on one never repeats or loses another. A send whose result is unknown (a timeout) is retried:
+  the notification's `tag` is its id, and the push's `Topic` is that id without its hyphens (32 characters, inside RFC
+  8030's limit of 32 from the URL-safe Base64 alphabet), so a duplicate replaces the first on the device instead of
+  stacking. The payload is the title, the body and a path, never a phone number or a pickup code.
 
 Tests: one queued push per subscription per event however often the event arrives; one subscription failing retryably is
 retried alone while the other's push is sent once; an endpoint over `http`, on an unlisted host, or on a loopback or
 private address is refused; a redirect is not followed; a gone endpoint is revoked and not tried again; a subscription
 posted by one user and then by another belongs to the second; a push queued for one user is not sent after its endpoint
-is re-bound to another user; no push when the flag is off or the keys are missing; the payload's fields.
+is re-bound to another user; a "ready" push queued before its order is collected is not sent when the job runs after
+the collection; the `Topic` is 32 URL-safe characters; no push when the flag is off or the keys are missing; the
+payload's fields.
 
 Docs: `docs/API.md`, `docs/CONFIGURATION.md` (it lists the push-service allowlist), `docs/DEPLOYMENT.md`
 (generating the keys), `docs/JOBS.md`,
@@ -650,6 +655,10 @@ when an order needs accepting; Call reveals the number once and the audit shows 
   picks up the new code on its next poll.
 - **iOS only delivers Web Push to an app on the home screen** (16.4 and later). The ask card says so, and the
   order page's own polling still shows every change.
+- **A push can still reach a device re-bound in the instant between the check and the send.** The handler checks the
+  subscription's owner immediately before it sends, so the window is milliseconds. The payload is a title, a body and
+  a path, never a phone number or a pickup code, and the page the path opens still asks for the right user's sign-in.
+  Accepted; no check on the device is built.
 - **A cached service worker is the classic way to pin an old app.** This one has no `fetch` handler, is served
   uncached, and a test fails if either changes.
 - **Browsers block sound until a gesture.** The sound switch is that gesture; a board reloaded overnight is silent

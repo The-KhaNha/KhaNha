@@ -219,12 +219,13 @@ to deploy to; and observability lands on a running, dark production, where its a
   Tags are immutable.
 - **arm64 host, arm64 images**, built on GitHub's arm64 runners, which are free for a public repository. Nothing is
   ever built on the host: 1 GB is for running the app.
-- **The release is one small parameter.** `/food-pickup/production/release` in Parameter Store holds the two image
-  tags of **the last release that passed**, and it is written last. A deploy sends the candidate tags to the host as
-  the command's own parameters; the host applies them, and only after the public smoke passes does the workflow write
-  them to the parameter. A failed deploy leaves the parameter alone, so a replaced host, which reads it when it
-  boots, can never pick up a release that failed. Rolling back is a deploy of the earlier tags. The compose file and
-  the host scripts travel inside the deploy document, so changing them updates the document, not the machine.
+- **The release is one small parameter.** `/food-pickup/<environment>/release` (production's in production) in Parameter
+  Store holds the two image tags of **the last release that passed**, and it is written last. A deploy sends the
+  candidate tags to the host as the command's own parameters; the host applies them, and only after the public smoke
+  passes does the workflow write them to the parameter. A failed deploy leaves the parameter alone, so a replaced
+  host, which reads it when it boots, can never pick up a release that failed. Rolling back is a deploy of the earlier
+  tags. The compose file and the host scripts travel inside the deploy document, so changing them updates the
+  document, not the machine.
 - **A deploy is a short outage, by decision.** With one host and no load balancer, `docker compose up -d` means a
   few seconds of errors. The smoke test waits for it. This is the first thing a second host removes.
 - **Migrations before code, only forwards, and by the user.** The production workflow waits while the user runs
@@ -338,8 +339,10 @@ Waits for D11: the first PR with an hourly price, about $11.50 a month from its 
   the host down (with Node's own heap limit set below it for `api` and `worker`).
   `scripts/ci/compose-parity.test.mjs` (new) fails when the two compose files disagree on a service's command,
   health check or the ports between services.
-- `infra/host/render-env.sh`: reads `/food-pickup/production/*` from Parameter Store and the one secret
-  `food-pickup/production/app` from Secrets Manager into an environment file on tmpfs, readable by root only.
+- `infra/host/render-env.sh`: reads `/food-pickup/<environment>/*` from Parameter Store and the one secret
+  `food-pickup/<environment>/app` from Secrets Manager into an environment file on tmpfs, readable by root only.
+  `<environment>` comes from the host's own environment, which `modules/compute` sets from the root's variable, as the
+  `modules/secrets` names do; production's are `/food-pickup/production/*` and `food-pickup/production/app`.
   `infra/host/apply-release.sh`: take candidate tags from the command's parameters, or, with none, the release
   parameter's tags; pull, `up -d`, wait for `/api/ready` through nginx; if it does not answer in time, return to the
   tags the release parameter names (the last release that passed) and exit non-zero. It never writes the parameter.
@@ -350,7 +353,10 @@ Waits for D11: the first PR with an hourly price, about $11.50 a month from its 
 - `modules/secrets`: the parameters (`APP_ENV`, the Supabase URL and publishable key, `CLIENT_ORIGIN`,
   `TRUST_PROXY_HOPS`, `LOG_LEVEL`, the rate limits, sized for one API instance) from the environment's variables,
   and the secret's container with a placeholder the user replaces; Terraform ignores the value afterwards.
-- The SSM document `food-pickup-deploy`, with the three host files rendered into it: write the files, then run
+- The SSM document, one per environment, with the three host files rendered into it. Production's keeps the name
+  `food-pickup-deploy`, which the bootstrap's deploy role is already scoped to
+  (`infra/terraform/bootstrap/main.tf`); staging's is `food-pickup-staging-deploy`, under staging's own role. The
+  document's name is a variable of the module, not a literal in it. It does this: write the files, then run
   `apply-release.sh`, with the candidate tags as the command's parameters (none means the parameter's release). A
   State Manager association runs it once on a new host with none, so a replaced machine comes up on the last release
   that passed without anyone deploying.
@@ -529,11 +535,18 @@ it is three small PRs, about $11 a month more (about $22 in all at the prices re
 ceiling):
 
 1. **The environment**: `infra/terraform/envs/staging/`, the same modules with staging's variables, in the same
-   account, kept apart from production by name, tag and role; its own `apply` Environment.
+   account, kept apart from production by name, tag and role; its own `apply` Environment. The host files and the
+   deploy document take their parameter prefix, secret name and document name from the environment, so staging's host
+   reads `/food-pickup/staging/*` and its own secret; this is settled in PR 04, before the staging PRs. Staging's
+   deploy role, scoped to `food-pickup-staging-deploy` and `/food-pickup/staging/release`, is an addition to the
+   bootstrap, which the user applies.
 2. **`deploy-staging.yml`**: when `ci.yml` finishes green for a push to `dev`: build and push `dev-<sha7>`,
    migrate the staging database (the Supabase access token and database password as secrets of the GitHub
    Environment `staging`, which the user approved on 11 November 2026, ADR-007 as amended), deploy, run
-   `deploy-smoke.sh`. This is the day "`dev` deploys staging" becomes true, and the day manual staging pushes end.
+   `deploy-smoke.sh`. A run deploys only while its commit is still the head of `dev`; a newer push supersedes an older
+   run that has not yet deployed (one concurrency group for staging with `cancel-in-progress` on, the opposite of
+   production's, where a deploy is never cancelled). This is the day "`dev` deploys staging" becomes true, and the day
+   manual staging pushes end.
 3. **A browser smoke test** after each staging deploy: one Playwright order on a phone viewport as the seeded
    customer, whose password is the third secret of that Environment.
 
