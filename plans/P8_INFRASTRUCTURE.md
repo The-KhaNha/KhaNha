@@ -307,7 +307,9 @@ Modules, each small and used by `envs/production`:
 - `network`: a VPC with public subnets in two zones (the host has a public address for outbound traffic only: a
   NAT gateway alone would cost more than the whole budget); an S3 gateway endpoint (free); a security group in
   which the host accepts traffic from CloudFront only and nothing accepts SSH.
-- `ecr`: `food-pickup/web` and `food-pickup/server`, immutable tags, scan on push, keep the newest 10 images.
+- `ecr`: `food-pickup/web` and `food-pickup/server` (the names come from a module variable, so the staging PR can
+  give its own), immutable tags, scan on push, keep the newest 10 images; only production's own images are pushed
+  to them (releases, and rehearsal builds while it is dark), never staging's.
 - `iam`: the instance role (pull from ECR, Session Manager, write its own log groups, read its own parameters and
   secret, read and write the media bucket).
 
@@ -538,15 +540,20 @@ ceiling):
    account, kept apart from production by name, tag and role; its own `apply` Environment. The host files and the
    deploy document take their parameter prefix, secret name and document name from the environment, so staging's host
    reads `/food-pickup/staging/*` and its own secret; this is settled in PR 04, before the staging PRs. Staging's
-   deploy role, scoped to `food-pickup-staging-deploy` and `/food-pickup/staging/release`, is an addition to the
-   bootstrap, which the user applies.
+   deploy role, scoped to `food-pickup-staging-deploy`, `/food-pickup/staging/release` and the repositories
+   `food-pickup/staging/*` only, is an addition to the bootstrap, which the user applies (production's deploy role
+   pushes to `repository/food-pickup/*`). Staging's images go to repositories of their own, `food-pickup/staging/web`
+   and `food-pickup/staging/server`, each with its own keep-newest-10 rule, so no number of merges to `dev` can evict
+   a production release image; production's repositories hold production's images only. The repository names are a
+   variable of `modules/ecr`, not a literal in it.
 2. **`deploy-staging.yml`**: when `ci.yml` finishes green for a push to `dev`: build and push `dev-<sha7>`,
    migrate the staging database (the Supabase access token and database password as secrets of the GitHub
    Environment `staging`, which the user approved on 11 November 2026, ADR-007 as amended), deploy, run
-   `deploy-smoke.sh`. A run deploys only while its commit is still the head of `dev`; a newer push supersedes an older
-   run that has not yet deployed (one concurrency group for staging with `cancel-in-progress` on, the opposite of
-   production's, where a deploy is never cancelled). This is the day "`dev` deploys staging" becomes true, and the day
-   manual staging pushes end.
+   `deploy-smoke.sh`. A run deploys only while its commit is still the head of `dev`, checked immediately before the
+   deploy command is sent. Overlapping runs share one concurrency group with `cancel-in-progress` off, as production's
+   do, so a deploy that has started is never cancelled: runs queue and deploy one at a time, GitHub keeps only the
+   newest waiting run, and a queued run that is no longer the head of `dev` when its turn comes does not deploy. This
+   is the day "`dev` deploys staging" becomes true, and the day manual staging pushes end.
 3. **A browser smoke test** after each staging deploy: one Playwright order on a phone viewport as the seeded
    customer, whose password is the third secret of that Environment.
 
