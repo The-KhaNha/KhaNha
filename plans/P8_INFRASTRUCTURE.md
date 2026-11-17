@@ -13,6 +13,7 @@ PR merges, tick its box here and in the roadmap.
 > - **Production only, to start.** One small host, no load balancer. **There is no staging on AWS at first**:
 >   staging stays what it is today, the Supabase staging project with the app run locally against it. An AWS
 >   staging follows one to two months after the first release ([Later: staging on AWS](#later-staging-on-aws)).
+>   (Changed on 17 November 2026: both staging sentences are superseded by the revision below.)
 > - **Scaling comes with funding**: larger instances, replicas, possibly EKS
 >   ([When there is funding to scale](#when-there-is-funding-to-scale)).
 >
@@ -22,6 +23,10 @@ PR merges, tick its box here and in the roadmap.
 >
 > **Revised 15 November 2026:** the credits are about $130 and **expire on 18 February 2027**, so the date, not the
 > monthly figure, is what runs out first (answer 2 below). The $35 ceiling and the budget alert stay as they are.
+>
+> **Revised 17 November 2026:** staging on AWS is brought forward. It is built as soon as PRs 02, 04, 05 and 07 are
+> applied, for the payment providers' sandbox webhooks; it deploys `dev`, takes infrastructure changes before
+> production does, and its bill is reviewed in early February 2027 ([Later: staging on AWS](#later-staging-on-aws)).
 
 ## Ask the user before starting
 
@@ -80,7 +85,9 @@ The standing rules apply (CLAUDE.md §13–§21), with these differences from a 
   then work stops until the user says it is merged.
 - **Every PR that adds something to AWS states what it costs a month**, in its description, against the
   [budget](#the-budget). A PR that would take the month past $35 is put to the user before it is opened.
-- **Nothing here is tried on a staging first, so each piece is proven before it reaches the host**: host scripts
+- **Until the AWS staging exists (brought forward on 17 November 2026, see
+  [Later: staging on AWS](#later-staging-on-aws)), nothing here is tried on a staging first, so each piece is proven
+  before it reaches the host**: host scripts
   under test with a fake `docker`, the compose file held to `compose.yaml` by a parity test, the deploy smoke run
   against the local compose stack in CI, the images smoke-tested on arm64 in CI. Then production runs **dark**
   (deployed, no users) until launch, and the drills in [Closing P8](#closing-p8) happen in that window.
@@ -147,7 +154,7 @@ Decided by the user on 11 November 2026 and recorded in
 | A DNS zone                                                            | $0.50            | the domain's own registration (about $10 a year) is not payable from credits; register it outside AWS |
 | Encryption keys                                                       | $0               | AWS-managed keys only; a customer-managed KMS key would add $1 a month each                           |
 | **Production, as planned**                                            | **about $11**    | read against Mumbai's prices on 15 November 2026; the credits expire before they run out              |
-| With a staging on AWS later                                           | about $22        | still under $35                                                                                       |
+| With the staging on AWS (brought forward, 17 November 2026)           | about $22        | still under $35                                                                                       |
 
 Not in the table: **18% GST** on whatever is billed after credits, if the billing address is Indian; and CloudFront
 past its free 1 TB and 10 million requests a month, at $0.109 a GB from India (pilot traffic stays far below).
@@ -228,31 +235,31 @@ to deploy to; and observability lands on a running, dark production, where its a
 Approved with the plan. The roadmap's P8 section and its deployment diagram are updated to match in PR 00. Rows
 marked **decided** follow from the user's decisions of 11 November 2026.
 
-| Roadmap says                                                                                | P8 does                                                                                                                                                                                      | Picked up by                                                               |
-| ------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| P8 "reproducible staging and production"; `dev` deploys staging on every merge              | **decided:** production only. Staging stays the Supabase project with a locally run app; no `deploy-staging.yml`                                                                             | one to two months after the first release ([below](#later-staging-on-aws)) |
-| P8 staging ready before P5.4, because webhooks need a public HTTPS address                  | not available from P8. P5's plan chooses: a tunnel to a local stack for the provider's sandbox, or the AWS staging brought forward                                                           | the P5 plan                                                                |
-| P8.1 separate AWS accounts for staging and production under an Organization                 | **decided:** one account, where the credits are                                                                                                                                              | funding; a second account when staging and real payments share AWS         |
-| P8.1 CI runs `tflint` and `checkov`                                                         | `terraform fmt`, `validate`, and the `trivy config` scan `ci.yml` already runs, extended to `infra/`                                                                                         | a class of mistake those two would have caught                             |
-| P8.1 remote state "with locking" (implies a lock table)                                     | S3's own lock file                                                                                                                                                                           | –                                                                          |
-| P8.1 private subnets reserved for later                                                     | not created (nothing uses them)                                                                                                                                                              | the load balancer, when it returns                                         |
-| P8.2 staging images `dev-<sha7>` built on every merge to `dev`                              | **decided:** not built; `ci.yml` builds and smoke-tests arm64 images on pull requests, pushing nothing                                                                                       | the AWS staging                                                            |
-| P8.2 keep the last 30 images; every push scanned by Inspector                               | **decided:** keep the newest 10; ECR's basic scan on push, plus `security.yml`'s weekly `trivy image`                                                                                        | P9.3 (security review)                                                     |
-| P8.3 a release-assets bucket serving `/assets/*`, old chunks kept 30 days                   | `/assets/*` comes from the web container through CloudFront (immutable, cached a year at the edge); a tab left open across a deploy reloads once (`PageBoundary`, the reload P1 PR 21 added) | client error reports showing chunk failures after deploys                  |
-| P8.3 the WAF web ACL                                                                        | not attached (about $5 a month and up)                                                                                                                                                       | P9.3, with its price put to the user                                       |
-| P8.4 an Auto Scaling group of 1 to 2 hosts behind a load balancer; rolling deploys          | **decided:** one EC2 host, CloudFront straight to it, a deploy with a few seconds of errors (ADR-007 as amended)                                                                             | funding, or P9.1 showing one host is not enough                            |
-| P8.4 `t4g.small` (2 GB)                                                                     | **decided:** `t4g.micro` (1 GB), standard credits, memory limits per container, a swap file                                                                                                  | the memory alarm (PR 08); `t4g.small` still fits                           |
-| P8.4 services `web`, `api`, `worker` **and `reconciler`**, with a `leases` table            | three services; no reconciler and no lease                                                                                                                                                   | P5.10                                                                      |
-| P8.4 backups: Supabase daily backups and PITR                                               | not in P8: the free tier has neither (ADR-011)                                                                                                                                               | P9.5 (a scheduled dump), roadmap decision 14                               |
-| P8.5 smoke: a Playwright golden path and a k6 run after each staging deploy                 | HTTP checks after each production deploy (PR 07); production gets no test orders                                                                                                             | the AWS staging (browser smoke), P9.1 (k6)                                 |
-| P8.5 hotfix flow                                                                            | unchanged from P0.3; it deploys through the same production workflow                                                                                                                         | –                                                                          |
-| P8.6 secrets for payments, pickup codes, push, SMS and email; their guards                  | one secret holding one key today (`SUPABASE_SECRET_KEY`); each later secret is one more key in it, added by its phase                                                                        | P5, P6                                                                     |
-| P8.6 rotation runbooks                                                                      | the "how to change a secret" paragraph in `infra/README.md`                                                                                                                                  | P9.5                                                                       |
-| P8.7 metrics as Embedded Metric Format lines; business and pipeline metrics                 | metric filters on existing log lines for HTTP and queues, kept to about ten metrics; business metrics arrive with the features that produce them                                             | P5, P6                                                                     |
-| P8.7 tracing through OpenTelemetry                                                          | not built (the roadmap marks it optional)                                                                                                                                                    | P10.4                                                                      |
-| P8.7 real-user performance (`web-vitals`, `POST /api/client-metrics`, `rum_sample_percent`) | not built: there are no real users to measure before the pilot                                                                                                                               | P9, with the launch checklist                                              |
-| P8.7 alarms on payments, webhooks, reconciliation and failed cron runs                      | the alarms whose signals exist: errors, latency, dead letters, queue age, the host down, memory, CPU credits, the certificate                                                                | P5 (money), P9.5 (cron)                                                    |
-| P8.7 the SLOs                                                                               | written into `docs/DEPLOYMENT.md` as targets; measured from the pilot                                                                                                                        | P9                                                                         |
+| Roadmap says                                                                                | P8 does                                                                                                                                                                                            | Picked up by                                                       |
+| ------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| P8 "reproducible staging and production"; `dev` deploys staging on every merge              | **first decided (11 November 2026):** production only, staging left for after the release. **Brought forward on 17 November 2026:** staging on AWS is built once PRs 02, 04, 05 and 07 are applied | the three PRs in [Later: staging on AWS](#later-staging-on-aws)    |
+| P8 staging ready before P5.4, because webhooks need a public HTTPS address                  | not available from P8. P5's plan chooses: a tunnel to a local stack for the provider's sandbox, or the AWS staging brought forward                                                                 | the P5 plan                                                        |
+| P8.1 separate AWS accounts for staging and production under an Organization                 | **decided:** one account, where the credits are                                                                                                                                                    | funding; a second account when staging and real payments share AWS |
+| P8.1 CI runs `tflint` and `checkov`                                                         | `terraform fmt`, `validate`, and the `trivy config` scan `ci.yml` already runs, extended to `infra/`                                                                                               | a class of mistake those two would have caught                     |
+| P8.1 remote state "with locking" (implies a lock table)                                     | S3's own lock file                                                                                                                                                                                 | –                                                                  |
+| P8.1 private subnets reserved for later                                                     | not created (nothing uses them)                                                                                                                                                                    | the load balancer, when it returns                                 |
+| P8.2 staging images `dev-<sha7>` built on every merge to `dev`                              | **decided:** not built; `ci.yml` builds and smoke-tests arm64 images on pull requests, pushing nothing                                                                                             | the AWS staging                                                    |
+| P8.2 keep the last 30 images; every push scanned by Inspector                               | **decided:** keep the newest 10; ECR's basic scan on push, plus `security.yml`'s weekly `trivy image`                                                                                              | P9.3 (security review)                                             |
+| P8.3 a release-assets bucket serving `/assets/*`, old chunks kept 30 days                   | `/assets/*` comes from the web container through CloudFront (immutable, cached a year at the edge); a tab left open across a deploy reloads once (`PageBoundary`, the reload P1 PR 21 added)       | client error reports showing chunk failures after deploys          |
+| P8.3 the WAF web ACL                                                                        | not attached (about $5 a month and up)                                                                                                                                                             | P9.3, with its price put to the user                               |
+| P8.4 an Auto Scaling group of 1 to 2 hosts behind a load balancer; rolling deploys          | **decided:** one EC2 host, CloudFront straight to it, a deploy with a few seconds of errors (ADR-007 as amended)                                                                                   | funding, or P9.1 showing one host is not enough                    |
+| P8.4 `t4g.small` (2 GB)                                                                     | **decided:** `t4g.micro` (1 GB), standard credits, memory limits per container, a swap file                                                                                                        | the memory alarm (PR 08); `t4g.small` still fits                   |
+| P8.4 services `web`, `api`, `worker` **and `reconciler`**, with a `leases` table            | three services; no reconciler and no lease                                                                                                                                                         | P5.10                                                              |
+| P8.4 backups: Supabase daily backups and PITR                                               | not in P8: the free tier has neither (ADR-011)                                                                                                                                                     | P9.5 (a scheduled dump), roadmap decision 14                       |
+| P8.5 smoke: a Playwright golden path and a k6 run after each staging deploy                 | HTTP checks after each production deploy (PR 07); production gets no test orders                                                                                                                   | the AWS staging (browser smoke), P9.1 (k6)                         |
+| P8.5 hotfix flow                                                                            | unchanged from P0.3; it deploys through the same production workflow                                                                                                                               | –                                                                  |
+| P8.6 secrets for payments, pickup codes, push, SMS and email; their guards                  | one secret holding one key today (`SUPABASE_SECRET_KEY`); each later secret is one more key in it, added by its phase                                                                              | P5, P6                                                             |
+| P8.6 rotation runbooks                                                                      | the "how to change a secret" paragraph in `infra/README.md`                                                                                                                                        | P9.5                                                               |
+| P8.7 metrics as Embedded Metric Format lines; business and pipeline metrics                 | metric filters on existing log lines for HTTP and queues, kept to about ten metrics; business metrics arrive with the features that produce them                                                   | P5, P6                                                             |
+| P8.7 tracing through OpenTelemetry                                                          | not built (the roadmap marks it optional)                                                                                                                                                          | P10.4                                                              |
+| P8.7 real-user performance (`web-vitals`, `POST /api/client-metrics`, `rum_sample_percent`) | not built: there are no real users to measure before the pilot                                                                                                                                     | P9, with the launch checklist                                      |
+| P8.7 alarms on payments, webhooks, reconciliation and failed cron runs                      | the alarms whose signals exist: errors, latency, dead letters, queue age, the host down, memory, CPU credits, the certificate                                                                      | P5 (money), P9.5 (cron)                                            |
+| P8.7 the SLOs                                                                               | written into `docs/DEPLOYMENT.md` as targets; measured from the pilot                                                                                                                              | P9                                                                 |
 
 ## The pull requests
 
@@ -510,9 +517,10 @@ Everything since P0 reaches `main` for the first time (P1's and later plans' "at
 > every infrastructure and pipeline change is applied to staging first**, and only then to production; and staging
 > **runs continuously, with its bill reviewed in early February 2027**, before the credits expire.
 
-Decided by the user (11 November 2026): one to two months after the first release, not before. Until then the
-staging Supabase project and a locally run app are staging. When it comes it is three small PRs, about $11 a month
-more (about $26 in all, still under the ceiling):
+First decided by the user (11 November 2026), and superseded on 17 November 2026 (above): one to two months after the
+first release, not before. Until then the staging Supabase project and a locally run app are staging. When it comes
+it is three small PRs, about $11 a month more (about $22 in all at the prices read on 15 November, still under the
+ceiling):
 
 1. **The environment**: `infra/terraform/envs/staging/`, the same modules with staging's variables, in the same
    account, kept apart from production by name, tag and role; its own `apply` Environment.
@@ -595,7 +603,8 @@ answered, or have a default the plan follows.
 - Confirm the SNS subscription email (PR 08).
 - Buy or delegate the domain when it is chosen (D3); its registration is probably not payable from credits.
 - Look at the bill at the end of the first month against the budget table.
-- Staging, unchanged: push its migrations and seed it by hand, as today.
+- Staging, unchanged until the AWS staging exists (brought forward on 17 November 2026): push its migrations and
+  seed it by hand, as today.
 
 ## Risks and gotchas
 

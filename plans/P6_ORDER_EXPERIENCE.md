@@ -71,7 +71,7 @@ What the code has when P5's PRs 01–21 are in (P5 as planned), and what P6 adds
 | 11  | Staff commands, the order detail, the phone              | P6.4 | –          | main        | agent | 16 / 660             |
 | 12  | Client: the board in lanes                               | P6.4 | 11         | implementer | agent | 16 / 700             |
 | 13  | Client: the order detail sheet, Call, sound              | P6.4 | 11, 12     | implementer | agent | 16 / 680             |
-| 14  | Client: the customer's order page v2                     | P6.5 | 03, 06     | implementer | agent | 14 / 520             |
+| 14  | Client: the customer's order page v2                     | P6.5 | 03, 06, 11 | implementer | agent | 14 / 520             |
 | 15  | Contract: the status patch and the phone in lists retire | P6.4 | 13         | main        | agent | 14 / 320             |
 
 Why this order: four tracks that do not touch each other (the wait 01–03, pickup 04–07, notifications 08–10, the
@@ -94,8 +94,8 @@ tracks produced, and the contract (15) removes what the new board no longer read
 - **Collecting stays one SQL function.** `collect_order` (P5) gains how the pickup was verified; the code is
   checked in the API before it is called, because the secret lives in the environment, not the database.
 - **Notifications are idempotent by a unique key**, `(event_id, user_id)`: an event delivered twice by the queue
-  makes one row and one push. A notification older than ten minutes, or overtaken by the order's state, is not
-  sent.
+  makes one row and one queued push per subscription. A notification older than ten minutes, or overtaken by the
+  order's state, is not sent.
 - **The service worker does two things**: show a push and open the right page when it is tapped. It has no
   `fetch` handler and caches nothing, so CLAUDE.md §2c holds unchanged.
 - **Permission is asked at a moment of intent**, by our own card first: after a customer's first paid order, and
@@ -147,19 +147,19 @@ create unique index orders_store_day_token_idx on public.orders (store_id, busin
 **Settings P6 adds**, each with its check constraint, its TypeScript bound, the parity test and its row in
 `docs/CONFIGURATION.md`:
 
-| Setting                                                  | Tier                                     | Default                 | Bounds              | PR  |
-| -------------------------------------------------------- | ---------------------------------------- | ----------------------- | ------------------- | --- |
-| `eta_base_minutes`                                       | store                                    | `prep_time_max_minutes` | 1–120               | 01  |
-| `eta_extra_item_minutes`                                 | store                                    | 1                       | 0–10                | 01  |
-| `eta_parallel_orders`                                    | store                                    | 2                       | 1–20                | 01  |
-| `eta_queue_minutes`                                      | store                                    | 3                       | 0–20                | 01  |
-| `eta_buffer_minutes`                                     | store                                    | 3                       | 0–30                | 01  |
-| `eta_max_minutes`                                        | store                                    | 90                      | 10–240              | 01  |
-| `token_prefix`                                           | store                                    | `A`                     | 1–3 capital letters | 04  |
-| the business day's start                                 | platform constant                        | 04:00, store-local      | –                   | 04  |
-| `PICKUP_CODE_SECRET`                                     | deployment (secret)                      | –                       | at least 32 bytes   | 05  |
-| `RATE_LIMIT_PICKUP_VERIFY_MAX`                           | deployment                               | 30 per window           | –                   | 05  |
-| `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | deployment (the private key is a secret) | –                       | all three or none   | 09  |
+| Setting                                                  | Tier                                     | Default                 | Bounds                         | PR  |
+| -------------------------------------------------------- | ---------------------------------------- | ----------------------- | ------------------------------ | --- |
+| `eta_base_minutes`                                       | store                                    | `prep_time_max_minutes` | 1–120                          | 01  |
+| `eta_extra_item_minutes`                                 | store                                    | 1                       | 0–10                           | 01  |
+| `eta_parallel_orders`                                    | store                                    | 2                       | 1–20                           | 01  |
+| `eta_queue_minutes`                                      | store                                    | 3                       | 0–20                           | 01  |
+| `eta_buffer_minutes`                                     | store                                    | 3                       | 0–30                           | 01  |
+| `eta_max_minutes`                                        | store                                    | 90                      | 10–240, and not below the base | 01  |
+| `token_prefix`                                           | store                                    | `A`                     | 1–3 capital letters            | 04  |
+| the business day's start                                 | platform constant                        | 04:00, store-local      | –                              | 04  |
+| `PICKUP_CODE_SECRET`                                     | deployment (secret)                      | –                       | at least 32 bytes              | 05  |
+| `RATE_LIMIT_PICKUP_VERIFY_MAX`                           | deployment                               | 30 per window           | –                              | 05  |
+| `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | deployment (the private key is a secret) | –                       | all three or none              | 09  |
 
 **Flags** (migration rows, off): `pickup_qr` (per store: the code is required at collection), `notifications_push`.
 
@@ -173,27 +173,27 @@ create unique index orders_store_day_token_idx on public.orders (store_id, busin
 
 Approved with the plan. Each row is written into the roadmap's P6 section by the PR that builds it.
 
-| Roadmap says                                                                              | P6 does                                                                                                                                                          | Picked up by                                                 |
-| ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| P6.1 a rush factor from demand against the normal for this hour of the week               | not built: the "normal" is `analytics_store_hourly`, which does not exist yet                                                                                    | P7.1                                                         |
-| P6.1 a history correction from `eta_stats`                                                | not built, for the same reason; `promised_ready_at` and `ready_at` are recorded, so the data is there when it is                                                 | P7.1                                                         |
-| P6.1 manual rush windows                                                                  | not built; staff already have Pause, and a manager can raise the base                                                                                            | with the rush factor                                         |
-| P6.1 `estimated_ready_at` recomputed live by a debounced `eta.refresh_store` job          | not built: the promise is shown and does not move. A job that rewrites every active order on each change costs writes and polls for a number nobody was promised | when P7.4's accuracy figures show the promise drifting       |
-| P6.1 `eta_breakdown jsonb` on the order                                                   | not stored                                                                                                                                                       | P7.1, if tuning needs the terms                              |
-| P6.1 the range from the p90–p50 spread                                                    | the range is the estimate and the estimate plus the buffer                                                                                                       | P7.1                                                         |
-| P6.2 `business_day_start` as a setting                                                    | a platform constant, 04:00 store-local (roadmap decision 15's default)                                                                                           | a store that trades through 4 am                             |
-| P6.2 a QR decoder loaded lazily where `BarcodeDetector` is missing                        | no decoder library: where the browser cannot scan, staff type the 6 digits                                                                                       | a pilot store whose device cannot scan                       |
-| P6.2 "raises screen brightness where it can"                                              | the web cannot set brightness; the pickup card is black on white and holds a screen wake lock while open                                                         | –                                                            |
-| P6.3 SMS, email, WhatsApp                                                                 | in-app and Web Push only (the user); no SMS provider, no SES, no DLT                                                                                             | after the pilot, through the same port                       |
-| P6.3 `notification_preferences` per channel and event group                               | one switch per device: push on or off (a subscription exists or it does not)                                                                                     | the second channel                                           |
-| P6.3 `notification_deliveries` with status and retries per channel                        | not built: the queue retries and dead-letters, and each send is one log line (P8.7 counts them)                                                                  | the second channel                                           |
-| P6.3 a push 30 minutes after collection asking for a rating; the surplus prompt for staff | neither: ratings are P7.5, and surplus is deferred                                                                                                               | P7.5; after the pilot                                        |
-| P6.4 `GET …/orders?since=<cursor>` and `pollAfterMs`                                      | not built: the board already costs a 304 when nothing changed, renders only changed cards, and its interval is a site setting                                    | when `perf-auditor` measures a busy board's poll over budget |
-| P6.4 "mark a line unavailable" in the detail sheet                                        | not built: partial line refunds are deferred (P5 D9)                                                                                                             | after the pilot                                              |
-| P6.4 search                                                                               | a filter over the orders the board already holds; no search route                                                                                                | –                                                            |
-| P6.4 masked calling through a telephony provider                                          | a `tel:` link after an audited reveal                                                                                                                            | the roadmap's "possible later improvement"                   |
-| P6.5 deal savings on the receipt; the rating prompt                                       | neither: no deals, no ratings yet                                                                                                                                | with deals; P7.5                                             |
-| P5.3 `POST /api/checkout/quote` (deferred from P5)                                        | built here, in PR 02                                                                                                                                             | –                                                            |
+| Roadmap says                                                                              | P6 does                                                                                                                                                                  | Picked up by                                                 |
+| ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------ |
+| P6.1 a rush factor from demand against the normal for this hour of the week               | not built: the "normal" is `analytics_store_hourly`, which does not exist yet                                                                                            | P7.1                                                         |
+| P6.1 a history correction from `eta_stats`                                                | not built, for the same reason; `promised_ready_at` and `ready_at` are recorded, so the data is there when it is                                                         | P7.1                                                         |
+| P6.1 manual rush windows                                                                  | not built; staff already have Pause, and a manager can raise the base                                                                                                    | with the rush factor                                         |
+| P6.1 `estimated_ready_at` recomputed live by a debounced `eta.refresh_store` job          | not built: the promise is shown and does not move. A job that rewrites every active order on each change costs writes and polls for a number nobody was promised         | when P7.4's accuracy figures show the promise drifting       |
+| P6.1 `eta_breakdown jsonb` on the order                                                   | not stored                                                                                                                                                               | P7.1, if tuning needs the terms                              |
+| P6.1 the range from the p90–p50 spread                                                    | the range is the estimate and the estimate plus the buffer                                                                                                               | P7.1                                                         |
+| P6.2 `business_day_start` as a setting                                                    | a platform constant, 04:00 store-local (roadmap decision 15's default)                                                                                                   | a store that trades through 4 am                             |
+| P6.2 a QR decoder loaded lazily where `BarcodeDetector` is missing                        | no decoder library: where the browser cannot scan, staff type the 6 digits                                                                                               | a pilot store whose device cannot scan                       |
+| P6.2 "raises screen brightness where it can"                                              | the web cannot set brightness; the pickup card is black on white and holds a screen wake lock while open                                                                 | –                                                            |
+| P6.3 SMS, email, WhatsApp                                                                 | in-app and Web Push only (the user); no SMS provider, no SES, no DLT                                                                                                     | after the pilot, through the same port                       |
+| P6.3 `notification_preferences` per channel and event group                               | one switch per device: push on or off (a subscription exists or it does not)                                                                                             | the second channel                                           |
+| P6.3 `notification_deliveries` with status and retries per channel                        | not built: the queue retries and dead-letters, and each send is one log line (P8.7 counts them); progress is per subscription because each push is its own queue message | the second channel                                           |
+| P6.3 a push 30 minutes after collection asking for a rating; the surplus prompt for staff | neither: ratings are P7.5, and surplus is deferred                                                                                                                       | P7.5; after the pilot                                        |
+| P6.4 `GET …/orders?since=<cursor>` and `pollAfterMs`                                      | not built: the board already costs a 304 when nothing changed, renders only changed cards, and its interval is a site setting                                            | when `perf-auditor` measures a busy board's poll over budget |
+| P6.4 "mark a line unavailable" in the detail sheet                                        | not built: partial line refunds are deferred (P5 D9)                                                                                                                     | after the pilot                                              |
+| P6.4 search                                                                               | a filter over the orders the board already holds; no search route                                                                                                        | –                                                            |
+| P6.4 masked calling through a telephony provider                                          | a `tel:` link after an audited reveal                                                                                                                                    | the roadmap's "possible later improvement"                   |
+| P6.5 deal savings on the receipt; the rating prompt                                       | neither: no deals, no ratings yet                                                                                                                                        | with deals; P7.5                                             |
+| P5.3 `POST /api/checkout/quote` (deferred from P5)                                        | built here, in PR 02                                                                                                                                                     | –                                                            |
 
 ## The pull requests
 
@@ -205,19 +205,22 @@ Approved with the plan. Each row is written into the roadmap's P6 section by the
 (`STORE_SETTING_BOUNDS`, the item write's schema, the template copy functions).
 
 Migration `<ts>_eta_settings.sql`: the six store columns of [the table](#the-model-p6-builds) with their checks,
-`eta_base_minutes` filled from `prep_time_max_minutes`; `menu_items.prep_offset_minutes`; the template copy and
-push functions carry both.
+`eta_base_minutes` filled from `prep_time_max_minutes`; a table check `eta_max_minutes >= eta_base_minutes` on
+`stores`, with the migration setting `eta_max_minutes` to the greater of 90 and the store's base;
+`menu_items.prep_offset_minutes`; the template copy and push functions carry both.
 
 Server:
 
 - `domain/eta.ts`: `estimate({ base, extraItem, parallel, perQueued, buffer, max, lines: [{ quantity, prepOffset
 }], ordersAhead }) → { low, high }`, pure, as [above](#the-model-p6-builds);
 - the six settings join the store settings route and `StoreSettingsDto`; `prepOffsetMinutes` joins the item
-  create and edit routes and `ManagedMenuItemDto` (it is not in the public menu payload).
+  create and edit routes and `ManagedMenuItemDto` (it is not in the public menu payload);
+- the settings route refuses a change that would break `eta_max_minutes >= eta_base_minutes`: `VALIDATION_ERROR`
+  naming the field.
 
 Tests: properties (`fast-check`): never below the base; never above the maximum; non-decreasing in the orders
 ahead, in the units and in an item's offset; `high − low` is the buffer unless the maximum cuts it. The settings
-route's bounds; `limits-parity`.
+route's bounds, and a maximum below the base is refused naming the field; `limits-parity`.
 
 Docs: `docs/CONFIGURATION.md`, `docs/SCHEMA.md`, `docs/API.md`. Intent: `--server minor`.
 
@@ -276,12 +279,12 @@ and recovering. The visual gate; `docs/COMPONENTS.md`. Intent: `--client minor`.
 
 Migration `<ts>_pickup_tokens.sql`: the counter table, `orders.business_date` and `pickup_token` with the unique
 index, `stores.token_prefix`; `business_date(p_at, p_timezone)` (the store-local date, rolling over at 04:00);
-`next_pickup_token(p_store_id, p_at) returns text` (`insert … on conflict … do update set last_value = last_value
-
-- 1 returning`, formatted as the prefix, a dash and at least three digits); and **`confirm_payment`re-created**
-from P5's merged body with one addition: an order that reaches`PLACED`or`AWAITING_ACCEPTANCE`gets its business
-date and token in the same transaction. A late payment that ends`REJECTED` gets none, so tokens have no gaps from
-  orders nobody will collect.
+`next_pickup_token(p_store_id, p_at) returns text`, which upserts the day's counter
+(`insert … on conflict (store_id, business_date) do update set last_value = store_token_counters.last_value + 1 returning last_value`)
+and formats the result as the prefix, a dash and at least three digits; and **`confirm_payment` re-created** from
+P5's merged body with one addition: an order that reaches `PLACED` or `AWAITING_ACCEPTANCE` gets its business date
+and token in the same transaction. A late payment that ends `REJECTED` gets none, so tokens have no gaps from
+orders nobody will collect.
 
 Server: `OrderDto.pickup: { token } | null`, for the owner and for staff; the staff card and the customer's hero
 print the token where they printed `#orderNumber`, which stays as the support reference.
@@ -309,16 +312,20 @@ Server:
   `READY` or `EXPIRED`. A staff DTO never carries either;
 - `POST /api/stores/:storeId/orders/verify-pickup` (`requireStore('orders.transition')`, a new
   `pickupVerifyLimiter` per user): a typed code or a scanned payload. A typed code is compared, in constant time,
-  with the codes of this store's `READY` and `EXPIRED` orders of the current business date, a small bounded set.
-  A match answers the order's token, name and items; anything else is 400 `PICKUP_CODE_INVALID`, the same answer
-  whether the code is wrong, the order is another store's or it was already collected;
+  with the codes of this store's `READY` orders and of its orders that became `EXPIRED` in the last 24 hours,
+  whatever their business date: a small bounded set. One match answers that order's token, name and items.
+  Several matches (two orders can share six digits) answer all of them, and staff choose by the token the
+  customer shows; collection then checks the code against the chosen order. Anything else is 400
+  `PICKUP_CODE_INVALID`, the same answer whether the code is wrong, the order is another store's or it was
+  already collected;
 - `POST /api/stores/:storeId/orders/:orderId/collect` with `{ method, code? }`: with `pickup_qr` on for the store,
   `QR` and `CODE` need the right code for that order; a wrong one counts against the order, and after five the
   order answers 423 `PICKUP_LOCKED` to everything but `MANUAL`. `MANUAL` ("verified by name and phone") always
   works and is audited with the member's name. With the flag off, collection works as before and records `MANUAL`.
 
 Tests: the code never appears in a staff payload or a log line; a wrong code, another store's code and a collected
-order's code all answer alike; the lockout and the manual way out; the rate limit; `testStoreIsolation`; a
+order's code all answer alike; two ready orders with the same code are both offered; an order made ready before
+the 04:00 roll-over is still found after it; the lockout and the manual way out; the rate limit; `testStoreIsolation`; a
 collect repeated is 200 with no second settlement.
 
 Docs: `docs/API.md`, `docs/PERMISSIONS.md`, `docs/CONFIGURATION.md`, `docs/DEPLOYMENT.md` (the secret),
@@ -337,7 +344,8 @@ PR otherwise).
   page shows the token alone.
 - **Staff:** "Hand over" on a ready card opens `VerifyPickup`: the camera with `BarcodeDetector` where the browser
   has it, and always a 6-digit field (`inputmode="numeric"`, large keys) beside it. A match shows the token, the
-  name and the items with one **Hand over** button; no match says so and lets them try again; "Can't check the
+  name and the items with one **Hand over** button (several matches show a short list to choose from by token);
+  no match says so and lets them try again; "Can't check the
   code" leads to the manual confirmation. Without the flag the card's button collects as today.
 
 Tests: the card's states; the scanner falls back to typing when `BarcodeDetector` is absent or the camera is
@@ -375,14 +383,17 @@ the queue wrappers). The main agent builds it: it decides who is told what about
 
 Migration `<ts>_notifications.sql`: the roadmap's `notifications` table (`unique (event_id, user_id)`), an index
 on `(user_id, created_at desc)`, a 30-day purge; `q_notifications` also subscribes to `refund.processed`; a
-wrapper `queue_send_delayed(p_queue, p_message, p_delay_seconds)`.
+wrapper `queue_send_delayed(p_queue, p_message, p_delay_seconds)`; and `create_notification(…) returns boolean`,
+the only writer of a notification row: it inserts the row, and a repeat (the unique key) inserts nothing and
+returns false.
 
 Server:
 
 - `notifications/templates.ts`: one typed template per event and audience (a title, a body, where a tap leads),
   ready for another language;
 - `jobs/notify.ts`, replacing the log-only handler: event → audience and template → quiet rules (older than ten
-  minutes, or the order has moved on: no "ready" for a collected order) → the row. On `order.ready` it also queues
+  minutes, or the order has moved on: no "ready" for a collected order) → the row, written through
+  `create_notification` (PR 09 adds the queued pushes to it). On `order.ready` it also queues
   a delayed `pickup.reminder` for ten minutes before the pickup deadline, which fires only if the order is still
   `READY`;
 
@@ -417,7 +428,10 @@ Intent: `--server minor`.
 `images` job.
 
 Migration `<ts>_push_subscriptions.sql`: the roadmap's table (`endpoint` unique, `revoked_at`); the
-`notifications_push` flag row.
+`notifications_push` flag row; `create_notification` (PR 08) re-created: besides inserting the row it now sends,
+in the same transaction, one `push.send` message (`{ notificationId, subscriptionId }`) to `q_notifications` for
+each of the user's live subscriptions when the template is a pushed one; a repeat (the unique key) still inserts
+nothing and sends nothing.
 
 Server:
 
@@ -426,15 +440,25 @@ Server:
 - `utils/env.ts`: the three VAPID variables, all or none; with none, push is off and the rest of P6 works;
 - `POST /api/me/push-subscriptions` (upsert by endpoint, re-binding an endpoint to the caller) and
   `DELETE /api/me/push-subscriptions/:id`; `ConfigDto.push: { publicKey } | null`;
-- the notify handler, after writing a row for an event marked as pushed in its template: send to each of the
-  user's live subscriptions. A 404 or 410 revokes that subscription; a retryable failure throws `RetryableError`;
-  the payload is the title, the body and a path, never a phone number or a pickup code.
+- **Where a push may go.** The route accepts only an `https` endpoint whose host is on an allowlist of push
+  services, a platform constant with its test (`fcm.googleapis.com`, `updates.push.services.mozilla.com`,
+  `*.notify.windows.com`, `*.push.apple.com`); anything else is 400 and is never stored. The sender checks the
+  allowlist again before each send and never follows a redirect, so a stored endpoint cannot be pointed at an
+  internal address, and the push service's status is not reported back to the user who subscribed;
+- the handler for `push.send` sends that one push. Each subscription is retried, revoked (404 or 410) or
+  dead-lettered on its own, so a failure on one never repeats or loses another. A send whose result is unknown (a
+  timeout) is retried: the notification's `tag` is its id and the push carries the same `Topic`, so a duplicate
+  replaces the first on the device instead of stacking. The payload is the title, the body and a path, never a
+  phone number or a pickup code.
 
-Tests: one push per subscription per event however often the event arrives; a gone endpoint is revoked and not
+Tests: one queued push per subscription per event however often the event arrives; one subscription failing
+retryably is retried alone while the other's push is sent once; an endpoint over `http`, on an unlisted host, or
+on a loopback or private address is refused; a redirect is not followed; a gone endpoint is revoked and not
 tried again; a subscription posted by one user and then by another belongs to the second; no push when the flag
 is off or the keys are missing; the payload's fields.
 
-Docs: `docs/API.md`, `docs/CONFIGURATION.md`, `docs/DEPLOYMENT.md` (generating the keys), `docs/JOBS.md`,
+Docs: `docs/API.md`, `docs/CONFIGURATION.md` (it lists the push-service allowlist), `docs/DEPLOYMENT.md`
+(generating the keys), `docs/JOBS.md`,
 `docs/LOGGING.md`. Intent: `--server minor`.
 
 ### PR 10 — Client: the service worker, the ask, the inbox (P6.3)
@@ -473,14 +497,16 @@ Server:
   collect: each calls one SQL function, and a repeat is 200 with no event. `PATCH …/status` keeps working by
   mapping onto them until PR 15;
 - `GET /api/stores/:storeId/orders/:orderId` gains `timeline`: the order's `domain_events` as `{ type, at, by }`
-  (paid, accepted, preparing, ready, collected; a member's first name, or "customer" or "system");
+  (paid, accepted, preparing, ready, collected; a member's first name, or "customer" or "system"). The owner's
+  `GET /api/orders/:id` gains it too, behind its existing owner check, with no member names (`by` is `store`,
+  `you` or `system`);
 - the capability `orders.viewCustomerPhone`; `POST …/orders/:orderId/reveal-phone` (`writeLimiter`) answers the
   number and writes an audit row naming the member; store order payloads gain `hasPhone` and, from PR 15, stop
   carrying `customerPhone`.
 
-Tests: each command's matrix with `testStoreIsolation`; the timeline's order and names; a reveal leaves exactly
-one audit row and another store's member gets 404; the lifecycle walk through the commands with its
-`domain_events` rows.
+Tests: each command's matrix with `testStoreIsolation`; the timeline's order and names; the owner's timeline names no
+member, and another customer's order is 404; a reveal leaves exactly one audit row and another store's member gets 404;
+the lifecycle walk through the commands with its `domain_events` rows.
 
 Docs: `docs/API.md`, `docs/PERMISSIONS.md`, `docs/ARCHITECTURE.md`. Intent: `--server minor`.
 
@@ -528,11 +554,12 @@ Docs: `docs/COMPONENTS.md` (`Sheet`, `OrderDetailSheet`). Intent: `--client mino
 
 - [ ] Merged
 
-An implementer builds it. The page P5 left gains what the tracks produced: the token in the hero from payment on;
-"Ready around 1:30–1:35 pm" from the promise and its buffer, and after a breach the late banner P5 built; the
-pickup card at `READY`; a timeline of the order's own moments; and a receipt (lines with options, the total, any
-cancellation fee, each refund with its state and reference). Copy and colours come from `orderStatus.ts`; polling
-stops at the terminal states as today.
+An implementer builds it. The page P5 left gains what the tracks produced: the token in the hero from payment on; "Ready
+around 1:30–1:35 pm" from the promise and its buffer, and after a breach the late banner P5 built; the pickup card at
+`READY`; a timeline from the owner's order read (PR 11), and for an order older than the 30 days `domain_events` are
+kept, the moments the order itself stores (placed, paid, ready, collected); and a receipt (lines with options, the
+total, any cancellation fee, each refund with its state and reference). Copy and colours come from `orderStatus.ts`;
+polling stops at the terminal states as today.
 
 Tests: each state's page in `orderStatus.test.ts` and a component test; the order-page LCP case in
 `e2e/layout.spec.ts` still passes on the throttled 360px profile; the visual gate.
@@ -613,7 +640,8 @@ when an order needs accepting; Call reveals the number once and the audit shows 
   tests kept green as the proof that nothing else moved.
 - **Six digits are a small space.** A random guess matches one of a store's ready orders with probability
   (ready orders ÷ 1,000,000) per try. The per-user rate limit, the per-order lockout and the answer that never
-  says why are the guards; `/break` at the close tries to defeat them.
+  says why are the guards; `/break` at the close tries to defeat them. Two ready orders can share a code, in which
+  case both are offered and staff pick by token.
 - **Rotating `PICKUP_CODE_SECRET` invalidates every code on screen.** Rotate outside trading hours; the order page
   picks up the new code on its next poll.
 - **iOS only delivers Web Push to an app on the home screen** (16.4 and later). The ask card says so, and the

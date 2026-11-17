@@ -90,8 +90,10 @@ Steps 1 to 3 run in parallel from day one. Steps 4 and 5 need pieces of P5 and P
       into our own account and returning money by payout) direct payment aggregation?
 - [ ] **CA:** GST under s.9(5) against being the seller, 194-O on split flows, GST cascading under model B,
       invoicing to customers and to restaurants, and which FSSAI licence each model needs.
-- [ ] The answer names **model A or model B for the pilot**. That one word lifts gate G2 in the P5 plan and turns
-      its payout outline into pull requests.
+- [ ] The answer names **model A or model B for the pilot**. The answer, with its date, is recorded in
+      PAYMENT_OPTIONS.md and confirmed by the user on the pull request that records it. Gate G2 in the P5 plan lifts on
+      that day, without waiting for step 6, and its payout outline turns into pull requests. ADR-003's final text
+      (step 6) names the model again.
 - [ ] Recorded like step 1: the view and its date in PAYMENT_OPTIONS.md, the documents kept outside the repository.
 
 ## Step 3 — PR 01: the legal pages
@@ -163,6 +165,9 @@ amended by the user the same day to say all of the following.
 - [ ] PR 03: Paytm, merged and measured
 - [ ] PR 04: Razorpay, merged and measured
 
+A provider that step 1 rules out on price before its spike starts is not spiked: its box is ticked as "ruled out on
+price", and the written term that ruled it out is recorded in PAYMENT_OPTIONS.md.
+
 A week per provider, in the order above (Cashfree is the roadmap's first choice, so it is measured first). The
 main agent builds each: it is payment code, and each is a money PR, so **the user reviews and merges it**.
 
@@ -226,8 +231,8 @@ A docs PR into `dev`, `no-release`, by the main agent; only the user accepts an 
 - **ADR-003's final text**: the provider, the plan and its rate, the money model (A or B), the hold mechanism, the
   pilot's promotion and its end date, and the reasons. Status **Accepted** is set by the user.
 - **What follows from the choice**, in the same PR:
-  - the [P5 plan](P5_PAYMENTS.md#gates): gates G1 and G2 lifted, the adapter PR and the payout PRs written out in
-    full from their outlines;
+  - the [P5 plan](P5_PAYMENTS.md#gates): gate G1 lifted, and G2 if step 2 had not already
+    lifted it, the adapter PR and the payout PRs written out in full from their outlines;
   - the roadmap's P4 boxes ticked, and its P5.1 values (`PAYMENT_PROVIDER`) named;
   - the provider's checkout hosts listed for CLAUDE.md §9 (P5's adapter PR removes the two losers' hosts from the
     CSP and keeps the winner's);
@@ -236,11 +241,11 @@ A docs PR into `dev`, `no-release`, by the main agent; only the user accepts an 
 
 ## Gates P4 holds over P5
 
-| Gate | Lifted by                                               | Until then P5 does not                                                                                            |
-| ---- | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| G1   | ADR-003 accepted (step 6)                               | let any real provider be selected in production, delete the losing adapters, or name production's payment secrets |
-| G2   | the CA's answer on the money model (step 2), in ADR-003 | build payouts, payout accounts or the restaurant's payout view                                                    |
-| G3   | the merchant account approved, with live keys (step 4)  | go live for any store                                                                                             |
+| Gate | Lifted by                                                                                                                           | Until then P5 does not                                                                                            |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| G1   | ADR-003 accepted (step 6)                                                                                                           | let any real provider be selected in production, delete the losing adapters, or name production's payment secrets |
+| G2   | the CA's answer on the money model (step 2), recorded in PAYMENT_OPTIONS.md and confirmed by the user; ADR-003 repeats it at step 6 | build payouts, payout accounts or the restaurant's payout view                                                    |
+| G3   | the merchant account approved, with live keys (step 4)                                                                              | go live for any store                                                                                             |
 
 Everything else in P5 is the same for every provider and both money models, and does not wait.
 
@@ -285,7 +290,8 @@ Only the user accepts or amends an ADR.
 ## Closing P4
 
 P4 is done when, as the roadmap says: ADR-003 is **Accepted** with a written UPI rate or promotion terms; the CA's
-and the lawyer's views are on file; the spike has run on a real low-end Android phone for the three providers; and
+and the lawyer's views are on file; the spike has run on a real low-end Android phone for each of the three
+providers not ruled out on price in step 1; and
 the merchant application has been submitted. The milestone (M4) adds "the sandbox spike merged behind the gateway
 port", which step 5's three PRs are.
 
