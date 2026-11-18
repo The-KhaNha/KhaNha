@@ -3,11 +3,13 @@
 ## Status
 
 Accepted with amendments (2026-10-24), by the user: uploads are presigned; a local-disk store for development,
-switched on by a runtime flag, sits alongside minio.
+switched on by a runtime flag, sits alongside minio. Amended (2026-11-18), by the user: the app has three hosts,
+`khanha.in`, `staff.khanha.in` and `admin.khanha.in`, on one distribution; `/media/*` is served on each, and the
+bucket's CORS admits all three ([P8 plan][p8-plan], D3).
 
 ## Date
 
-2026-09-28 (proposed), 2026-10-24 (accepted)
+2026-09-28 (proposed), 2026-10-24 (accepted), 2026-11-18 (amended)
 
 ## Context
 
@@ -22,7 +24,8 @@ Storage. R17 moves photos to S3 so restaurants can upload their own, and the CDN
 
 ## Decision
 
-Media lives in S3 behind CloudFront, served at `/media/*` on the app's own origin. Uploads go by presigned POST, and
+Media lives in S3 behind CloudFront, served at `/media/*` on the app's own origin (each of its
+three hosts, amended 2026-11-18). Uploads go by presigned POST, and
 the worker builds the variants. This replaces the Supabase Storage plan in CLAUDE.md §9.
 
 - The bucket `food-pickup-media-<env>` is private and served through CloudFront with OAC.
@@ -51,8 +54,10 @@ the worker builds the variants. This replaces the Supabase Storage plan in CLAUD
 - [P8.3 Media bucket and CDN][p8.3]
 - [Docs and rule changes][docs-and-rule-changes]
 - [ADR-011][adr-011] (Supabase Free limits)
+- [P8 plan][p8-plan] (D3, the domain and its hosts)
 
 [p3.3]: ../../plans/ROADMAP.md#p33-images-on-s3
 [p8.3]: ../../plans/ROADMAP.md#p83-media-bucket-and-cdn
 [docs-and-rule-changes]: ../../plans/ROADMAP.md#docs-and-rule-changes
 [adr-011]: 011-free-tiers.md
+[p8-plan]: ../../plans/P8_INFRASTRUCTURE.md

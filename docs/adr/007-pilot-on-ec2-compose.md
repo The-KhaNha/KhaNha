@@ -30,9 +30,16 @@ Amended (2026-11-17), by the user:
 - **The host is sized up before a process is dropped.** If the reconciler does not fit beside the other three
   containers, the host goes to `t4g.small` ([ADR-005][adr-005] as amended).
 
+Amended (2026-11-18), by the user:
+
+- **The domain is `khanha.in`**, bought and registered outside AWS, its DNS zone in Route 53. One CloudFront
+  distribution serves three hosts from one client build: `khanha.in` for customers, `staff.khanha.in` for the staff
+  shell and `admin.khanha.in` for site admins; `www.` redirects to the apex. Each host keeps its own sign-in.
+  Staging mirrors them under `staging.khanha.in` ([P8 plan][p8-plan], D3).
+
 ## Date
 
-2026-09-28 (accepted), 2026-11-11 and 2026-11-17 (amended)
+2026-09-28 (accepted), 2026-11-11, 2026-11-17 and 2026-11-18 (amended)
 
 ## Context
 

@@ -10,7 +10,9 @@ what waits for funding. Amended (2026-11-15), by the user: about $130 of the cre
 2027-02-18; the account is on AWS's Paid plan and is paid from pilot revenue after that; prices re-read for Mumbai
 ([Revised 2026-11-15](#revised-2026-11-15)). Amended (2026-11-17), by the user: staging on AWS is brought forward
 and runs continuously, about $22 a month for both environments, and is reviewed in early February 2027 before any
-month is paid from revenue ([Revised 2026-11-17](#revised-2026-11-17)).
+month is paid from revenue ([Revised 2026-11-17](#revised-2026-11-17)). Amended (2026-11-18), by the user: the domain
+`khanha.in` is bought (about $10 a year, outside the credits); its DNS zone is the $0.50 a month already budgeted
+([P8 plan][p8-plan], D3).
 
 ## Date
 
@@ -74,7 +76,7 @@ start. Only production is hosted at first; a staging on AWS follows one to two m
 | One secret in Secrets Manager                                         | $0.40 per environment |                                                                                                    |
 | Images (ECR), buckets (S3), the CDN (CloudFront), parameters, deploys | under $1 in all       | CloudFront's and S3's standing free allowances cover pilot traffic; ECR keeps the newest 10 images |
 | Logs, metrics, alarms                                                 | $0 to $2 in all       | CloudWatch's free allowances cover about ten alarms and ten metrics; the rest are cents each       |
-| A DNS zone, once there is a domain                                    | $0.50                 | the domain's own registration is probably not payable from credits                                 |
+| A DNS zone for `khanha.in` (bought 2026-11-18)                        | $0.50                 | the domain's own registration is not payable from credits                                          |
 | **Production, to start**                                              | **about $13**         | $140 then lasts roughly ten months                                                                 |
 | With a staging on AWS, later                                          | about $26             | about $9 a month of room under the ceiling                                                         |
 

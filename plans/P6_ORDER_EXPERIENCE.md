@@ -73,6 +73,7 @@ What the code has when P5's PRs 01–21 are in (P5 as planned), and what P6 adds
 | 13  | Client: the order detail sheet, Call, sound              | P6.4 | 11, 12     | implementer | agent | 16 / 680             |
 | 14  | Client: the customer's order page v2                     | P6.5 | 03, 06, 11 | implementer | agent | 14 / 520             |
 | 15  | Contract: the status patch and the phone in lists retire | P6.4 | 13         | main        | agent | 14 / 320             |
+| 16  | Client: the staff shell, one restaurant selector         | P6.4 | 12         | implementer | agent | 16 / 600             |
 
 Why this order: four tracks that do not touch each other (the wait 01–03, pickup 04–07, notifications 08–10, the
 staff board 11–13), so any can go first and client PRs can run in worktrees beside a server PR. The wait comes
@@ -530,8 +531,8 @@ tokens), then `agent-skills:frontend-ui-engineering`.
 countdown, **New**, **Preparing**, **Ready**) and **Done** behind a toggle; on a phone the lanes are the existing
 filter buttons over one list, so nothing is lost at 360px. A search field filters by token or name over the
 orders the board holds. The ticket (`StaffOrderCard`) shows the token, the name, the items with their options,
-the note, the time since payment and a "Late" badge, and no phone number. The header gains the store switcher for
-a member of several stores. Actions are disabled with a reason while the board is offline.
+the note, the time since payment and a "Late" badge, and no phone number. The header's store switcher is PR 16's
+restaurant selector. Actions are disabled with a reason while the board is offline.
 
 Tests: `staffBoardRules.test.ts` (lane assignment, search, order within a lane); the layout at 360px, 768px and
 1280px in `e2e/layout.spec.ts`; the visual gate at 390px throttled, a tablet and 1280px; `perf-auditor` on
@@ -586,9 +587,36 @@ with the client version that no longer needs them, and the phase's merge raises 
 Tests: a guard that the list payload has no phone; a guard that no source file names the old route.
 Intent: `--server minor --client patch`.
 
+### PR 16 — Client: the staff shell, one restaurant selector, Board and Manage (P6.4)
+
+- [ ] Merged
+
+Decided by the user (18 November 2026, P8 D3): the staff board and `/manage` become one shell, which
+[P8 PR 05b](P8_INFRASTRUCTURE.md#pr-05b--three-hosts-the-apex-staff-and-admin-p83) serves at `staff.khanha.in`.
+Until then it lives at `/staff`, as today.
+
+- **The restaurant selector** in the header lists every store the person belongs to, as OWNER (through the brand),
+  MANAGER or STAFF, grouped by brand, with the brand template first for an owner (P3 PR 07b). One store: no selector,
+  straight in. The selected store is in the URL (`/staff/:storeSlug/…`), not in storage, so nothing outlives a
+  sign-out.
+- **Tabs: Board | Manage.** Board is PR 12's board. Manage is today's `/manage/:storeSlug/*` and is shown only
+  when the person is that store's OWNER or a MANAGER there, read from the role the stores list already returns
+  (`StoreRole` in `types/api.ts`); a STAFF member sees no tab bar. The server's capability map still decides every
+  call; the tab is presentation only.
+- `/manage` and `/manage/:storeSlug/*` redirect to `/staff/:storeSlug/manage/*`, so bookmarks keep working.
+- Reuse: the P2 store switcher and the P3 store picker merge into this one selector (`reuse-scout` first); the
+  `docs/COMPONENTS.md` entry is updated, not duplicated.
+
+Tests: the selector with one and several stores; the Manage tab per role (OWNER, MANAGER, STAFF); the redirects
+from `/manage…`; the layout at 360px and 1280px; the visual gate at 390px throttled.
+Docs: `docs/COMPONENTS.md`, `docs/FRONTEND_STRUCTURE.md`, `docs/PERMISSIONS.md` (where each role lands).
+Intent: `--client minor`.
+
 ## CLAUDE.md edits, aggregated
 
-- §2: "the board is `/staff`" gains the lanes and the counter screen; pickup is by token and code.
+- §2: "the board is `/staff`, `/manage` for owners and managers" becomes one staff shell (Board, and Manage for
+  owners and managers) with a restaurant selector, at `staff.khanha.in` once P8 PR 05b is in; the board gains the
+  lanes and the counter screen; pickup is by token and code.
 - §2c: the service worker caches nothing.
 - §12: the pickup code and VAPID private key among the secrets that never reach the client or a log.
 - `.claude/rules/frontend.md` §2c and §9; `.claude/rules/backend.md` §2c (the two new keys) and §19.
@@ -618,6 +646,7 @@ Intent: `--server minor --client patch`.
 | D10 | Who may see a customer's phone                          | a default: any member of the store, one audited reveal at a time; never in a list                                                                         | 11, 13     |
 | D11 | When the app asks for notification permission           | a default: a customer after their first paid order, staff on the board; never on first load                                                               | 10         |
 | D12 | Whether the pickup code is required                     | a default: per store, behind `pickup_qr`; off, collection works as today and is recorded as manual                                                        | 05         |
+| D13 | The staff board and `/manage`                           | **answered (the user, 18 November 2026):** one shell, a restaurant selector, a Manage tab for owners and managers (PR 16)                                 | 16         |
 
 ## Closing P6
 

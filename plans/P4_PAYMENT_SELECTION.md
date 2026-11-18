@@ -47,7 +47,7 @@ The user, 17 November 2026:
 | P4.6 sales and contracts | nothing sent                                                                                                                                                                  | all of it (the user)                                                |
 | P4.6 CA and lawyer       | nothing asked                                                                                                                                                                 | all of it (the user)                                                |
 | P4.6 sandbox spike       | no payment code: `simulatePayment()` always answers `PAID`; `server/src/integrations/` holds only `media/`; `ConfigDto.payment` is always `null`; no webhook route exists     | three sandbox adapters merged into `dev`, dark, measured on a phone |
-| P4.6 applications        | no `/legal/*` route; the app has no public address yet (P8 PR 05 brings the domain)                                                                                           | the four legal pages; the merchant application (the user)           |
+| P4.6 applications        | no `/legal/*` route; the app has no public address yet (P8 PR 05 brings `khanha.in`, already bought)                                                                          | the four legal pages; the merchant application (the user)           |
 | A public webhook address | none: staging is the Supabase staging project with the app run locally                                                                                                        | the AWS staging ([below](#the-aws-staging-brought-forward))         |
 | P4.7 decision            | ADR-003 **Proposed**; its Decision section says it is completed in P4.7                                                                                                       | the scores, the ADR's final text, the user's acceptance             |
 | What the choice changes  | `PAYMENT_PROVIDER` does not exist in `utils/env.ts`; the web image's CSP (Report-Only) names no payment host; README's "What V0 deliberately leaves out" still lists payments | written in by [step 6](#step-6--the-decision-written-in-p47)        |
@@ -130,7 +130,7 @@ Verify: the visual gate at 390px throttled and 1280px; the four URLs open signed
 
 ## Step 4 — The merchant application (the user)
 
-- [ ] The legal pages are reachable on the production domain: PR 01 released, and the domain live
+- [ ] The legal pages are reachable on the production domain: PR 01 released, and `khanha.in` live
       ([P8 PR 05](P8_INFRASTRUCTURE.md#build-order), decision D3). A reviewer cannot open `localhost`, and a bare
       CloudFront address looks like no business at all.
 - [ ] Submit the platform's merchant KYC to the provider step 1 and the spike point at. If step 1 has two close
