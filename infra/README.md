@@ -7,9 +7,20 @@ is [DEPLOYMENT.md "Hosted environments"](../docs/DEPLOYMENT.md#hosted-environmen
 ```text
 terraform/
   bootstrap/          run once by the user: state bucket, GitHub OIDC, the three roles, the $35 budget
-  envs/production/    production's root (resources arrive with P8 PRs 02–08)
-  modules/            (from PR 02) network, ecr, iam, compute, secrets, media, cdn, observability
+  envs/production/    production's root: the modules with production's names
+  modules/
+    network/          VPC, two public subnets, no NAT; free S3 endpoint; the host's security group
+    ecr/              khanha/web and khanha/server: immutable tags, scan on push, newest 10 kept
+    iam/              the host's instance role, scoped to its own parameters, secret, logs and media bucket
+                      (compute, secrets, media, cdn, observability arrive with PRs 04–08)
 ```
+
+**The security group admits nothing yet.** No SSH, ever (Session Manager replaces it). The one inbound rule,
+CloudFront's, comes with PR 05 and the origin form it proves; until then the host only calls out, on 443.
+
+**Module tests.** A module with a `tests/` folder has `terraform test` against a mocked provider, run by `ci.yml`'s
+`infra` job; `cd terraform/modules/<name> && terraform init -backend=false && terraform test` locally. `iam`'s
+asserts no data-reading grant is on `*` and that a staging role names nothing of production's.
 
 **Who runs what.** The bootstrap is the one thing applied by hand, by the user, with their own administrator
 credentials. Everything else is applied by `.github/workflows/infra.yml` through the roles the bootstrap creates, and
@@ -52,7 +63,11 @@ made, so it is not lost with the laptop:
 aws s3 cp terraform.tfstate "s3://$(terraform output -raw state_bucket)/bootstrap/terraform.tfstate"
 ```
 
-The budget sends its emails straight to the address; there is nothing to confirm.
+The budget sends its emails straight to the address, but a new address must be verified first. AWS sends it a verification email (check spam); open the link while signed in to this account. The recipient must show Active on the budget's detail page in the Budgets console (Pending means unconfirmed; Resend verification sends a new email). Until then it receives no alerts. An address already verified on the account needs no step.
+
+The roles trust this repository's **immutable OIDC subject** (`owner@id/name@id`, the `github_repository` variable),
+not `owner/name`: a workflow failing with "Not authorized to perform sts:AssumeRoleWithWebIdentity" means the two
+disagree. `gh api repos/The-KhaNha/KhaNha/actions/oidc/customization/sub` shows the prefix GitHub sends.
 
 ## 2. Connect GitHub (once, by the user)
 

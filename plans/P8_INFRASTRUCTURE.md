@@ -284,7 +284,7 @@ diagram, the "P8 before P5.4" note and the ADR-007 row of its architecture-decis
 
 ### PR 01 — Terraform skeleton, the bootstrap, and their CI (P8.1)
 
-- [ ] Merged
+- [x] Merged
 
 | File                                      | Change                                                                                                                                                                                                                                                                                                             |
 | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -297,8 +297,8 @@ diagram, the "P8 before P5.4" note and the ADR-007 row of its architecture-decis
 | `.gitignore`                              | `.terraform/`, plan files, `*.tfvars` that are not examples                                                                                                                                                                                                                                                        |
 
 Verify: `terraform fmt -check` and `validate` pass locally and in CI; the guard fails on a fixture workflow with
-`id-token: write` and no environment; after the user's bootstrap, the PR's `plan` job prints "No changes" and the
-user has the budget's confirmation email.
+`id-token: write` and no environment; after the user's bootstrap, the PR's `plan` job prints "No changes". (The
+budget emails the address directly, but a new address gets a verification email first; see the user steps.)
 
 ### PR 02 — Network, registry and roles (P8.1, P8.2)
 
@@ -308,14 +308,18 @@ Modules, each small and used by `envs/production`:
 
 - `network`: a VPC with public subnets in two zones (the host has a public address for outbound traffic only: a
   NAT gateway alone would cost more than the whole budget); an S3 gateway endpoint (free); a security group in
-  which the host accepts traffic from CloudFront only and nothing accepts SSH.
+  which the host accepts traffic from CloudFront only and nothing accepts SSH. **As built:** the group has no inbound
+  rule at all until PR 05 adds CloudFront's, for the origin form PR 05 proves (a port opened to CloudFront now would
+  be plain HTTP across the internet); outbound is 443 only.
 - `ecr`: `khanha/web` and `khanha/server` (the names come from a module variable, so the staging PR can
   give its own), immutable tags, scan on push, keep the newest 10 images; only production's own images are pushed
   to them (releases, and rehearsal builds while it is dark), never staging's. Because tags are immutable, every
   workflow that builds an image first looks for its tag and reuses the image when it is already there, so a retried
   run for the same commit does not fail on the push.
 - `iam`: the instance role (pull from ECR, Session Manager, write its own log groups, read its own parameters and
-  secret, read and write the media bucket).
+  secret, read and write the media bucket). **As built:** Session Manager through a copy of
+  `AmazonSSMManagedInstanceCore` without its parameter reads, which would cover every parameter in the account;
+  `modules/iam/tests/scoping.tftest.hcl` (run in `ci.yml`'s `infra` job, mocked provider) is the guard.
 
 Verify: the PR's plan shows only additions and nothing with an hourly price; after the user approves the apply, a
 second plan is empty.
@@ -682,9 +686,9 @@ answered, or have a default the plan follows.
   Secrets Manager; and price the [budget table](#the-budget) in the AWS pricing calculator for ap-south-1. If any
   of the three changes the picture, say so before PR 01.
 - In the account that holds the credits, run `infra/terraform/bootstrap` once with your own administrator
-  credentials (`infra/README.md` has the commands), and confirm the budget alert's email.
+  credentials (`infra/README.md` has the commands). The budget emails the address directly, but a new address first gets a verification email from AWS (check spam): open its link, signed in to this account, and check the recipient shows Active on the budget's detail page in the Budgets console. Until then the budget sends nothing.
 - In GitHub → Settings → Environments, create `infra-plan`, `production-infra` and `production`, the last two with
-  yourself as required reviewer and restricted to `dev` (applies), `main` and the release tags (deploys). Give each
+  yourself as required reviewer and restricted to `main` (applies), `main` and the release tags (deploys). Give each
   the role ARN the bootstrap printed, as a variable. Set the repository variable `PRODUCTION_DARK` to `true`.
 - Approve each `apply` and each deploy when its run asks.
 - After PR 04's apply: put the real `SUPABASE_SECRET_KEY` into the `khanha/production/app` secret (once the

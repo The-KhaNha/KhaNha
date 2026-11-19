@@ -5,9 +5,18 @@ variable "alert_email" {
 }
 
 variable "github_repository" {
-  description = "owner/name of the repository whose GitHub Environments may assume the roles."
+  # The repository uses GitHub's immutable OIDC subject, which carries the owner's and repository's numeric IDs, so a
+  # renamed or re-created repository of the same name can never assume the roles. The plain "owner/name" fails with
+  # "Not authorized to perform sts:AssumeRoleWithWebIdentity". The value is sub_claim_prefix without its "repo:":
+  # gh api repos/The-KhaNha/KhaNha/actions/oidc/customization/sub
+  description = "owner@id/name@id, as in the repository's immutable OIDC subject, whose GitHub Environments may assume the roles."
   type        = string
-  default     = "The-KhaNha/KhaNha"
+  default     = "The-KhaNha@333735276/KhaNha@1387235288"
+
+  validation {
+    condition     = can(regex("^[^/@]+@[0-9]+/[^/@]+@[0-9]+$", var.github_repository))
+    error_message = "github_repository must be owner@id/name@id (the immutable OIDC subject), not owner/name."
+  }
 }
 
 variable "region" {
