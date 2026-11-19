@@ -2,7 +2,7 @@
 
 How Food Pickup works end to end: which piece talks to which, and what happens, step by step, in every workflow the app has today. Each section names the files that implement it, so the diagrams can be checked against the code.
 
-- **Web app**: React 18 + Vite, in `client/`. It signs in with supabase-js and gets all its data from the API.
+- **Web app**: React 19 + Vite, in `client/`. It signs in with supabase-js and gets all its data from the API.
 - **API**: Express 5, in `server/`. It verifies Supabase access tokens, holds all business rules, and reads and writes Postgres with the Supabase **secret** key.
 - **Supabase**: Auth (sign-in, tokens, users), PostgREST (the REST layer supabase-js calls) and Postgres. The Postgres side holds the tables, row-level security (RLS), triggers, and the two functions that do the order transactions.
 

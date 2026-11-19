@@ -16,7 +16,7 @@ function focusablesIn(container: HTMLElement): HTMLElement[] {
  * - hands focus back to whatever opened it when it closes.
  * Escape handling and body scroll locking stay with the caller.
  */
-export function useFocusTrap(ref: RefObject<HTMLElement>, active: boolean): void {
+export function useFocusTrap(ref: RefObject<HTMLElement | null>, active: boolean): void {
   useEffect(() => {
     if (!active) return;
     const container = ref.current;

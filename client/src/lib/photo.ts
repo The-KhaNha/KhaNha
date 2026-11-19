@@ -13,11 +13,10 @@ export function photoSrcSet(src: string): string | undefined {
 
 /**
  * Spread onto the one image that is the page's largest paint (the store cover), so the browser fetches it before the
- * food photos discovered at the same moment. Lowercase on purpose: React 18 passes it through unchanged but does not
- * know the camelCase `fetchPriority` (React 19 does), and a spread keeps TypeScript's <img> types happy.
+ * food photos discovered at the same moment. Renders as the `fetchpriority` attribute.
  */
 export const LCP_IMAGE_PROPS = {
-  fetchpriority: 'high',
+  fetchPriority: 'high',
   loading: 'eager',
   decoding: 'async',
 } as const;
