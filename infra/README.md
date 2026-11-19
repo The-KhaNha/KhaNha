@@ -22,7 +22,7 @@ ceiling of $35: [the budget table](../plans/P8_INFRASTRUCTURE.md#the-budget). Ea
 states its monthly cost.
 
 **Reading the bill.** Billing and Cost Management → **Bills** for the month so far, **Credits** for what is left
-(about $130, expiring 18 February 2027). The budget `food-pickup-monthly` counts costs **before** credits on purpose:
+(about $130, expiring 18 February 2027). The budget `khanha-monthly` counts costs **before** credits on purpose:
 with credits included the month nets to about $0 and the alert would never fire. So an email at 50% means about $17.50
 of real usage this month, even while credits pay for it.
 
@@ -101,7 +101,7 @@ TF_VAR_account_id=<the account ID> terraform plan
 
 ## Changing a secret
 
-The app's one secret (`food-pickup/production/app`, from PR 04) is set in the console (Secrets Manager), never in
+The app's one secret (`khanha/production/app`, from PR 04) is set in the console (Secrets Manager), never in
 Terraform or the repository; Terraform creates its container and ignores the value. A changed value reaches the
 containers on the next deploy.
 

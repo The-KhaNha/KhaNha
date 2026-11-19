@@ -221,7 +221,7 @@ to deploy to; and observability lands on a running, dark production, where its a
   Tags are immutable.
 - **arm64 host, arm64 images**, built on GitHub's arm64 runners, which are free for a public repository. Nothing is
   ever built on the host: 1 GB is for running the app.
-- **The release is one small parameter.** `/food-pickup/<environment>/release` (production's in production) in Parameter
+- **The release is one small parameter.** `/khanha/<environment>/release` (production's in production) in Parameter
   Store holds the two image tags of **the last release that passed**, and it is written last. A deploy sends the
   candidate tags to the host as the command's own parameters; the host applies them, and only after the public smoke
   passes does the workflow write them to the parameter. A failed deploy leaves the parameter alone, so a replaced
@@ -309,7 +309,7 @@ Modules, each small and used by `envs/production`:
 - `network`: a VPC with public subnets in two zones (the host has a public address for outbound traffic only: a
   NAT gateway alone would cost more than the whole budget); an S3 gateway endpoint (free); a security group in
   which the host accepts traffic from CloudFront only and nothing accepts SSH.
-- `ecr`: `food-pickup/web` and `food-pickup/server` (the names come from a module variable, so the staging PR can
+- `ecr`: `khanha/web` and `khanha/server` (the names come from a module variable, so the staging PR can
   give its own), immutable tags, scan on push, keep the newest 10 images; only production's own images are pushed
   to them (releases, and rehearsal builds while it is dark), never staging's. Because tags are immutable, every
   workflow that builds an image first looks for its tag and reuses the image when it is already there, so a retried
@@ -345,10 +345,10 @@ Waits for D11: the first PR with an hourly price, about $11.50 a month from its 
   the host down (with Node's own heap limit set below it for `api` and `worker`).
   `scripts/ci/compose-parity.test.mjs` (new) fails when the two compose files disagree on a service's command,
   health check or the ports between services.
-- `infra/host/render-env.sh`: reads `/food-pickup/<environment>/*` from Parameter Store and the one secret
-  `food-pickup/<environment>/app` from Secrets Manager into an environment file on tmpfs, readable by root only.
+- `infra/host/render-env.sh`: reads `/khanha/<environment>/*` from Parameter Store and the one secret
+  `khanha/<environment>/app` from Secrets Manager into an environment file on tmpfs, readable by root only.
   `<environment>` comes from the host's own environment, which `modules/compute` sets from the root's variable, as the
-  `modules/secrets` names do; production's are `/food-pickup/production/*` and `food-pickup/production/app`.
+  `modules/secrets` names do; production's are `/khanha/production/*` and `khanha/production/app`.
   `infra/host/apply-release.sh`: take candidate tags from the command's parameters, or, with none, the release
   parameter's tags; pull, `up -d`, wait for `/api/ready` through nginx; if it does not answer in time, return to the
   tags the release parameter names (the last release that passed) and exit non-zero. It never writes the parameter.
@@ -360,8 +360,8 @@ Waits for D11: the first PR with an hourly price, about $11.50 a month from its 
   `TRUST_PROXY_HOPS`, `LOG_LEVEL`, the rate limits, sized for one API instance) from the environment's variables,
   and the secret's container with a placeholder the user replaces; Terraform ignores the value afterwards.
 - The SSM document, one per environment, with the three host files rendered into it. Production's keeps the name
-  `food-pickup-deploy`, which the bootstrap's deploy role is already scoped to
-  (`infra/terraform/bootstrap/main.tf`); staging's is `food-pickup-staging-deploy`, under staging's own role. The
+  `khanha-deploy`, which the bootstrap's deploy role is already scoped to
+  (`infra/terraform/bootstrap/main.tf`); staging's is `khanha-staging-deploy`, under staging's own role. The
   document's name is a variable of the module, not a literal in it. It does this: write the files, then run
   `apply-release.sh`, with the candidate tags as the command's parameters (none means the parameter's release). A
   State Manager association runs it once on a new host with none, so a replaced machine comes up on the last release
@@ -379,7 +379,7 @@ Manager shell on the host shows docker running, `free -m` shows the swap, and th
 
 - [ ] Merged
 
-- `modules/media`: `food-pickup-media-production-<account-id>`, private, encrypted, versioned; CORS for a form post from the
+- `modules/media`: `khanha-media-production-<account-id>`, private, encrypted, versioned; CORS for a form post from the
   app's three origins (D3); lifecycle rules (unprocessed originals expire after a day, old versions after 30). This is the
   bucket [P3 PR 09](P3_CATALOG_AND_MEDIA.md#pr-09--media-s3-and-minio-p33) points `MEDIA_BUCKET` at in production.
 - `modules/cdn`: one distribution with HTTP/3. The default behaviour and `/api/*` go to the host (`/api/*`
@@ -465,7 +465,7 @@ parameter already names this release, that is, when it is deployed):
    immutable) and the run carries on.
 2. **wait**: the Environment `production` has the user as its required reviewer. Before approving, the user runs
    `pnpm run db:push:production` (CLAUDE.md §2: never the pipeline, never the agent).
-3. **deploy**: read the release parameter (the previous release), send `food-pickup-deploy` to the host with the
+3. **deploy**: read the release parameter (the previous release), send `khanha-deploy` to the host with the
    candidate tags as the command's parameters, wait for it, and fail the run if it fails. The host returns to the
    parameter's release by itself when `/api/ready` never comes. The parameter is not written here.
 4. **smoke** (`scripts/ci/deploy-smoke.sh`, new): through the public address, waiting out the few seconds a deploy
@@ -579,11 +579,11 @@ ceiling):
 1. **The environment**: `infra/terraform/envs/staging/`, the same modules with staging's variables, in the same
    account, kept apart from production by name, tag and role; its own `apply` Environment. The host files and the
    deploy document take their parameter prefix, secret name and document name from the environment, so staging's host
-   reads `/food-pickup/staging/*` and its own secret; this is settled in PR 04, before the staging PRs. Staging's
-   deploy role, scoped to `food-pickup-staging-deploy`, `/food-pickup/staging/release` and the repositories
-   `food-pickup/staging/*` only, is an addition to the bootstrap, which the user applies (production's deploy role
-   pushes to `repository/food-pickup/*`). Staging's images go to repositories of their own, `food-pickup/staging/web`
-   and `food-pickup/staging/server`, each with its own keep-newest-10 rule, so no number of merges to `dev` can evict
+   reads `/khanha/staging/*` and its own secret; this is settled in PR 04, before the staging PRs. Staging's
+   deploy role, scoped to `khanha-staging-deploy`, `/khanha/staging/release` and the repositories
+   `khanha/staging/*` only, is an addition to the bootstrap, which the user applies (production's deploy role
+   pushes to `repository/khanha/*`). Staging's images go to repositories of their own, `khanha/staging/web`
+   and `khanha/staging/server`, each with its own keep-newest-10 rule, so no number of merges to `dev` can evict
    a production release image; production's repositories hold production's images only. The repository names are a
    variable of `modules/ecr`, not a literal in it.
 2. **`deploy-staging.yml`**: started when `ci.yml` finishes green for a push to `dev`. **A run deploys the current
@@ -687,7 +687,7 @@ answered, or have a default the plan follows.
   yourself as required reviewer and restricted to `dev` (applies), `main` and the release tags (deploys). Give each
   the role ARN the bootstrap printed, as a variable. Set the repository variable `PRODUCTION_DARK` to `true`.
 - Approve each `apply` and each deploy when its run asks.
-- After PR 04's apply: put the real `SUPABASE_SECRET_KEY` into the `food-pickup/production/app` secret (once the
+- After PR 04's apply: put the real `SUPABASE_SECRET_KEY` into the `khanha/production/app` secret (once the
   production Supabase project exists; see [The first production release](#the-first-production-release)).
 - Confirm the SNS subscription email (PR 08).
 - After PR 05's apply: at the registrar of `khanha.in`, set the nameservers to the new Route 53 zone's four (D3). The

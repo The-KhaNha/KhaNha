@@ -3683,7 +3683,7 @@ R17, R18, R21, R3 (secrets), R6 (observability), R14 (usage load). **Depends on:
   - `apply` runs from the pipeline with approval **(user)** for production.
 - **IAM.**
   - A GitHub OIDC provider and a deploy role limited to: push to ECR, `ssm:SendCommand` on instances tagged
-    `app=food-pickup`, and read the release artefacts bucket. There are no long-lived access keys anywhere.
+    `app=khanha`, and read the release artefacts bucket. There are no long-lived access keys anywhere.
   - An instance role for ECR pull, SSM, CloudWatch logs and metrics, its own environment's secrets, and read/write on
     the media bucket for the worker.
 - **Network.**
@@ -3698,7 +3698,7 @@ R17, R18, R21, R3 (secrets), R6 (observability), R14 (usage load). **Depends on:
 > **Decided:** the newest 10 images kept, ECR's basic scan plus `security.yml`'s weekly `trivy image`; no `dev-<sha7>`
 > staging images; `ci.yml` builds and smoke-tests the arm64 images on pull requests, pushing nothing.
 
-- ECR repositories `food-pickup/web` and `food-pickup/server`, with **immutable tags** (git SHA, plus the semver from
+- ECR repositories `khanha/web` and `khanha/server`, with **immutable tags** (git SHA, plus the semver from
   P0.3 at release). A lifecycle policy keeps the last 30 images, and every push is scanned (Inspector).
 - `docker/build-push-action` with layer caching, SBOM and provenance attestations. Images are built for the instance
   architecture (arm64, if the cheaper Graviton instances are chosen).
@@ -3744,7 +3744,7 @@ R18.
   (`/food-pickup/<env>/*`) into a tmpfs file. Secrets never go into images or onto disk.
 - **ALB.** A target group points at the `web` container on each host. Its health check is `GET /api/ready` through
   nginx. The deregistration delay is 30 s, and the idle timeout is 60 s, below the API's 65 s keep-alive (P0.7).
-- **Deploys.** The SSM Run Command document `food-pickup-deploy (tags)` runs on one host at a time:
+- **Deploys.** The SSM Run Command document `khanha-deploy (tags)` runs on one host at a time:
   1. Deregister the host from the ALB.
   2. `docker compose pull && up -d`.
   3. Wait for `/api/ready`.
