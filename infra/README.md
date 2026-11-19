@@ -7,9 +7,29 @@ is [DEPLOYMENT.md "Hosted environments"](../docs/DEPLOYMENT.md#hosted-environmen
 ```text
 terraform/
   bootstrap/          run once by the user: state bucket, GitHub OIDC, the three roles, the $35 budget
-  envs/production/    production's root (resources arrive with P8 PRs 02–08)
-  modules/            (from PR 02) network, ecr, iam, compute, secrets, media, cdn, observability
+  envs/production/    production's root: the modules with production's names
+  modules/
+    network/          VPC, two public subnets, no NAT; free S3 endpoint; the host's security group
+    ecr/              khanha/web and khanha/server: immutable tags, scan on push, newest 10 kept
+    iam/              the host's instance role, scoped to its own parameters, secret, logs and media bucket
+    secrets/          the host's settings in Parameter Store, and the container of its one secret
+    compute/          the host (t4g.micro, standard credits), its first boot, the deploy document
+    media/            the media bucket: private, versioned, CORS for the upload form, lifecycle rules
+    cdn/              CloudFront (VPC origin to the host, the bucket at /media/*), the zone, the certificate
+                      (observability arrives with PR 08)
+host/                 what the deploy document writes to the host and runs
+  compose.prod.yml    web, api, worker from ECR, with memory limits (scripts/ci/compose-parity.test.mjs)
+  render-env.sh       parameters and the secret -> env files on tmpfs, root only
+  apply-release.sh    candidate tags, else the release parameter's; back to the parameter's if not ready
 ```
+
+**Only CloudFront reaches the host.** No SSH, ever (Session Manager replaces it). The host is a CloudFront VPC
+origin: its one inbound rule admits port 80 from `CloudFront-VPCOrigins-Service-SG`, the group AWS creates for the
+VPC origin's interfaces, so no other distribution and nothing on the internet can reach it.
+
+**Module tests.** A module with a `tests/` folder has `terraform test` against a mocked provider, run by `ci.yml`'s
+`infra` job; `cd terraform/modules/<name> && terraform init -backend=false && terraform test` locally. `iam`'s
+asserts no data-reading grant is on `*` and that a staging role names nothing of production's.
 
 **Who runs what.** The bootstrap is the one thing applied by hand, by the user, with their own administrator
 credentials. Everything else is applied by `.github/workflows/infra.yml` through the roles the bootstrap creates, and
@@ -22,7 +42,7 @@ ceiling of $35: [the budget table](../plans/P8_INFRASTRUCTURE.md#the-budget). Ea
 states its monthly cost.
 
 **Reading the bill.** Billing and Cost Management → **Bills** for the month so far, **Credits** for what is left
-(about $130, expiring 18 February 2027). The budget `food-pickup-monthly` counts costs **before** credits on purpose:
+(about $130, expiring 18 February 2027). The budget `khanha-monthly` counts costs **before** credits on purpose:
 with credits included the month nets to about $0 and the alert would never fire. So an email at 50% means about $17.50
 of real usage this month, even while credits pay for it.
 
@@ -52,7 +72,22 @@ made, so it is not lost with the laptop:
 aws s3 cp terraform.tfstate "s3://$(terraform output -raw state_bucket)/bootstrap/terraform.tfstate"
 ```
 
-The budget sends its emails straight to the address; there is nothing to confirm.
+**Verify the budget's address.** A new address receives no budget alerts until it is verified. Open Billing and Cost
+Management → Budgets → `khanha-monthly` and read its email recipient's status:
+
+- **Active (legacy)**: what this bootstrap's recipient shows (seen 19 November 2026), although the Alerts panel also
+  reads "0/1 email verified". AWS documents it as still receiving notifications; no verification is offered, and
+  nothing needs doing.
+- **Inactive**: no email was sent. Choose **Send Notification**.
+- **Pending**: a verification email went out from an `@aws.com` sender; check spam, or choose **Resend
+  verification**.
+- **Active**: done. Open the email's link while signed in to this account to get here.
+
+Nothing to change in Terraform: the recipient list stays the same.
+
+The roles trust this repository's **immutable OIDC subject** (`owner@id/name@id`, the `github_repository` variable),
+not `owner/name`: a workflow failing with "Not authorized to perform sts:AssumeRoleWithWebIdentity" means the two
+disagree. `gh api repos/The-KhaNha/KhaNha/actions/oidc/customization/sub` shows the prefix GitHub sends.
 
 ## 2. Connect GitHub (once, by the user)
 
@@ -99,11 +134,50 @@ terraform init -backend-config="bucket=$(terraform -chdir=../../bootstrap output
 TF_VAR_account_id=<the account ID> terraform plan
 ```
 
+## The host
+
+One EC2 `t4g.micro` (about $9.20 a month with its public address and disk), Amazon Linux 2023 on arm64. Its first
+boot installs docker, the compose plugin and 2 GB of swap (`modules/compute/user-data.sh`); nothing is built on it.
+The app arrives through the SSM document `khanha-deploy`, which writes `infra/host/*` to `/opt/khanha` and runs
+`apply-release.sh`: with candidate tags from the deploy workflow (PR 07), or with none, the tags in
+`/khanha/production/release` (`"<web-tag> <server-tag>"`, the last release that passed). A State Manager association
+runs it once on every new host, so a replaced machine comes back on that release by itself; before the first release
+it does nothing.
+
+- **A shell on it:** Systems Manager → Session Manager → Start session (no SSH, no key).
+- **Replacing it** (a newer AMI or boot script, which plans ignore on a running host): from a local checkout with
+  credentials, `terraform apply -replace=module.compute.aws_instance.this`, with the user's explicit approval.
+- **Its settings** are Parameter Store's `/khanha/production/*`, one variable each, written by `modules/secrets` from
+  `envs/production/main.tf`. A changed setting reaches the containers on the next deploy. Production's
+  `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` are empty, so not created, until the production Supabase project
+  exists; then a one-line PR sets them in `envs/production/variables.tf`.
+
+## The edge and the domain
+
+One CloudFront distribution (`modules/cdn`): the app from the host, `/api/*` never cached, `/media/*` from the
+bucket (a CloudFront Function strips `/media`, since the keys are `stores/…`), `www.` answered with a 301 to the apex.
+The domain goes live in two applies (the user, 19 November 2026):
+
+1. With `domain_live = false` (`envs/production/variables.tf`) the Route 53 zone exists and the app answers at
+   `terraform output cloudfront_domain` (the `d….cloudfront.net` name, also in the plan's summary once applied).
+2. **(user)** At the registrar of `khanha.in`, set the four name servers from `terraform output name_servers`.
+   `dig NS khanha.in +short` shows them once the change has spread (minutes to hours).
+3. A one-line PR sets `domain_live = true`. Its apply requests the certificate (us-east-1), validates it through the
+   zone, attaches `khanha.in`, `www.`, `staff.` and `admin.`, and points their A and AAAA records at the distribution.
+
+The certificate is not requested earlier: before the delegation it would fail validation after 72 hours.
+
+**Media.** `khanha-media-production-<account>`: private, read by CloudFront through origin access control, written
+by the host's role and by browsers through the API's presigned form (CORS for the three hosts and the CloudFront
+name). Old object versions expire after 30 days; an object tagged `stage=original` (an upload never processed or
+swept) after a day, once the API tags its uploads (the follow-up server PR).
+
 ## Changing a secret
 
-The app's one secret (`food-pickup/production/app`, from PR 04) is set in the console (Secrets Manager), never in
-Terraform or the repository; Terraform creates its container and ignores the value. A changed value reaches the
-containers on the next deploy.
+The app's one secret, `khanha/production/app`, is a JSON object of keys, today
+`{"SUPABASE_SECRET_KEY": "sb_secret_..."}`. Set it in the console (Secrets Manager → the secret → Retrieve secret
+value → Edit), never in Terraform or the repository: Terraform creates only the container. Until it has a value, a
+deploy fails at `render-env.sh`. A changed value reaches the containers on the next deploy.
 
 ## Moving to another account
 

@@ -2,7 +2,7 @@
 
 From the single-store V0 to a multi-store, multi-branch pickup platform with real escrowed payments, restaurant and
 platform dashboards, background jobs and production hosting on AWS. This file is the plan for every item in the
-product roadmap (`Roadmap.pdf`, 33 items), plus two added on 2026-11-01. It covers the target design (HLD), the detailed design of each feature
+product roadmap (`Roadmap.pdf`, 33 items), plus two added on 2026-11-01 and one on 2026-11-18. It covers the target design (HLD), the detailed design of each feature
 (LLD) and the build order as small, verifiable steps.
 
 > **Status: proposal.** Nothing described as _target_ exists yet. [`docs/`](../docs/) describes the app as it is today,
@@ -13,7 +13,7 @@ product roadmap (`Roadmap.pdf`, 33 items), plus two added on 2026-11-01. It cove
 > models, the model A vs B requirements and trade-offs, the fallback ladder and the switching options.
 
 Roadmap items are cited as **R1**–**R33** in the PDF's order, with sub-items such as **R4.1** and **R11.2**; **R34** and
-**R35** were added on 2026-11-01 and are not in the PDF. Phases are **P0**–**P13** and steps are numbered like **P5.3**. [Traceability](#traceability) maps every item to the steps that
+**R35** were added on 2026-11-01 and **R36** on 2026-11-18; they are not in the PDF. Phases are **P0**–**P14** and steps are numbered like **P5.3**. [Traceability](#traceability) maps every item to the steps that
 deliver it.
 
 ## Contents
@@ -33,6 +33,7 @@ deliver it.
 - [P6 — Order experience](#p6--order-experience)
 - [P7 — Insights and engagement](#p7--insights-and-engagement)
 - [P8 — Infrastructure and delivery](#p8--infrastructure-and-delivery)
+- [P14 — Internationalisation: Hindi first](#p14--internationalisation-hindi-first) (runs between P8 and P9)
 - [P9 — Pilot readiness and launch](#p9--pilot-readiness-and-launch)
 - [P10 — Scale after the pilot](#p10--scale-after-the-pilot)
 - [P11 — In-restaurant QR ordering and dine-in](#p11--in-restaurant-qr-ordering-and-dine-in)
@@ -54,13 +55,19 @@ deliver it.
     the KYC policy pages and the SMS DLT registration have no code dependency and are the longest lead items in the
     plan. Only the sandbox spike (P4.6) waits for the P5.1 port shape. P4 must finish before P5.
   - **P8** (infrastructure) builds production only, before the pilot. P5's webhook work tests against a tunnel to a
-    local stack or an AWS staging brought forward; the P5 plan chooses (D12 in the P8 plan).
+    local stack or an AWS staging brought forward; the P5 plan chooses (D12 in the P8 plan). Amended on 17 November
+    2026: the AWS staging is brought forward, built once P8's PRs 02, 04, 05 and 07 are applied, so sandbox webhooks
+    are tested there with no tunnel (D8 and D12 in the P8 plan).
 
   **P11** and **P12** were added after the pilot plan, so they sit at the end, but they need only P6 (P11) and P2 plus
   P7 (P12); either can start once those ship.
 
   **P13** is a clean-up to remember, not a feature phase: it runs once when P8 merges and again after the last
   phase.
+
+  **P14** (internationalisation, Hindi first) was added on 18 November 2026 and runs **between P8 and P9**: after
+  the screens of P2–P7 have settled, and before the pilot is tested and launched. Its number is the next free one,
+  not its place in the order. It is client-only. From P14.1 on, every phase writes its client copy in both languages.
 
   Within a phase the steps are in build order, and each one is sized to be roughly one pull request.
 
@@ -75,7 +82,7 @@ deliver it.
   5. Run `/post-change` for major changes; every product step here is one.
   6. Record a version intent ([P0.3](#p03-semantic-versioning-with-change-intents)) and update the owning docs in
      the same change (CLAUDE.md §6).
-- **Branches.** Feature branches → PR into `dev` (CI required; staging is the Supabase staging project, nothing deploys from `dev` until the AWS staging exists) → a release PR into `main`
+- **Branches.** Feature branches → PR into `dev` (CI required; staging is the Supabase staging project, nothing deploys from `dev` until the AWS staging exists, which is brought forward, P8.5) → a release PR into `main`
   (production, merged by the user) → a back-merge PR into `dev`. Hotfixes branch off `main`. Details in
   [P0.2](#p02-continuous-integration), [P0.3](#p03-semantic-versioning-with-change-intents) and
   [P8.5](#p85-continuous-deployment).
@@ -171,6 +178,7 @@ Every roadmap item, and the steps that deliver it.
 | R33    | Rate limiting and abuse protection                                                                        | [P1.6](#p16-rate-limiting-and-abuse-protection-v1), [P9.3](#p93-edge-protection-and-security-review)                                                                                                                                                                                                                                         |
 | R34    | Scan a QR in the restaurant to order; dine-in tabs with many orders, paid at the end (app or counter)     | [P11](#p11--in-restaurant-qr-ordering-and-dine-in) (all steps)                                                                                                                                                                                                                                                                               |
 | R35    | Restaurant search, location-based recommendations and a "My restaurants" list                             | [P12](#p12--restaurant-discovery-and-my-restaurants) (all steps), [P7.5](#p75-feedback-and-ratings) (ratings feed the ranking)                                                                                                                                                                                                               |
+| R36    | The client in Hindi as well as English, with a further language a new message file away                   | [P14](#p14--internationalisation-hindi-first) (all steps)                                                                                                                                                                                                                                                                                    |
 
 ## Phases and milestones
 
@@ -191,6 +199,8 @@ flowchart LR
   P6 --> P9["P9 Pilot readiness and launch"]
   P7 --> P9
   P8 --> P9
+  P8 --> P14["P14 Hindi and i18n"]
+  P14 --> P9
   P9 --> P10["P10 Scale after the pilot"]
   P6 --> P11["P11 QR ordering and dine-in"]
   P7 --> P12["P12 Discovery and My restaurants"]
@@ -207,7 +217,7 @@ flowchart LR
 | M5 Real money        | Test mode end to end on staging with the chosen aggregator: holds, acceptance, refunds, escrow, policies, reconciliation; live payments behind a per-store flag                                         | P5 (+ P8.4–5) | XL   |
 | M6 Pickup flow       | ETA engine, tokens + QR verification, notifications and staff dashboard v2 are live                                                                                                                     | P6            | L    |
 | M7 Insights          | Store and platform analytics, COGS, ratings, "Your usuals" and recommendations are live                                                                                                                 | P7            | L    |
-| M8 Pilot live        | Production on AWS, load-tested to 1000 concurrent, failure drills done, runbooks and alerts in place; versions go to 1.0.0                                                                              | P8, P9        | L    |
+| M8 Pilot live        | Production on AWS, load-tested to 1000 concurrent, failure drills done, runbooks and alerts in place; the app runs in Hindi and English; versions go to 1.0.0                                           | P8, P14, P9   | L    |
 | M9 Scale             | The Kubernetes decision gate has been evaluated and acted on; recommender v2 if the data supports it; Sentry, Prometheus and Grafana (low priority) once their triggers fire                            | P10           | L–XL |
 | M10 Dine-in          | Walk-in QR orders at every store; dine-in at a pilot store: a host-approved shared tab, orders named per person, bills split and paid in the app or at the counter                                      | P11           | XL   |
 | M11 Discovery        | Search, a "near you" ranking whose location never leaves the device, and a "My restaurants" list on the home page                                                                                       | P12           | M    |
@@ -336,7 +346,7 @@ flowchart LR
 | `web`        | `client/Dockerfile` (nginx) | serves the SPA with the cache headers from DEPLOYMENT.md, and proxies `/api/*` to `api` so calls stay same-origin, as today | with `api`                                                         |
 | `api`        | `server/src/server.ts`      | HTTP: every request/response endpoint and the payment webhook receiver; no long-running work                                | horizontally; stateless                                            |
 | `worker`     | `server/src/worker.ts`      | consumes the pgmq queues: notifications, analytics, payment side effects, refunds, media, recommendations                   | horizontally; each queue's visibility timeout prevents double work |
-| `reconciler` | `server/src/reconciler.ts`  | payment reconciliation only (R29): stuck-state sweeps, daily settlement matching, ledger integrity                          | one active instance, held by a database lease                      |
+| `reconciler` | `server/src/reconciler.ts`  | payment reconciliation only (R29): stuck-state sweeps, daily settlement matching, ledger integrity                          | one instance does each piece of work, via its own queue (ADR-005)  |
 | scheduler    | `pg_cron` inside Postgres   | time-based transitions (expired holds, acceptance timeouts, SLA breaches, pickup windows), and enqueues periodic jobs       | runs in the database                                               |
 
 **One codebase, three processes.** `api`, `worker` and `reconciler` share `server/` (its domain logic, SQL functions
@@ -397,7 +407,7 @@ three folders:
 | reviews         | `store_reviews`, `item_ratings`, `rating_aggregates`                                                       | `review.service.ts`                                                                  | `review.submitted`              |
 | analytics       | `analytics_*` rollups, `eta_stats`, `catalog_item_costs`, `store_expenses`                                 | `analytics.service.ts`, `jobs/analytics.ts`                                          | –                               |
 | recommendations | `item_associations`, `item_popularity`                                                                     | `recommendation.service.ts`, `jobs/recommendations.ts`                               | –                               |
-| platform        | `site_settings`, `feature_flags`, `audit_log`, `idempotency_keys`, `domain_events`, `leases`               | `settings.service.ts`, `flags.service.ts`, `audit.service.ts`                        | `settings.changed`              |
+| platform        | `site_settings`, `feature_flags`, `audit_log`, `idempotency_keys`, `domain_events`                         | `settings.service.ts`, `flags.service.ts`, `audit.service.ts`                        | `settings.changed`              |
 | reconciliation  | `recon_runs`, `recon_items`, `recon_exceptions`                                                            | `reconciler.ts`, `jobs/reconcile.ts`                                                 | `recon.exception`               |
 
 ### Data model (target)
@@ -808,7 +818,7 @@ a temp file and a script applies the bump.
 
   Docs-only changes need no intent.
 
-- **Branches.** Feature branches → PR into `dev` (CI required; staging is the Supabase staging project, nothing deploys from `dev` until the AWS staging exists, P8.5) → a release PR into
+- **Branches.** Feature branches → PR into `dev` (CI required; staging is the Supabase staging project, nothing deploys from `dev` until the AWS staging exists, which is brought forward, P8.5) → a release PR into
   `main` (production) → a back-merge PR into `dev`. Hotfixes branch off `main` as `hotfix/*`, carry their own intent
   and their own release run, and are back-merged the same way. Only the user merges into `main`. Migrations are
   immutable once merged into `dev`.
@@ -2252,6 +2262,13 @@ The product owner set three constraints:
 starts now, in parallel with P0; only the sandbox spike waits for the P5.1 port shape. It runs alongside P0–P3,
 because sales, KYC and legal review take weeks. **Blocks:** P5. **Size:** M.
 
+> **How it is built:** [P4_PAYMENT_SELECTION.md](P4_PAYMENT_SELECTION.md): who does each step, what each one gates
+> in P5, and the five pull requests the repository needs. Decided on 17 November 2026 (the user): the spike covers
+> Cashfree, Paytm and Razorpay, each adapter merged into `dev` and refused in production; sandbox webhooks are
+> tested on an AWS staging, brought forward; the DLT registration is dropped, because the pilot sends no SMS.
+> Nothing in P4 had been answered on that date. Where the
+> plan and this section disagree, the plan is newer.
+
 **Output:**
 
 - ADR-003 accepted, naming the provider, the money model and the hold mechanism;
@@ -2449,6 +2466,16 @@ The full ladder with its trade-offs is in
 **Items:** R2, R4, R4.1, R4.2, R5, R12, R28.3–R28.6, R29. **Depends on:** P4 (the provider and the money model), P2,
 P3, and P8's staging environment (a public webhook URL). **Size:** XL. **Flags:** `real_payments` (per store),
 `acceptance_flow`, `cancellation_by_customer`.
+
+> **How it is built:** [P5_PAYMENTS.md](P5_PAYMENTS.md), PR by PR straight into `dev`, with no phase branch, so
+> staging always runs what `dev` holds (the user, 17 November 2026). Its PRs 01–21 are the
+> same for every provider and both money models and are built against a fake gateway; the provider's adapter,
+> payouts and go-live wait for P4 ([the plan's gates](P5_PAYMENTS.md#gates)). Decided on 17 November 2026 (the
+> user): surplus and deals (P3.6) and partial line refunds wait until after the pilot; custom cancellation rules
+> are built; the agent merges each work PR except those that move money. The full list of what P5 builds
+> differently, with what picks each item up, is the plan's
+> [Where P5 differs from the roadmap](P5_PAYMENTS.md#where-p5-differs-from-the-roadmap). Where the plan and this
+> section disagree, the plan is newer.
 
 Provider details below use P4's recommendation (Cashfree) as the worked example. The gateway port keeps the other
 finalists a configuration change.
@@ -2738,7 +2765,8 @@ stateDiagram-v2
   If it cannot, the order becomes `REJECTED` with the reason `STOCK_UNAVAILABLE_AFTER_PAYMENT`, and a full refund is
   requested automatically.
 - **Local development.** The fake gateway posts signed webhooks to the same route. A tunnel (cloudflared) to a laptop
-  is needed only for testing the real sandbox; staging has a public URL (P8).
+  is needed only for testing the real sandbox; staging has a public URL (P8). Amended on 17 November 2026: the sandbox
+  is tested on the AWS staging, brought forward, with no tunnel.
 
 ### P5.5 Restaurant acceptance for limited items
 
@@ -2987,8 +3015,9 @@ when the customer does not collect within the window. R28.4: expired pickup wind
 
 ### P5.10 Payment reconciliation service
 
-R29: a separate service, `server/src/reconciler.ts`, in its own container. One instance is active at a time, held by
-the `reconciler` lease (P8.4).
+R29: a separate service, `server/src/reconciler.ts`, in its own container. One instance does each piece of work: it
+consumes its own queue, `q_reconciliation`, where a message is visible to one consumer at a time (ADR-005 as amended
+on 17 November 2026; first written as a `reconciler` lease).
 
 ```mermaid
 flowchart TD
@@ -3098,6 +3127,13 @@ is planned rather than improvised.
 **Goal:** an honest wait time, a pickup that cannot hand food to the wrong person, notifications at the moments that
 matter, and a staff board built for a rush. **Items:** R11.1, R13, R15, R25, R28.1. **Depends on:** P5 (the v2
 lifecycle). **Size:** L. **Flags:** `pickup_qr`, `notifications_push`.
+
+> **How it is built:** [P6_ORDER_EXPERIENCE.md](P6_ORDER_EXPERIENCE.md), PR by PR on the `feat/P6` branch. It needs
+> P5's lifecycle and none of P5's gates. Decided on 17 November 2026 (the user): notifications are in-app and Web
+> Push only (no SMS, no email); the counter screen is built. The rush factor and the history correction wait for
+> P7.1's tables. The full list is the plan's
+> [Where P6 builds less than the roadmap](P6_ORDER_EXPERIENCE.md#where-p6-builds-less-than-the-roadmap). Where the
+> plan and this section disagree, the plan is newer.
 
 ### P6.1 ETA engine
 
@@ -3615,13 +3651,17 @@ R22 (similarity, popularity, other users' orders) and R28.7 (recommendation upda
 to it by a pipeline: `main`'s release tags deploy production, after the user's approval (P8.5). Staging stays the
 Supabase staging project with the app run locally against it; an AWS staging follows one to two months after the
 first release. This is a parallel track, finished before the pilot. P5's webhook testing does not wait for it: the
-P5 plan chooses a tunnel to a local stack or brings the AWS staging forward (D12 in the P8 plan). **Items:** R16,
+P5 plan chooses a tunnel to a local stack or brings the AWS staging forward (D12 in the P8 plan). Amended on 17
+November 2026 (ADR-007 as amended; D8 and D12 in the P8 plan): the AWS staging is brought forward. It is built as
+soon as P8's PRs 02, 04, 05 and 07 are applied and deploys `dev` on every merge, and sandbox webhooks are tested
+there with no tunnel. **Items:** R16,
 R17, R18, R21, R3 (secrets), R6 (observability), R14 (usage load). **Depends on:** P0.6. **Size:** L.
 
 > **How it is built:** [P8_INFRASTRUCTURE.md](P8_INFRASTRUCTURE.md), PR by PR straight into `dev`. Decided on
 > 11 November 2026 (ADR-007 and ADR-011 as amended): production only to start, on one small host with no load
 > balancer, inside a budget of about $35 a month; a staging on AWS follows one to two months after the first
-> release. The credits expire on 18 February 2027 (the user, 15 November 2026). Each subsection below opens with
+> release (amended on 17 November 2026: brought forward, see the goal above). The credits expire on 18 February 2027
+> (the user, 15 November 2026). Each subsection below opens with
 > what was decided where it differs; the full list, with what picks each item up, is the plan's
 > [Where P8 builds less than the roadmap](P8_INFRASTRUCTURE.md#where-p8-builds-less-than-the-roadmap). Where the
 > plan and this section disagree, the plan is newer.
@@ -3643,7 +3683,7 @@ R17, R18, R21, R3 (secrets), R6 (observability), R14 (usage load). **Depends on:
   - `apply` runs from the pipeline with approval **(user)** for production.
 - **IAM.**
   - A GitHub OIDC provider and a deploy role limited to: push to ECR, `ssm:SendCommand` on instances tagged
-    `app=food-pickup`, and read the release artefacts bucket. There are no long-lived access keys anywhere.
+    `app=khanha`, and read the release artefacts bucket. There are no long-lived access keys anywhere.
   - An instance role for ECR pull, SSM, CloudWatch logs and metrics, its own environment's secrets, and read/write on
     the media bucket for the worker.
 - **Network.**
@@ -3658,7 +3698,7 @@ R17, R18, R21, R3 (secrets), R6 (observability), R14 (usage load). **Depends on:
 > **Decided:** the newest 10 images kept, ECR's basic scan plus `security.yml`'s weekly `trivy image`; no `dev-<sha7>`
 > staging images; `ci.yml` builds and smoke-tests the arm64 images on pull requests, pushing nothing.
 
-- ECR repositories `food-pickup/web` and `food-pickup/server`, with **immutable tags** (git SHA, plus the semver from
+- ECR repositories `khanha/web` and `khanha/server`, with **immutable tags** (git SHA, plus the semver from
   P0.3 at release). A lifecycle policy keeps the last 30 images, and every push is scanned (Inspector).
 - `docker/build-push-action` with layer caching, SBOM and provenance attestations. Images are built for the instance
   architecture (arm64, if the cheaper Graviton instances are chosen).
@@ -3691,20 +3731,20 @@ R17, R18, R21, R3 (secrets), R6 (observability), R14 (usage load). **Depends on:
 
 > **Decided:** one `t4g.micro` host (1 GB, standard CPU credits, a memory limit per container, a swap file), no Auto
 > Scaling group and no ALB, so a deploy is a few seconds of errors; `web`, `api` and `worker` only (the reconciler
-> and its lease come with P5.10); no backups in P8 (P9.5).
+> comes with P5.10, with no lease table); no backups in P8 (P9.5).
 
 R18.
 
 - **Auto Scaling group.** Minimum 1 and maximum 2 hosts for the pilot. The launch template uses Amazon Linux 2023. Its
   user data installs Docker, the compose plugin and the CloudWatch agent, and fetches `compose.prod.yml`.
-- **Services** on each host: `web`, `api`, `worker` and `reconciler`. The reconciler runs on every host, but only the
-  holder of the `reconciler` lease works: a `leases (name, holder, expires_at)` row with `acquire_lease` and
-  `renew_lease` RPCs, renewed every 30 s.
+- **Services** on each host: `web`, `api`, `worker` and `reconciler`. The reconciler may run on every host; it consumes
+  its own queue, so one of them does each piece of work, and no lease table is built (ADR-005 as amended on 17
+  November 2026; first written as a `leases` row with `acquire_lease` and `renew_lease`).
 - **Environment.** A start script renders each service's environment from Secrets Manager and SSM
   (`/food-pickup/<env>/*`) into a tmpfs file. Secrets never go into images or onto disk.
 - **ALB.** A target group points at the `web` container on each host. Its health check is `GET /api/ready` through
   nginx. The deregistration delay is 30 s, and the idle timeout is 60 s, below the API's 65 s keep-alive (P0.7).
-- **Deploys.** The SSM Run Command document `food-pickup-deploy (tags)` runs on one host at a time:
+- **Deploys.** The SSM Run Command document `khanha-deploy (tags)` runs on one host at a time:
   1. Deregister the host from the ALB.
   2. `docker compose pull && up -d`.
   3. Wait for `/api/ready`.
@@ -3836,10 +3876,156 @@ R6 in production, and R14's "usage load".
   - p95 of 300 ms for reads and 1.5 s for checkout API calls;
   - p75 LCP at or under 2.5 s from real-user data.
 
+## P14 — Internationalisation: Hindi first
+
+> **Added on 18 November 2026; it runs between P8 and P9**, which is where this section sits. It has the next free
+> number because phase numbers are stable ids: branches, plan files, PRs and ADRs cite them. Its plan file is
+> written when the phase starts.
+
+**Goal:** someone who picks Hindi uses the app in Hindi: every label, button, message, error and date that the
+client writes. English stays the default and the fallback, and a third language afterwards is a new message file,
+not a new design. **Scope: the client only** (the user, 18 November 2026): no migration, no endpoint and no change
+to any API response. What a restaurant or the server writes stays as written (see "Not planned"). **Items:** R36.
+**Depends on:** P8, by order rather than by code: the screens of P2–P7 have stopped moving by then, so their copy
+is extracted and translated once. P9 follows it, so the security review and the launch checklist cover the app the
+pilot ships. **Size:** M. **Flag:** none (a flag is a server row): the language switcher ships last, in P14.4.
+
+**Where it starts:** `<html lang="en">`, `lib/format.ts` pinned to `en-IN`, copy written inline in about 85
+components, and about 40 places that show the server's English `message`.
+
+### Design (HLD)
+
+- **Our own copy, in message files.** Labels, buttons, empty and error states live in one file per language in the
+  repository, reviewed like code. Nothing is fetched from a translation service at run time.
+- **The client translates; the API does not change.** Errors already carry a stable `code` and `details` (P1.1).
+  The client maps the code to a message in the chosen language, and shows the server's English `message` for a code
+  it has no copy for, so a new server code never shows a blank. No request carries the language, so every public
+  read stays one cached copy for everyone (CLAUDE.md §2c).
+- **English ships in the bundle; Hindi is a lazy chunk.** `en` is the fallback and the source of the key types.
+  `hi` is a hashed, immutable chunk that only a device set to Hindi fetches, so an English user pays nothing and the
+  initial-JS budget (`client/perf-budget.json`) does not move.
+- **No i18n library to start.** A typed `t(key, params)` with `{name}` placeholders and plurals through
+  `Intl.PluralRules` is about fifty lines and no dependency. A library is priced in gzip bytes and adopted (design
+  principle 13) when copy needs ICU `select` (gender or case agreement), or a translation vendor needs a file format.
+- **The language belongs to the device.** The saved choice wins, then the first match in `navigator.languages`,
+  then English. It is a preference, not user data: it lives in `localStorage` under a registered storage key,
+  survives sign-out and is never sent to the server. The three hosts (the apex, `staff.` and `admin.`; P8 plan D3)
+  are three origins, so each keeps its own choice.
+- **Latin digits, Indian formats.** Prices, quantities, tokens (`A-017`), pickup codes and phone numbers keep Latin
+  digits in every language (`numberingSystem: 'latn'`): the counter reads them aloud and staff match them by eye.
+  Dates and times go through `Intl` in the chosen locale (`hi-IN`).
+- **Devanagari typography.** Plus Jakarta Sans has no Devanagari glyphs, so Hindi renders in the device's own font
+  (Noto Sans Devanagari on Android), which costs no bytes. Under `:lang(hi)`: no letter-spacing (tracking breaks the
+  joined headline of a word), a line height of at least 1.5 (the marks above and below the line clip in tight
+  leading), and a heavier weight wherever English relied on `uppercase`, which Devanagari does not have.
+- **Left to right only.** A right-to-left language (Urdu) needs a layout pass that is not planned here.
+
+### P14.1 Language plumbing
+
+- `client/src/i18n/`: `messages/en.ts` (the source, keys named `<feature>.<screen>.<element>`), `messages/hi.ts`
+  (lazy), `t()`, the `useLocale` store (zustand, like the other stores) and a `LanguageSwitcher`: a `Sheet` listing
+  each language in its own script ("English", "हिन्दी").
+- The list of offered languages holds only `en` until P14.4, so nothing a user sees changes yet: the switcher is
+  not mounted and the device's language is not read.
+- Messages are plain text: `t()` returns a string, and nothing renders a message as HTML.
+- Switching sets `<html lang>` and re-renders with no reload; the cart, the checkout draft and its idempotency key
+  are untouched.
+- A device set to Hindi loads its chunk before the first paint, behind the app's existing skeleton. If the chunk
+  fails, the app renders in English with a one-line notice and a retry (CLAUDE.md §2b).
+- `lib/format.ts` reads the locale: `formatPrice`, `formatTime`, `formatDayTime`, `formatAgo` and
+  `formatPrepRange`. Their callers do not change.
+- **Guards**, both failing CI:
+  - a parity test: every key in `en` exists in every other language, with the same placeholders and every plural
+    form that language's `Intl.PluralRules` asks for;
+  - an ESLint `no-restricted-syntax` rule (no new plugin) that refuses literal text in JSX and in `aria-label`,
+    `placeholder`, `title` and `alt` under `client/src`. It lands with the list of files not yet converted; P14.2
+    and P14.5 empty that list, and a second guard refuses any addition to it.
+
+**Done when** a test switches one converted screen (the store list) between English and Hindi with no reload, and
+the initial bundle has grown by `t()` alone.
+
+### P14.2 The customer app's copy, extracted
+
+- Screen by screen along the golden path: the store list, the menu, the item sheet and its modifiers, the cart,
+  checkout, the order page, order history, sign-in and registration, the account page. Each PR is one route and
+  stays inside the size limit.
+- Also the `orderStatus.ts` labels (they become keys; the state-to-label map stays where it is), the messages in
+  `features/auth/validation.ts`, the `ErrorState` and `EmptyState` defaults, toasts, `aria-label`s and the document
+  title.
+- English only: copy moves from JSX into `en.ts`, and nothing a user sees changes. The unit tests and the e2e smoke
+  keep asserting the English text, untouched, which is the proof.
+- A sentence is one message with placeholders ("{count} items · {total}"), never glued from fragments: Hindi orders
+  its words differently. Counts use plural forms.
+
+**Done when** the lint list holds no customer file, and the e2e smoke passes without an edit.
+
+### P14.3 Errors by code
+
+- `errors.<CODE>` in the message files for the codes in `docs/API.md`, and one function, `messageFor(error)`, next
+  to `request()`: a code with copy gives the translated message, filled from `details` (a field, a limit, a time);
+  any other code gives the server's `message`. The places that show `error.message` today go through it.
+- `VALIDATION_ERROR` shows the form's own translated rule for a field the client validates (`details.field`), and
+  a generic "Check {field}" for the rest.
+- The server is untouched: `message` stays English and stays in the envelope. A code added to the server later
+  shows in English until the client gains its copy; the parity test then demands it in every language at once.
+
+**Done when** every error state on the customer golden path has copy by code, with the right numbers in it, and an
+unknown code still shows the server's message.
+
+### P14.4 Hindi copy, typography and the switcher
+
+- `messages/hi.ts` in full for the customer app, in the everyday Hindi that food apps use: the polite "आप", common
+  loanwords transliterated ("ऑर्डर", "कार्ट", "मेन्यू"), no textbook Hindi. The glossary (order, pickup, token,
+  ready, refund) and the tone are written into `docs/I18N.md` first, so later copy matches.
+- **Review (user):** a fluent Hindi reader, named by the user, reads every screen on a phone before this step
+  merges. A machine draft is a starting point and never the shipped text.
+- The `:lang(hi)` rules from the design, then the visual gate (CLAUDE.md §7) in Hindi: 360px and 390px throttled,
+  1280px, and text at 200%. No clipped marks, no overflow, tap targets still 44px. Where Hindi runs longer than the
+  space, the copy is shortened first, and the layout changes only when no wording fits.
+- **The switch.** `hi` joins the offered languages: the `LanguageSwitcher` appears on the account page and the
+  sign-in page, and a device whose language is Hindi starts in Hindi.
+- `ui-verifier` gains a numbered live check (the golden path in Hindi), and the e2e smoke gains one case: switch to
+  Hindi, place an order, read its status in Hindi.
+- `perf-auditor` records the Hindi chunk's gzip size and the Hindi LCP in `docs/PERF_BASELINE.md`.
+
+**Done when** the reviewer has signed off, the gate is green in both languages, and the customer app on staging
+switches to Hindi and back on a throttled 360px phone.
+
+### P14.5 The staff board and `/manage`
+
+- The staff board (`/staff`) first: kitchen and counter staff are the likeliest to prefer Hindi. Then `/manage`.
+  Both are lazy routes, so their copy goes into per-route message chunks and the customer's chunk stays small.
+- The same extraction, parity and review as P14.2–P14.4; the switcher joins the staff shell once its copy is
+  complete. A status has one key, so the customer's page and the board always use the same word for it.
+- `/admin` stays in English: it is the operating team's console.
+
+**Done when** the lint list holds only `/admin` files, and a staff member takes an order through its whole
+lifecycle on a board in Hindi.
+
+**Tests for P14**
+
+- parity: keys, placeholders and plural forms across languages;
+- `t()`: a missing key falls back to English and is logged once; plurals for 0, 1 and 2 in both languages;
+- the formatters in `hi-IN`: price, time, day and "ago" keep Latin digits;
+- the language choice: saved, then device, then English; it survives sign-out; no request carries it;
+- `messageFor`: a code with copy, the `details` filled in, and an unknown code falling back to the server's text;
+- end to end: the Hindi smoke, and a failed Hindi chunk that renders English with a retry.
+
+**Docs:** a new `docs/I18N.md` (how to add a string and a language, the glossary and tone, the Devanagari rules)
+with its CLAUDE.md §6 row; FRONTEND_STRUCTURE (the `i18n/` folder, the store, the chunks, the storage key),
+COMPONENTS (`t`, `LanguageSwitcher`, `messageFor`, the formatters), TESTING (the parity test, the Hindi smoke),
+PERF_BASELINE.
+
+**Not planned**, because each needs the server: restaurant content in Hindi (store, category, item and modifier
+names stay as the restaurant typed them, in every language), notifications and emails in Hindi (P6.3's templates
+stay English), and the language saved on the profile. Also not planned: right-to-left languages, per-language URLs,
+a translated `/admin`, and translating what a person typed (order notes, names, reviews).
+
 ## P9 — Pilot readiness and launch
 
 **Goal:** prove that the system holds 1000 concurrent users and recovers from failures, then launch a pilot with
-one or two stores. **Items:** R9 (load in CI), R19, R32, R33 (edge). **Depends on:** P5, P6, P7 and P8. **Size:** L.
+one or two stores. **Items:** R9 (load in CI), R19, R32, R33 (edge). **Depends on:** P5, P6, P7, P8 and P14.
+**Size:** L.
 
 ### P9.1 Load testing from 100 to 1000 concurrent
 
@@ -3973,6 +4159,7 @@ This is a checklist to take to professionals, not legal advice.
 ### P9.5 Launch checklist and runbooks
 
 - [ ] Every phase's "Done when" holds, and the gates are green.
+- [ ] A fluent reader has walked the golden path in Hindi on a phone (P14.4).
 - [ ] Backups have been restored once (P9.2 drill 9). Alarms have fired once in staging and been seen by a person.
 - [ ] `docs/RUNBOOKS.md` covers:
   - every alarm;
@@ -4021,7 +4208,7 @@ flowchart LR
     ING --> WEB["web Deployment"]
     ING --> API["api Deployment<br/>HPA on CPU and RPS"]
     WK["worker Deployment<br/>KEDA on queue depth"]
-    RC["reconciler Deployment<br/>1 replica with lease"]
+    RC["reconciler Deployment<br/>1 replica"]
     ES["External Secrets Operator"]
   end
   API --> SB[("Supabase")]
@@ -4039,7 +4226,7 @@ flowchart LR
   - The API scales by HPA on CPU and requests per second.
   - The worker scales by **KEDA** on pgmq queue depth, through the Postgres scaler (this needs a read-only direct
     database connection for the metric query).
-  - The reconciler stays at one replica, plus the lease.
+  - The reconciler stays at one replica (its queue already keeps work to one consumer).
 - **Access.** Pod Identity for S3, and External Secrets Operator syncing from Secrets Manager.
 - **GitOps.** Argo CD watches `infra/k8s/envs/*`. The CD pipeline opens image-tag bump PRs instead of running SSM
   commands.
@@ -4506,6 +4693,7 @@ What is tested where. The existing edge-case matrix (`docs/TESTING.md`) applies 
 | Resilience       | Toxiproxy, AWS FIS, Playwright                                          | the P9.2 drills                                                                                                                                                                                                                | before launch, then quarterly    |
 | Security         | ZAP baseline, `npm audit`, gitleaks, CodeQL, the security-auditor agent | P9.3                                                                                                                                                                                                                           | weekly and before a release      |
 | Accessibility    | axe inside Playwright                                                   | every new screen (sheets use `useFocusTrap`; 44px targets)                                                                                                                                                                     | PRs touching UI                  |
+| Copy             | Vitest parity test; ESLint                                              | every message key in every language with the same placeholders and plural forms; no literal text in JSX (P14)                                                                                                                  | every PR                         |
 
 Rules:
 
@@ -4535,6 +4723,7 @@ Rules:
 | P9    | TESTING, PERF_BASELINE                                                                                                                                                                                                                    | `docs/RUNBOOKS.md`, `docs/LOAD_BASELINE.md`                                                       |
 | P11   | ARCHITECTURE (service modes, the dine-in flow, post-pay money), API, SCHEMA, PERMISSIONS, COMPONENTS, FRONTEND_STRUCTURE, PAYMENTS (bills), JOBS (idle tabs)                                                                              | `docs/adr/012-dine-in-post-pay.md`                                                                |
 | P12   | API, SCHEMA, COMPONENTS, FRONTEND_STRUCTURE, CONFIGURATION, PERMISSIONS                                                                                                                                                                   | –                                                                                                 |
+| P14   | FRONTEND_STRUCTURE (the `i18n/` folder, the chunks, the storage key), COMPONENTS (`t`, the switcher, `messageFor`), TESTING (the parity test, the Hindi smoke), PERF_BASELINE                                                             | `docs/I18N.md` (adding a string or a language, the glossary and tone, the Devanagari rules)       |
 
 **CLAUDE.md rules to change**, in the change that needs them, since "the code is the truth: fix the doc in the same
 change":
@@ -4559,6 +4748,9 @@ change":
 | New     | "Versioning and branches" (P0.3): feature → `dev` → release PR → `main`, hotfixes, level rules, `npm run change`                                                                                                                                    | P0         |
 | §2      | The app is no longer pickup-only: dine-in tabs, bills paid at the end in the app or at the counter, the `SERVED` state                                                                                                                              | P11        |
 | §2c     | Tabs, bills and "My restaurants" are user-specific and never cached; the device location never leaves the device                                                                                                                                    | P11, P12   |
+| §5, §11 | No user-facing text literal in `client/src`: copy lives in the message files and ships in every language (lint and parity tests); error copy is keyed by code on the client                                                                         | P14        |
+| §7      | The visual gate runs in English and in Hindi                                                                                                                                                                                                        | P14        |
+| §2c     | The chosen language is a device preference that survives sign-out and is never sent to the server; the Hindi messages are a lazy, immutable chunk                                                                                                   | P14        |
 
 README's "What V0 deliberately leaves out" section shrinks as each phase ships.
 
@@ -4583,6 +4775,9 @@ README's "What V0 deliberately leaves out" section shrinks as each phase ships.
 | Dine-in walk-outs: a tab is eaten and never paid                                                                 | medium     | medium | Sign-in required; staff accept the first order of a tab; an unpaid cap per tab; counter settle; void with a reason, audited, which flags the host account ([P11](#p11--in-restaurant-qr-ordering-and-dine-in))                                                                                                                                 |
 | A photographed table QR is used from outside the restaurant                                                      | medium     | low    | Staff accept the first order of every tab; joining needs the host's code; managers rotate a table's QR                                                                                                                                                                                                                                         |
 | Location permission denied, or inaccurate indoors                                                                | high       | low    | Asked only on a tap; the list falls back to area grouping (P2.6)                                                                                                                                                                                                                                                                               |
+| Hindi copy that reads as machine-translated, or in the wrong register                                            | medium     | medium | The glossary and tone are written first; a fluent reader reviews every screen on a phone before the switcher ships (P14.4)                                                                                                                                                                                                                     |
+| Hindi text overflows a 360px layout, or its marks are clipped                                                    | high       | low    | The visual gate runs in both languages; `:lang(hi)` line height; the copy is shortened before a layout changes (P14.4)                                                                                                                                                                                                                         |
+| New client copy lands in English only after P14                                                                  | high       | medium | The lint rule and the parity test fail CI for a literal string or a key missing a language (P14.1)                                                                                                                                                                                                                                             |
 | Scope: 33 items for a small team                                                                                 | high       | high   | Milestones ship value alone; flags allow a partial rollout; the pilot needs only P0–P6 and the parts of P8–P9 on the launch checklist                                                                                                                                                                                                          |
 
 ## Decisions needed
@@ -4603,12 +4798,15 @@ The ones marked ★ block a phase.
 | 10  | Browser-to-S3 presigned uploads (a new CSP host) or proxied uploads                                                | P3.3            | presigned                                                                                                                                                                                   |
 | 11  | Production migrations inside the pipeline (behind approval) or kept manual                                         | P8.5            | manual, per CLAUDE.md §2 **(answered: the user, 11 November 2026)**                                                                                                                         |
 | 12  | ECS instead of compose on EC2                                                                                      | P8.4            | compose on EC2 (ADR-007) **(answered: ADR-007 as amended, 11 November 2026)**                                                                                                               |
-| 13  | AWS account structure, region and domain name                                                                      | P8.1            | **answered:** one account, ap-south-1; the domain is still open (P8 plan D1–D3)                                                                                                             |
+| 13  | AWS account structure, region and domain name                                                                      | P8.1            | **answered:** one account, ap-south-1; the domain is **`khanha.in`**, bought; customers on the apex, `staff.` and `admin.` for the rest (P8 plan D1–D3)                                     |
 | 14  | Supabase plan tier (PITR, compute, read replicas)                                                                  | P8.4, P9.1      | a tier with PITR for production                                                                                                                                                             |
 | 15  | Token format and business-day start                                                                                | P6.2            | `A-017`, rolling over at 04:00                                                                                                                                                              |
 | 16  | Whether staff may edit stock by default                                                                            | P3.5            | yes (`staff_can_edit_stock` defaults on)                                                                                                                                                    |
 | 17  | Platform commission on dine-in bills settled at the counter (that money never passes through the platform)         | P11.4           | none in the pilot: commission only on bills paid in the app; a monthly invoice to the brand if that changes                                                                                 |
 | 18  | Does the first order of every dine-in tab need staff acceptance?                                                   | P11.3           | yes, per store (the walk-out and photographed-QR guard)                                                                                                                                     |
+| 19  | Which screens are in Hindi for the pilot                                                                           | P14.2, P14.5    | the customer app and the staff board, then `/manage`; `/admin` stays in English                                                                                                             |
+| 20  | Who reviews the Hindi copy before the switcher ships (P14.4 waits for it)                                          | P14.4           | a fluent Hindi reader the user names; nothing ships on a machine draft alone                                                                                                                |
+| 21  | Devanagari font: the device's own, or a web font                                                                   | P14.4           | the device's own (no bytes); a web font only if the visual gate fails on the target phones                                                                                                  |
 
 ## Appendices
 
@@ -4827,3 +5025,5 @@ Emitted with `emit_event` in the same transaction as the change (P1.2). The cons
 | Tab (dine-in)          | one table's running session: a host, the members who joined with the host's code, and their orders                     |
 | Bill (dine-in)         | one payer's share of a tab, over order lines, paid in the app or settled at the counter                                |
 | My restaurants         | the stores a customer saved to the top of their home page (`favourite_stores`)                                         |
+| Message file           | our own copy in one language (`client/src/i18n/messages/<lang>.ts`); not the menu catalog                              |
+| Locale                 | the language a device chose (`en`, `hi`), saved on that device only                                                    |

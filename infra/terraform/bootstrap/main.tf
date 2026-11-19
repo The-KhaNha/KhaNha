@@ -6,7 +6,7 @@ data "aws_caller_identity" "current" {}
 locals {
   account_id = data.aws_caller_identity.current.account_id
   # Bucket names are global: the account ID keeps the name free when the setup moves to another account.
-  state_bucket = "food-pickup-tfstate-${local.account_id}"
+  state_bucket = "khanha-tfstate-${local.account_id}"
 
   # Each role is trusted by one GitHub Environment of this repository, never by a branch or a pull request.
   # infra-plan is read-only and may run on pull requests; the other two need the user's approval in GitHub.
@@ -118,7 +118,7 @@ data "aws_iam_policy_document" "trust" {
 resource "aws_iam_role" "github" {
   for_each = local.roles
 
-  name                 = "food-pickup-github-${each.key}"
+  name                 = "khanha-github-${each.key}"
   assume_role_policy   = data.aws_iam_policy_document.trust[each.key].json
   max_session_duration = 3600
 }
@@ -168,12 +168,12 @@ data "aws_iam_policy_document" "deploy" {
       "ecr:PutImage",
       "ecr:UploadLayerPart",
     ]
-    resources = ["arn:aws:ecr:${var.region}:${local.account_id}:repository/food-pickup/*"]
+    resources = ["arn:aws:ecr:${var.region}:${local.account_id}:repository/khanha/*"]
   }
   statement {
     sid       = "RunDeployDocument"
     actions   = ["ssm:SendCommand"]
-    resources = ["arn:aws:ssm:${var.region}:${local.account_id}:document/food-pickup-deploy"]
+    resources = ["arn:aws:ssm:${var.region}:${local.account_id}:document/khanha-deploy"]
   }
   statement {
     sid       = "OnTheAppsHostsOnly"
@@ -182,7 +182,7 @@ data "aws_iam_policy_document" "deploy" {
     condition {
       test     = "StringEquals"
       variable = "ssm:resourceTag/app"
-      values   = ["food-pickup"]
+      values   = ["khanha"]
     }
   }
   statement {
@@ -193,7 +193,7 @@ data "aws_iam_policy_document" "deploy" {
   statement {
     sid       = "ReleaseParameter"
     actions   = ["ssm:GetParameter", "ssm:PutParameter"]
-    resources = ["arn:aws:ssm:${var.region}:${local.account_id}:parameter/food-pickup/production/release"]
+    resources = ["arn:aws:ssm:${var.region}:${local.account_id}:parameter/khanha/production/release"]
   }
 }
 
@@ -206,7 +206,7 @@ resource "aws_iam_role_policy" "deploy" {
 # --- The budget ----------------------------------------------------------------------------------------------------
 
 resource "aws_budgets_budget" "monthly" {
-  name         = "food-pickup-monthly"
+  name         = "khanha-monthly"
   budget_type  = "COST"
   limit_amount = tostring(var.monthly_budget_usd)
   limit_unit   = "USD"

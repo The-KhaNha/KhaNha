@@ -70,6 +70,7 @@ vi.mock('./features/stores/useStoreMenu', () => ({
   useStoreMenu: () => ({ menu, isLoading: false, error: null, retry: () => {} }),
 }));
 const { default: App } = await import('./App');
+const { useCartStore } = await import('./features/cart/cartStore');
 
 // A real menu can hold up to 500 items (MENU_ITEMS_MAX): a tap that re-renders every card took 400-570 ms on a slow
 // phone, against the 200 ms INP budget. Adding one item re-renders that card, not the list.
@@ -79,9 +80,23 @@ describe('menu re-renders', () => {
     render(<App />);
     const before = priceRenders.count;
     act(() => {
-      fireEvent.click(screen.getAllByRole('button', { name: 'Add to cart' })[3]!);
+      fireEvent.click(screen.getAllByRole('button', { name: /^Add .+ to cart$/ })[3]!);
     });
     expect(priceRenders.count - before).toBeLessThanOrEqual(3);
+  });
+
+  // A screen reader's list of buttons, or "tap Add" by voice, shows each button by its name alone: twenty buttons
+  // called "Add to cart" cannot be told apart. The visible "Add" stays the name's first word (WCAG 2.5.3).
+  it("names each card's Add button after its item", () => {
+    useCartStore.setState({ lines: [] });
+    window.history.pushState({}, '', '/s/cafe/menu');
+    render(<App />);
+    const names = screen
+      .getAllByRole('button', { name: /^Add\b/ })
+      .map((b) => b.getAttribute('aria-label'));
+    expect(names).toHaveLength(items.length);
+    expect(new Set(names).size).toBe(items.length);
+    for (const { name } of items) expect(names).toContain(`Add ${name} to cart`);
   });
 
   // The React side above is half of it: 500 cards on the page still cost 130-250 ms per tap in style, layout and paint.

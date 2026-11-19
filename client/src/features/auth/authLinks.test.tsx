@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
@@ -17,7 +18,7 @@ const { ApiError } = await import('../../services/api');
 const { LoginPage } = await import('../../pages/Login');
 const { RegisterPage } = await import('../../pages/Register');
 
-const at = (entry: string, page: JSX.Element) =>
+const at = (entry: string, page: ReactElement) =>
   render(<MemoryRouter initialEntries={[entry]}>{page}</MemoryRouter>);
 
 // A guest sent to sign in from checkout must land back at checkout, whichever of the two forms they end up using.

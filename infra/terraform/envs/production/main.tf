@@ -1,2 +1,98 @@
-# Production's root. Empty until PR 02 adds the network, the registry and the instance role as modules
-# (../../modules/*), each used from here.
+# Production's root: the shared modules (../../modules/*) with production's names. The staging root passes its own.
+
+locals {
+  name        = "khanha-production"
+  environment = "production"
+  domain      = "khanha.in" # D3
+  # The release parameter the deploy role writes sits under this path (bootstrap/main.tf).
+  parameter_path = "/khanha/${local.environment}"
+  secret_name    = "khanha/${local.environment}/app"
+  # Created by modules/media in PR 05; ends in the account ID because bucket names are global.
+  media_bucket = "khanha-media-${local.environment}-${var.account_id}"
+}
+
+module "network" {
+  source = "../../modules/network"
+  name   = local.name
+}
+
+module "ecr" {
+  source = "../../modules/ecr"
+  # The bootstrap's deploy role pushes to repository/khanha/*; staging's get khanha/staging/* (P8 plan, Later).
+  repositories = ["khanha/web", "khanha/server"]
+}
+
+module "iam" {
+  source           = "../../modules/iam"
+  name             = "${local.name}-host"
+  account_id       = var.account_id
+  region           = var.region
+  repository_arns  = module.ecr.repository_arns
+  parameter_path   = local.parameter_path
+  secret_name      = local.secret_name
+  log_group_prefix = "/khanha/${local.environment}"
+  media_bucket     = local.media_bucket
+}
+
+module "secrets" {
+  source         = "../../modules/secrets"
+  parameter_path = local.parameter_path
+  secret_name    = local.secret_name
+  parameters = {
+    APP_ENV = local.environment
+    # Empty until the production Supabase project exists (a one-line PR then); an empty setting creates nothing.
+    SUPABASE_URL             = var.supabase_url
+    SUPABASE_PUBLISHABLE_KEY = var.supabase_publishable_key
+    # PR 05b turns this into the three hosts' list.
+    CLIENT_ORIGIN = "https://${local.domain}"
+    # CloudFront, then the web container's nginx. Measured, not assumed, once CloudFront is in front (PR 05).
+    TRUST_PROXY_HOPS = "2"
+    LOG_LEVEL        = "info"
+    MEDIA_BUCKET     = local.media_bucket
+    AWS_REGION       = var.region
+    # Where the browser posts the presigned upload form (the web image's CSP connect-src).
+    MEDIA_UPLOAD_ORIGIN = "https://${module.media.regional_domain_name}"
+  }
+}
+
+module "media" {
+  source = "../../modules/media"
+  bucket = local.media_bucket
+  # The app's hosts (D3), plus CloudFront's own hostname for the dark period before domain_live.
+  upload_origins = concat(
+    [for host in ["", "staff.", "admin."] : "https://${host}${local.domain}"],
+    ["https://${module.cdn.domain_name}"],
+  )
+}
+
+module "cdn" {
+  source = "../../modules/cdn"
+  providers = {
+    aws           = aws
+    aws.us_east_1 = aws.us_east_1
+  }
+  name                       = local.name
+  domain                     = local.domain
+  domain_live                = var.domain_live
+  vpc_id                     = module.network.vpc_id
+  instance_arn               = module.compute.instance_arn
+  instance_private_dns       = module.compute.private_dns
+  host_security_group_id     = module.network.host_security_group_id
+  media_bucket               = module.media.bucket
+  media_bucket_arn           = module.media.arn
+  media_regional_domain_name = module.media.regional_domain_name
+}
+
+module "compute" {
+  source                = "../../modules/compute"
+  name                  = local.name
+  environment           = local.environment
+  subnet_id             = module.network.public_subnet_ids[0]
+  security_group_ids    = [module.network.host_security_group_id]
+  instance_profile_name = module.iam.instance_profile_name
+  # <account>.dkr.ecr.<region>.amazonaws.com/khanha, from the repositories themselves.
+  image_prefix = dirname(module.ecr.repository_urls["khanha/web"])
+  # The bootstrap's deploy role may run this document and no other.
+  deploy_document_name = "khanha-deploy"
+  host_dir             = "${path.module}/../../../host"
+}

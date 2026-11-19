@@ -25,6 +25,7 @@ Which doc to update for a given change: [docs/README.md](docs/README.md).
 | [docs/TESTING.md](docs/TESTING.md)                       | running tests, the test-target guard, the edge-case matrix                                                                                                                                             |
 | `docs/PERF_BASELINE.md`                                  | performance budgets and measurements (created by perf-auditor on its first run)                                                                                                                        |
 | [docs/CONFIGURATION.md](docs/CONFIGURATION.md)           | every setting: tier, default, bounds, who reads it                                                                                                                                                     |
+| [docs/PAYMENTS.md](docs/PAYMENTS.md)                     | the payment gateway port, the fake provider, provider selection, the adapter contract suite                                                                                                            |
 | [docs/adr/README.md](docs/adr/README.md)                 | architecture decision records (ADR-001..010) and how to add one                                                                                                                                        |
 | [plans/ROADMAP.md](plans/ROADMAP.md)                     | the roadmap from V0 to the multi-store platform (P0–P10); [plans/PAYMENT_OPTIONS.md](plans/PAYMENT_OPTIONS.md) is its payment research, [plans/P0_FOUNDATIONS.md](plans/P0_FOUNDATIONS.md) the P0 plan |
 
@@ -185,7 +186,7 @@ Also worth showing: **Order Again** adds a past order to the cart (and says what
 food-pickup/
 ├── .agents/       project skill entry files and ignored local plugin wrappers (docs/CODEX.md)
 ├── .codex/        runtime configuration, lifecycle hooks and role adapters (docs/CODEX.md)
-├── client/        React 18 + Vite web app (docs/FRONTEND_STRUCTURE.md)
+├── client/        React 19 + Vite web app (docs/FRONTEND_STRUCTURE.md)
 ├── server/        Express 5 API, Supabase migrations, seed and db-push scripts (docs/BACKEND_STRUCTURE.md)
 ├── docs/          the documentation set (see Docs below)
 ├── .logs/         server.log / worker.log / client.log written by start.sh (gitignored)

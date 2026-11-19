@@ -15,7 +15,7 @@ provider "aws" {
 
   default_tags {
     tags = {
-      app        = "food-pickup"
+      app        = "khanha"
       managed-by = "terraform-bootstrap"
     }
   }

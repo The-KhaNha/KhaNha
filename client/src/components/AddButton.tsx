@@ -5,7 +5,7 @@ interface AddButtonProps {
   onAdd: () => void;
   disabled?: boolean;
   className?: string;
-  /** The accessible name; "Add to cart" unless the tap does something else (opens an item's choices). */
+  /** The accessible name; pass one naming the item ("Add Chai to cart") so a list of buttons can tell cards apart. */
   label?: string;
 }
 

@@ -8,7 +8,11 @@ records what the project now uses. Amended (2026-11-11), by the user: AWS is the
 credits that must last at least four months (about $35 a month); the AWS section below records what that buys and
 what waits for funding. Amended (2026-11-15), by the user: about $130 of the credits is left and it expires on
 2027-02-18; the account is on AWS's Paid plan and is paid from pilot revenue after that; prices re-read for Mumbai
-([Revised 2026-11-15](#revised-2026-11-15)).
+([Revised 2026-11-15](#revised-2026-11-15)). Amended (2026-11-17), by the user: staging on AWS is brought forward
+and runs continuously, about $22 a month for both environments, and is reviewed in early February 2027 before any
+month is paid from revenue ([Revised 2026-11-17](#revised-2026-11-17)). Amended (2026-11-18), by the user: the domain
+`khanha.in` is bought (about $10 a year, outside the credits); its DNS zone is the $0.50 a month already budgeted
+([P8 plan][p8-plan], D3).
 
 ## Date
 
@@ -51,7 +55,7 @@ the one paid service, and it has a budget (amended 2026-11-11; see [AWS](#aws-pa
 | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Two active projects per organisation                 | staging and production use both; there are no preview branches                                                                                                                                                                                                                                                                               |
 | 500 MB database, shared CPU, 5 GB egress             | queues delete handled messages and trim old events ([ADR-002][adr-002]); photos stay out of the database (ADR-006)                                                                                                                                                                                                                           |
-| Paused after 7 days without database activity        | production has daily traffic; staging may pause and is restored from the dashboard, until staging is hosted on AWS (after the first release) and its worker polls it all day. A paused project runs no cron jobs                                                                                                                             |
+| Paused after 7 days without database activity        | production has daily traffic; staging may pause and is restored from the dashboard, until staging is hosted on AWS (brought forward on 2026-11-17) and its worker polls it all day. A paused project runs no cron jobs                                                                                                                       |
 | No downloadable backups                              | a scheduled `supabase db dump` of production to off-site storage is required before real users (P9.5)                                                                                                                                                                                                                                        |
 | Session time-box and inactivity timeout are Pro only | the 7-day sign-out is enforced by the client alone (`sessionActivity.ts`); see below                                                                                                                                                                                                                                                         |
 | pgmq (Queues) and pg_cron (Cron)                     | available, no extra cost ([ADR-002][adr-002])                                                                                                                                                                                                                                                                                                |
@@ -62,7 +66,8 @@ the one paid service, and it has a budget (amended 2026-11-11; see [AWS](#aws-pa
 Added 2026-11-11. The money is $140 of AWS credits, to last at least four months: a ceiling of about **$35 a month
 for everything on AWS**. The first users are 0 to 50 and the database is not on AWS, so one small host is enough to
 start. Only production is hosted at first; a staging on AWS follows one to two months after the first release
-([ADR-007][adr-007] as amended).
+([ADR-007][adr-007] as amended). Changed on 2026-11-17: staging is brought forward
+([Revised 2026-11-17](#revised-2026-11-17)).
 
 | What                                                                  | About, per month      | Note                                                                                               |
 | --------------------------------------------------------------------- | --------------------- | -------------------------------------------------------------------------------------------------- |
@@ -71,7 +76,7 @@ start. Only production is hosted at first; a staging on AWS follows one to two m
 | One secret in Secrets Manager                                         | $0.40 per environment |                                                                                                    |
 | Images (ECR), buckets (S3), the CDN (CloudFront), parameters, deploys | under $1 in all       | CloudFront's and S3's standing free allowances cover pilot traffic; ECR keeps the newest 10 images |
 | Logs, metrics, alarms                                                 | $0 to $2 in all       | CloudWatch's free allowances cover about ten alarms and ten metrics; the rest are cents each       |
-| A DNS zone, once there is a domain                                    | $0.50                 | the domain's own registration is probably not payable from credits                                 |
+| A DNS zone for `khanha.in` (bought 2026-11-18)                        | $0.50                 | the domain's own registration is not payable from credits                                          |
 | **Production, to start**                                              | **about $13**         | $140 then lasts roughly ten months                                                                 |
 | With a staging on AWS, later                                          | about $26             | about $9 a month of room under the ceiling                                                         |
 
@@ -80,7 +85,8 @@ resource is created.
 
 **Left out to stay inside it**, each returning with funding: a load balancer (about $16 to $22 a month, plus its
 addresses, per environment), a second host, a NAT gateway, a web application firewall, and a second AWS account
-(the credits sit in one). A staging on AWS is left out only until one to two months after the first release.
+(the credits sit in one). A staging on AWS is left out only until one to two months after the first release
+(no longer left out: [Revised 2026-11-17](#revised-2026-11-17)).
 
 **Rules.**
 
@@ -106,6 +112,21 @@ inside free allowances; `t4g.small` would be $8.20. The domain (about $10 a year
 - **Spend the credits on the hard part.** The host is created as soon as the network and roles are applied, not a
   month before launch: the drills and the dark period then run on credits that would otherwise expire unused
   ([P8 plan, D11](../../plans/P8_INFRASTRUCTURE.md#decisions)).
+- **The $35 ceiling and its alert stay** as the guard.
+
+#### Revised 2026-11-17
+
+Staging on AWS is brought forward ([ADR-007][adr-007] as amended): the payment providers' sandbox webhooks need a
+fixed public address before the first release.
+
+- **About $22 a month for both environments**, at the prices read on 2026-11-15: staging has production's shape
+  (about $11). The table's "with a staging on AWS, later: about $26" was written before those prices.
+- **A host may go to `t4g.small`** if the reconciler does not fit in 1 GB ([ADR-005][adr-005] as amended): about
+  $4 a month more for each host that does, so at most about $30 with both. Still under the ceiling.
+- **Staging runs continuously** from the day it is built, on the credits. **In early February 2027**, before
+  2027-02-18, the bill is put to the user: after that date staging would be paid from revenue (about $22 a month
+  plus GST for both environments, against about $11 for production alone), and it is the user who decides whether
+  it stays.
 - **The $35 ceiling and its alert stay** as the guard.
 
 ## Consequences
@@ -136,6 +157,7 @@ inside free allowances; `t4g.small` would be $8.20. The domain (about $10 a year
   [GitHub rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets)
 
 [adr-002]: 002-outbox-pgmq-pg-cron.md
+[adr-005]: 005-modular-monolith-three-processes.md
 [adr-007]: 007-pilot-on-ec2-compose.md
 [p8-plan]: ../../plans/P8_INFRASTRUCTURE.md
 [p0]: ../../plans/P0_FOUNDATIONS.md

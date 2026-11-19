@@ -42,7 +42,10 @@ test('storage full: /menu renders and sign-in works', async ({ page }) => {
 
   await page.goto('/s/cafe/menu');
   await expect(page.getByRole('heading', { name: store.name })).toBeVisible();
-  await page.getByRole('button', { name: 'Add to cart' }).first().click();
+  await page
+    .getByRole('button', { name: /^Add .+ to cart$/ })
+    .first()
+    .click();
   await expect(page.getByLabel('Cart, 1 item')).toBeVisible();
 
   await page.goto('/login');
@@ -68,7 +71,7 @@ test('a malformed menu once does not outlive a Reload, and a malformed config st
   await expect(reload).toBeVisible();
   broken = false;
   await reload.click();
-  await expect(page.getByRole('button', { name: 'Add to cart' }).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Add .+ to cart$/ }).first()).toBeVisible();
 
   await page.route('**/api/config', (route) =>
     route.fulfill({ json: { ...config, clientErrors: null } }),

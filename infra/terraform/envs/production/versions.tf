@@ -25,7 +25,22 @@ provider "aws" {
 
   default_tags {
     tags = {
-      app        = "food-pickup"
+      app        = "khanha"
+      env        = "production"
+      managed-by = "terraform"
+    }
+  }
+}
+
+# CloudFront's certificate lives in us-east-1 (modules/cdn).
+provider "aws" {
+  alias               = "us_east_1"
+  region              = "us-east-1"
+  allowed_account_ids = [var.account_id]
+
+  default_tags {
+    tags = {
+      app        = "khanha"
       env        = "production"
       managed-by = "terraform"
     }

@@ -1,6 +1,6 @@
 # Frontend structure
 
-The web app in `client/`: React 18, TypeScript, Vite 6, Tailwind v4, zustand 5, react-router 7, icons from
+The web app in `client/`: React 19, TypeScript, Vite 8, Tailwind v4, zustand 5, react-router 7, icons from
 `lucide-react`. What each shared component and hook does is in [COMPONENTS.md](COMPONENTS.md). How the pieces talk to
 the API is in [ARCHITECTURE.md](ARCHITECTURE.md).
 

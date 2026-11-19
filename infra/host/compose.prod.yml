@@ -1,0 +1,70 @@
+# The app on an AWS host (P8 PR 04): web, api and worker from ECR at the tags apply-release.sh passes, each with a
+# memory limit so one process cannot take the 1 GB host down. It travels inside the deploy document; the host never
+# builds. scripts/ci/compose-parity.test.mjs fails when it and compose.yaml disagree on a command, a health check or
+# the address web reaches the API at.
+#
+# IMAGE_PREFIX (<registry>/khanha for production), WEB_TAG and SERVER_TAG come from apply-release.sh; ENV_DIR is where
+# render-env.sh wrote the environment (tmpfs, root only).
+name: khanha
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: '3'
+
+services:
+  api: &api
+    image: ${IMAGE_PREFIX:?}/server:${SERVER_TAG:?}
+    # format: raw takes values literally ($X and ' #' stay as written; render-env.sh does no quoting).
+    env_file:
+      - path: ${ENV_DIR:-/run/khanha}/params.env
+        format: raw
+      - path: ${ENV_DIR:-/run/khanha}/secret.env
+        format: raw
+    environment:
+      # Node's heap stays below the container's limit, so V8 collects before the kernel kills.
+      NODE_OPTIONS: --max-old-space-size=224
+    mem_limit: 320m
+    restart: unless-stopped
+    logging: *logging
+
+  web:
+    image: ${IMAGE_PREFIX:?}/web:${WEB_TAG:?}
+    # The parameters only: the secret never reaches nginx.
+    env_file:
+      - path: ${ENV_DIR:-/run/khanha}/params.env
+        format: raw
+    environment:
+      API_UPSTREAM: http://api:8000
+      # CloudFront sends /media/* to the bucket (PR 05), so nginx never proxies it; runtime-env.sh still needs a value.
+      MEDIA_UPSTREAM: http://api:8000
+    # The one published port. The security group admits nothing until PR 05 adds CloudFront's rule.
+    ports:
+      - '80:8080'
+    mem_limit: 64m
+    restart: unless-stopped
+    logging: *logging
+    depends_on:
+      api:
+        condition: service_healthy
+        # nginx resolves api once at start: a SERVER_TAG-only release recreates api, so web must restart with it.
+        restart: true
+
+  worker:
+    <<: *api
+    command: ['node', 'dist/src/worker.js']
+    environment:
+      NODE_OPTIONS: --max-old-space-size=160
+    mem_limit: 224m
+    # $$ keeps compose from expanding the variable itself (same as compose.yaml).
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'wget -qO- "http://127.0.0.1:$${WORKER_HEALTH_PORT:-8001}/health" > /dev/null || exit 1',
+        ]
+      interval: 15s
+      timeout: 3s
+      start_period: 10s
+      retries: 3

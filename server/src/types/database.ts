@@ -185,6 +185,46 @@ export type Database = {
         };
         Relationships: [];
       };
+      fake_gateway_orders: {
+        Row: {
+          amount_paise: number;
+          created_at: string;
+          expires_at: string;
+          id: string;
+          notify_url: string;
+          order_id: string;
+          refunds: NonNullable<Json>;
+          return_url: string;
+          status: string;
+          updated_at: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          amount_paise: number;
+          created_at?: string;
+          expires_at: string;
+          id?: string;
+          notify_url: string;
+          order_id: string;
+          refunds?: NonNullable<Json>;
+          return_url: string;
+          status?: string;
+          updated_at?: string;
+        };
+        Update: {
+          amount_paise?: number;
+          created_at?: string;
+          expires_at?: string;
+          id?: string;
+          notify_url?: string;
+          order_id?: string;
+          refunds?: NonNullable<Json>;
+          return_url?: string;
+          status?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       feature_flags: {
         Row: {
           client_visible: boolean;
@@ -1265,6 +1305,10 @@ export type Database = {
         Args: { p_actor?: Json; p_brand_id: string; p_request_id?: string };
         Returns: string;
       };
+      fake_gateway_refund: {
+        Args: { p_amount_paise: number; p_id: string; p_refund_id: string };
+        Returns: Json;
+      };
       finish_media_upload: {
         Args: {
           p_actor?: Json;
@@ -1338,6 +1382,7 @@ export type Database = {
       profile_name: { Args: { p_email: string; p_name: string }; Returns: string };
       profile_phone: { Args: { p_phone: string }; Returns: string };
       purge_domain_events: { Args: { p_keep?: string; p_now?: string }; Returns: number };
+      purge_fake_gateway_orders: { Args: { p_keep?: string; p_now?: string }; Returns: number };
       purge_session_activity: { Args: Record<PropertyKey, never>; Returns: number };
       push_template_items: {
         Args: {

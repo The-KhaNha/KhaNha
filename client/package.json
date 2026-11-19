@@ -1,7 +1,7 @@
 {
   "name": "food-pickup-client",
   "private": true,
-  "version": "0.2.1",
+  "version": "0.2.2",
   "type": "module",
   "engines": {
     "node": "^24.15.0"
@@ -27,9 +27,9 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.119.0",
-    "lucide-react": "^1.70.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
+    "lucide-react": "^1.71.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "react-router-dom": "^7.18.5",
     "zustand": "^5.1.0"
   },
@@ -40,8 +40,8 @@
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
     "@types/node": "^26.6.6",
-    "@types/react": "^18.3.18",
-    "@types/react-dom": "^18.3.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^5.2.0",
     "eslint": "^10.11.0",
     "eslint-config-prettier": "^10.1.8",
@@ -52,8 +52,8 @@
     "prettier": "^3.9.10",
     "tailwindcss": "^4.3.5",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.70.1",
-    "vite": "^6.1.0",
+    "typescript-eslint": "^8.72.2",
+    "vite": "^8.3.8",
     "vitest": "^5.1.0"
   }
 }
