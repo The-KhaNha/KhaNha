@@ -302,7 +302,7 @@ budget emails the address directly, but a new address gets a verification email 
 
 ### PR 02 — Network, registry and roles (P8.1, P8.2)
 
-- [ ] Merged
+- [x] Merged
 
 Modules, each small and used by `envs/production`:
 
@@ -378,6 +378,13 @@ ready ends on the parameter's tags with a non-zero exit); a Terraform test asser
 credit mode is `standard` (the guard against the default that bills). Verify, after the approved apply: a Session
 Manager shell on the host shows docker running, `free -m` shows the swap, and the instance's credit mode reads
 `standard` in the console.
+
+**As built:** the secret is created with no value at all, not a placeholder (a Terraform-held version fights the
+value set in the console), so a deploy before the real key fails at `render-env.sh`; a parameter with an empty value
+(production's Supabase URL and publishable key, until the project exists) is not created; the host files travel in
+the document base64-encoded; the release parameter holds `"<web-tag> <server-tag>"`; `apply-release.sh`'s test is
+`scripts/ci/apply-release.test.mjs` (fake `aws`, `docker` and `curl`), run by the root `pnpm test`, as is
+`compose-parity.test.mjs`, which reads both files through `docker compose config`.
 
 ### PR 05 — The edge: CDN, certificate, media bucket (P8.3)
 

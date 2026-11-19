@@ -19,3 +19,7 @@ output "repository_urls" {
 output "instance_profile_name" {
   value = module.iam.instance_profile_name
 }
+
+output "instance_id" {
+  value = module.compute.instance_id
+}

@@ -13,3 +13,16 @@ variable "region" {
   type        = string
   default     = "ap-south-1"
 }
+
+# Public values (they reach every browser), so they live here rather than in a secret.
+variable "supabase_url" {
+  description = "The production Supabase project's URL, https://<ref>.supabase.co. Empty until the project exists."
+  type        = string
+  default     = ""
+}
+
+variable "supabase_publishable_key" {
+  description = "The production project's publishable key (sb_publishable_...). Empty until the project exists."
+  type        = string
+  default     = ""
+}

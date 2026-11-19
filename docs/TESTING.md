@@ -200,6 +200,8 @@ seen failing with the fix reverted. The guards added with the break-test fixes:
 The root `pnpm test` also runs `scripts/codex/compat.test.mjs`: skill/role discovery parity, destructive-git denials,
 patch-based reuse reminders, prompt and advisory Stop output, and local plugin scope/resource resolution. The tests
 use temporary fixtures and never start application services. Runtime setup and hook trust are in [CODEX.md](CODEX.md).
+`scripts/ci/compose-parity.test.mjs` needs the Docker Compose CLI (`docker compose config`, no containers started): it skips
+without it outside CI and fails without it when `CI` is set.
 
 `.github/workflows/ci.yml` runs on every pull request into `main` (production), `dev` (staging) or a `feat/**` branch
 (development: a phase feature branch, CLAUDE.md §21), and on every push to `main`, `dev` and the phase branches
