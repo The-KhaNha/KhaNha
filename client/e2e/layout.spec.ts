@@ -38,17 +38,27 @@ async function overflowingPastScreen(page: Page): Promise<string[]> {
   }, width);
 }
 
-/** Visible controls a finger must hit that are shorter than 44px. */
+/**
+ * Visible controls a finger must hit that are shorter than 44px, once entrances have played (a stepper scales in from
+ * 90%, 39.6px). A control in a group of cards that skips rendering off screen is measured by its layout height: WebKit
+ * keeps such a stepper at its last sampled frame (43.7px) until it scrolls into view, where it renders at 44px.
+ */
 async function smallTapTargets(page: Page): Promise<string[]> {
+  await settle(page);
   return page.evaluate(() =>
     Array.from(document.querySelectorAll<HTMLElement>('button, a[href], input, select, textarea'))
       .filter((el) => el.getAttribute('aria-hidden') !== 'true' && el.tabIndex !== -1)
       .filter((el) => el.getClientRects().length > 0)
-      .map((el) => ({ el, box: el.getBoundingClientRect() }))
-      .filter(({ box }) => box.height < 44)
+      .map((el) => ({
+        el,
+        height: el.checkVisibility({ contentVisibilityAuto: true })
+          ? el.getBoundingClientRect().height
+          : el.offsetHeight,
+      }))
+      .filter(({ height }) => height < 44)
       .map(
-        ({ el, box }) =>
-          `${el.tagName.toLowerCase()} "${(el.getAttribute('aria-label') ?? el.textContent ?? '').trim().slice(0, 30)}" ${Math.round(box.height)}px`,
+        ({ el, height }) =>
+          `${el.tagName.toLowerCase()} "${(el.getAttribute('aria-label') ?? el.textContent ?? '').trim().slice(0, 30)}" ${Math.round(height)}px`,
       ),
   );
 }
@@ -199,7 +209,8 @@ const LAYOUT_ROUTES: {
 
 /**
  * Waits for the web font and one-shot animations: the fallback font sets text wider, and an entrance or a celebration
- * ring may pass the edge while it plays.
+ * ring may pass the edge while it plays. Only animations still playing: after a resize, WebKit never resolves
+ * `finished` for one that had already finished, and the wait hung until the test timed out.
  */
 async function settle(page: Page): Promise<void> {
   await page.evaluate(async () => {
@@ -207,7 +218,7 @@ async function settle(page: Page): Promise<void> {
     await Promise.all(
       document
         .getAnimations()
-        .filter((a) => a.effect?.getTiming().iterations !== Infinity)
+        .filter((a) => a.playState !== 'finished' && a.effect?.getTiming().iterations !== Infinity)
         .map((a) => a.finished.catch(() => undefined)),
     );
   });
@@ -308,7 +319,7 @@ for (const { name, width, height } of [
     // Polled: the cards may still be rendering or entering on a loaded runner. Each button is scrolled to the middle of
     // the screen and counts only if a tap at its centre lands on it rather than on a bar.
     const reachable = () =>
-      page.getByRole('button', { name: 'Add to cart' }).evaluateAll(
+      page.getByRole('button', { name: /^Add .+ to cart$/ }).evaluateAll(
         (buttons) =>
           buttons.filter((el) => {
             el.scrollIntoView({ block: 'center' });

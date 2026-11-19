@@ -65,8 +65,9 @@ LinkProps` plus `variant`, `size`, `fullWidth`, `iconLeft`, `iconRight`. No `loa
 that must look like a button but cannot be one of the two components.
 
 **`AddButton`** (`AddButton.tsx`). The filled paprika "+ Add" pill beside a menu photo. Props: `onAdd: () => void`,
-`disabled?: boolean = false`, `className?`, `label?: string = 'Add to cart'` (the accessible name, when the tap
-opens an item's choices instead). It stays quiet; feedback comes from the photo flight, the stepper swap
+`disabled?: boolean = false`, `className?`, `label?: string = 'Add to cart'` (the accessible name: `AddControl`
+names the item, "Add Chai to cart", or "Choose options for Chai" when the tap opens its choices, so a list of
+buttons can tell the cards apart). It stays quiet; feedback comes from the photo flight, the stepper swap
 and the cart badge.
 
 **`AddControl`** (`AddControl.tsx`). The one "order it" control on every menu card. Props: `item: MenuItem`,

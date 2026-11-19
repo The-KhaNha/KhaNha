@@ -52,7 +52,10 @@ test('menu → add to cart → cart works on WebKit', async ({ page }) => {
   await expect(page.getByRole('heading', { name: store.name })).toBeVisible();
   await noHorizontalOverflow(page);
 
-  await page.getByRole('button', { name: 'Add to cart' }).first().click();
+  await page
+    .getByRole('button', { name: /^Add .+ to cart$/ })
+    .first()
+    .click();
   await expect(page.getByLabel('Cart, 1 item')).toBeVisible();
 
   await page.goto('/cart');

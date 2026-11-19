@@ -12,7 +12,10 @@ test('a cart from one store is replaced by an add from another, after a confirma
   await page.route('**/api/stores/bistro/menu', (route) => route.fulfill({ json: bistroMenu }));
   await seedCart(page); // a cart at Campus Cafe
   await page.goto('/s/bistro/menu');
-  await page.getByRole('button', { name: 'Add to cart' }).first().click();
+  await page
+    .getByRole('button', { name: /^Add .+ to cart$/ })
+    .first()
+    .click();
   await page.getByRole('button', { name: 'Replace with Bistro' }).click();
   // Read in place: a reload would run seedCart again.
   const saved = await page.evaluate(() => localStorage.getItem('fp_cart'));

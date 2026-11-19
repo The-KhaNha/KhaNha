@@ -143,7 +143,7 @@ Demo logins: customer `anishka@example.com / test1234`, staff `staff@campuscafe.
    await s.send('Emulation.setCPUThrottlingRate', { rate: 4 });
    await page.goto('http://localhost:4173/menu', { waitUntil: 'networkidle' });
    // interact like a user: tap the first add button, then press Escape, so the INP observer has a real interaction
-   await page.click('[aria-label="Add to cart"]');
+   await page.click('[aria-label^="Add "][aria-label$=" to cart"]');
    await page.keyboard.press('Escape');
    await page.waitForTimeout(1000);
    return await page.evaluate(() => window.__cwv);
