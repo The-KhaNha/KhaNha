@@ -49,8 +49,17 @@ run "api_is_never_cached_and_media_comes_from_the_bucket" {
     condition = alltrue([
       for b in aws_cloudfront_distribution.this.ordered_cache_behavior :
       b.target_origin_id == "media" if b.path_pattern == "/media/*"
-    ])
+    ]) && length([for b in aws_cloudfront_distribution.this.ordered_cache_behavior : b if b.path_pattern == "/media/*"]) == 1
     error_message = "/media/* must come from the media bucket."
+  }
+
+  # www. must redirect on every path, /media/ and /api/ included.
+  assert {
+    condition = alltrue([
+      for b in concat(aws_cloudfront_distribution.this.default_cache_behavior, aws_cloudfront_distribution.this.ordered_cache_behavior) :
+      length([for f in b.function_association : f if f.event_type == "viewer-request"]) == 1
+    ])
+    error_message = "Every behaviour needs the viewer function (the www redirect)."
   }
 }
 

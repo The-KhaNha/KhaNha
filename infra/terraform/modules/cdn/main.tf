@@ -67,45 +67,36 @@ resource "aws_s3_bucket_policy" "media" {
 
 # --- Functions (free inside CloudFront's allowance) -------------------------------------------------------------
 
-# www.<domain> answers a 301 to the apex, same path and query.
-resource "aws_cloudfront_function" "www" {
-  name    = "${var.name}-www"
+# One function on every behaviour (a behaviour takes one per event): www.<domain> answers a 301 to the apex with the
+# same path and query, repeated parameters included; otherwise /media/ is stripped, since the bucket's keys are
+# stores/... (a no-op for every other path).
+resource "aws_cloudfront_function" "viewer" {
+  name    = "${var.name}-viewer"
   runtime = "cloudfront-js-2.0"
   publish = true
   code    = <<-JS
     function handler(event) {
       var request = event.request;
       if (request.headers.host && request.headers.host.value === 'www.${var.domain}') {
-        var query = Object.keys(request.querystring).map(function (k) {
-          var v = request.querystring[k];
-          return v.value === '' ? k : k + '=' + v.value;
-        }).join('&');
+        var parts = [];
+        Object.keys(request.querystring).forEach(function (key) {
+          var param = request.querystring[key];
+          (param.multiValue || [param]).forEach(function (entry) {
+            parts.push(entry.value === '' ? key : key + '=' + entry.value);
+          });
+        });
+        var query = parts.length ? '?' + parts.join('&') : '';
         return {
           statusCode: 301,
           statusDescription: 'Moved Permanently',
-          headers: { location: { value: 'https://${var.domain}' + request.uri + (query ? '?' + query : '') } },
+          headers: { location: { value: 'https://${var.domain}' + request.uri + query } },
         };
       }
-      return request;
-    }
-  JS
-}
-
-# The bucket's keys are stores/...; the app asks for /media/stores/....
-resource "aws_cloudfront_function" "media" {
-  name    = "${var.name}-media"
-  runtime = "cloudfront-js-2.0"
-  publish = true
-  code    = <<-JS
-    function handler(event) {
-      var request = event.request;
       request.uri = request.uri.replace(/^\/media\//, '/');
       return request;
     }
   JS
 }
-
-# --- The distribution -------------------------------------------------------------------------------------------
 
 # AWS's managed policies, by their fixed IDs (CloudFront Developer Guide, "Use managed cache/origin request policies").
 locals {
@@ -152,7 +143,7 @@ resource "aws_cloudfront_distribution" "this" { # nosemgrep: terraform.aws.secur
     origin_request_policy_id = local.request_all_viewer
     function_association {
       event_type   = "viewer-request"
-      function_arn = aws_cloudfront_function.www.arn
+      function_arn = aws_cloudfront_function.viewer.arn
     }
   }
 
@@ -166,6 +157,10 @@ resource "aws_cloudfront_distribution" "this" { # nosemgrep: terraform.aws.secur
     compress                 = true
     cache_policy_id          = local.cache_disabled
     origin_request_policy_id = local.request_all_viewer
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.viewer.arn
+    }
   }
 
   ordered_cache_behavior {
@@ -178,7 +173,7 @@ resource "aws_cloudfront_distribution" "this" { # nosemgrep: terraform.aws.secur
     cache_policy_id        = local.cache_optimized
     function_association {
       event_type   = "viewer-request"
-      function_arn = aws_cloudfront_function.media.arn
+      function_arn = aws_cloudfront_function.viewer.arn
     }
   }
 
