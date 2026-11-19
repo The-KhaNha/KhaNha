@@ -9,6 +9,7 @@ import { clientErrorsSchema } from '../schemas/clientErrors.schema';
 import { adminRouter } from './admin.routes';
 import { authRouter } from './auth.routes';
 import { brandRouter } from './brand.routes';
+import { fakeGatewayRouter } from './fakeGateway.routes';
 import { meRouter } from './me.routes';
 import { orderRouter } from './order.routes';
 import { storesRouter } from './store.routes';
@@ -28,6 +29,9 @@ apiRouter.post(
   validate(clientErrorsSchema),
   reportClientErrors,
 );
+
+// Before the gate: a browser's form post from the fake provider's page carries no client version.
+apiRouter.use('/fake-gateway', fakeGatewayRouter);
 
 // Everything below answers 426 to a client older than site_settings.min_client_version. The exemptions are the routes
 // above, by mount order, not a path list. No OPTIONS case: cors() answers preflights before the router, and the

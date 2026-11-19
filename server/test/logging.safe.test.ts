@@ -52,6 +52,7 @@ const PAYMENT_AND_PICKUP_KEYS = [
   'key_secret',
   'webhookSecret',
   'webhook_secret',
+  'FAKE_GATEWAY_SECRET',
   'vpa',
   'pickupCode',
   'pickup_code',

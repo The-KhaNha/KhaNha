@@ -184,11 +184,12 @@ Deployment: [DEPLOYMENT.md](DEPLOYMENT.md#local-compose). Log lines: [LOGGING.md
 Registered by migrations with `cron.schedule(name, schedule, command)`. Scheduling an existing name replaces it. A
 schedule that purges by age calls a SQL function that takes `p_now timestamptz default now()`, so tests choose the time.
 
-| Job                      | Schedule (UTC)            | Runs                                                                              | Added by                              |
-| ------------------------ | ------------------------- | --------------------------------------------------------------------------------- | ------------------------------------- |
-| `purge-domain-events`    | `17 21 * * *` (02:47 IST) | `public.purge_domain_events()`                                                    | `20261024181904_outbox.sql`           |
-| `purge-session-activity` | `27 21 * * *` (02:57 IST) | `public.purge_session_activity()`                                                 | `20261102110929_session_activity.sql` |
-| `media-sweep`            | `37 21 * * *` (03:07 IST) | `emit_event('media.sweep', …)`: the worker sweeps ([Media events](#media-events)) | `20261113174022_media_sweep.sql`      |
+| Job                         | Schedule (UTC)            | Runs                                                                              | Added by                              |
+| --------------------------- | ------------------------- | --------------------------------------------------------------------------------- | ------------------------------------- |
+| `purge-domain-events`       | `17 21 * * *` (02:47 IST) | `public.purge_domain_events()`                                                    | `20261024181904_outbox.sql`           |
+| `purge-session-activity`    | `27 21 * * *` (02:57 IST) | `public.purge_session_activity()`                                                 | `20261102110929_session_activity.sql` |
+| `media-sweep`               | `37 21 * * *` (03:07 IST) | `emit_event('media.sweep', …)`: the worker sweeps ([Media events](#media-events)) | `20261113174022_media_sweep.sql`      |
+| `purge-fake-gateway-orders` | `47 21 * * *` (03:17 IST) | `public.purge_fake_gateway_orders()` (P5.1)                                       | `20261119151656_fake_gateway.sql`     |
 
 - Supabase recommends at most 8 jobs running at once, each under 10 minutes.
 - A paused Free project runs nothing; staging's schedules resume after a restore (ADR-002).
@@ -197,13 +198,14 @@ schedule that purges by age calls a SQL function that takes `p_now timestamptz d
 
 ## Retention
 
-| What                    | Kept                                                                        |
-| ----------------------- | --------------------------------------------------------------------------- |
-| `domain_events`         | 30 days (`purge_domain_events`, nightly)                                    |
-| a handled queue message | deleted when handled, never archived                                        |
-| `job_failures`          | until an operator replays or closes it                                      |
-| `audit_log`             | 13 months; no purge job yet (P9.5)                                          |
-| `session_activity`      | until Supabase Auth removes the session (`purge_session_activity`, nightly) |
+| What                    | Kept                                                                                                                         |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `domain_events`         | 30 days (`purge_domain_events`, nightly)                                                                                     |
+| a handled queue message | deleted when handled, never archived                                                                                         |
+| `job_failures`          | until an operator replays or closes it                                                                                       |
+| `audit_log`             | 13 months; no purge job yet (P9.5)                                                                                           |
+| `session_activity`      | until Supabase Auth removes the session (`purge_session_activity`, nightly)                                                  |
+| `fake_gateway_orders`   | 7 days (`purge_fake_gateway_orders`, nightly, job `purge-fake-gateway-orders`; [PAYMENTS.md](PAYMENTS.md#the-fake-provider)) |
 
 ## Runbook
 
