@@ -63,7 +63,7 @@ made, so it is not lost with the laptop:
 aws s3 cp terraform.tfstate "s3://$(terraform output -raw state_bucket)/bootstrap/terraform.tfstate"
 ```
 
-The budget sends its emails straight to the address; there is nothing to confirm.
+The budget sends its emails straight to the address, but a new address must be verified first. AWS sends it a verification email (check spam); open the link while signed in to this account. The recipient must show Active on the budget's detail page in the Budgets console (Pending means unconfirmed; Resend verification sends a new email). Until then it receives no alerts. An address already verified on the account needs no step.
 
 The roles trust this repository's **immutable OIDC subject** (`owner@id/name@id`, the `github_repository` variable),
 not `owner/name`: a workflow failing with "Not authorized to perform sts:AssumeRoleWithWebIdentity" means the two

@@ -298,7 +298,7 @@ diagram, the "P8 before P5.4" note and the ADR-007 row of its architecture-decis
 
 Verify: `terraform fmt -check` and `validate` pass locally and in CI; the guard fails on a fixture workflow with
 `id-token: write` and no environment; after the user's bootstrap, the PR's `plan` job prints "No changes". (The
-budget emails the address directly; there is no confirmation email.)
+budget emails the address directly, but a new address gets a verification email first; see the user steps.)
 
 ### PR 02 — Network, registry and roles (P8.1, P8.2)
 
@@ -686,7 +686,7 @@ answered, or have a default the plan follows.
   Secrets Manager; and price the [budget table](#the-budget) in the AWS pricing calculator for ap-south-1. If any
   of the three changes the picture, say so before PR 01.
 - In the account that holds the credits, run `infra/terraform/bootstrap` once with your own administrator
-  credentials (`infra/README.md` has the commands). The budget emails the address directly; nothing to confirm.
+  credentials (`infra/README.md` has the commands). The budget emails the address directly, but a new address first gets a verification email from AWS (check spam): open its link, signed in to this account, and check the recipient shows Active on the budget's detail page in the Budgets console. Until then the budget sends nothing.
 - In GitHub → Settings → Environments, create `infra-plan`, `production-infra` and `production`, the last two with
   yourself as required reviewer and restricted to `main` (applies), `main` and the release tags (deploys). Give each
   the role ARN the bootstrap printed, as a variable. Set the repository variable `PRODUCTION_DARK` to `true`.

@@ -21,7 +21,7 @@ run "nothing_that_reads_data_is_granted_on_everything" {
   assert {
     condition = alltrue([
       for statement in jsondecode(aws_iam_role_policy.host.policy).Statement :
-      statement.Resource != "*" || alltrue([
+      !contains(flatten([statement.Resource]), "*") || alltrue([
         for action in statement.Action :
         length(regexall("^(ssm:GetParameter|secretsmanager:|s3:|logs:|kms:)", action)) == 0
       ])
