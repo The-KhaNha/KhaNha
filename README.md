@@ -185,7 +185,7 @@ Also worth showing: **Order Again** adds a past order to the cart (and says what
 food-pickup/
 ├── .agents/       project skill entry files and ignored local plugin wrappers (docs/CODEX.md)
 ├── .codex/        runtime configuration, lifecycle hooks and role adapters (docs/CODEX.md)
-├── client/        React 18 + Vite web app (docs/FRONTEND_STRUCTURE.md)
+├── client/        React 19 + Vite web app (docs/FRONTEND_STRUCTURE.md)
 ├── server/        Express 5 API, Supabase migrations, seed and db-push scripts (docs/BACKEND_STRUCTURE.md)
 ├── docs/          the documentation set (see Docs below)
 ├── .logs/         server.log / worker.log / client.log written by start.sh (gitignored)

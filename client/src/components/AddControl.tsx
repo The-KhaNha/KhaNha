@@ -11,7 +11,7 @@ import { QuantityStepper, StepperNote } from './QuantityStepper';
 interface AddControlProps {
   item: MenuItem;
   /** The card's photo: where the fly-to-cart clone takes off from. */
-  photoRef: RefObject<HTMLElement>;
+  photoRef: RefObject<HTMLElement | null>;
   /** Opens the item sheet: an item with choices is added from there, with them (P3.2). */
   onCustomise: () => void;
 }

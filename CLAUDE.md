@@ -64,7 +64,7 @@ routes): `.claude/rules/frontend.md` §2c.
 
 ## 3. Tech stack and commands
 
-Client: React 18, Vite 6, Tailwind v4 (`@theme` tokens), zustand, react-router 7, `lucide-react`, supabase-js (auth
+Client: React 19, Vite 8, Tailwind v4 (`@theme` tokens), zustand, react-router 7, `lucide-react`, supabase-js (auth
 only). API: Express 5, zod, Supabase (secret key, JWKS token checks), pino; Supabase Postgres with schema and RPCs in
 `server/supabase/migrations/`. Tooling: Node 24 (`.nvmrc`, `engineStrict`), pnpm (corepack), TypeScript strict, ESLint,
 Prettier, Vitest. Every script and port: `README.md` "Useful scripts" and "Ports".
