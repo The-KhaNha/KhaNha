@@ -55,6 +55,7 @@ a new file (see [DEPLOYMENT.md](DEPLOYMENT.md#schema-changes)).
 | `20261113085219_adjust_stock.sql`                  | adds `stock_reason`, `stock_movements` (RLS, revoked), `stores.staff_can_edit_stock` (also watched by `stores_settings_audit`) and `adjust_stock()` (`service_role` only): stock by hand, with its trail                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `20261113140540_push_template_items.sql`           | `push_template_items()` (`service_role` only): the template push                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `20261113142425_store_readiness.sql`               | `store_publish_missing()` (`service_role` only), the go-live checklist; `set_store_status` (same signature) reads it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `20261119151656_fake_gateway.sql`                  | adds `fake_gateway_orders` (RLS, revoked, `service_role` only), `fake_gateway_refund()` and `purge_fake_gateway_orders()` (`service_role` only), and schedules `purge-fake-gateway-orders` nightly: the fake payment provider (P5.1)                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `20261113183803_bundled_photos.sql`                | adds `bundled_photo_refs()`, `bundled_photo_row_count()` and `move_bundled_photo()` (`service_role` only): the bundled photos' move to the media store (P3.3)                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `20261113174022_media_sweep.sql`                   | subscribes `media.sweep` to `q_media`, adds `media_upload_shown()` and `media_sweep_candidates()` (`service_role` only), the partial index `order_items_media_image_idx` and the nightly `media-sweep` schedule (P3.3)                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `20261114092236_modifier_editing.sql`              | `save_modifier_group()`, `archive_modifier_group()`, `set_item_modifier_groups()` (`service_role` only): the modifier editor (P3.2, PR 14)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
@@ -595,6 +596,27 @@ One row per Supabase Auth session, written only by `touch_session`; a row is pur
 | `user_id`      | uuid        | no   |         | references `profiles (id)` on delete cascade                |
 | `last_seen_at` | timestamptz | no   |         | the last recorded use (at most every 5 min per API process) |
 
+### fake_gateway_orders
+
+The fake payment provider's own records (P5.1, [PAYMENTS.md](PAYMENTS.md#the-fake-provider)), kept in a table because
+the API, the worker and the reconciler are separate processes. It plays a provider: it knows our order id and nothing
+else of our schema, so there is no foreign key. Read and written only by `integrations/payments/fake.ts`. Never used in
+production (`utils/env.ts` refuses `PAYMENT_PROVIDER=fake` there); the table exists there, empty. Rows older than 7 days
+are purged nightly (`purge_fake_gateway_orders`).
+
+| Column         | Type        | Null | Default             | Notes                                                                                                                                                     |
+| -------------- | ----------- | ---- | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`           | uuid        | no   | `gen_random_uuid()` | primary key; the `gatewayOrderId`                                                                                                                         |
+| `order_id`     | uuid        | no   |                     | unique; our order id, the idempotency key of `createOrder`                                                                                                |
+| `amount_paise` | bigint      | no   |                     | `check (amount_paise > 0)`                                                                                                                                |
+| `status`       | text        | no   | `'PENDING'`         | `check (status in ('PENDING', 'PAID', 'FAILED'))`                                                                                                         |
+| `return_url`   | text        | no   |                     | where the browser goes after the payment page                                                                                                             |
+| `notify_url`   | text        | no   |                     | where the fake's webhooks go                                                                                                                              |
+| `expires_at`   | timestamptz | no   |                     |                                                                                                                                                           |
+| `refunds`      | jsonb       | no   | `'{}'`              | `check (jsonb_typeof(refunds) = 'object')`; `{ "<our refund id>": { "amountPaise": n, "status": "PROCESSED" } }`, keyed by our id so a repeat is a lookup |
+| `created_at`   | timestamptz | no   | `now()`             |                                                                                                                                                           |
+| `updated_at`   | timestamptz | no   | `now()`             | set on every update by `fake_gateway_orders_set_updated_at`                                                                                               |
+
 ## Indexes
 
 | Index                                   | Columns                                                                                     |
@@ -621,6 +643,8 @@ One row per Supabase Auth session, written only by `touch_session`; a row is pur
 | `audit_log_store_idx`                   | `audit_log (store_id, id desc)`                                                             |
 | `audit_log_actor_idx`                   | `audit_log (actor_id, id desc)`                                                             |
 | `session_activity_user_id_idx`          | `session_activity (user_id)`, for the cascade from `profiles`                               |
+| `fake_gateway_orders_created_at_idx`    | `fake_gateway_orders (created_at)`, for the nightly purge                                   |
+| unique constraint                       | `fake_gateway_orders (order_id)`, our order id: the fake's idempotency key                  |
 | unique constraint                       | `order_items (order_id, line_number)`                                                       |
 | unique constraint                       | `profiles (email)`, `orders (order_number)`, `store_memberships (user_id, store_id)`        |
 
@@ -652,6 +676,7 @@ write for one small nightly scan.
 | `store_invites_audit`                                          | after insert or update or delete on `store_invites`, each row (`invite.changed`: `role`, `email`, `accepted_at`, `revoked_at`; never `token_hash`)                                                                                                             | `audit_row_change('invite.changed', 'role', 'email', 'accepted_at', 'revoked_at')`                                                                                                                        |
 | `store_memberships_audit`                                      | after insert or update or delete on `store_memberships`, each row (`membership.changed`: `user_id`, `store_id`, `role`)                                                                                                                                        | `audit_row_change('membership.changed', 'user_id', 'store_id', 'role')`                                                                                                                                   |
 | `feature_flags_audit`                                          | after update on `feature_flags`, each row                                                                                                                                                                                                                      | `audit_row_change('feature_flag.changed', '*')`                                                                                                                                                           |
+| `fake_gateway_orders_set_updated_at`                           | before update on `fake_gateway_orders`, each row                                                                                                                                                                                                               |
 | `audit_log_no_change`                                          | before update or delete on `audit_log`, each row                                                                                                                                                                                                               | `audit_log_append_only()`                                                                                                                                                                                 |
 | `audit_log_no_truncate`                                        | before truncate on `audit_log`, each statement                                                                                                                                                                                                                 | `audit_log_append_only()`                                                                                                                                                                                 |
 
@@ -699,6 +724,8 @@ object (SQLSTATE `P0001`). How the API maps them is in [API.md](API.md#database-
 | `queue_dead_letter(...)`                   | sql      | definer  | boolean             | the worker                                                                                                    | `service_role`       |
 | `queue_metrics(text)`                      | sql      | definer  | table               | the worker's health report                                                                                    | `service_role`       |
 | `purge_domain_events(...)`                 | sql      | invoker  | integer             | pg_cron `purge-domain-events`                                                                                 | `service_role`       |
+| `purge_fake_gateway_orders(...)`           | sql      | invoker  | integer             | pg_cron `purge-fake-gateway-orders`                                                                           | `service_role`       |
+| `fake_gateway_refund(...)`                 | plpgsql  | invoker  | jsonb               | `integrations/payments/fake.ts` (`refund`)                                                                    | `service_role`       |
 | `audit_row_change()`                       | plpgsql  | definer  | trigger             | the `*_audit` triggers                                                                                        | nobody               |
 | `audit_log_append_only()`                  | plpgsql  | invoker  | trigger             | `audit_log_no_change`, `_no_truncate`                                                                         | nobody               |
 
@@ -932,6 +959,28 @@ otherwise count as never seen. Security definer, because `auth.sessions` is read
 by `service_role`. `requireAuth` passes `SESSION_IDLE_DAYS` as `p_idle` and revokes a refused session
 ([API.md](API.md#authentication)).
 
+### fake_gateway_refund
+
+`fake_gateway_refund(p_id uuid, p_refund_id text, p_amount_paise bigint) returns jsonb` (plpgsql, invoker,
+`service_role` only; the fake's `refund`) records a refund of one `fake_gateway_orders` row under its row lock, so two
+refunds of one order cannot both pass the total check. It returns `{ amountPaise, status: 'PROCESSED' }`. A repeat of
+`p_refund_id` returns the first refund and changes nothing. Raises (`P0001`):
+
+| Message               | When                                                                                                                                   |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `NOT_FOUND`           | no order has `p_id`; `detail { id }`                                                                                                   |
+| `FAKE_REFUND_REFUSED` | the order is not `PAID`, `p_amount_paise` is 0 or less, or the refunds would pass `amount_paise`; `detail { status, refundablePaise }` |
+
+The adapter turns both into a non-retryable `IntegrationError`. `FAKE_REFUND_REFUSED` is the fake's own code, not an
+API error code: it never reaches a client.
+
+### purge_fake_gateway_orders
+
+`purge_fake_gateway_orders(p_now timestamptz default now(), p_keep interval default '7 days') returns integer` (sql,
+invoker, `service_role` only) deletes the rows created before `p_now - p_keep` and returns how many. A week is longer
+than any hold, refund retry or reconciliation window that reads these rows. pg_cron runs it nightly at 21:47 UTC (03:17 IST) as job
+`purge-fake-gateway-orders` ([JOBS.md](JOBS.md#schedules)).
+
 ### purge_session_activity
 
 `purge_session_activity() returns integer` deletes the rows whose session is no longer in `auth.sessions` (signed out,
@@ -967,7 +1016,7 @@ never read (a later SQL edit would carry the last admin's id).
 
 ## Row-level security and grants
 
-- RLS is enabled on every table (`site_settings`, the outbox tables, `audit_log`, `feature_flags` and `session_activity` included, each by the migration
+- RLS is enabled on every table (`site_settings`, the outbox tables, `audit_log`, `feature_flags`, `session_activity` and `fake_gateway_orders` included, each by the migration
   that creates it). There are no policies.
 - `revoke all` on every table from `anon` and `authenticated`.
 - Default privileges for role `postgres` in `public`: new tables grant nothing to `anon`/`authenticated`, and new

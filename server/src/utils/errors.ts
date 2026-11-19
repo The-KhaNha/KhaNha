@@ -24,6 +24,7 @@ export type ErrorCode =
   | 'CLIENT_OUTDATED'
   | 'RATE_LIMITED'
   | 'UPSTREAM_UNAVAILABLE'
+  | 'PAYMENTS_NOT_ENABLED'
   | 'INTERNAL';
 
 /**
@@ -166,6 +167,14 @@ export class AppError extends Error {
     this.name = 'AppError';
   }
 }
+
+/** No payment provider is configured (PAYMENT_PROVIDER=none, production until a merchant account is live). */
+export const paymentsNotEnabled = (): AppError =>
+  new AppError(
+    409,
+    'PAYMENTS_NOT_ENABLED',
+    'Online payments are not available yet. Please try again later.',
+  );
 
 /** `field` names the top-level request field at fault (`customerPhone`, `email`), when there is one. */
 export const validationError = (message: string, field?: string): AppError =>

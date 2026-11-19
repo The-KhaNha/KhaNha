@@ -268,7 +268,7 @@ Approved with the plan. Each row is written into the roadmap's P5 section by the
 
 ### PR 01 — The gateway port and the fake gateway (P5.1)
 
-- [ ] Merged
+- [x] Merged
 
 `/before-write`: reuse-scout, expected EXTEND (the `integrations/media` layout, `IntegrationError`, the
 `productionProblems` guard); schema-guard, expected NEW TABLE (`fake_gateway_orders`, justified below).

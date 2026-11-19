@@ -8,6 +8,7 @@ const safe = {
   GIT_COMMIT: 'abc1234',
   TRUST_PROXY_HOPS: 2,
   MEDIA_STORAGE: 's3' as const,
+  PAYMENT_PROVIDER: 'none' as const,
 };
 
 describe('productionProblems', () => {
@@ -39,12 +40,19 @@ describe('productionProblems', () => {
     ]);
   });
 
+  it('refuses the fake payment provider (it marks orders paid with no money)', () => {
+    expect(productionProblems({ ...safe, PAYMENT_PROVIDER: 'fake' })).toEqual([
+      expect.stringContaining('PAYMENT_PROVIDER'),
+    ]);
+  });
+
   it('leaves staging and local alone (a local stack against staging uses localhost)', () => {
     const loose = {
       CLIENT_ORIGIN: 'http://localhost:5173',
       GIT_COMMIT: 'unknown',
       TRUST_PROXY_HOPS: 0,
       MEDIA_STORAGE: 'local' as const,
+      PAYMENT_PROVIDER: 'fake' as const,
     };
     expect(productionProblems({ ...loose, APP_ENV: 'staging' })).toEqual([]);
     expect(productionProblems({ ...loose, APP_ENV: 'local' })).toEqual([]);

@@ -76,6 +76,17 @@ const envSchema = z
     MEDIA_S3_ENDPOINT: z.string().url('MEDIA_S3_ENDPOINT must be a URL.').optional(),
     /** The browser's view of MEDIA_S3_ENDPOINT when it differs from the API's (compose). */
     MEDIA_UPLOAD_ORIGIN: z.string().url('MEDIA_UPLOAD_ORIGIN must be a URL.').optional(),
+    /**
+     * Which payment provider new checkouts use (P5.1): `fake` (a provider of our own, for local, CI and staging) or
+     * `none` (no provider: every checkout is 409 PAYMENTS_NOT_ENABLED). Unset: `none` in production, else `fake`.
+     * `fake` is refused in production. P4's winner joins the list with its adapter.
+     */
+    PAYMENT_PROVIDER: z.enum(['none', 'fake'], 'PAYMENT_PROVIDER must be none or fake.').optional(),
+    /** Signs the fake provider's webhooks. Unset outside local: the fake signs nothing and accepts no webhook. */
+    FAKE_GATEWAY_SECRET: z
+      .string()
+      .min(16, 'FAKE_GATEWAY_SECRET must be at least 16 characters.')
+      .optional(),
     CLIENT_ORIGIN: z
       .string()
       .url('CLIENT_ORIGIN must be a URL such as http://localhost:5173.')
@@ -103,6 +114,11 @@ const envSchema = z
     ...env,
     LOG_LEVEL: env.LOG_LEVEL ?? (env.APP_ENV === 'local' ? 'debug' : 'info'),
     MEDIA_STORAGE: resolveMediaStorage(env.APP_ENV, env.MEDIA_STORAGE),
+    PAYMENT_PROVIDER: env.PAYMENT_PROVIDER ?? (env.APP_ENV === 'production' ? 'none' : 'fake'),
+    // A published value is safe only where the fake's webhooks cannot reach anything real: a developer's machine.
+    FAKE_GATEWAY_SECRET:
+      env.FAKE_GATEWAY_SECRET ??
+      (env.APP_ENV === 'local' ? 'local-fake-gateway-secret' : undefined),
   }));
 
 type Env = z.infer<typeof envSchema>;
@@ -133,7 +149,15 @@ export const env = loadEnv();
  * schema: `pnpm run seed --production` runs from a laptop with APP_ENV=production, a localhost origin and no commit.
  */
 export function productionProblems(
-  e: Pick<Env, 'APP_ENV' | 'CLIENT_ORIGIN' | 'GIT_COMMIT' | 'TRUST_PROXY_HOPS' | 'MEDIA_STORAGE'>,
+  e: Pick<
+    Env,
+    | 'APP_ENV'
+    | 'CLIENT_ORIGIN'
+    | 'GIT_COMMIT'
+    | 'TRUST_PROXY_HOPS'
+    | 'MEDIA_STORAGE'
+    | 'PAYMENT_PROVIDER'
+  >,
 ): string[] {
   if (e.APP_ENV !== 'production') return [];
   const problems: string[] = [];
@@ -149,6 +173,10 @@ export function productionProblems(
     );
   if (e.MEDIA_STORAGE === 'local')
     problems.push('MEDIA_STORAGE=local is for development: production stores photos in S3.');
+  if (e.PAYMENT_PROVIDER === 'fake')
+    problems.push(
+      'PAYMENT_PROVIDER=fake marks orders paid with no money: production uses a real provider or none.',
+    );
   return problems;
 }
 
