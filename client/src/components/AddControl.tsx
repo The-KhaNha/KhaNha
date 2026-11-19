@@ -65,5 +65,5 @@ export function AddControl({ item, photoRef, onCustomise }: AddControlProps) {
     );
   }
 
-  return <AddButton onAdd={handleAdd} />;
+  return <AddButton onAdd={handleAdd} label={`Add ${item.name} to cart`} />;
 }

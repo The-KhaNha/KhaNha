@@ -142,7 +142,8 @@ Resize to 360×640 first. Throttling is per CDP session; apply it again after `b
   - PLACED → PREPARING → READY → COLLECTED each update the card without a manual reload;
   - an invalid move is not offered, or shows the 409 message;
   - the customer's `/orders/:id` tab reflects each status within one poll (4 s) and stops polling at a terminal status;
-  - a customer visiting `/staff` is redirected by `RequireStaff`.
+  - a customer on no store's team visiting `/staff` sees "You are not on a store's team" and a way back to the
+    stores, with no orders shown (store access comes from `store_memberships`, not a redirect).
 - **L7: clean console and network.** `browser_console_messages`: no errors and no React warnings (keys, act,
   controlled/uncontrolled) on any route. `browser_network_requests`: no unexpected 4xx/5xx, no duplicate identical
   requests on one load, no request to a host other than the app, the Supabase project and Google Fonts.
