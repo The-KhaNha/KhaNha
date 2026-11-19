@@ -8,7 +8,7 @@ data "aws_ssm_parameter" "ami" {
 # The public address is for outbound traffic only (a NAT gateway would cost more than the whole budget); the security
 # group admits nothing inbound but CloudFront (PR 05).
 resource "aws_instance" "this" { # nosemgrep: terraform.aws.security.aws-ec2-has-public-ip.aws-ec2-has-public-ip
-  ami                        = data.aws_ssm_parameter.ami.insecure_value
+  ami                         = data.aws_ssm_parameter.ami.insecure_value
   instance_type               = var.instance_type
   subnet_id                   = var.subnet_id
   vpc_security_group_ids      = var.security_group_ids
