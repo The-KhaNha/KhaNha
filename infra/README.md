@@ -72,7 +72,10 @@ aws s3 cp terraform.tfstate "s3://$(terraform output -raw state_bucket)/bootstra
 **Verify the budget's address.** A new address receives no budget alerts until it is verified. Open Billing and Cost
 Management → Budgets → `khanha-monthly` and read its email recipient's status:
 
-- **Inactive**: no email was sent (a budget created by Terraform can start here). Choose **Send Notification**.
+- **Active (legacy)**: what this bootstrap's recipient shows (seen 19 November 2026), although the Alerts panel also
+  reads "0/1 email verified". AWS documents it as still receiving notifications; no verification is offered, and
+  nothing needs doing.
+- **Inactive**: no email was sent. Choose **Send Notification**.
 - **Pending**: a verification email went out from an `@aws.com` sender; check spam, or choose **Resend
   verification**.
 - **Active**: done. Open the email's link while signed in to this account to get here.
