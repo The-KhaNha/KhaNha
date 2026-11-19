@@ -70,7 +70,7 @@ locals {
       {
         Sid      = "MediaObjects"
         Effect   = "Allow"
-        Action   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+        Action   = ["s3:GetObject", "s3:PutObject", "s3:PutObjectTagging", "s3:DeleteObject"]
         Resource = "${local.arn_prefix}:s3:::${var.media_bucket}/*"
       },
       {

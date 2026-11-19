@@ -340,7 +340,7 @@ Verify: both matrix legs green; a deliberate break of the runtime stage on a scr
 
 ### PR 04 — The host, its configuration and its secret (P8.4, P8.6)
 
-- [ ] Merged
+- [x] Merged
 
 Waits for D11: the first PR with an hourly price, about $11.50 a month from its apply.
 
@@ -415,6 +415,16 @@ the document base64-encoded; the release parameter holds `"<web-tag> <server-tag
 Verify: `https://khanha.in/healthz` answers through CloudFront, and so do `staff.` and `admin.`; `www.khanha.in/x`
 answers 301 to `https://khanha.in/x`; a request straight to the host's address is
 refused; nothing on the host answers plain HTTP from outside the VPC; an object put in the bucket is reachable at `/media/…` and not at the bucket's own URL.
+
+**As built (the user's decisions of 19 November 2026):** the domain goes live in two applies: `domain_live = false`
+creates the zone (and no certificate, which would fail validation before the delegation), the user sets the
+registrar's name servers, then a one-line PR sets `domain_live = true`. The VPC origin is the form built; AWS lists a
+private subnet as its prerequisite, so if the apply refuses the public subnet, the HTTPS fallback follows as its own
+PR. Its one inbound rule admits `CloudFront-VPCOrigins-Service-SG`, not CloudFront's public range. `/media/*` passes
+a CloudFront Function that strips the prefix (the keys are `stores/…`). The originals' lifecycle rule cannot match
+`stores/<store>/uploads/` by prefix, so it matches the tag `stage=original`, which a small server PR adds to the
+presigned upload form (the instance role gains `s3:PutObjectTagging` here). `modules/cdn/tests/behaviours.tftest.hcl`
+asserts `/api/*` uses CachingDisabled and the domain stays detached until `domain_live`.
 
 ### PR 05b — Three hosts: the apex, `staff.` and `admin.` (P8.3)
 
