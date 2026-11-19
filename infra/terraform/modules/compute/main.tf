@@ -56,6 +56,9 @@ locals {
   # The host files travel inside the document, so changing them changes the document, not the machine.
   commands = concat(
     [
+      # aws:runShellScript writes the lines to one script and reports only its last exit status, so without this a
+      # failed bootstrap (or write) is masked whenever apply-release.sh later exits 0.
+      "set -e",
       "cloud-init status --wait > /dev/null",
       "install -d -m 700 /opt/khanha",
     ],

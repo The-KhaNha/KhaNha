@@ -2,6 +2,7 @@
 # Writes the environment for compose.prod.yml (P8 PR 04): Parameter Store's /khanha/<environment>/* into params.env,
 # and the keys of the one secret khanha/<environment>/app into secret.env, both on tmpfs and readable by root only.
 # Only upper-case names become variables, so the release parameter (/khanha/<environment>/release) is left out.
+# Values are written unquoted; compose.prod.yml reads them with format: raw, so they stay literal.
 # Usage: render-env.sh <environment>
 # pipefail: a failed aws call must fail the script, not leave an empty file behind.
 set -euo pipefail

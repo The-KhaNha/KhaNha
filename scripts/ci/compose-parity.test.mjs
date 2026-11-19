@@ -2,17 +2,22 @@
 // check and on where web reaches the API (P8 PR 04), or production runs something no local stack or CI ever ran.
 // Both files are resolved by `docker compose config`, so anchors and merges count exactly as compose reads them.
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 
-const root = new URL('../..', import.meta.url).pathname;
-const envDir = mkdtempSync(join(tmpdir(), 'compose-parity-'));
-for (const file of ['params.env', 'secret.env', 'api.env']) writeFileSync(join(envDir, file), '');
+const root = fileURLToPath(new URL('../..', import.meta.url));
+// Outside CI a machine without the Docker Compose CLI skips this file; in CI (GitHub sets CI=true) a missing CLI fails.
+const hasCompose = spawnSync('docker', ['compose', 'version'], { stdio: 'ignore' }).status === 0;
+const skip = !hasCompose && !process.env.CI ? 'docker compose not installed; CI runs this' : false;
 
 function services(file) {
+  assert.ok(hasCompose, 'the Docker Compose CLI is required in CI');
+  const envDir = mkdtempSync(join(tmpdir(), 'compose-parity-'));
+  for (const f of ['params.env', 'secret.env', 'api.env']) writeFileSync(join(envDir, f), '');
   const json = execFileSync(
     'docker',
     ['compose', '-f', join(root, file), 'config', '--format', 'json'],
@@ -31,17 +36,21 @@ function services(file) {
   return JSON.parse(json).services;
 }
 
-const local = services('compose.yaml');
-const prod = services('infra/host/compose.prod.yml');
+const load = () => ({
+  local: services('compose.yaml'),
+  prod: services('infra/host/compose.prod.yml'),
+});
 
 for (const name of ['api', 'web', 'worker']) {
-  test(`${name}: same command and health check`, () => {
+  test(`${name}: same command and health check`, { skip }, () => {
+    const { local, prod } = load();
     assert.ok(prod[name], `compose.prod.yml has no ${name} service`);
     assert.deepEqual(prod[name].command, local[name].command);
     assert.deepEqual(prod[name].healthcheck?.test, local[name].healthcheck?.test);
   });
 }
 
-test('web reaches the API at the same address', () => {
+test('web reaches the API at the same address', { skip }, () => {
+  const { local, prod } = load();
   assert.equal(prod.web.environment.API_UPSTREAM, local.web.environment.API_UPSTREAM);
 });

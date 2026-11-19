@@ -6,13 +6,17 @@ import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
 
-const script = new URL('../../infra/host/apply-release.sh', import.meta.url).pathname;
+const script = fileURLToPath(new URL('../../infra/host/apply-release.sh', import.meta.url));
 
 const fakes = {
   aws: `#!/bin/sh
 case "$1 $2" in
-  "ssm get-parameter") [ -n "$FAKE_RELEASE" ] || exit 254; echo "$FAKE_RELEASE" ;;
+  "ssm get-parameter")
+    [ -z "$FAKE_AWS_ERROR" ] || { echo "An error occurred ($FAKE_AWS_ERROR) when calling the GetParameter operation" >&2; exit 254; }
+    [ -n "$FAKE_RELEASE" ] || { echo "An error occurred (ParameterNotFound) when calling the GetParameter operation" >&2; exit 254; }
+    echo "$FAKE_RELEASE" ;;
   "ecr get-login-password") echo password ;;
   *) echo "unexpected aws $*" >&2; exit 2 ;;
 esac`,
@@ -20,12 +24,14 @@ esac`,
 # Reads the password like the real one: exiting unread would SIGPIPE the piped aws, which pipefail turns into a failure.
 [ "$1" = login ] && { cat > /dev/null; exit 0; }
 echo "$WEB_TAG $SERVER_TAG" >> "$STATE/ups"
-echo "$WEB_TAG $SERVER_TAG" > "$STATE/current"`,
+echo "$WEB_TAG $SERVER_TAG" > "$STATE/current"
+# Like compose: the containers are already replaced when the health wait fails.
+case ",$UP_FAILS," in *",$WEB_TAG $SERVER_TAG,"*) exit 1 ;; esac`,
   curl: `#!/bin/sh
 case ",$NEVER_READY," in *",$(cat "$STATE/current"),"*) exit 22 ;; esac`,
 };
 
-function run(args, { release = '', neverReady = '' } = {}) {
+function run(args, { release = '', neverReady = '', upFails = '', awsError = '' } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'apply-release-'));
   for (const [name, body] of Object.entries(fakes)) {
     writeFileSync(join(dir, name), body);
@@ -38,6 +44,8 @@ function run(args, { release = '', neverReady = '' } = {}) {
       STATE: dir,
       FAKE_RELEASE: release,
       NEVER_READY: neverReady,
+      UP_FAILS: upFails,
+      FAKE_AWS_ERROR: awsError,
       RENDER_ENV: 'true',
       READY_TRIES: '2',
       READY_PAUSE: '0',
@@ -70,6 +78,18 @@ test('with no candidate and no release yet (the first host), exits cleanly havin
 
 test("a candidate that never becomes ready ends on the parameter's tags, with a non-zero exit", () => {
   const { status, ups } = run(['w2', 's2'], { release: 'w0 s0', neverReady: 'w2 s2' });
+  assert.notEqual(status, 0);
+  assert.deepEqual(ups, ['w2 s2', 'w0 s0']);
+});
+
+test('a release lookup that fails for any reason but a missing parameter stops before touching containers', () => {
+  const { status, ups } = run([], { release: 'w0 s0', awsError: 'ThrottlingException' });
+  assert.notEqual(status, 0);
+  assert.deepEqual(ups, []);
+});
+
+test("a candidate whose start fails ends on the parameter's tags, with a non-zero exit", () => {
+  const { status, ups } = run(['w2', 's2'], { release: 'w0 s0', upFails: 'w2 s2' });
   assert.notEqual(status, 0);
   assert.deepEqual(ups, ['w2 s2', 'w0 s0']);
 });
