@@ -902,8 +902,9 @@ Body (`server/src/schemas/admin.schema.ts`), every field optional but at least o
 Code: `server/src/routes/fakeGateway.routes.ts` → `validate(…, 'params')` →
 `server/src/controllers/fakeGateway.controller.ts`. The payment page of the fake provider
 ([PAYMENTS.md](PAYMENTS.md#the-fake-provider)), for local development, CI and staging. Both routes answer only while
-`PAYMENT_PROVIDER=fake`, read on every request; otherwise the router steps aside and the path is the ordinary 404
-`NOT_FOUND`. Production refuses `fake`, so they never exist there. They are mounted before the
+`PAYMENT_PROVIDER=fake`, read on every request; otherwise the router steps aside and the request continues down the stack: the ordinary 404
+`NOT_FOUND`, unless the [client version gate](#client-version-gate) answers first (426 `CLIENT_OUTDATED` when
+`min_client_version` is above the legacy `0.1.0` that a header-less request counts as). Production refuses `fake`, so they never exist there. They are mounted before the
 [client version gate](#client-version-gate) (a browser's form post carries no `X-Client-Version`) and need no token:
 the gateway order id is an unguessable uuid, as at a real provider. Answers are HTML and redirects, not JSON; an error
 is the usual envelope.
@@ -913,12 +914,12 @@ is the usual envelope.
 | `GET /api/fake-gateway/:gatewayOrderId`           | 200 `text/html`: the amount in paise, the status and three forms (Pay, Fail, Leave it pending); no script, no style                                   |
 | `POST /api/fake-gateway/:gatewayOrderId/:outcome` | `outcome` is `pay` (`PAID`), `fail` (`FAILED`) or `pending` (`PENDING`). Sets the status, then 303 to the order's return URL. A paid order stays paid |
 
-| Status | Code               | When                                                                 |
-| ------ | ------------------ | -------------------------------------------------------------------- |
-| 200    |                    | the page (`GET`)                                                     |
-| 303    |                    | the outcome was recorded (`POST`); `Location` is the return URL      |
-| 400    | `VALIDATION_ERROR` | `gatewayOrderId` is not a uuid, or `outcome` is not one of the three |
-| 404    | `NOT_FOUND`        | an id the fake never issued, or `PAYMENT_PROVIDER` is not `fake`     |
+| Status | Code               | When                                                                                                          |
+| ------ | ------------------ | ------------------------------------------------------------------------------------------------------------- |
+| 200    |                    | the page (`GET`)                                                                                              |
+| 303    |                    | the outcome was recorded (`POST`); `Location` is the return URL                                               |
+| 400    | `VALIDATION_ERROR` | `gatewayOrderId` is not a uuid, or `outcome` is not one of the three                                          |
+| 404    | `NOT_FOUND`        | an id the fake never issued, or `PAYMENT_PROVIDER` is not `fake` (the gate's 426 comes first when it applies) |
 
 The page does not yet post a signed webhook to our own route: that arrives with the webhook route (P5 PR 10).
 

@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { env } from '../../utils/env';
 import { IntegrationError } from '../../utils/errors';
-import { raisedByDatabase, supabaseAdmin } from '../../utils/supabase';
+import { asDatabaseUnavailable, raisedByDatabase, supabaseAdmin } from '../../utils/supabase';
 import type { GatewayEvent, GatewayPaymentStatus, GatewayRefund, PaymentGateway } from './port';
 
 export const FAKE_SIGNATURE_HEADER = 'x-fake-signature';
@@ -112,7 +112,7 @@ function refundOf(refundId: string, value: unknown): GatewayRefund {
  * (`routes/fakeGateway.routes.ts`). Refused in production by utils/env.
  */
 export function fakeGateway(): PaymentGateway {
-  return {
+  const gateway: PaymentGateway = {
     provider: 'fake',
 
     async createOrder({ orderId, amountPaise, returnUrl, notifyUrl, expiresAt }) {
@@ -180,5 +180,23 @@ export function fakeGateway(): PaymentGateway {
       if (!refund) throw refused('getRefund', 'unknown refund');
       return refundOf(refundId, refund);
     },
+  };
+  // The port promises an IntegrationError when the provider is unreachable; for the fake that is the database. The job
+  // runner retries only a retryable one, so a raw transport failure would dead-letter a refund outside a request.
+  const reachable =
+    <A extends unknown[], R>(call: (...args: A) => Promise<R>) =>
+    async (...args: A): Promise<R> => {
+      try {
+        return await call(...args);
+      } catch (err) {
+        throw asDatabaseUnavailable(err) ?? err;
+      }
+    };
+  return {
+    ...gateway,
+    createOrder: reachable(gateway.createOrder),
+    getOrderStatus: reachable(gateway.getOrderStatus),
+    refund: reachable(gateway.refund),
+    getRefund: reachable(gateway.getRefund),
   };
 }

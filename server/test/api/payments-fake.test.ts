@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { gatewayFor, paymentGateway } from '../../src/integrations/payments';
 import {
   FAKE_SIGNATURE_HEADER,
@@ -8,6 +8,7 @@ import {
 } from '../../src/integrations/payments/fake';
 import { env } from '../../src/utils/env';
 import { AppError, IntegrationError } from '../../src/utils/errors';
+import { supabaseAdmin } from '../../src/utils/supabase';
 import { api } from '../setup/api';
 import { localSql } from '../setup/helpers';
 import { gatewayContract } from '../unit/payments-port.contract';
@@ -97,6 +98,42 @@ describe('the fake payment page', () => {
     const { session } = await fakeOrder();
     env.PAYMENT_PROVIDER = 'none';
     await api().get(session.url).expect(404);
+  });
+});
+
+describe('the fake gateway when the database is unreachable', () => {
+  it('fails every call with a retryable IntegrationError, not a raw transport error', async () => {
+    const gateway = gatewayFor('fake');
+    const fail = () => {
+      throw new TypeError('fetch failed');
+    };
+    const from = vi.spyOn(supabaseAdmin, 'from').mockImplementation(fail);
+    const rpc = vi.spyOn(supabaseAdmin, 'rpc').mockImplementation(fail);
+    try {
+      const id = randomUUID();
+      const calls = [
+        gateway.createOrder({
+          orderId: id,
+          amountPaise: 100,
+          customer: { id },
+          returnUrl: 'http://localhost:5173/x',
+          notifyUrl: 'http://localhost:8000/api/webhooks/payments',
+          expiresAt: new Date(Date.now() + 600_000),
+        }),
+        gateway.getOrderStatus(id),
+        gateway.getRefund(id, 'r1'),
+        gateway.refund({ gatewayOrderId: id, refundId: 'r1', amountPaise: 100, note: 'x' }),
+      ];
+      for (const result of await Promise.allSettled(calls)) {
+        expect(result).toMatchObject({
+          status: 'rejected',
+          reason: expect.objectContaining({ name: 'IntegrationError', retryable: true }),
+        });
+      }
+    } finally {
+      from.mockRestore();
+      rpc.mockRestore();
+    }
   });
 });
 
@@ -194,7 +231,9 @@ describe('the fake webhook edge cases', () => {
 });
 
 describe('fake gateway retention', () => {
-  it('is purged nightly by its own job, which keeps a week', () => {
+  it('is purged nightly by its own job, which keeps a week', async () => {
+    // Own row, so the purge assertion does not depend on rows left by earlier tests.
+    const { gatewayOrderId } = await fakeOrder();
     expect(
       localSql(
         "select schedule, command from cron.job where jobname = 'purge-fake-gateway-orders'",
@@ -204,5 +243,8 @@ describe('fake gateway retention', () => {
       "select public.purge_fake_gateway_orders(now() + interval '8 days') as n",
     );
     expect(purged?.n).toBeGreaterThan(0);
+    expect(
+      localSql(`select 1 from public.fake_gateway_orders where id = '${gatewayOrderId}'`),
+    ).toHaveLength(0);
   });
 });
