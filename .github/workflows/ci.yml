@@ -327,6 +327,16 @@ jobs:
             terraform -chdir="$root" validate -no-color
             echo "::endgroup::"
           done
+      # Each module's terraform test, against a mocked provider: no AWS.
+      - name: Test
+        run: |
+          for tests in infra/terraform/modules/*/tests/; do
+            module="${tests%tests/}"
+            echo "::group::$module"
+            terraform -chdir="$module" init -backend=false -input=false
+            terraform -chdir="$module" test -no-color
+            echo "::endgroup::"
+          done
 
   ci-ok:
     if: always()

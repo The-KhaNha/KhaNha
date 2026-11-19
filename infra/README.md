@@ -7,9 +7,20 @@ is [DEPLOYMENT.md "Hosted environments"](../docs/DEPLOYMENT.md#hosted-environmen
 ```text
 terraform/
   bootstrap/          run once by the user: state bucket, GitHub OIDC, the three roles, the $35 budget
-  envs/production/    production's root (resources arrive with P8 PRs 02–08)
-  modules/            (from PR 02) network, ecr, iam, compute, secrets, media, cdn, observability
+  envs/production/    production's root: the modules with production's names
+  modules/
+    network/          VPC, two public subnets, no NAT; free S3 endpoint; the host's security group
+    ecr/              khanha/web and khanha/server: immutable tags, scan on push, newest 10 kept
+    iam/              the host's instance role, scoped to its own parameters, secret, logs and media bucket
+                      (compute, secrets, media, cdn, observability arrive with PRs 04–08)
 ```
+
+**The security group admits nothing yet.** No SSH, ever (Session Manager replaces it). The one inbound rule,
+CloudFront's, comes with PR 05 and the origin form it proves; until then the host only calls out, on 443.
+
+**Module tests.** A module with a `tests/` folder has `terraform test` against a mocked provider, run by `ci.yml`'s
+`infra` job; `cd terraform/modules/<name> && terraform init -backend=false && terraform test` locally. `iam`'s
+asserts no data-reading grant is on `*` and that a staging role names nothing of production's.
 
 **Who runs what.** The bootstrap is the one thing applied by hand, by the user, with their own administrator
 credentials. Everything else is applied by `.github/workflows/infra.yml` through the roles the bootstrap creates, and

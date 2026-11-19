@@ -25,6 +25,8 @@ release.json
 
 # Terraform (infra/): provider caches, state and plans stay local; only *.tfvars.example is committed.
 .terraform/
+# A module's lock file comes from `terraform test`'s init; only the roots' lock files are committed.
+infra/terraform/modules/*/.terraform.lock.hcl
 *.tfstate
 *.tfstate.*
 *.tfplan
