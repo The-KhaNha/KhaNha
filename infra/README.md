@@ -65,6 +65,10 @@ aws s3 cp terraform.tfstate "s3://$(terraform output -raw state_bucket)/bootstra
 
 The budget sends its emails straight to the address; there is nothing to confirm.
 
+The roles trust this repository's **immutable OIDC subject** (`owner@id/name@id`, the `github_repository` variable),
+not `owner/name`: a workflow failing with "Not authorized to perform sts:AssumeRoleWithWebIdentity" means the two
+disagree. `gh api repos/The-KhaNha/KhaNha/actions/oidc/customization/sub` shows the prefix GitHub sends.
+
 ## 2. Connect GitHub (once, by the user)
 
 In GitHub → Settings → **Environments**, create:
