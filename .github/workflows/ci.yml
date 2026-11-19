@@ -318,6 +318,9 @@ jobs:
           terraform_version: 1.16.5
           terraform_wrapper: false
       - run: terraform fmt -check -recursive infra/terraform
+      # The scripts the deploy document runs on the host (shellcheck ships with GitHub's Ubuntu image). Their behaviour
+      # is tested by scripts/ci/apply-release.test.mjs in the repo job.
+      - run: shellcheck infra/host/*.sh
       # Every root, without a backend or credentials: syntax, types and references only.
       - name: Validate
         run: |
