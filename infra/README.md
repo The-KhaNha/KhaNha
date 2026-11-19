@@ -14,15 +14,18 @@ terraform/
     iam/              the host's instance role, scoped to its own parameters, secret, logs and media bucket
     secrets/          the host's settings in Parameter Store, and the container of its one secret
     compute/          the host (t4g.micro, standard credits), its first boot, the deploy document
-                      (media, cdn, observability arrive with PRs 05–08)
+    media/            the media bucket: private, versioned, CORS for the upload form, lifecycle rules
+    cdn/              CloudFront (VPC origin to the host, the bucket at /media/*), the zone, the certificate
+                      (observability arrives with PR 08)
 host/                 what the deploy document writes to the host and runs
   compose.prod.yml    web, api, worker from ECR, with memory limits (scripts/ci/compose-parity.test.mjs)
   render-env.sh       parameters and the secret -> env files on tmpfs, root only
   apply-release.sh    candidate tags, else the release parameter's; back to the parameter's if not ready
 ```
 
-**The security group admits nothing yet.** No SSH, ever (Session Manager replaces it). The one inbound rule,
-CloudFront's, comes with PR 05 and the origin form it proves; until then the host only calls out, on 443.
+**Only CloudFront reaches the host.** No SSH, ever (Session Manager replaces it). The host is a CloudFront VPC
+origin: its one inbound rule admits port 80 from `CloudFront-VPCOrigins-Service-SG`, the group AWS creates for the
+VPC origin's interfaces, so no other distribution and nothing on the internet can reach it.
 
 **Module tests.** A module with a `tests/` folder has `terraform test` against a mocked provider, run by `ci.yml`'s
 `infra` job; `cd terraform/modules/<name> && terraform init -backend=false && terraform test` locally. `iam`'s
@@ -148,6 +151,26 @@ it does nothing.
   `envs/production/main.tf`. A changed setting reaches the containers on the next deploy. Production's
   `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` are empty, so not created, until the production Supabase project
   exists; then a one-line PR sets them in `envs/production/variables.tf`.
+
+## The edge and the domain
+
+One CloudFront distribution (`modules/cdn`): the app from the host, `/api/*` never cached, `/media/*` from the
+bucket (a CloudFront Function strips `/media`, since the keys are `stores/…`), `www.` answered with a 301 to the apex.
+The domain goes live in two applies (the user, 19 November 2026):
+
+1. With `domain_live = false` (`envs/production/variables.tf`) the Route 53 zone exists and the app answers at
+   `terraform output cloudfront_domain` (the `d….cloudfront.net` name, also in the plan's summary once applied).
+2. **(user)** At the registrar of `khanha.in`, set the four name servers from `terraform output name_servers`.
+   `dig NS khanha.in +short` shows them once the change has spread (minutes to hours).
+3. A one-line PR sets `domain_live = true`. Its apply requests the certificate (us-east-1), validates it through the
+   zone, attaches `khanha.in`, `www.`, `staff.` and `admin.`, and points their A and AAAA records at the distribution.
+
+The certificate is not requested earlier: before the delegation it would fail validation after 72 hours.
+
+**Media.** `khanha-media-production-<account>`: private, read by CloudFront through origin access control, written
+by the host's role and by browsers through the API's presigned form (CORS for the three hosts and the CloudFront
+name). Old object versions expire after 30 days; an object tagged `stage=original` (an upload never processed or
+swept) after a day, once the API tags its uploads (the follow-up server PR).
 
 ## Changing a secret
 

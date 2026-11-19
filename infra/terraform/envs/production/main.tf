@@ -3,6 +3,7 @@
 locals {
   name        = "khanha-production"
   environment = "production"
+  domain      = "khanha.in" # D3
   # The release parameter the deploy role writes sits under this path (bootstrap/main.tf).
   parameter_path = "/khanha/${local.environment}"
   secret_name    = "khanha/${local.environment}/app"
@@ -43,13 +44,43 @@ module "secrets" {
     SUPABASE_URL             = var.supabase_url
     SUPABASE_PUBLISHABLE_KEY = var.supabase_publishable_key
     # PR 05b turns this into the three hosts' list.
-    CLIENT_ORIGIN = "https://khanha.in"
+    CLIENT_ORIGIN = "https://${local.domain}"
     # CloudFront, then the web container's nginx. Measured, not assumed, once CloudFront is in front (PR 05).
     TRUST_PROXY_HOPS = "2"
     LOG_LEVEL        = "info"
     MEDIA_BUCKET     = local.media_bucket
     AWS_REGION       = var.region
+    # Where the browser posts the presigned upload form (the web image's CSP connect-src).
+    MEDIA_UPLOAD_ORIGIN = "https://${module.media.regional_domain_name}"
   }
+}
+
+module "media" {
+  source = "../../modules/media"
+  bucket = local.media_bucket
+  # The app's hosts (D3), plus CloudFront's own hostname for the dark period before domain_live.
+  upload_origins = concat(
+    [for host in ["", "staff.", "admin."] : "https://${host}${local.domain}"],
+    ["https://${module.cdn.domain_name}"],
+  )
+}
+
+module "cdn" {
+  source = "../../modules/cdn"
+  providers = {
+    aws           = aws
+    aws.us_east_1 = aws.us_east_1
+  }
+  name                       = local.name
+  domain                     = local.domain
+  domain_live                = var.domain_live
+  vpc_id                     = module.network.vpc_id
+  instance_arn               = module.compute.instance_arn
+  instance_private_dns       = module.compute.private_dns
+  host_security_group_id     = module.network.host_security_group_id
+  media_bucket               = module.media.bucket
+  media_bucket_arn           = module.media.arn
+  media_regional_domain_name = module.media.regional_domain_name
 }
 
 module "compute" {

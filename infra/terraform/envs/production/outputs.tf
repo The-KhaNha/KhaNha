@@ -23,3 +23,13 @@ output "instance_profile_name" {
 output "instance_id" {
   value = module.compute.instance_id
 }
+
+output "cloudfront_domain" {
+  description = "Where the app answers until domain_live."
+  value       = module.cdn.domain_name
+}
+
+output "name_servers" {
+  description = "Set these at the registrar of khanha.in, then set domain_live."
+  value       = module.cdn.name_servers
+}

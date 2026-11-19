@@ -26,3 +26,9 @@ variable "supabase_publishable_key" {
   type        = string
   default     = ""
 }
+
+variable "domain_live" {
+  description = "Set true (a one-line PR) once the registrar of khanha.in points at the zone's four name servers."
+  type        = bool
+  default     = false
+}
