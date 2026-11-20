@@ -170,7 +170,7 @@ The certificate is not requested earlier: before the delegation it would fail va
 **Media.** `khanha-media-production-<account>`: private, read by CloudFront through origin access control, written
 by the host's role and by browsers through the API's presigned form (CORS for the three hosts and the CloudFront
 name). Old object versions expire after 30 days; an object tagged `stage=original` (an upload never processed or
-swept) after a day, once the API tags its uploads (the follow-up server PR).
+swept) after a day; the API's presigned form adds the tag.
 
 ## Changing a secret
 
