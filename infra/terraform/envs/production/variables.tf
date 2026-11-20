@@ -28,7 +28,7 @@ variable "supabase_publishable_key" {
 }
 
 variable "domain_live" {
-  description = "Set true (a one-line PR) once the registrar of khanha.in points at the zone's four name servers."
+  description = "True once the registrar of khanha.in points at the zone's four name servers (delegated 20 November 2026)."
   type        = bool
-  default     = false
+  default     = true
 }

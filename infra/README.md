@@ -161,7 +161,11 @@ The domain goes live in two applies (the user, 19 November 2026):
 1. With `domain_live = false` (`envs/production/variables.tf`) the Route 53 zone exists and the app answers at
    `terraform output cloudfront_domain` (the `d….cloudfront.net` name, also in the plan's summary once applied).
 2. **(user)** At the registrar of `khanha.in`, set the four name servers from `terraform output name_servers`.
-   `dig NS khanha.in +short` shows them once the change has spread (minutes to hours).
+   `dig NS khanha.in +short` shows them once the change has spread (minutes to hours). Some networks answer port 53
+   from their own cache; if `dig` disagrees with the registrar, ask over HTTPS:
+   `curl -s 'https://cloudflare-dns.com/dns-query?name=khanha.in&type=NS' -H 'accept: application/dns-json'` must
+   list exactly the four from `terraform output name_servers` (another Route 53 zone's would look alike). Done for
+   `khanha.in` on 20 November 2026 (Porkbun).
 3. A one-line PR sets `domain_live = true`. Its apply requests the certificate (us-east-1), validates it through the
    zone, attaches `khanha.in`, `www.`, `staff.` and `admin.`, and points their A and AAAA records at the distribution.
 
@@ -182,7 +186,9 @@ deploy fails at `render-env.sh`. A changed value reaches the containers on the n
 ## Moving to another account
 
 Everything account-specific is a variable or an output, so the setup can move (after the credits end, if it ever has
-to): bootstrap in the new account, connect GitHub to its outputs, apply, re-enter the secret and the parameters, copy
-the media bucket, deploy the last release and smoke-test it at the new CloudFront hostname. Then, at cutover, remove
-the domain from the old distribution, add it to the new one and move DNS
-([P8 plan, Risks](../plans/P8_INFRASTRUCTURE.md#risks-and-gotchas)).
+to): bootstrap in the new account, connect GitHub to its outputs, apply with `domain_live = false` (with `true` the
+apply would wait on a certificate the old zone cannot validate), re-enter the secret and the parameters, copy the
+media bucket, deploy the last release and smoke-test it at the new CloudFront hostname. Then, at cutover, remove the
+domain from the old distribution, point the registrar at the new zone's name servers, and apply `domain_live = true`
+in the new account ([The edge and the domain](#the-edge-and-the-domain), [P8 plan,
+Risks](../plans/P8_INFRASTRUCTURE.md#risks-and-gotchas)).

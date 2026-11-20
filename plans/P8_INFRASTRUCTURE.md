@@ -388,7 +388,7 @@ the document base64-encoded; the release parameter holds `"<web-tag> <server-tag
 
 ### PR 05 — The edge: CDN, certificate, media bucket (P8.3)
 
-- [ ] Merged
+- [x] Merged
 
 - `modules/media`: `khanha-media-production-<account-id>`, private, encrypted, versioned; CORS for a form post from the
   app's three origins (D3); lifecycle rules (unprocessed originals expire after a day, old versions after 30). This is the
@@ -419,8 +419,9 @@ refused; nothing on the host answers plain HTTP from outside the VPC; an object 
 **As built (the user's decisions of 19 November 2026):** the domain goes live in two applies: `domain_live = false`
 creates the zone (and no certificate, which would fail validation before the delegation), the user sets the
 registrar's name servers, then a one-line PR sets `domain_live = true`. The VPC origin is the form built; AWS lists a
-private subnet as its prerequisite, so if the apply refuses the public subnet, the HTTPS fallback follows as its own
-PR. Its one inbound rule admits `CloudFront-VPCOrigins-Service-SG`, not CloudFront's public range. `/media/*` passes
+private subnet as its prerequisite, but the apply of 20 November 2026 accepted the public-subnet host, so no HTTPS
+fallback is needed. The registrar (Porkbun) was pointed at the zone the same day, and `domain_live = true` followed.
+Its one inbound rule admits `CloudFront-VPCOrigins-Service-SG`, not CloudFront's public range. `/media/*` passes
 a CloudFront Function that strips the prefix (the keys are `stores/…`). The originals' lifecycle rule cannot match
 `stores/<store>/uploads/` by prefix, so it matches the tag `stage=original`, which a small server PR adds to the
 presigned upload form (the instance role gains `s3:PutObjectTagging` here). `modules/cdn/tests/behaviours.tftest.hcl`
