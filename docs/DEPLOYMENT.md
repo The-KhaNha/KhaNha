@@ -470,9 +470,12 @@ default when `APP_ENV=local`, so `start.sh` and `run.sh` need no Docker for it) 
 The browser never sends a photo through the API in `s3` mode: `POST …/media/uploads` answers a presigned form for
 the bucket that pins the key, the content type and the exact declared size for five minutes, so the bucket refuses
 anything else; `complete` then checks the object's size and its first bytes (the form cannot pin the content), and
-removes an object that fails. The bucket is private: in compose's bucket mode photos do not display until P3 PR 10
-serves the variants. The API's role needs `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject` and `s3:ListBucket`:
-without `ListBucket` a missing key answers 403, which the API reports as 503 rather than "not uploaded yet".
+removes an object that fails. The form also tags the upload `stage=original` (a form without the tag is refused): on
+AWS the bucket's lifecycle rule expires such an object after a day, the backstop for an original that no job processed
+or swept (variants are written untagged). The bucket is private: in compose's bucket mode photos do not display until
+P3 PR 10 serves the variants. The API's role needs `s3:GetObject`, `s3:PutObject`, `s3:PutObjectTagging` (the tagged
+form), `s3:DeleteObject` and `s3:ListBucket`: without `ListBucket` a missing key answers 403, which the API reports
+as 503 rather than "not uploaded yet".
 
 Locally the S3-compatible server is **RustFS** (MinIO stopped publishing images), compose's `media` service, which the
 server tests also use (CI starts the same image; locally the S3 cases skip when it is not running):
