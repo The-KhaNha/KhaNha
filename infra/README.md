@@ -161,7 +161,10 @@ The domain goes live in two applies (the user, 19 November 2026):
 1. With `domain_live = false` (`envs/production/variables.tf`) the Route 53 zone exists and the app answers at
    `terraform output cloudfront_domain` (the `d….cloudfront.net` name, also in the plan's summary once applied).
 2. **(user)** At the registrar of `khanha.in`, set the four name servers from `terraform output name_servers`.
-   `dig NS khanha.in +short` shows them once the change has spread (minutes to hours).
+   `dig NS khanha.in +short` shows them once the change has spread (minutes to hours). Some networks answer port 53
+   from their own cache; if `dig` disagrees with the registrar, ask over HTTPS:
+   `curl -s 'https://cloudflare-dns.com/dns-query?name=khanha.in&type=SOA' -H 'accept: application/dns-json'` shows
+   `awsdns-hostmaster.amazon.com` once Route 53 answers. Done for `khanha.in` on 20 November 2026 (Porkbun).
 3. A one-line PR sets `domain_live = true`. Its apply requests the certificate (us-east-1), validates it through the
    zone, attaches `khanha.in`, `www.`, `staff.` and `admin.`, and points their A and AAAA records at the distribution.
 
