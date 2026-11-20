@@ -2,6 +2,10 @@
 
 All notable changes to the API server (`server/package.json`). Written by `npm run release` from `.changes/`.
 
+## 0.3.0 — 2026-11-19
+
+- A payment gateway port and a fake provider for local, CI and staging
+
 ## 0.2.1 — 2026-11-15
 
 - Update dependencies (Dependabot): Supabase, Express, pino, dotenv 18, lucide-react 1.x and the minor/patch groups.
