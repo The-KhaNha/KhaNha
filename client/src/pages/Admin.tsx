@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import { Check } from 'lucide-react';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
@@ -83,8 +83,9 @@ function SettingsForm({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [edited, setEdited] = useState(false);
   const savedRef = useRef<HTMLParagraphElement>(null);
-  // Save turns disabled once nothing differs, which would drop keyboard focus: it moves to the confirmation.
-  useEffect(() => {
+  // The save remounts this form, so the focused Save button is gone: focus moves to the confirmation in the same
+  // commit. A useEffect after an awaited save runs a task later, leaving focus on <body> for any key pressed meanwhile.
+  useLayoutEffect(() => {
     if (justSaved) savedRef.current?.focus();
   }, [justSaved]);
 

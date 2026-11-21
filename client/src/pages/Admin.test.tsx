@@ -1,3 +1,4 @@
+import { Profiler } from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SiteSettings } from '../types/api';
@@ -119,7 +120,21 @@ describe('AdminPage', () => {
       customerOrderHistoryLimit: 25,
       updatedAt: '2026-09-28T00:00:00Z',
     });
-    render(<AdminPage />);
+    // Where focus is in the commit that shows the confirmation. Moving it in a later task (useEffect after an awaited
+    // save) leaves it on <body> in between, where a key pressed meanwhile would land; on a busy machine the check
+    // below could also run in that gap.
+    let focusAtCommit: Element | null = null;
+    render(
+      <Profiler
+        id="admin"
+        onRender={() => {
+          if (!focusAtCommit && document.querySelector('[role="status"]'))
+            focusAtCommit = document.activeElement;
+        }}
+      >
+        <AdminPage />
+      </Profiler>,
+    );
     fireEvent.change(await screen.findByLabelText('Customer order history'), {
       target: { value: '25' },
     });
@@ -129,6 +144,7 @@ describe('AdminPage', () => {
 
     const status = await screen.findByRole('status');
     expect(status).toHaveTextContent('Saved');
+    expect(focusAtCommit).toBe(status);
     expect(document.activeElement).toBe(status);
     // Typing again hides the confirmation until the next save.
     fireEvent.change(screen.getByLabelText('Customer order history'), { target: { value: '26' } });
