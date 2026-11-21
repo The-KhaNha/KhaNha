@@ -139,7 +139,7 @@ TF_VAR_account_id=<the account ID> terraform plan
 One EC2 `t4g.micro` (about $9.20 a month with its public address and disk), Amazon Linux 2023 on arm64. Its first
 boot installs docker, the compose plugin and 2 GB of swap (`modules/compute/user-data.sh`); nothing is built on it.
 The app arrives through the SSM document `khanha-deploy`, which writes `infra/host/*` to `/opt/khanha` and runs
-`apply-release.sh`: with candidate tags from the deploy workflow (PR 07), or with none, the tags in
+`apply-release.sh`: with candidate tags from `deploy-production.yml` ([DEPLOYMENT.md "Production releases"](../docs/DEPLOYMENT.md#production-releases)), or with none, the tags in
 `/khanha/production/release` (`"<web-tag> <server-tag>"`, the last release that passed). A State Manager association
 runs it once on every new host, so a replaced machine comes back on that release by itself; before the first release
 it does nothing.

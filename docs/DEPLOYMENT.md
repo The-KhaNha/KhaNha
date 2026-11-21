@@ -290,25 +290,24 @@ Run by the user, once.
 
 1. Create a new project in the Supabase dashboard (a region near your users; save the database password).
 2. Put its ref in `PRODUCTION_REF` in `server/scripts/db-push.sh`, then `pnpm run db:push:production`.
-3. Create `client/.env.production` with its `VITE_SUPABASE_URL` and publishable key (see `client/.env.example`).
-   `pnpm run build` refuses to run without it.
-4. On the production API host set `APP_ENV=production`, `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `PORT`,
-   `CLIENT_ORIGIN` and optionally `LOG_LEVEL`.
-5. Load the store and menu once, with the production values in the environment: `pnpm run seed --production`. It
+3. Its URL and publishable key go in `infra/terraform/envs/production/variables.tf` and its secret key in Secrets
+   Manager; the host and the images take them from there ([infra/README.md](../infra/README.md)). The first deploy is
+   [The first production release](#the-first-production-release).
+4. Load the store and menu once, with the production values in the environment: `pnpm run seed --production`. It
    only works while production has no store, and creates no accounts. The plain `pnpm run seed` refuses to run
    against production.
-6. Create staff and admin accounts in the dashboard (Authentication → Add user, with auto-confirm), then in the SQL
+5. Create staff and admin accounts in the dashboard (Authentication → Add user, with auto-confirm), then in the SQL
    editor: `update public.profiles set role = 'STAFF' where email = '…';` for staff, plus their store's membership
    (`insert into public.store_memberships (user_id, store_id, role) select id, '<store id>', 'STAFF' from public.profiles where email = '…';`; without it their board is empty, [PERMISSIONS.md#store-roles](PERMISSIONS.md#store-roles)), or
    `update public.profiles set role = 'ADMIN' where email = '…';` for the site-wide developer/operator role (the
    `/admin` dashboard — see [PERMISSIONS.md#roles](PERMISSIONS.md#roles)).
-7. Required in the dashboard (Authentication → Sign In / Providers): turn off **Allow new users to sign up**.
+6. Required in the dashboard (Authentication → Sign In / Providers): turn off **Allow new users to sign up**.
    Accounts are created by the API's `/auth/register` with the secret key, which still works. Left on, anyone can
    sign up directly with the publishable key (it ships in the bundle) and skip the API's checks on name, phone and
    password; local Supabase has it off already (`enable_signup = false`). The `handle_new_user` trigger bounds the
    profile either way ([SCHEMA.md](SCHEMA.md#profile_name-and-profile_phone)), but the setting is what keeps
    unchecked accounts out.
-8. Recommended in the dashboard (Authentication → Sessions): set the same idle-session limit as local
+7. Recommended in the dashboard (Authentication → Sessions): set the same idle-session limit as local
    (see [Hosted session timeout](#hosted-session-timeout) below).
 
 ```mermaid
@@ -325,8 +324,7 @@ sequenceDiagram
   Dev->>Dev: PRODUCTION_REF in server/scripts/db-push.sh
   Dev->>CLI: pnpm run db:push:production
   CLI->>Prod: apply all migrations
-  Dev->>Dev: client/.env.production (URL + publishable key), pnpm run build
-  Dev->>Host: set APP_ENV=production, SUPABASE_URL, SUPABASE_SECRET_KEY, PORT, CLIENT_ORIGIN
+  Dev->>Host: URL + publishable key in Terraform, secret key in Secrets Manager; the first release deploys
   Dev->>Seed: pnpm run seed --production (production env vars)
   Seed->>Prod: store + menu only (refuses if a store exists)
   Dev->>Dash: Authentication → Add user for each staff/admin member (auto-confirm)
@@ -335,6 +333,60 @@ sequenceDiagram
   Dev->>Dash: turn off Allow new users to sign up (the API's /auth/register still works)
   Dev->>Dash: Authentication → Sessions: set the inactivity timeout to 168h (7 days), matching local
 ```
+
+## Production releases
+
+### How a release reaches production
+
+`.github/workflows/deploy-production.yml` (P8 PR 07). A release is the release PR merged into `main`
+([workflow.md §21](../.claude/rules/workflow.md)); its tags `client-v*` / `server-v*` start the workflow once the
+release App pushes them. Until the App exists, start it by hand: Actions → deploy-production → Run workflow, `ref` =
+the new tag.
+
+1. **build** (no AWS): both images for arm64 at the release commit, tagged `<package version>-<sha7>`, smoke-tested
+   with `scripts/ci/image-smoke.sh`. When both tags arrive for one commit, only the first tag's run goes on.
+2. **approval**: the job `deploy` waits in the `production` Environment. Before approving, **run
+   `pnpm run db:push:production`** (migrations first; the pipeline never touches the database).
+3. **deploy**: if `/khanha/production/release` already names these tags it stops. Otherwise it pushes the images
+   that are not in ECR yet (tags are immutable; with provenance and an SBOM), then runs `scripts/ci/deploy-host.sh`:
+   the SSM document `khanha-deploy` on the host, which returns to the parameter's release by itself if the new one
+   never answers `/api/ready`.
+4. **smoke**: `scripts/ci/deploy-smoke.sh` through `PRODUCTION_URL` (an Environment or repository variable;
+   `https://khanha.in` when unset): `/api/health` reports the commit, `/api/ready` is 200, `/` is uncached and the
+   script it names is immutable, `/runtime-env.js` names the production project (`PRODUCTION_REF`), and
+   `/api/config` answers 304 to its own ETag. No orders. `perf.yml` runs the same script against compose.
+5. **record or undo**: a passing smoke writes the tags to `/khanha/production/release`, last. Any failure once the
+   deploy has started (the host never ready, the wait run out, the smoke, the record) runs the document again with
+   no tags, which puts the parameter's release back, and fails the run. On the very first release there is nothing to
+   go back to: the run says so and the failed candidate stays until a fix is deployed.
+
+The scripts and settings always come from the workflow's own commit (`main`); the release commit is checked out
+into `release/` only to build its images and run its own image smoke, so a rollback to an old tag still deploys
+with today's steps.
+
+### The first production release
+
+1. **(user)** The production project exists, its values are in Terraform and Secrets Manager, and the infra apply
+   that carries them has run ([Production first-time setup](#production-first-time-setup)).
+2. The release PR is merged into `main` and tagged.
+3. **(user)** `pnpm run db:push:production`: every migration, in order; pgmq and pg_cron then show under the
+   project's Integrations.
+4. Run deploy-production with the new tag and approve it.
+5. **(user)** `pnpm run seed --production` for the first store, `pnpm run migrate:media --production`, and the
+   accounts ([Production first-time setup](#production-first-time-setup), steps 4–7).
+
+### Rolling back
+
+Run deploy-production with `ref` = the earlier release's tag (`server-v…` or `client-v…`) and approve it. Its images
+are already in ECR, so nothing is rebuilt into the registry; the host takes them, the smoke runs, and the parameter
+then names that release. A migration is never rolled back: the old release must still work on the newer schema
+(CLAUDE.md §2, migrations only add).
+
+### Rehearsals
+
+While the repository variable `PRODUCTION_DARK` is `true` (before launch), deploy-production also takes a commit or
+branch on `dev`: the same flow and approval, images tagged with `dev`'s package versions and that commit. Any other
+commit not on `main` is refused. The launch checklist (P9.5) sets `PRODUCTION_DARK` to `false` for good.
 
 ## Hosted session timeout
 

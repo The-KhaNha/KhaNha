@@ -513,6 +513,19 @@ Docs: `docs/DEPLOYMENT.md` gains "How a release reaches production", "The first 
 "Rolling back"; CLAUDE.md §2 and §21 (what a release now triggers; `dev` still deploys nothing); `infra/README.md`;
 `README.md`.
 
+**As built (21 November 2026):** the deploy role trusts only jobs in the `production` Environment, and each job in a
+protected Environment asks for its own approval, so pushing images before the wait would mean two approvals. The
+`build` job therefore builds and smoke-tests without AWS, and one `deploy` job behind the approval pushes the images
+(rebuilt from the build job's layer cache, only when the tag is absent), deploys, smokes and records or undoes. The
+concurrency group is one for every production deploy (not one per commit), so two releases can never interleave; a
+newer pending run replaces an older pending one. When both tags of a release arrive, only the first tag's run goes
+on. Until the release App exists, tags pushed by `GITHUB_TOKEN` start no workflow, so a release is deployed with
+`workflow_dispatch` and `ref` = its tag (the same path as a rollback). The deploy smoke runs in `perf.yml` (compose
+with a seeded Supabase), which the images job does not have. Helpers: `scripts/ci/deploy-host.sh` (find the host by
+its tags, run the document, wait) and `scripts/ci/deploy-smoke.sh`. The scripts come from the workflow's commit and
+the release commit only builds the images (a rollback to a tag older than this PR still works), and the undo runs
+after any failure past the deploy step, not only a failed smoke.
+
 ### PR 08 — Logs, metrics, alarms (P8.7)
 
 - [ ] Merged

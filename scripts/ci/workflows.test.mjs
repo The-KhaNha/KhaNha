@@ -165,3 +165,31 @@ test('the guard refuses an approving environment reachable from a pull request',
   const text = job('    environment: production\n    permissions:\n      id-token: write');
   assert.match(checkWorkflow(text).join(), /environment production can run on a pull request/);
 });
+
+// Production deploys (P8 PR 07): every job that can reach AWS waits for the user's approval, a dev commit deploys
+// only while production is dark, and one deploy never cancels another half-way through.
+test('deploy-production keeps its rules', () => {
+  const text = readFileSync(new URL('deploy-production.yml', dir), 'utf8');
+  const jobs = text
+    .slice(text.indexOf('\njobs:\n'))
+    .split(/\n(?= {2}[\w-]+:\n)/)
+    .slice(1);
+  const minting = jobs.filter((body) => grantsIdToken(body));
+  assert.ok(minting.length > 0, 'a deploy job mints a token');
+  for (const body of minting)
+    assert.match(body, /^ {4}environment: production$/m, body.split('\n')[0]);
+  assert.match(
+    text,
+    /merge-base --is-ancestor "\$commit" origin\/main/,
+    'a release must be on main',
+  );
+  assert.match(
+    text,
+    /\[ "\$DARK" = true \] && git merge-base --is-ancestor "\$commit" origin\/dev/,
+    'a rehearsal needs PRODUCTION_DARK',
+  );
+  assert.match(text, /DARK: \$\{\{ vars\.PRODUCTION_DARK \}\}/);
+  const concurrency = text.match(/^concurrency:\n((?: {2}.*\n)+)/m)?.[1] ?? '';
+  assert.match(concurrency, /cancel-in-progress: false/);
+  assert.match(concurrency, /group: deploy-production\n/, 'one group for every production deploy');
+});
