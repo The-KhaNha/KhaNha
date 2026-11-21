@@ -45,10 +45,16 @@ case $(header cache-control) in *immutable*) ;; *) fail "$script is not immutabl
 [ "$(get /runtime-env.js)" = 200 ] || fail "/runtime-env.js is not 200"
 grep -q "\"SUPABASE_URL\":\"$supabase\"" "$tmp/b" || fail "/runtime-env.js does not name $supabase"
 
-# A public read, then the same read with its ETag: the 304 path phones poll on.
+# A public read, then the same read with its ETag: the 304 path phones poll on. An admin may change a flag in
+# between (a 200 with a new ETag), so a few tries, each with the latest ETag.
 [ "$(get /api/config)" = 200 ] || fail "/api/config is not 200"
-etag=$(header etag)
-[ -n "$etag" ] || fail "/api/config has no ETag"
-[ "$(get /api/config -H "If-None-Match: $etag")" = 304 ] || fail "/api/config with its ETag is not 304"
+for _ in 1 2 3; do
+  etag=$(header etag)
+  [ -n "$etag" ] || fail "/api/config has no ETag"
+  code=$(get /api/config -H "If-None-Match: $etag")
+  [ "$code" = 304 ] && break
+  [ "$code" = 200 ] || fail "/api/config with its ETag is $code"
+done
+[ "$code" = 304 ] || fail "/api/config never answered 304 to its own ETag"
 
 echo "deploy-smoke: passed at $base"

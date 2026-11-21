@@ -189,7 +189,10 @@ test('deploy-production keeps its rules', () => {
     'a rehearsal needs PRODUCTION_DARK',
   );
   assert.match(text, /DARK: \$\{\{ vars\.PRODUCTION_DARK \}\}/);
-  const concurrency = text.match(/^concurrency:\n((?: {2}.*\n)+)/m)?.[1] ?? '';
+  // On the deploy job: at the workflow level a queued tag run could replace the one the duplicate check keeps.
+  assert.doesNotMatch(text, /^concurrency:/m, 'no workflow-level concurrency');
+  const deployJob = minting.find((body) => /^deploy:/.test(body.trimStart())) ?? '';
+  const concurrency = deployJob.match(/^ {4}concurrency:\n((?: {6}.*\n)+)/m)?.[1] ?? '';
   assert.match(concurrency, /cancel-in-progress: false/);
   assert.match(concurrency, /group: deploy-production\n/, 'one group for every production deploy');
 

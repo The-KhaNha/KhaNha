@@ -72,6 +72,10 @@ made, so it is not lost with the laptop:
 aws s3 cp terraform.tfstate "s3://$(terraform output -raw state_bucket)/bootstrap/terraform.tfstate"
 ```
 
+**When the bootstrap changes** (a PR edits `bootstrap/`), re-apply it the same way from that directory once the PR is
+merged: `terraform plan` should show only the change the PR describes (for example the deploy role's policy updated
+in place), then `terraform apply` and copy the state to the bucket again. CI never applies it.
+
 **Verify the budget's address.** A new address receives no budget alerts until it is verified. Open Billing and Cost
 Management → Budgets → `khanha-monthly` and read its email recipient's status:
 

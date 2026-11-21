@@ -22,12 +22,6 @@ on:
 permissions:
   contents: read
 
-# One production deploy at a time, and a running one is never cancelled. A newer pending run replaces an older pending
-# one, which is what a newer release should do.
-concurrency:
-  group: deploy-production
-  cancel-in-progress: false
-
 defaults:
   run:
     shell: bash
@@ -123,8 +117,15 @@ jobs:
     needs: build
     if: needs.build.outputs.skip != 'true'
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 45
+    # Builds and pushes, migrations, then up to two host waits (the deploy and the undo, about 26 minutes each).
+    timeout-minutes: 80
     environment: production
+    # One production deploy at a time, and a running one is never cancelled. On this job, not the workflow, so both
+    # tag runs of a release reach the build job's duplicate check before any queueing: a newer pending deploy
+    # replacing an older pending one is then always a newer release (or a rollback) replacing an older one.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
     permissions:
       contents: read
       id-token: write
