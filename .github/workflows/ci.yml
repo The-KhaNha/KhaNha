@@ -4,7 +4,7 @@ name: ci
 # green (docs/adr/011-free-tiers.md). Heavy jobs run only when their files changed (the `changes` job), which keeps a
 # PR's run short; a skipped job counts as passed. The workflow itself has no `paths:` filter, so
 # every PR still reports `ci-ok`.
-# Branches by environment: main is production (release PRs), dev is staging, feat/** is development. Every PR into
+# Branches by environment: main is production (release PRs), dev is the integration branch (no deployed staging yet), feat/** is development. Every PR into
 # one of them is gated. Pushes run on main, dev and the phase feature branches (feat/P<n>, CLAUDE.md §21), where two PRs
 # that were each green alone can still break together once both are merged; a push to a work branch (feat/p1-03-…,
 # feat/<slug>) does not, as its PR run already covers it.

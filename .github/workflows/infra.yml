@@ -13,6 +13,9 @@ on:
     paths:
       - 'infra/terraform/**'
       - '.github/workflows/infra.yml'
+  # Weekly drift check: a plan against main's code that finds a difference fails the run (the Plan step).
+  schedule:
+    - cron: '17 4 * * 1'
 
 permissions:
   contents: read
@@ -40,7 +43,7 @@ jobs:
     # A fork's pull request never gets the role: its code would run with the account's read access.
     if: >-
       vars.TF_STATE_BUCKET != '' &&
-      (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)
+      (github.event_name == 'push' || github.event_name == 'schedule' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     environment: infra-plan
     permissions:
@@ -64,9 +67,21 @@ jobs:
       # decisions"). No plan file is uploaded; apply plans again after the approval.
       - name: Plan
         run: |
-          terraform plan -no-color -lock-timeout=5m | tee "$RUNNER_TEMP/plan.txt"
+          # A scheduled run asks for -detailed-exitcode (0 no changes, 1 error, 2 changes); on a pull request or a
+          # push a plan with changes is normal, so the flag stays off there.
+          detailed=''
+          [ "$GITHUB_EVENT_NAME" = schedule ] && detailed='-detailed-exitcode'
+          # Under pipefail the pipe's status would hide exit code 2 behind tee, so read terraform's own.
+          set +e
+          terraform plan -no-color -lock-timeout=5m $detailed | tee "$RUNNER_TEMP/plan.txt"
+          code=${PIPESTATUS[0]}
+          set -e
           { echo '### Terraform plan (production)'; echo '```'; cat "$RUNNER_TEMP/plan.txt"; echo '```'; } \
             >> "$GITHUB_STEP_SUMMARY"
+          if [ "$code" = 2 ]; then
+            echo '::error::The applied infrastructure has drifted from main, or an apply is waiting (see the plan above).'
+          fi
+          exit "$code"
 
   apply:
     needs: plan

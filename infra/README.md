@@ -46,6 +46,10 @@ states its monthly cost.
 with credits included the month nets to about $0 and the alert would never fire. So an email at 50% means about $17.50
 of real usage this month, even while credits pay for it.
 
+A scheduled run of `infra.yml` plans production every Monday and fails when the applied infrastructure differs from
+`main`, which catches a change made in the console or an apply that never ran; undo the console change or apply the
+pending one.
+
 ## 1. Bootstrap (once, by the user)
 
 Needs: Terraform 1.11 or newer, the AWS CLI v2 signed in to the account that holds the credits with administrator
