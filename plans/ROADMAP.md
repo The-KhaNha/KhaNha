@@ -3760,7 +3760,8 @@ R18.
 ### P8.5 Continuous deployment
 
 > **Decided:** no `deploy-staging.yml` until the AWS staging; production's smoke is HTTP checks, with no browser run,
-> no k6 and no test orders; production migrations stay manual (decision 11). The diagram shows what P8 builds.
+> no k6 and no test orders; production migrations run in the deploy, behind its approval (decision 11, changed by the
+> user on 21 November 2026). The diagram shows what P8 builds.
 
 R21. `dev` is staging and `main` is production; a release is a PR from `dev` into `main`
 ([P0.3](#p03-semantic-versioning-with-change-intents)).
@@ -3772,9 +3773,10 @@ flowchart LR
   Dev --> Rel["release PR: release/{date} into main<br/>(bump, changelogs, intents consumed)"]
   Rel --> Gate{"user merges<br/>= production approval"}
   Gate --> Tags["tag-and-backmerge: client-vX, server-vY,<br/>back-merge PR into dev"]
-  Tags --> ProdMig["production migrations<br/>(user, manual)"]
-  ProdMig --> Prod["deploy-production.yml: build arm64 from main,<br/>push to ECR, SSM deploy to the one host"]
-  Prod --> Verify["HTTP smoke, then the release parameter is written;<br/>alarms quiet"]
+  Tags --> Prod["deploy-production.yml: build arm64 from main,<br/>approval, push to ECR, smoke the pushed images"]
+  Prod --> ProdMig["production migrations<br/>(the pipeline, after the approval)"]
+  ProdMig --> Deploy["SSM deploy to the one host"]
+  Deploy --> Verify["HTTP smoke, then the release parameter is written;<br/>alarms quiet"]
 ```
 
 - **`deploy-staging.yml`**, on push to `dev` once `ci.yml` has passed (`workflow_run`), with `concurrency` and no
@@ -3790,10 +3792,11 @@ flowchart LR
      because the release commit makes its tree differ from `dev`'s; `/api/health` reports version and commit either
      way.
   2. Upload the web assets.
-  3. **Production migrations.** CLAUDE.md §2 keeps `db:push:production` a user-only step. The job therefore **stops
-     and waits** (a GitHub Environment with the user as required reviewer) while the user runs
-     `npm run db:push:production`. Moving it into the pipeline behind the approval is the user's decision, and it
-     would be recorded in an ADR.
+  3. **Production migrations**, in the job, behind the same approval (a GitHub Environment with the user as required
+     reviewer), before the deploy: the user's decision of 21 November 2026, recorded in ADR-007. A rollback finds the
+     database ahead of the release and skips; nothing reverts a migration (fix forward). An agent still never runs
+     `db:push:production` or the production seed (CLAUDE.md §2). First decided as a user-only step while the job
+     waited.
   4. Rolling SSM deploy to production, health-gated.
   5. Smoke, and the alarms stay quiet.
 - **Hotfixes.** `hotfix/*` off `main`, with its own intent and `npm run release` run on the branch; PR into `main`;
@@ -4182,8 +4185,8 @@ This is a checklist to take to professionals, not legal advice.
   - ETA accuracy (share of orders ready inside the shown range) of 70% or better;
   - reconciliation exceptions at zero.
 - [ ] Versions go to `1.0.0` for both packages (P0.3).
-- [ ] Production cut-over steps are run by the user **(user)**: the production migrations, the production seed of
-      stores through onboarding, live keys and DNS.
+- [ ] Production cut-over steps are run by the user **(user)**: approving the release's deploy (which pushes the
+      production migrations), the production seed of stores through onboarding, live keys and DNS.
 
 ## P10 — Scale after the pilot
 
@@ -4796,7 +4799,7 @@ The ones marked ★ block a phase.
 | 8   | Error tracking: self-reported (P1.6) or Sentry (a new runtime host, about 25 KB)                                   | P1.6            | decided 2026-10-24: self-reported in P1; Sentry later, low priority ([P10.4](#p104-observability-v2-sentry-prometheus-and-grafana-low-priority))                                            |
 | 9   | CAPTCHA on registration (a new runtime host)                                                                       | P9.3            | Turnstile on register only                                                                                                                                                                  |
 | 10  | Browser-to-S3 presigned uploads (a new CSP host) or proxied uploads                                                | P3.3            | presigned                                                                                                                                                                                   |
-| 11  | Production migrations inside the pipeline (behind approval) or kept manual                                         | P8.5            | manual, per CLAUDE.md §2 **(answered: the user, 11 November 2026)**                                                                                                                         |
+| 11  | Production migrations inside the pipeline (behind approval) or kept manual                                         | P8.5            | inside the pipeline, behind the approval **(answered: the user, 21 November 2026; manual until then)**                                                                                      |
 | 12  | ECS instead of compose on EC2                                                                                      | P8.4            | compose on EC2 (ADR-007) **(answered: ADR-007 as amended, 11 November 2026)**                                                                                                               |
 | 13  | AWS account structure, region and domain name                                                                      | P8.1            | **answered:** one account, ap-south-1; the domain is **`khanha.in`**, bought; customers on the apex, `staff.` and `admin.` for the rest (P8 plan D1–D3)                                     |
 | 14  | Supabase plan tier (PITR, compute, read replicas)                                                                  | P8.4, P9.1      | a tier with PITR for production                                                                                                                                                             |

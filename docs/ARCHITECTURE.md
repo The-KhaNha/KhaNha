@@ -129,7 +129,7 @@ flowchart TB
   Migrations[["server/supabase/migrations/*.sql"]]
   Migrations -->|"db:reset (rebuild)"| LDocker
   Migrations -->|"db:push:staging"| SProj
-  Migrations -->|"db:push:production<br/>(type 'production' to confirm)"| PProj
+  Migrations -->|"deploy-production, after the approval<br/>(scripts/ci/deploy-migrate.sh)"| PProj
 
   ServerEnv["server/.env<br/>APP_ENV + SUPABASE_URL + SUPABASE_SECRET_KEY"]
   ClientEnv["client/.env.development / .env.staging / .env.production<br/>VITE_SUPABASE_URL + VITE_SUPABASE_PUBLISHABLE_KEY"]

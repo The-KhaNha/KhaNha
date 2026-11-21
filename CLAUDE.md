@@ -32,8 +32,10 @@ the one-row `site_settings` table, edited by admins.
 
 - Real users, real concurrency. Stock races are settled inside the `place_order` transaction, never in app code.
 - Security and accessibility are requirements, not polish.
-- **Never touch production.** `pnpm run db:push:production` and `pnpm run seed --production` are run by the user
-  only. Tests run against local Supabase only (§13, `docs/TESTING.md`).
+- **Never touch production.** A release's migrations are pushed by `deploy-production.yml` after the user approves
+  it in the `production` Environment (`docs/DEPLOYMENT.md` "Applying migrations"). An agent never runs
+  `pnpm run db:push:production` or a production seed; `pnpm run seed --production` stays the user's. Tests run
+  against local Supabase only (§13, `docs/TESTING.md`).
 - **Never run `terraform apply` yourself** (nor `destroy`, `import`, or any `state` write) unless the user gives
   explicit permission for that specific Terraform root, in that instance. One permission covers one run of one root;
   it never carries over to another root, a later run or a later session. `init`, `fmt`, `validate` and a `plan`

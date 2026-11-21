@@ -255,6 +255,7 @@ and a one-time reminder from `.claude/hooks/major-change-gate.js`.
 on by default) branches `release/<date>` off `dev`, runs `pnpm run release` (highest level per package; versions in
 `package.json` only, as `pnpm-lock.yaml` does not record them; CHANGELOGs; intents deleted; `major` before 1.0.0 refused without
 `--allow-major`), commits and opens the PR into `main`. The user merging it is the production approval. On the merge,
-`tag-and-backmerge` tags `client-vX` / `server-vY` and opens the back-merge PR into `dev` (`no-release`). Staging
-images are tagged `dev-<sha7>`; `package.json` keeps the last released version. The tags start `deploy-production.yml`, which deploys
+`tag-and-backmerge` tags `client-vX` / `server-vY` and opens the back-merge PR into `dev` (`no-release`). There is
+no AWS staging yet, so nothing builds staging images; once it exists they are to be tagged `dev-<sha7>`.
+`package.json` keeps the last released version. The tags start `deploy-production.yml`, which deploys
 only after the user approves it in the `production` Environment (`docs/DEPLOYMENT.md` "Production releases").

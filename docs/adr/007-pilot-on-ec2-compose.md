@@ -15,7 +15,8 @@ Amended (2026-11-11), by the user:
 - **The pipeline applies the infrastructure.** GitHub Actions plans and applies Terraform through OIDC roles, as
   well as deploying; every run that changes production waits for the user's approval.
 - **Staging's credentials may live in GitHub**, once staging is hosted on AWS: the staging database credentials and
-  the staging smoke test's password as secrets of a GitHub Environment. Production's never are.
+  the staging smoke test's password as secrets of a GitHub Environment. Production's never are. (Changed on
+  2026-11-21, below.)
 
 Amended (2026-11-17), by the user:
 
@@ -37,9 +38,18 @@ Amended (2026-11-18), by the user:
   shell and `admin.khanha.in` for site admins; `www.` redirects to the apex. Each host keeps its own sign-in.
   Staging mirrors them under `staging.khanha.in` ([P8 plan][p8-plan], D3).
 
+Amended (2026-11-21), by the user:
+
+- **Production migrations ship with the pipeline.** The production deploy pushes the release's migrations itself,
+  after the user's approval in the `production` GitHub Environment and before the new code reaches the host. The
+  production Supabase access token and database password are therefore secrets of that Environment, readable only
+  by the approved deploy job. A rollback finds the database ahead of the release and skips; nothing reverts a
+  migration (fix forward). An agent still never pushes or seeds production, and seeding production stays the
+  user's ([DEPLOYMENT.md][deployment-migrations]).
+
 ## Date
 
-2026-09-28 (accepted), 2026-11-11, 2026-11-17 and 2026-11-18 (amended)
+2026-09-28 (accepted), 2026-11-11, 2026-11-17, 2026-11-18 and 2026-11-21 (amended)
 
 ## Context
 
@@ -97,8 +107,9 @@ the EKS gate below.
 - **GitHub secrets** (amended 2026-11-11). The release App's id and key (`release.yml`). From the day staging is
   hosted on AWS, and in the `staging` Environment only: the staging Supabase access token and database password
   (so staging migrates itself on every merge) and the staging smoke test's customer password. Production's database
-  credentials never enter GitHub: production migrations stay a step the user runs. All of this works on GitHub Free
-  ([ADR-011][adr-011]).
+  credentials never enter GitHub: production migrations stay a step the user runs. (Amended 2026-11-21: they are
+  secrets of the `production` Environment, and the approved deploy migrates production itself.) All of this works on
+  GitHub Free ([ADR-011][adr-011]).
 - **Until staging is hosted, infrastructure and pipeline changes are first run on production.** They are tested
   before they reach the host (scripts under test, the image and deploy smoke tests in CI), production runs dark
   until launch, and a rehearsal deploy that only works while it is dark exercises the pipeline before the first
@@ -143,3 +154,4 @@ the EKS gate below.
 [adr-005]: 005-modular-monolith-three-processes.md
 [adr-011]: 011-free-tiers.md
 [p8.6]: ../../plans/ROADMAP.md#p86-secrets-and-configuration
+[deployment-migrations]: ../DEPLOYMENT.md#applying-migrations

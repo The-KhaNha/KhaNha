@@ -112,6 +112,15 @@ done
 
 None of these values is secret; they are variables, not secrets, so they show in logs and nothing has to be masked.
 
+The one exception is the deploy's migrate step, which needs two **secrets** in the `production` Environment (never
+repository secrets, so only the approved deploy job reads them; [DEPLOYMENT.md "Applying migrations"](../docs/DEPLOYMENT.md#applying-migrations)).
+`gh secret set` asks for each value, so it never lands in the shell history:
+
+```bash
+gh secret set SUPABASE_ACCESS_TOKEN --env production   # an access token that can manage the production project
+gh secret set SUPABASE_DB_PASSWORD --env production    # the production database password
+```
+
 ## 3. Plan and apply (every change)
 
 1. A pull request that touches `infra/terraform/**` runs `infra.yml`'s **plan**; the plan is in the run's summary.

@@ -1,8 +1,9 @@
 name: deploy-production
 
 # Deploys a release to production (P8 PR 07; docs/DEPLOYMENT.md "How a release reaches production"): build and smoke
-# both arm64 images, then, after the user's approval in the `production` Environment, push them, run the host's
-# deploy document, smoke the public address, and record the release, or put the last one back.
+# both arm64 images, then, after the user's approval in the `production` Environment, push them, smoke what was
+# pushed, push the release's migrations to the database, run the host's deploy document, smoke the public address,
+# and record the release, or put the last one back.
 #
 # Triggers: the client-v* / server-v* tags release.yml pushes on main (tags pushed with GITHUB_TOKEN start no
 # workflow, so this needs the release App), and a manual run with `ref`:
@@ -41,6 +42,7 @@ jobs:
       web_tag: ${{ steps.what.outputs.web_tag }}
       server_tag: ${{ steps.what.outputs.server_tag }}
       supabase_url: ${{ steps.what.outputs.supabase_url }}
+      project_ref: ${{ steps.what.outputs.project_ref }}
     steps:
       # The workflow's own commit supplies the scripts and settings (a rollback to an old tag still runs today's
       # deploy); the release commit, checked out into release/, supplies only the images.
@@ -80,6 +82,7 @@ jobs:
             echo "web_tag=$(git show "$commit:client/package.json" | jq -r .version)-${commit:0:7}"
             echo "server_tag=$(git show "$commit:server/package.json" | jq -r .version)-${commit:0:7}"
             echo "supabase_url=https://$ref.supabase.co"
+            echo "project_ref=$ref"
           } >> "$GITHUB_OUTPUT"
           echo "A $kind of $commit." >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -114,8 +117,8 @@ jobs:
           COMMIT: ${{ steps.what.outputs.commit }}
         run: release/scripts/ci/image-smoke.sh "$COMMIT"
 
-  # One job behind the approval, so a release asks once. Before approving, the user runs
-  # `pnpm run db:push:production` (CLAUDE.md §2: never the pipeline).
+  # One job behind the approval, so a release asks once: that approval also lets this job push the release's
+  # migrations (the user's decision, 21 November 2026; CLAUDE.md §2). Seeding production stays the user's.
   deploy:
     needs: build
     if: needs.build.outputs.skip != 'true'
@@ -153,6 +156,13 @@ jobs:
             echo "deployed=true" >> "$GITHUB_OUTPUT"
             echo "Already the release; nothing to do." >> "$GITHUB_STEP_SUMMARY"
           fi
+      # Before anything changes, so a missing secret never stops a deploy half-way.
+      - name: Migration credentials
+        if: steps.released.outputs.deployed != 'true'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: scripts/ci/deploy-migrate.sh --check
       # Tags are immutable: an image already pushed (a rollback, a re-run) is used as it is.
       - name: Which images are new
         id: images
@@ -190,6 +200,36 @@ jobs:
           cache-from: type=gha,scope=web-arm64
           provenance: mode=max
           sbom: true
+      # The pushed images are the ones smoked: a push without the layer cache is a fresh build, and a rollback's
+      # images were pushed by an earlier run. The release's own smoke, on the tags it expects.
+      - name: Smoke the pushed images
+        if: steps.released.outputs.deployed != 'true'
+        run: |
+          docker pull "$REGISTRY/khanha/server:$SERVER_TAG"
+          docker pull "$REGISTRY/khanha/web:$WEB_TAG"
+          docker tag "$REGISTRY/khanha/server:$SERVER_TAG" fp-api:ci
+          docker tag "$REGISTRY/khanha/web:$WEB_TAG" fp-web:ci
+          release/scripts/ci/image-smoke.sh "$COMMIT"
+      # The Supabase CLI pinned by the workflow's own server lockfile, as ci.yml installs it. --ignore-scripts: this job
+      # holds production's cloud credentials, and the CLI needs no install script (its binary arrives as an optional
+      # dependency).
+      - uses: ./.github/actions/setup-pnpm
+        if: steps.released.outputs.deployed != 'true'
+      - name: Install the Supabase CLI
+        if: steps.released.outputs.deployed != 'true'
+        run: |
+          pnpm --dir server install --frozen-lockfile --ignore-scripts
+          echo "$PWD/server/node_modules/.bin" >> "$GITHUB_PATH"
+      # Migrations before code (docs/DEPLOYMENT.md "Applying migrations"): the release's migrations, today's script. A
+      # failure stops the run before the host changes; a rollback (the database ahead of the release) skips. Nothing
+      # here ever reverts a migration: a later failure puts the previous code back on the new schema (fix forward).
+      - name: Migrate the database
+        if: steps.released.outputs.deployed != 'true'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          PROJECT_REF: ${{ needs.build.outputs.project_ref }}
+        run: scripts/ci/deploy-migrate.sh "$PROJECT_REF" release/server
       - name: Deploy to the host
         id: deploy
         if: steps.released.outputs.deployed != 'true'
@@ -213,7 +253,8 @@ jobs:
           done
           echo "Released: web $WEB_TAG, server $SERVER_TAG." >> "$GITHUB_STEP_SUMMARY"
       # Whatever failed once the deploy started (a candidate that never became ready, a wait that ran out, the smoke,
-      # the record), the host goes back to the parameter's release, the last one that passed.
+      # the record), the host goes back to the parameter's release, the last one that passed. The database keeps the
+      # release's migrations: expand and contract keeps them safe for the previous code (fix forward).
       - name: Put the last release back
         if: failure() && (steps.deploy.outcome == 'success' || steps.deploy.outcome == 'failure')
         env:

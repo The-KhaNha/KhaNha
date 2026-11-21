@@ -218,6 +218,8 @@ jobs:
       - run: pnpm run format:check
       - run: pnpm test
       - run: pnpm run check:durations
+      # infra/host/*.sh is linted in the infra job; shellcheck ships with GitHub's Ubuntu image.
+      - run: shellcheck scripts/ci/*.sh
       # The PR's commits only, here where it costs no extra job minute; security.yml scans the whole history weekly.
       - name: Secrets in this PR's commits
         if: github.event_name == 'pull_request'

@@ -192,4 +192,29 @@ test('deploy-production keeps its rules', () => {
   const concurrency = text.match(/^concurrency:\n((?: {2}.*\n)+)/m)?.[1] ?? '';
   assert.match(concurrency, /cancel-in-progress: false/);
   assert.match(concurrency, /group: deploy-production\n/, 'one group for every production deploy');
+
+  // Migrations ship with the deploy (the user, 21 November 2026): behind the approval, before the code, with
+  // credentials checked before anything is pushed and held by that one job alone.
+  const migrating = jobs.filter((body) => /deploy-migrate\.sh "\$/.test(body));
+  assert.equal(migrating.length, 1, 'one job migrates');
+  const [deploy] = migrating;
+  assert.match(
+    deploy,
+    /^ {4}environment: production$/m,
+    'the migrating job waits for the approval',
+  );
+  const at = (re) => deploy.search(re);
+  assert.ok(
+    at(/name: Deploy to the host/) > at(/deploy-migrate\.sh "\$/),
+    'migrations before code',
+  );
+  assert.ok(at(/deploy-migrate\.sh --check/) !== -1, 'the credentials are checked');
+  assert.ok(at(/deploy-migrate\.sh --check/) < at(/push: true/), 'before any image is pushed');
+  const secret = /secrets\.SUPABASE_(ACCESS_TOKEN|DB_PASSWORD)/;
+  for (const body of jobs.filter((b) => b !== deploy))
+    assert.doesNotMatch(body, secret, `${body.split('\n')[0]} holds no Supabase secret`);
+  for (const file of readdirSync(dir).filter(
+    (f) => /\.ya?ml$/.test(f) && f !== 'deploy-production.yml',
+  ))
+    assert.doesNotMatch(readFileSync(new URL(file, dir), 'utf8'), secret, file);
 });
