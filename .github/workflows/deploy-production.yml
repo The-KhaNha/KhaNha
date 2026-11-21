@@ -136,7 +136,10 @@ jobs:
       REGISTRY: ${{ vars.AWS_ACCOUNT_ID }}.dkr.ecr.ap-south-1.amazonaws.com
       RELEASE_PARAMETER: /khanha/production/release
     steps:
+      # Full history: the stale-release check below compares commits.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.build.outputs.commit }}
@@ -145,8 +148,12 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ap-south-1
+      # Inside the lock. A tag run whose release is already contained in the recorded one stops: builds finish in any
+      # order, so an older release must not land over a newer one. A manual run (a rollback) is never stopped here.
       - name: Deployed already?
         id: released
+        env:
+          EVENT: ${{ github.event_name }}
         run: |
           if ! current=$(aws ssm get-parameter --name "$RELEASE_PARAMETER" --query Parameter.Value --output text 2>&1); then
             case $current in *ParameterNotFound*) current= ;; *) echo "$current" >&2; exit 1 ;; esac
@@ -156,6 +163,14 @@ jobs:
           if [ "$current" = "$WEB_TAG $SERVER_TAG" ]; then
             echo "deployed=true" >> "$GITHUB_OUTPUT"
             echo "Already the release; nothing to do." >> "$GITHUB_STEP_SUMMARY"
+          elif [ "$EVENT" = push ] && [ -n "$current" ]; then
+            # Tags end in -<sha7>; the server tag names the recorded release's commit.
+            recorded=$(git rev-parse -q --verify "${current##*-}^{commit}" || true)
+            if [ -n "$recorded" ] && git merge-base --is-ancestor "$COMMIT" "$recorded"; then
+              echo "deployed=true" >> "$GITHUB_OUTPUT"
+              echo "Superseded: the recorded release ($current) already contains $COMMIT; nothing to do." \
+                >> "$GITHUB_STEP_SUMMARY"
+            fi
           fi
       # Before anything changes, so a missing secret never stops a deploy half-way.
       - name: Migration credentials

@@ -195,6 +195,11 @@ test('deploy-production keeps its rules', () => {
   const concurrency = deployJob.match(/^ {4}concurrency:\n((?: {6}.*\n)+)/m)?.[1] ?? '';
   assert.match(concurrency, /cancel-in-progress: false/);
   assert.match(concurrency, /group: deploy-production\n/, 'one group for every production deploy');
+  // Inside that lock, a tag run older than the recorded release stops (builds finish in any order).
+  assert.match(
+    deployJob,
+    /\[ "\$EVENT" = push \][\s\S]*merge-base --is-ancestor "\$COMMIT" "\$recorded"/,
+  );
 
   // Migrations ship with the deploy (the user, 21 November 2026): behind the approval, before the code, with
   // credentials checked before anything is pushed and held by that one job alone.
