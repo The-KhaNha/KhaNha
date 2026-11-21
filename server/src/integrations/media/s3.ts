@@ -26,6 +26,14 @@ export interface S3MediaConfig {
 const UPLOAD_EXPIRES_S = 5 * 60;
 
 /**
+ * Every upload is tagged an original. On AWS the bucket's lifecycle rule expires such objects after a day (P8), the
+ * backstop for an original no job processed or swept; the variants are written untagged. The SDK makes each form field
+ * an exact-match condition, so a form that drops or changes the tag is refused.
+ */
+export const ORIGINAL_TAGGING =
+  '<Tagging><TagSet><Tag><Key>stage</Key><Value>original</Value></Tag></TagSet></Tagging>';
+
+/**
  * Photos in an S3 bucket (ADR-006). The browser posts the bytes straight to the bucket with a presigned form that pins
  * the key, the type and the exact size, so the bucket itself refuses anything else. Credentials come from the SDK's
  * default chain: the instance role on AWS, `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` against RustFS. The bucket is
@@ -64,7 +72,7 @@ export function s3MediaStore(config: S3MediaConfig): MediaStore {
       const post = await createPresignedPost(client, {
         Bucket: bucket,
         Key: checked(key),
-        Fields: { 'Content-Type': contentType },
+        Fields: { 'Content-Type': contentType, tagging: ORIGINAL_TAGGING },
         // The service passes the declared size: the bucket refuses any other length, not only a larger one.
         Conditions: [
           ['content-length-range', maxBytes, maxBytes],

@@ -12,6 +12,7 @@ import { localMediaStore } from '../../src/integrations/media/local';
 import type { MediaStore, UploadTarget } from '../../src/integrations/media/port';
 import {
   ensureMediaBucket,
+  ORIGINAL_TAGGING,
   s3MediaStore,
   type S3MediaConfig,
 } from '../../src/integrations/media/s3';
@@ -114,6 +115,9 @@ describe('the S3 store, through the API', () => {
       fields: {
         key: `stores/${storeId}/uploads/${uploadId}.png`,
         'Content-Type': 'image/png',
+        // On AWS the lifecycle rule expires what carries this tag after a day. RustFS enforces the field (the
+        // `no tag` case) but does not store a POST's tag, so it is not read back here.
+        tagging: ORIGINAL_TAGGING,
       },
     });
     expect(await postForm(upload, bytes)).toBe(204);
@@ -127,6 +131,7 @@ describe('the S3 store, through the API', () => {
     ['a smaller file', png(50), {}],
     ['another key', png(100), { key: `stores/${randomUUID()}/uploads/${randomUUID()}.png` }],
     ['another content type', png(100), { 'Content-Type': 'image/jpeg' }],
+    ['no tag', png(100), { tagging: '<Tagging><TagSet></TagSet></Tagging>' }],
   ])('%s is refused by the bucket, and the upload stays unsent', async (_label, bytes, change) => {
     const { uploadId, upload } = await start(100);
     expect(await postForm(upload, bytes, change)).toBeGreaterThanOrEqual(400);
