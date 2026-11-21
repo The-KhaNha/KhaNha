@@ -10,10 +10,10 @@ Environments, configuration, database changes and production setup. The environm
 
 ## Environments
 
-| Environment  | Supabase project                                                                                       | Used by                                           |
-| ------------ | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------- |
-| `local`      | Docker stack from `pnpm run db:start` (`http://127.0.0.1:54321`)                                       | day-to-day development, `./start.sh`, `pnpm test` |
-| `staging`    | `xkddnlxeeizaqpefhqlv` (`https://xkddnlxeeizaqpefhqlv.supabase.co`)                                    | shared testing before release                     |
+| Environment  | Supabase project                                                                                               | Used by                                           |
+| ------------ | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| `local`      | Docker stack from `pnpm run db:start` (`http://127.0.0.1:54321`)                                               | day-to-day development, `./start.sh`, `pnpm test` |
+| `staging`    | `xkddnlxeeizaqpefhqlv` (`https://xkddnlxeeizaqpefhqlv.supabase.co`)                                            | shared testing before release                     |
 | `production` | a second hosted project; its ref is `PRODUCTION_REF` in `server/scripts/db-push.sh` (created 21 November 2026) | the live app                                      |
 
 Each environment is a separate Supabase project with its own database, users and keys. Project refs are not secret:
