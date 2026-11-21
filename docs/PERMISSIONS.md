@@ -109,6 +109,10 @@ Code: `server/src/controllers/team.controller.ts`, `server/src/services/team.ser
   token. Every refusal is 404 ([API.md](API.md#post-meinvitesaccept)); the role comes from the invite, never from the
   request.
 - The invite table is reachable only through the API ([SCHEMA.md](SCHEMA.md#store_invites)).
+- The shared link is `/join#<token>`. The token is in the URL fragment, which the browser never sends, so nginx, a CDN
+  and `Referer` never see it. `Join.tsx` reads it, removes it from the address bar with `history.replaceState` before
+  anything else, and keeps it in memory only (a reload means opening the link again). Any failure says only that the
+  link is no longer valid.
 
 Known limitation: an invite is bound to an email, but sign-up does not verify email ownership yet. Whoever holds the
 token **and** registers with that email can accept it, so the token is the real secret: the inviter shares it out of
@@ -237,7 +241,8 @@ A sign-in lasts **7 days without use**; using the app (which refreshes the 1 h a
   clears its session as on any 401. A signed-out or revoked sign-in gets the same 401 even while its access token
   (1 h) is still valid, at the latest 5 minutes after the sign-out on a process that had just checked it. Per session,
   not per user: a phone in use does not keep a stolen laptop session
-  alive. A sign-in made before the check shipped starts its week at its first request. If the check cannot run (the
+  alive. Concurrent requests of a session share one in-flight check. A token with no `session_id` claim (every
+  Supabase Auth access token has one) skips the check and is bound only by its own expiry. A sign-in made before the check shipped starts its week at its first request. If the check cannot run (the
   database call fails) the request goes on: the token is still verified, and the client cap still holds.
 - Client code: [COMPONENTS.md](COMPONENTS.md#featuresauth). Server config:
   [DEPLOYMENT.md](DEPLOYMENT.md#hosted-session-timeout).

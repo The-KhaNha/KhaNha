@@ -33,7 +33,9 @@ gets it from `supabase.auth.signInWithPassword` and supabase-js refreshes it (`j
    expired. Please sign in again." and is revoked (`auth.admin.signOut(token, 'local')`), so its refresh token stops
    working too ([PERMISSIONS.md](PERMISSIONS.md#session-lifetime)). The same 401 answers a sign-in no longer live in
    Supabase Auth (signed out or revoked) whose access token has not expired yet; a process that already checked that
-   session in the last 5 minutes lets it through until its window ends. A refusal is remembered for 5 minutes per
+   session in the last 5 minutes lets it through until its window ends. Requests of one session that arrive together
+   (a page load) share one in-flight check, so they cost one RPC. A token without a valid `session_id` claim skips
+   the check (every Supabase Auth access token carries one), so such a token is bound only by its own expiry. A refusal is remembered for 5 minutes per
    process, so a replayed token is refused without a database call. If the check itself fails, the request goes on
    (fail-open, logged `error` "Session idle check failed").
 5. Sets `req.user = { id, role }`.

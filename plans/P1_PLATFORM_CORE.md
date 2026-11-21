@@ -136,609 +136,143 @@ preamble).
 
 ## The pull requests
 
+Merged pull requests are collapsed to a summary and links; their full specifications are in this file's git history.
+
 ### PR 01 — The 429 contract and one error-details union (P1.1, P1.6)
 
 - [x] Merged
 
-| File                                    | Change                                                                                                                                                                                                                                                                                                          |
-| --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `server/src/utils/errors.ts`            | `export type ErrorDetails = ItemErrorDetails \| ReplayedOrderDetails \| FieldErrorDetails \| RateLimitDetails`; `RateLimitDetails = { kind: 'rateLimit'; retryAfterSeconds: number }`; `AppError.details?: ErrorDetails`; `rateLimited()` takes the seconds and whether this is the first refusal in the window |
-| `server/src/middleware/errorHandler.ts` | `ErrorDescription.details?: ErrorDetails` (the duplicated union goes); a 429 logs `warn` for the first refusal per key per window and `debug` after it                                                                                                                                                          |
-| `server/src/middleware/rateLimit.ts`    | the handler passes the seconds it already computes for `Retry-After`, and `rateLimit.used === limit + 1` as the first refusal                                                                                                                                                                                   |
-| `client/src/types/api.ts`               | `ApiErrorDetails` gains `kind?: 'rateLimit'` and `retryAfterSeconds?: number`                                                                                                                                                                                                                                   |
-| `plans/ROADMAP.md`                      | the P1 section matches this plan (the table above, the A3 status, the shipped interim limiter)                                                                                                                                                                                                                  |
+The 429 body now carries `retryAfterSeconds` (equal to `Retry-After`) in a `kind: 'rateLimit'` details shape, and every error's `details` is one typed union; a burst of refusals logs one `warn` per key per window (#7).
 
-Rule recorded in `docs/API.md`: existing detail shapes stay untagged; every new one carries `kind`.
-
-Tests: `test/unit/errors.safe.test.ts` (every details shape passes through the handler untouched);
-`test/unit/rate-limit.safe.test.ts` (the 429 body's `retryAfterSeconds` equals `Retry-After`; a burst of ten refusals
-logs one `warn` and nine `debug`).
-
-Docs: `docs/API.md` (details shapes, the 429 row); `docs/LOGGING.md` and CLAUDE.md §19 (429 is `warn` once per key per
-window). Intent: `--server minor --client patch`.
-
-Verify: with `RATE_LIMIT_WRITE_MAX=2`, three `PATCH /api/admin/settings` calls give a 429 with `details`, and the log
-holds one `warn`.
+Now documented in: [docs/API.md "Error details"](../docs/API.md#error-details); [docs/LOGGING.md "Levels"](../docs/LOGGING.md#levels).
 
 ### PR 02 — Outbox schema: events, subscriptions, the first schedule (P1.2)
 
 - [x] Merged
 
-Split at 692 lines: the queue wrappers and `job_failures` moved to [PR 02b](#pr-02b--queue-wrappers-and-dead-letters-p12).
+The outbox: `domain_events`, `event_subscriptions`, `emit_event`, the nightly purge, `pgmq` and `pg_cron`, and the lockdown test that every later migration is held to (#4).
 
-`/before-write`: schema-guard, NEW TABLE ×3 (nothing stores events today; `job_failures` lands in 02b).
-
-Migration `<ts>_outbox.sql`:
-
-- `create extension if not exists pgmq; create extension if not exists pg_cron;` in the schemas ADR-002 verified. The
-  `pgmq` schema is not added to `api.schemas` in `config.toml`, and `pgmq_public` is not enabled.
-- `domain_events`, `event_subscriptions` as in the roadmap (no `event_handled`); only the aggregate index on
-  `domain_events` (nothing reads by type yet).
-- `emit_event(p_type, p_aggregate_type, p_aggregate_id, p_store_id, p_payload, p_actor, p_request_id)` inserts the
-  event and sends `{ eventId, type, aggregateId, storeId, payload, actor, requestId, occurredAt }` to every queue
-  subscribed to the exact type or its family (`split_part(p_type, '.', 1) || '.*'`), once per distinct queue.
-  Returns the event id. `security definer`: the queue tables are not `service_role`'s.
-- `select pgmq.create('q_notifications')`; subscription `('order.*', 'q_notifications')`.
-- `purge_domain_events(p_now timestamptz default now(), p_keep interval default '30 days')`, scheduled
-  `cron.schedule('purge-domain-events', '17 21 * * *', …)` (21:17 UTC, 02:47 IST: off-peak).
-- RLS on every new table with no policies; `revoke all … from public, anon, authenticated`; `EXECUTE` on the
-  functions to `service_role` only. Then `npm run db:types`.
-
-Tests (`test/api/outbox.test.ts`): an event goes to an exact and a family subscription, once each; an unsubscribed
-type leaves only the event row; `purge_domain_events(p_now => now() + interval '31 days')` deletes and `'29 days'`
-keeps; `cron.job` lists the schedule. `test/api/database-lockdown.test.ts` (with the `localSql` helper) checks from the
-catalogs that every `public` table has RLS on and grants nothing to `anon`/`authenticated`, that neither can execute a
-`public` function or use the `pgmq` or `cron` schema: the guard for every later migration.
-
-Docs: `docs/SCHEMA.md` (tables, functions, extensions, the schedule); **new `docs/JOBS.md`** (the outbox model,
-queues and subscriptions, schedules, retention, a runbook) with its CLAUDE.md §6 row; `docs/PERMISSIONS.md`;
-`docs/TESTING.md` (`localSql`, the lockdown test); `docs/CONFIGURATION.md` (the 30-day retention as a platform constant
-in the migration). Intent: `--server minor`.
-
-Verify: `npm run db:reset`, the gate, `select * from cron.job`; once merged, `feat/P1` is pushed to staging
-(`npm run db:push:staging`) and confirms both extensions appear under the project's Integrations.
+Now documented in: [docs/JOBS.md "The outbox"](../docs/JOBS.md#the-outbox); [docs/JOBS.md "Schedules"](../docs/JOBS.md#schedules); [docs/SCHEMA.md "domain_events"](../docs/SCHEMA.md#domain_events); [docs/SCHEMA.md "emit_event"](../docs/SCHEMA.md#emit_event).
 
 ### PR 02b — Queue wrappers and dead letters (P1.2)
 
 - [x] Merged
 
-`/before-write`: schema-guard, NEW TABLE (`job_failures`, in PR 02's verdict for all three tables).
+`job_failures` and the `security definer` queue wrappers the worker reaches `pgmq` through (#5).
 
-Migration `<ts>_queue_wrappers.sql`:
-
-- `job_failures` as in the roadmap; RLS on, revoked from `anon` and `authenticated`.
-- Queue wrappers, `security definer`, `search_path = ''`, fully qualified `pgmq.*` calls, `EXECUTE` to `service_role`
-  only:
-  - `queue_read(p_queue, p_vt_seconds, p_qty, p_poll_seconds)` returns `(msg_id, read_ct, enqueued_at, message)`:
-    `pgmq.read_with_poll` when `p_poll_seconds > 0`, else `pgmq.read` (read_with_poll checks its deadline before
-    reading, so `0` there would never read anything);
-  - `queue_delete`; `queue_retry(p_queue, p_msg_id, p_delay_seconds)` (`pgmq.set_vt`);
-  - `queue_dead_letter(p_queue, p_msg_id, p_message, p_attempts, p_error)` deletes, and inserts `job_failures` only if
-    the delete took the message, returning whether it did;
-  - `queue_metrics(p_queue)`: depth and oldest age, for the worker's health.
-
-  Then `npm run db:types`.
-
-Tests (`test/api/queue.test.ts`): a read hides a message for its visibility timeout; `p_poll_seconds` `0` and `1` both
-read a waiting message; a retry brings it back with `read_ct + 1`; a dead letter writes `job_failures` and empties the
-queue; `queue_metrics` counts the depth. The lockdown test covers the new grants.
-
-Docs: `docs/SCHEMA.md` (`job_failures`, the wrappers); `docs/JOBS.md` (how the worker reaches the queues; the runbook's
-dead-letter rows: list open ones, replay one, close it). Intent: `--server minor`.
+Now documented in: [docs/SCHEMA.md "job_failures"](../docs/SCHEMA.md#job_failures); [docs/SCHEMA.md "Queue wrappers"](../docs/SCHEMA.md#queue-wrappers); [docs/JOBS.md "Queues and subscriptions"](../docs/JOBS.md#queues-and-subscriptions).
 
 ### PR 03 — The job runner (P1.2)
 
 - [x] Merged
 
-Split at 786 lines: the error handler's `invariant: true` on a request's 500 moved to PR 04 (the plan's seam).
+The job runner: handler contract, retry with backoff, dead letters and graceful abort, with `q_notifications`' first handler (#12).
 
-| File                         | Change                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `server/src/jobs/runner.ts`  | the `JobHandler<T>` / `QueueMessage<T>` / `JobContext` types (the roadmap's, with `concurrency` as a field); pure `backoffSeconds(attempt, { baseSec, maxSec }, random)` = `min(max, base·2^(attempt−1))` ±20%; `runQueue(handler, { signal, log, now, random })`: long-poll `queue_read` → a child logger `{ queue, jobId, eventId, eventType, attempt }` per message → handle → `queue_delete`; `RetryableError` → `queue_retry` with the backoff; `PermanentError`, any other error, or the last attempt → `queue_dead_letter` and one `error` line. A failing queue RPC (database unreachable) logs `warn` once and backs off 1 s → 5 s. The abort signal stops reading; in-flight handlers finish |
-| `server/src/jobs/notify.ts`  | the `q_notifications` handler: one `info` `Order event` with `{ eventType, orderId }`. P6.3 replaces the body                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `server/src/utils/errors.ts` | `RetryableError`, `PermanentError`; `InvariantError` (P0.5's deferred class, a programmer error) with its first throwers, the loop's impossible states (a message the database reports as never read)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-
-`/before-write`: reuse-scout, expected NO MATCH (nothing loops over work today).
-
-Tests: `test/unit/backoff.safe.test.ts` (growth, cap, jitter bounds with a fixed random); `test/api/runner.test.ts`
-(a real queue, the runner in-process, a 1 s visibility timeout): success deletes the message; a retryable failure
-succeeds on attempt 2; a handler that always fails leaves one `job_failures` row after `maxAttempts` and exactly one
-`error` line; a handler that never settles, then an abort, then a second runner: the message comes back after the
-visibility timeout with `attempt = 2` and is handled once; abort waits for in-flight handlers.
-
-Docs: `docs/JOBS.md` (the handler contract, the retry policy, "handlers are idempotent by natural keys", log
-fields); `docs/LOGGING.md` (handled = `debug` with `durationMs`, retry = `warn`, dead letter = `error`, empty polls
-never logged); `docs/BACKEND_STRUCTURE.md` (`jobs/`). Intent: `--server patch` (no process runs it yet).
-
-Split seam if over 750 lines: the `InvariantError` mapping moves to PR 04.
+Now documented in: [docs/JOBS.md "Handlers and the runner"](../docs/JOBS.md#handlers-and-the-runner); [docs/LOGGING.md "Jobs"](../docs/LOGGING.md#jobs); [docs/BACKEND_STRUCTURE.md "jobs/"](../docs/BACKEND_STRUCTURE.md#jobs).
 
 ### PR 04 — The worker process (P1.2)
 
 - [x] Merged
 
-As built, the health rule counts progress rather than polls: a queue is healthy while its loop made progress
-(a read returned, a failed one too, or a job finished; `runQueue`'s `onActive`) within
-`max(3 × POLL_SECONDS, visibilityTimeoutSec)`. With every slot busy the loop does not read, and a database outage
-must not restart the worker: liveness only, like the API's `/api/health`. Depth and age come from `queue_metrics`
-(1 s, `null` when it does not answer). Two fixes found while verifying: `onShutdown` keeps catching repeat signals
-(tsx and a terminal's Ctrl+C deliver two, and an uncaught second one killed the process mid-stop), and `start.sh`
-stops whole process trees (it left `tsx watch` behind). The shutdown is shared as `utils/shutdown.ts`
-(`onShutdown`, `SHUTDOWN_DEADLINE_MS`). The runner's 5 s long-poll is replaced by quick reads and a 2 s wait in the
-worker (`POLL_SECONDS`), so an idle worker holds no database connection (risk "Waiting in the database"; JOBS.md
-"Capacity").
+The worker process ([ADR-005](../docs/adr/005-modular-monolith-three-processes.md)): one `runQueue` per handler, a `/health` endpoint on `WORKER_HEALTH_PORT`, shared graceful shutdown, no database connection held while idle (#14).
 
-Also carries PR 03's split-off: `server/src/middleware/errorHandler.ts` logs an `InvariantError`'s 500 with
-`invariant: true`, with its case in `test/unit/errors.safe.test.ts`.
-
-Implements [ADR-005](../docs/adr/005-modular-monolith-three-processes.md) (accepted 24 October 2026).
-
-| File                                             | Change                                                                                                                                                                                                                                                                                                                                      |
-| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `server/src/worker.ts`                           | entry: the handler list (`notify`), one `runQueue` per handler; `GET /health` on `WORKER_HEALTH_PORT` with `node:http` (200 while every queue polled within 3× its poll window, JSON with the last poll, depth and oldest age per queue; else 503); SIGTERM / SIGINT abort the loops and exit after in-flight work or the shutdown deadline |
-| `server/src/server.ts`, `server/src/utils/…`     | `SHUTDOWN_DEADLINE_MS` exported once and shared by both entry points                                                                                                                                                                                                                                                                        |
-| `server/src/utils/env.ts`, `server/.env.example` | `WORKER_HEALTH_PORT` (default 8001)                                                                                                                                                                                                                                                                                                         |
-| `server/package.json`                            | `dev:worker` (`tsx watch src/worker.ts`), `start:worker` (`node dist/src/worker.js`)                                                                                                                                                                                                                                                        |
-| `start.sh`                                       | starts the worker next to the API (`.logs/worker.log`), probes and frees `WORKER_HEALTH_PORT` like 8000 and 5173                                                                                                                                                                                                                            |
-| `compose.yaml`                                   | `worker`: the api image, `command: ["node", "dist/src/worker.js"]`, healthcheck on `/health`; the `reconciler` placeholder comment says P5.10 (scheduled jobs are pg_cron)                                                                                                                                                                  |
-| `.claude/hooks/major-change-gate.js`             | `server/src/jobs/` and `server/src/worker.ts` are major-change paths (its `--self-test` covers them)                                                                                                                                                                                                                                        |
-
-Tests: `test/unit/worker-health.safe.test.ts` (healthy, then 503 once a queue's loop is quiet past its limit, with an
-injected clock), `test/unit/shutdown.safe.test.ts` (one stop, repeats still caught, the deadline, a failed stop), a
-`runner.test.ts` case for `onActive`, and `app-breaker` E5 (`start.sh` stops cleanly and leaves nothing behind).
-
-Docs: CLAUDE.md §3 (scripts), §4 (`jobs/`, the `worker.ts` entry), §17 (paths), §18 (the worker is long-running;
-`start.sh` runs it); `docs/DEPLOYMENT.md` (env, the compose row, "the worker runs wherever the API runs");
-`docs/ARCHITECTURE.md` (the worker in the containers diagram); `docs/BACKEND_STRUCTURE.md`; README (the worker log).
-Intent: `--server minor`.
-
-Verify: `./start.sh` runs three processes; `curl localhost:8001/health`; `docker compose up -d` shows `worker`
-healthy; `kill -TERM` during a slow handler logs a clean stop.
+Now documented in: [docs/JOBS.md "The worker process"](../docs/JOBS.md#the-worker-process); [docs/LOGGING.md "The worker process"](../docs/LOGGING.md#the-worker-process); [docs/BACKEND_STRUCTURE.md "jobs/"](../docs/BACKEND_STRUCTURE.md#jobs).
 
 ### PR 05 — Today's transitions emit events and carry their actor; retry-safe statuses (P1.2, P1.4)
 
 - [x] Merged
 
-As built: the new parameters default to null on both functions, so the API already deployed (which calls them by
-name without them) keeps working between the migration and the new API; push the migration first. The repeat
-rule needs no list of staff targets in SQL: a repeat counts when the current status equals `p_next_status` and
-`p_from_statuses` (the API's `ALLOWED_TRANSITIONS`) is not empty, so `PLACED → PLACED` stays 409.
-`update_order_status` now locks the row (`for update`) before deciding, which also gives the event's `from`.
+`place_order` and `update_order_status` take the actor and request id and emit the order events in their transaction; a repeated staff transition answers 200 and changes nothing (#15).
 
-Migration `<ts>_transitions_emit_events.sql`, both functions dropped and recreated (a new parameter changes the
-signature; re-granted to `service_role` only, as the idempotency migration did):
-
-- `place_order(…, p_actor jsonb, p_request_id text)`: sets `app.actor` and `app.request_id`; emits `order.placed`
-  with `{ orderNumber }` before returning (no amount: payloads carry ids and statuses). The idempotent replay path
-  emits nothing.
-- `update_order_status(p_order_id, p_next_status, p_from_statuses, p_actor jsonb, p_request_id text)`: sets the same
-  two values; emits `order.<status in lower case>` with `{ orderNumber, from, to }`. **A repeat of a transition that
-  already happened** (the current status is `p_next_status`, and `p_next_status` is a staff target) returns without
-  changing anything, emitting anything or moving stock (D2). `PLACED → PLACED` stays 409.
-
-Server: `createOrder(user, input, ctx)` and `updateOrderStatus(id, next, ctx)` take `ctx: { actor, requestId }`,
-built once in `order.controller.ts` from `req.user` and `req.id` (the type lives in `types/auth.ts`).
-
-Tests (`test/api/order-events.test.ts`): placing an order writes one `order.placed` event with the customer as actor
-and the request's `x-request-id`, and one `q_notifications` message that an in-process runner consumes; an
-`INSUFFICIENT_STOCK` refusal leaves no event and no message (the roadmap's "a transaction that raises leaves no event
-behind"); an idempotent replay emits nothing; every staff transition emits its A5 event with the staff actor; a
-repeated `READY` answers 200 with the order and emits nothing; cancelling twice restores stock once. The 5×5 matrix in
-`orders.test.ts` changes on purpose: the diagonal of staff targets becomes 200.
-
-Docs: `docs/API.md` (`PATCH /orders/:id/status`: a repeat answers 200); `docs/SCHEMA.md` (signatures);
-`docs/ARCHITECTURE.md` (the outbox sequence: transition → event → queue → worker); `docs/JOBS.md` (the order events);
-CLAUDE.md §10 ("every transition function sets `app.actor` and `app.request_id` and calls `emit_event`"), §14 (the
-lifecycle walk checks `domain_events`; a repeated transition is 200). Intent: `--server minor`.
-
-Split seam if over 750 lines: the retry-safe repeat becomes its own PR with a second `create or replace` of
-`update_order_status` (same signature, so no re-grant).
+Now documented in: [docs/JOBS.md "Order events"](../docs/JOBS.md#order-events); [docs/SCHEMA.md "update_order_status"](../docs/SCHEMA.md#update_order_status); [docs/SCHEMA.md "place_order"](../docs/SCHEMA.md#place_order); [docs/ARCHITECTURE.md "8.3 Inside update_order_status"](../docs/ARCHITECTURE.md#83-inside-update_order_status-and-two-staff-pressing-at-once).
 
 ### PR 06 — Audit log (P1.3)
 
 - [x] Merged
 
-As built: the actor never comes from `updated_by`. A later SQL edit leaves the last admin's id there, so that
-fallback would have pinned the edit on them. A table write through the Data API names its actor with the `x-actor`
-and `x-request-id` headers instead (PostgREST hands them to the transaction as `request.headers`); settings rows now
-carry their request id too. `actor_role` comes from the actor itself (the API read it from `profiles` on that
-request), so the trigger reads no other table. `service_role` gets `select` only: the trigger writes as the owner, so
-the secret key cannot insert, edit or remove a row (it still vouches for the actor it sends). The publishable-key check is the lockdown test's, which covers every table.
+The append-only `audit_log` and the `audit_row_change()` trigger on the audited tables; the actor comes from `app.actor` or the `x-actor` headers, else `SYSTEM` (#17).
 
-`/before-write`: schema-guard, expected NEW TABLE (`domain_events` is trimmed at 30 days; the audit record is kept
-13 months and covers changes that are not events).
-
-Migration `<ts>_audit_log.sql`:
-
-- `actor_type` enum, `audit_log` and its three indexes as in the roadmap.
-- Append-only twice over: `revoke update, delete, truncate on audit_log from service_role` (and from everyone else),
-  and row and statement triggers that raise on update, delete and truncate.
-- `audit_row_change()` (`security definer`, `search_path = ''`): the diff of the watched columns (`TG_ARGV`: column
-  names, or `*` for every column but `updated_at` / `updated_by`) as `{ column: [old, new] }`; the actor from
-  `app.actor`, else `{ type: USER, id: new.updated_by }` when the row has one, else `SYSTEM` (SQL editor, seed,
-  migrations); `actor_role` from `profiles` at that moment; `request_id` from `app.request_id`.
-- Triggers, `after update … for each row when (…)`: `site_settings` (`*`), `orders` (`status`), `profiles` (`role`),
-  `menu_items` (`name`, `price`, `is_available`, `image_url`, `category`; never `stock_quantity`). PR 09 adds
-  `price_paise` to the watched list and PR 16 drops `price` from it.
-
-Tests (`test/api/audit.test.ts`): `PATCH /api/admin/settings` writes one row naming the admin; a staff status change
-writes one row with the staff actor and the request id; placing an order writes none; a role change through the
-secret key is `SYSTEM`; `update` and `delete` on `audit_log` fail through the secret key; the publishable key cannot
-read it.
-
-Docs: `docs/SCHEMA.md`; `docs/PERMISSIONS.md` (append-only, who reads); `docs/ARCHITECTURE.md` (logs, events and
-audit: three records, three purposes, three retentions); CLAUDE.md §10 ("an audited table is written through an RPC
-that sets `app.actor`, or carries `updated_by`"). Intent: `--server minor`.
-
-Verify: once merged and pushed to staging from `feat/P1`, an `update` on `audit_log` with the staging secret
-key fails (the roadmap's
-"verify service_role's privileges on hosted Supabase").
+Now documented in: [docs/SCHEMA.md "audit_log"](../docs/SCHEMA.md#audit_log); [docs/SCHEMA.md "audit_row_change"](../docs/SCHEMA.md#audit_row_change).
 
 ### PR 07 — `GET /api/admin/audit` (P1.3)
 
 - [x] Merged
 
-As built: `limit` is defaulted in `listAudit`, not by zod: a required key would not fit Express's `ParsedQs`-typed
-handlers. `entityId` needs `entityType` (ids repeat across types, and the entity index leads with the type). `from` is
-inclusive and `to` exclusive, and `from` must be before `to`. The service reads one row past the page, so `nextCursor`
-is null exactly on the last page. The response is `no-store` (it must not outlive the admin's sign-out).
-Migration `20261102101707_audit_log_id_indexes.sql`: PR 06's indexes ended in `occurred_at desc`, so every filtered
-page sorted all its matches; they now end in `id desc`, plus `(entity_type, id desc)` for a type filter alone. The
-P9.5 purge will want its own `occurred_at` index. Push it to staging (`npm run db:push:staging`) before the API ships.
+`GET /api/admin/audit`: a keyset-paged, filterable, `no-store` read of the audit log for admins (#19).
 
-Recipe: `/new-endpoint`. `/before-write`: reuse-scout, expected NO MATCH for the service, REUSE for the admin
-router, `requireAdmin` and the serializer pattern.
-
-- `GET /api/admin/audit?entityType&entityId&actorId&from&to&before&limit` (ADMIN). `entityType` from the closed list
-  of audited entities; `before` is the keyset cursor (`id < before`, newest first); `limit` 1–100, default 50.
-- `schemas/admin.schema.ts` (`auditQuerySchema`), `services/audit.service.ts` (`listAudit`, never `cached()`),
-  `admin.controller.ts`, `admin.routes.ts`; `AuditEntryDto` + `toAuditEntryDto`; the client `AuditEntry` type (no UI
-  until P7.4).
-- Response `{ entries, nextCursor }`, `nextCursor` null on the last page.
-
-Tests (`test/api/audit-read.test.ts`): `testAuthMatrix` (401, customer 403, staff 403, admin 200); each filter;
-a cursor walk over three pages with no duplicate or gap; out-of-bounds `limit` and malformed dates 400.
-
-Docs: `docs/API.md`, `docs/PERMISSIONS.md`, `docs/BACKEND_STRUCTURE.md`. Intent: `--server minor`.
+Now documented in: [docs/API.md "GET /admin/audit"](../docs/API.md#get-adminaudit); [docs/SCHEMA.md "audit_log"](../docs/SCHEMA.md#audit_log).
 
 ### PR 08 — Order snapshots v2 (P1.5)
 
 - [x] Merged
 
-> **As built:** the backfill runs with `orders_set_updated_at` disabled, so past orders keep their `updatedAt`.
-> `admin.test.ts` and `caching-gaps.test.ts`, which insert orders directly, now pass a `store_name`. `selectOrders()`
-> joins only `order_items` now.
+Orders snapshot the item photo, item category and store name at order time, so a later menu or store edit never changes a past order, and the polled order read drops two joins (#20).
 
-Migration `<ts>_order_snapshots.sql`: `order_items.image_url`, `order_items.category`, `orders.store_name`; backfill
-from today's `menu_items` and `stores` (the best copy left); then `set not null`. `create or replace place_order`
-(PR 05's signature, so grants stay) writes the three snapshots, read inside the function: the API's arguments do not
-change.
-
-Server: `selectOrders()` reads `store_id`, `store_name` and `order_items.image_url` and drops the `menu_items
-(image_url)` and `stores (id, name)` joins (two fewer joins on every polled order read). The DTOs do not change:
-`store` is `{ id: store_id, name: store_name }`. `category` is stored for analytics (P7.1) and not sent.
-
-Tests: `test/api/order-snapshots.test.ts` (destructive, `resetDemoData()` after): place an order, change the item's
-price, name and photo and the store's name, and `GET /api/orders/:id` is deep-equal to the response before;
-`test/unit/serializers.safe.test.ts` for the new mapping.
-
-Docs: `docs/SCHEMA.md`; `docs/API.md` (`OrderItemDto.imageUrl` is the photo at order time, `store.name` the name at
-order time). Intent: `--server minor`.
-
-Verify: the deployed API (old code) still reads orders after the migration, because the columns it joins are
-untouched; the new API needs the migration first, as always.
+Now documented in: [docs/SCHEMA.md "orders"](../docs/SCHEMA.md#orders); [docs/SCHEMA.md "order_items"](../docs/SCHEMA.md#order_items); [docs/API.md "GET /orders"](../docs/API.md#get-orders).
 
 ### PR 09 — Money in paise: expand (ADR-004)
 
 - [x] Merged
 
-> **As built:** `place_order` reads every line's `menu_items` row once (into a jsonb array) and takes the total and
-> the lines from that one read, so an item without a stock count (not locked by the stock loop) cannot change price
-> between the two. The API no longer sends a price in `p_lines`. Tests that write `orders` or `menu_items` directly
-> (`admin`, `caching-gaps`, `menu-cap`, `order-snapshots`) now write the paise columns too; `audit.test.ts` checks that a
-> `price_paise`-only edit is audited. The class guard also scans `server/scripts`. `docs/ARCHITECTURE.md` (the
-> checkout diagrams and the ER diagram) is updated with the owning docs.
->
-> Two additions, approved during review. **Expected price check:** the API charged from its own read and
-> `place_order` stored from a later one, so a price change in between charged one amount and stored another. The API
-> now sends each line's charged price as `unit_price_paise`; `place_order` compares it with the same read it stores
-> from and raises `PRICE_CHANGED` (`{ menuItemId, name, price }`, rolling back the stock), which the API answers 409
-> `PRICE_CHANGED`, no `details`, the message naming the item and its new price. A deployed-API call without
-> `unit_price_paise` is not checked. **Sync trigger:** `menu_items_sync_price` (before insert or update of `price`,
-> `price_paise`; executable by nobody) derives whichever price column was not written and refuses both written and
-> disagreeing, so the deployed API's rupee-only writes keep working and the columns cannot drift. PR 16 drops the
-> trigger with the rupee column. **Client:** on `PRICE_CHANGED` the checkout reloads the menu and takes the new prices into
-> the cart (`cartStore.syncPrices`), so the next Pay shows the amount it charges.
+The expand step of [ADR-004](../docs/adr/004-rupees-and-paise.md): paise columns beside the rupee ones, `place_order` pricing every line from `menu_items.price_paise`, an expected-price check that refuses a stale price with 409 `PRICE_CHANGED`, and `utils/money.ts` as the only converter (#27, with the checkout half in #29).
 
-[ADR-004](../docs/adr/004-rupees-and-paise.md) as amended (D8). `/before-write`: schema-guard, expected EXTEND
-(`_paise` columns beside the rupee ones, expand → migrate → contract).
-
-Migration `<ts>_money_paise.sql`:
-
-- `menu_items.price_paise`, `orders.total_paise`, `order_items.unit_price_paise`, `order_items.line_total_paise`, all
-  `bigint`; backfilled ×100; then `not null`, `check (… >= 0)` and `check (… % 100 = 0)` (whole rupees while the
-  API's rupee fields exist).
-- `create or replace place_order` (PR 08's signature): **prices each line from `menu_items.price_paise` inside the
-  function** and ignores any price in `p_lines`, so the API still deployed during the migration keeps working and no
-  caller can pass a stale or tampered price; writes the paise columns and, until PR 16, the rupee columns too, so the
-  deployed API's reads stay right.
-- The audit trigger on `menu_items` watches `price_paise` as well.
-
-| File                                                      | Change                                                                                                                                  |
-| --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `server/src/utils/money.ts`                               | `paiseToRupees`, `rupeesToPaise`; the only place either conversion happens                                                              |
-| `server/src/utils/serializers.ts`                         | `price`, `total`, `unitPrice` and `lineTotal` are read from the paise columns and converted; `selectOrders()` selects the paise columns |
-| `server/src/services/order.service.ts`, `menu.service.ts` | prices and the total in paise internally (`simulatePayment` takes paise); the rupee fields only at the serializer                       |
-| `server/scripts/seed-data.ts`, `seed.ts`                  | prices in paise; the rupee column written beside it until PR 16                                                                         |
-
-Tests: `test/unit/money.safe.test.ts`; `test/unit/money-boundary.safe.test.ts`, the class guard: it scans
-`server/src` and fails on `* 100` or `/ 100` outside `money.ts`; `orders.test.ts` and `menu.safe.test.ts` pass
-unchanged (the contract did not move); a direct `place_order` call with a tampered `unit_price` in `p_lines` still
-charges the menu price; inserting 4950 paise into `price_paise` fails the whole-rupee check.
-
-Docs: `docs/SCHEMA.md` (columns, checks, the unit rule); `docs/API.md` (amounts are stored in paise and sent in
-rupees; nothing changes for clients); `docs/BACKEND_STRUCTURE.md` (`utils/money.ts`); CLAUDE.md §10 ("money is paise in
-the database; `utils/money.ts` is the only converter"). Intent: `--server minor`.
+Now documented in: [docs/SCHEMA.md "place_order"](../docs/SCHEMA.md#place_order); [docs/ARCHITECTURE.md "6.2 Inside place_order"](../docs/ARCHITECTURE.md#62-inside-place_order); [docs/API.md "POST /orders"](../docs/API.md#post-orders); [docs/BACKEND_STRUCTURE.md "utils/"](../docs/BACKEND_STRUCTURE.md#utils).
 
 ### PR 10 — `POST /api/client-errors` (P1.6)
 
 - [x] Merged
 
-As built: a blank env value now counts as unset (`utils/env.ts`), found while adding `RATE_LIMIT_CLIENT_ERRORS_MAX`:
-`z.coerce` read `RATE_LIMIT_IP_MAX=` as 0, which turned the limit off; `env-blank.safe.test.ts` guards it. `clientVersion` is not passed to the `warn` call, because `req.log` already carries it (pino-http
-`customProps` in `app.ts`), so it is written once rather than as a duplicate key; the line adds `at`, so a report
-sent late (a batch after an outage) still says when it happened. The limiter counts requests (each up to 5 reports),
-so the test's 31st report is the 31st one-report request. The test's own app copy stubs `getSettings` with
-`min_client_version` 9.0.0: the seeded `0.0.0` gates nothing, so it could not tell a mount after the gate apart.
-No route file: the route sits in `routes/index.ts` next to `/config`, which it shares the gate exemption with.
+`POST /api/client-errors`: scrubbed, bounded browser error reports, rate limited per address and mounted before the client-version gate, logged as `warn` (#21).
 
-Recipe: `/new-endpoint`. Self-reported, not Sentry (D5); Sentry is a later, low-priority roadmap item (P10.4).
-
-- Body (`schemas/clientErrors.schema.ts`, strict): `{ reports: [{ kind: 'error' | 'unhandledrejection' | 'render',
-message (≤ 500), stack? (≤ 3500), route (≤ 200), at }] }`, 1–5 reports. A transform drops anything shaped like a
-  JWT, an `sb_` key or a `Bearer` value from `message` and `stack`, behind the client's own scrub (PR 12):
-  `REDACT_PATHS` covers keys, not strings.
-- Mounted in `routes/index.ts` **before** the client-version gate (a stale tab's errors are the ones worth seeing) and
-  without `requireAuth` (errors happen before sign-in). `clientErrorLimiter`: per IP, `RATE_LIMIT_CLIENT_ERRORS_MAX`
-  (default 30 per window).
-- One `warn` `Client error` per report with `{ clientVersion, route, kind, message, stack }`; answers 204. Never
-  `error`: a client cannot page anyone.
-
-Tests (`test/api/client-errors.safe.test.ts`, logs only): 204; six reports, an oversized stack and an unknown field
-are 400; the 31st report in a window is 429; an outdated `X-Client-Version` still gets 204; a token-shaped string never
-reaches the log.
-
-Docs: `docs/API.md`; `docs/LOGGING.md` ("Client error reports") and CLAUDE.md §19; `docs/CONFIGURATION.md`,
-`docs/DEPLOYMENT.md` and `server/.env.example` (`RATE_LIMIT_CLIENT_ERRORS_MAX`); `docs/BACKEND_STRUCTURE.md`. Intent:
-`--server minor`.
+Now documented in: [docs/API.md "POST /client-errors"](../docs/API.md#post-client-errors); [docs/LOGGING.md "Client error reports"](../docs/LOGGING.md#client-error-reports).
 
 ### PR 11 — `client_error_sample_percent` through to `/api/config` (P1.6)
 
 - [x] Merged
 
-The P0.4 pattern (P0 PRs 13 and 14): migration column `client_error_sample_percent integer not null default 100
-check (… between 0 and 100)`; `npm run db:types`; `settings.service.ts` `COLUMN`, `updateSettingsSchema`,
-`toSiteSettingsDto`, `SiteSettingsDto` / `SiteSettings`; `ConfigDto.clientErrors: { samplePercent }` (additive);
-`client/src/config/fallbacks.json`; a `settingsRules.ts` row (the admin form renders from it). PR 06's `*` trigger
-audits the new column with no change.
+The `client_error_sample_percent` site setting, carried through the admin form to `GET /api/config` as `clientErrors.samplePercent` (#25).
 
-Tests: `admin.test.ts` (bounds), `config.test.ts` (the parity check already compares the whole shape),
-`settingsRules.test.ts`.
-
-Docs: `docs/SCHEMA.md`, `docs/API.md`, `docs/CONFIGURATION.md`. Intent: `--server minor --client patch`.
+Now documented in: [docs/API.md "GET /config"](../docs/API.md#get-config); [docs/SCHEMA.md "site_settings"](../docs/SCHEMA.md#site_settings).
 
 ### PR 12 — The error reporter, and render errors told apart from chunk failures (P1.6)
 
 - [x] Merged
 
-Implementation completed on `feat/p1-12-error-reporter` (3 November 2026). Client typecheck, lint, 378 unit tests,
-the container build, bundle and dist-secret checks passed. Full Chromium and WebKit smokes passed (35 and 27
-cases, with existing font/engine skips); the final three reporter cases passed separately in both engines.
-Page, shell and chunk fallbacks passed the throttled phone/desktop visual gate, 320–1440 px, 200% text and 44 px
-controls. The local API accepted scrubbed render reports and logged route, stack and client version.
-Refactor, logging, test/docs, performance and independent code/security reviews found no remaining blockers.
-Verification completed the same day on `0040f5d`, in a fresh macOS environment:
+The browser error reporter and `PageBoundary` scopes: a crash is reported and shown as "Something went wrong", while a failed chunk keeps the "couldn't reach the server" copy, and a crash in the shell no longer blanks the page (#30).
 
-- **Security scan** of `git diff origin/feat/P1...HEAD` (the `security-review` scan, which stands in for the
-  `claude-security` plugin that is not installed): no findings. Crash reports go out with `auth: false`, the client
-  and the server each scrub tokens, keys, emails and phones on their own, and no error text reaches the page.
-- **Web Vitals A/B**, production build, 360×640, Slow 4G, 4× CPU, median of 3, against the base `572a359`: `/` LCP
-  1456 → 1432 ms, `/menu` LCP 1536 → 1552 ms, CLS 0 / 0.0001 unchanged, `/menu` INP 48 → 48 ms; all within
-  `client/perf-budget.json` and within noise of the base
-  ([`docs/PERF_BASELINE.md`](../docs/PERF_BASELINE.md#web-vitals-ab-2026-11-03-0040f5d-against-its-base-572a359)).
-- **Closing `/break` follow-ups in this PR:** the scrub had regex lookbehind, which Safari before 16.4 cannot compile, so
-  every report from those phones was dropped (now a captured head character, guarded by `lib/regexSupport.test.ts`
-  over all client source); URL-encoded tokens (`refresh_token%3D…`) and emails with `%` or `'` are scrubbed; the
-  report bounds live in `LIMITS.clientErrors` (CodeRabbit). A production build sends exactly one report per render
-  crash (the dev build's three come from React's development double render).
-- **Gate:** client typecheck, lint and 378 unit tests; Chromium and WebKit smokes, 68 passed with the 12 existing
-  engine/font skips; `build:container`, `check:bundle` (89.8 KB initial) and `check:dist-secrets` passed.
-
-#### PR 12 handoff
-
-Branch: `feat/p1-12-error-reporter`. PR target: `feat/P1`. Implementation and verification are complete; the PR is
-in review. No migration, server version bump or minimum-client-version bump is needed.
-
-Remaining work, in order:
-
-1. Address review findings. The user merges into `feat/P1`; tick PR 12's Merged box only after that merge is
-   confirmed.
-2. After P12 merges, follow [Closing P1](#closing-p1): on the updated phase branch, validate both packages, run
-   Chromium e2e and `/break`, and resolve failures before the phase PR into `dev`. PR 16 goes into `feat/P1` before
-   that phase PR (user decision of 9 November 2026: nothing reaches production until P8). The separate pnpm migration follows the phase merge
-   ([roadmap P1.8](ROADMAP.md#p18-tooling-pnpm-after-the-phase-merges)). Never apply production migrations here.
-
-Preserve the regression guards for complete Authorization/Cookie redaction, delayed zero-percent sampling,
-chunk failures excluded from the global handler, and bounded classification of oversized error messages. Those
-four bugs were reproduced before their fixes. The temporary fault injection, screenshots, traces and local test
-servers have been removed or stopped; no deliberate branch-intent flags were found.
-
-`/before-write`: reuse-scout, expected **EXTEND `PageBoundary`** rather than the roadmap's new `AppErrorBoundary`
-(CLAUDE.md §5). The file list assumes EXTEND.
-
-| File                                        | Change                                                                                                                                                                                                                                                                                                                                         |
-| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `client/src/lib/errorReporter.ts`           | `installErrorReporter()` (`error`, `unhandledrejection`), `reportError(error, kind)`, `setSamplePercent(n)`; at most 5 reports per page load, 4 KB each; query strings, `eyJ…` tokens, `sb_…` keys and `Bearer …` scrubbed; route = `location.pathname`; sampled once per page load; batched and flushed on a short debounce and on `pagehide` |
-| `client/src/services/clientErrors.ts`       | `sendClientErrors(reports)`: `request()` with `auth: false` and `keepalive: true`, so it survives the page closing and keeps the `X-Client-Version` header; never throws, never retries, never reports its own failure                                                                                                                         |
-| `client/src/services/api.ts`                | `RequestOptions.keepalive`                                                                                                                                                                                                                                                                                                                     |
-| `client/src/components/PageBoundary.tsx`    | **fixes a bug:** today every caught error shows "We couldn't reach the server", including a render bug inside a page. A failed chunk import keeps that copy; any other error is reported (`reportError(error, 'render')`) and shows "Something went wrong" with Reload. Gains `scope: 'page' \| 'app'`                                         |
-| `client/src/App.tsx`, `client/src/main.tsx` | `installErrorReporter()` first in `main.tsx`; `<PageBoundary scope="app">` around the shell, so a crash in the nav or header no longer blanks the page; one effect passes `useConfig().clientErrors.samplePercent` to the reporter                                                                                                             |
-
-Budget: the reporter sits in the initial chunk and stays under 1 KB gzip (`npm run check:bundle`).
-
-Tests: `lib/errorReporter.test.ts` (the cap, the 4 KB cut, the scrub, sampling at 0 and 100, one send per batch, a
-failed send swallowed); `PageBoundary.test.tsx` (a chunk error keeps the unreachable copy and reports nothing; a render
-error reports once and shows the bug copy; `scope="app"` has no skeleton). The class guard: the scrub test runs over
-every token shape that `REDACT_PATHS` names.
-
-Docs: `docs/COMPONENTS.md` (`PageBoundary` scopes, `errorReporter`); `docs/FRONTEND_STRUCTURE.md`
-(`services/clientErrors.ts`, the root boundary); `docs/LOGGING.md` (the client half). Intent: `--client minor`.
-
-Visual gate: the bug fallback at 390 px (Slow 4G, 4× CPU) and 1280 px, forced with a temporary `throw` in `MenuPage`
-that is removed before commit. Done when that throw, on the throttled phone profile, shows up in the server log with
-the client version, the route and a stack.
+Now documented in: [docs/LOGGING.md "Client error reports"](../docs/LOGGING.md#client-error-reports); [docs/COMPONENTS.md "Layout and navigation"](../docs/COMPONENTS.md#layout-and-navigation); [docs/FRONTEND_STRUCTURE.md](../docs/FRONTEND_STRUCTURE.md).
 
 ### PR 13 — Feature flags: table, evaluation, the admin flip (P1.7)
 
 - [x] Merged
 
-As built: `audit_row_change()` took `entity_id` from the row's `id`, and `feature_flags` is keyed by `key`, so the
-migration redefines it (`create or replace`, same body) with `coalesce(id, key)`; `AUDIT_ENTITY_TYPES` gains
-`feature_flag`. `rules` is a strict zod object, both on the PATCH and when read: a misspelt key (`storeId`) is a 400,
-or turns a hand-edited flag off, instead of being stripped into "everyone". Lists need at least one entry (`{}` clears
-targeting). The percentage reads the first four bytes of the hash, mod 100. `setFlag(key, input, ctx)` takes the
-request context, like `updateSettings`. Nothing calls `isEnabled` yet, so the store-only done-when is tested on
-`isEnabled` directly. Push the migration to staging before the API ships.
+Feature flags: the `feature_flags` table, pure evaluation (`enabled`, stores, roles, stable percentage), the cached read and `PATCH /api/admin/flags/:key`, which audits who flipped a flag (#22).
 
-`/before-write`: schema-guard, expected NEW TABLE; reuse-scout, expected REUSE `cached()` / `invalidate()` and the
-admin router.
-
-- Migration `<ts>_feature_flags.sql`: the roadmap's table; RLS on, `service_role` only; `audit_row_change('*')`. No
-  rows: each flag ships in the migration of the phase that uses it.
-- `services/flags.service.ts`: pure `evaluateFlag(flag, { userId, role, storeId })` (`enabled`, then `storeIds`, then
-  `roles`, then a stable `percent` from the first bytes of `sha256(key + ':' + userId)`; no user means not in the
-  percentage); `rules` parsed with zod when read, so a hand-edited malformed rule is off and logs one `warn`;
-  `getFlags()` through `cached('feature_flags', PUBLIC_READ_TTL_MS, …)` (flags are not user data; evaluation is per
-  caller); `isEnabled(key, ctx)`, an unknown key off; `setFlag(admin, key, input)` updates with `updated_by` and calls
-  `invalidate('feature_flags')`.
-- `PATCH /api/admin/flags/:key` (ADMIN) with `{ enabled?, clientVisible?, rules? }` → `FeatureFlagDto` (both sides).
-  An unknown key is 404. No list endpoint until the P7.4 page.
-
-Tests: `test/unit/flags.safe.test.ts` (each rule alone and combined; the percentage is stable per user and within ±3%
-of target over 10 000 ids; a malformed rule is off); `test/api/flags.test.ts` (a second store inserted for the test: a
-flag limited to one store is on for that store only, the roadmap's done-when; `testAuthMatrix` on the PATCH; the
-cache test that fails without `invalidate`; the audit row names the admin who flipped it).
-
-Docs: `docs/SCHEMA.md`; `docs/API.md`; `docs/PERMISSIONS.md`; `docs/CONFIGURATION.md` (flags as their own kind of
-setting); `docs/BACKEND_STRUCTURE.md`; CLAUDE.md §2c (flags read through `cached()`, invalidated by the flip). Intent:
-`--server minor --client patch`.
-
-Split seam if over 750 lines: the admin PATCH and its matrix move to their own PR, and the cache test waits for it.
+Now documented in: [docs/API.md "PATCH /admin/flags/:key"](../docs/API.md#patch-adminflagskey); [docs/SCHEMA.md "feature_flags"](../docs/SCHEMA.md#feature_flags); [docs/CONFIGURATION.md "Feature flags"](../docs/CONFIGURATION.md#feature-flags).
 
 ### PR 14 — Client-visible flags in `/api/config` (P1.7)
 
 - [x] Merged
 
-As built: `Flag` gains `clientVisible` (`getFlags()` selects `client_visible`), and `features[key]` is
-`evaluateFlag(flag, {})`: a caller-less evaluation, which is `enabled` for an untargeted flag and `false` for a targeted
-one. The flags read fails closed inside `config.service.ts` (`features: {}`, still 200), with one `warn` per outage per
-process ([LOGGING.md](../docs/LOGGING.md)), not one per app start.
+`GET /api/config` serves every client-visible, untargeted flag in `features`, failing closed to `{}` when the flags read fails (#26).
 
-Carried from PR 13's review: `isEnabled` and `getFlags` throw when the flags read fails. The first caller (this PR's
-`getConfig()`) must fail closed (no flags, never a 500 on `/api/config`), with its test.
-
-`config.service.ts`: `features` holds every `client_visible` flag without targeting rules, as `enabled`; a targeted
-client-visible flag is `false` here (it needs `/api/me/config`, built with the first such flag). `ConfigDto` does
-not change shape. A flip reaches `/api/config` through `invalidate('feature_flags')`: `getConfig()` reads the cached
-flags next to the cached settings.
-
-Tests: `config.test.ts` (a client-visible untargeted flag appears; a targeted or server-only flag does not; a flip
-shows on the next request); the fallbacks parity check keeps `features: {}`.
-
-Docs: `docs/API.md` (`features`). Intent: `--server minor`.
+Now documented in: [docs/API.md "GET /config"](../docs/API.md#get-config); [docs/LOGGING.md "Levels"](../docs/LOGGING.md#levels).
 
 ### PR 15 — Server-side idle sign-out (ADR-011 follow-up)
 
 - [x] Merged
 
-As built (perf review): concurrent first requests of a session (a page load) share one in-flight check, so a
-session costs one `touch_session` call per window per process, not one per parallel request. As built: schema-guard NEW TABLE `session_activity`, as expected (`auth.sessions` is GoTrue's, outside the Data API,
-and moves on token refresh, not on API use). `verifyCredentials` exposes the claim as `jwtClaims.session_id`
-(`unknown`, so it is checked as a UUID; a token without one skips the check). The 401 reuses the existing "Your
-session has expired. Please sign in again." rather than a near-duplicate. The check runs after the profile lookup (the
-row references `profiles`) in `enforceSessionIdle`, which `requireAuth` calls. **Fail-open:** if `touch_session` fails
-(the migration not yet on an environment, a dropped connection) the request goes on and `error` "Session idle check
-failed" is logged at most once per 5 minutes per process (with a `suppressed` count; a missing function would
-otherwise log once per active session); the token is verified and the client cap still holds, while
-fail-closed would sign every user out whenever the call fails. **A live session is required** (user decision, from
-code review): sign-out revokes the refresh token, but the access token (checked locally) stays valid for up to 1 h;
-`touch_session` therefore also refuses a session gone from `auth.sessions`, row or no row, so a replay is not let back
-in as "never seen" once the purge drops its row. It is security definer for that read, like the purge. A refusal is
-remembered in-process for the 5-minute window, so a replayed token costs no RPC and no sign-out call; after the
-window it is checked (and revoked) again. A sign-out that answers session_not_found (auth-js:
-`AuthSessionMissingError`, status 400, no code) counts as already revoked and logs nothing; any other failure is
-`warn` "Idle session not revoked". A process that checked a session within the last 5 minutes lets its token through
-until the window ends, so a sign-out takes effect within 5 minutes.
-`last_seen_at` has no index, so a touch stays a HOT update. **Purge by session end, not age** (user decision):
-`purge_session_activity()` deletes a row only when its session is gone from `auth.sessions`, so it can never be
-refreshed again. The planned 90-day purge would have let a stolen refresh token held unused for 90+ days back in (an
-unknown session counts as never seen). It is security definer (owner `postgres`, as pg_cron runs it), because
-`service_role` cannot read `auth.sessions`; confirmed locally through a real pg_cron run. **Staging must confirm the
-same** after the migration lands: `select status, return_message from cron.job_run_details` for
-`purge-session-activity` reads `succeeded` (hosted Supabase lets the `postgres` role read `auth`), and
-`touch_session`, which reads `auth.sessions` the same way, answers true for a live session: a signed-in request on
-staging must not log `error` "Session idle check failed" (a permission error there fails open, so it would not show as
-a 401).
+Server-side idle sign-out ([ADR-011](../docs/adr/011-free-tiers.md) follow-up): `session_activity` and `touch_session`, a per-process throttle in `requireAuth`, a 401 and revoke for an idle or no-longer-live session, and a purge by session end (#24).
 
-D3: in P1, per session. `/before-write`: schema-guard, expected NEW TABLE (activity is per session, which no table
-holds; a `profiles` column would let a phone in use keep a stolen laptop session alive).
-
-- Migration `<ts>_session_activity.sql`: `session_activity (session_id uuid primary key, user_id uuid not null
-references profiles on delete cascade, last_seen_at timestamptz not null)`; RLS on, `service_role` only.
-  `touch_session(p_session_id, p_user_id, p_idle interval, p_now timestamptz default now()) returns boolean`: true
-  and `last_seen_at = p_now` for a session seen within `p_idle` or never seen (sessions older than the deploy start
-  their clock then); false, untouched, for one idle longer. A daily `purge-session-activity` job deletes the rows
-  whose session is gone from `auth.sessions` (never by age, see As built).
-- `middleware/auth.ts` `requireAuth`: reads the token's `session_id` claim (confirm `verifyCredentials` exposes it);
-  calls `touch_session` at most once per session per 5 minutes per process (a module-level map); an idle session is
-  401 `UNAUTHORIZED` "Your session has expired. Please sign in again." and is revoked with
-  `supabaseAdmin.auth.admin.signOut(token, 'local')`, so its refresh token stops working. The client already clears
-  its session on a 401.
-
-Cost: one RPC per active session per 5 minutes per API instance.
-
-Tests: `test/api/session-activity.test.ts` (the SQL through `p_now`: fresh, within the window, past it, never seen
-but live, gone from `auth.sessions` with or without a row; the purge drops an ended session's row and keeps a live
-one's however old); `test/api/session-idle.test.ts` (an idle session is 401 and revoked; a signed-out session's
-still-valid access token is 401);
-`test/unit/auth.safe.test.ts` (with the RPC stubbed: the throttle skips a second call within 5 minutes; false means
-401 and one sign-out call, and a replay within the window is 401 with no second RPC or sign-out; session_not_found
-from the sign-out logs no warn, another failure does).
-
-Docs: `docs/PERMISSIONS.md` (sessions); `docs/DEPLOYMENT.md` "Hosted session timeout" (the server now enforces it);
-`docs/SCHEMA.md`; `docs/API.md` (the 401); `docs/JOBS.md` (the schedule); CLAUDE.md §10 sessions bullet; a link in
-ADR-011's Links to this PR (the decision itself is not rewritten). Intent: `--server minor`.
+Now documented in: [docs/API.md "Authentication"](../docs/API.md#authentication); [docs/PERMISSIONS.md "Session lifetime"](../docs/PERMISSIONS.md#session-lifetime); [docs/DEPLOYMENT.md "Hosted session timeout"](../docs/DEPLOYMENT.md#hosted-session-timeout); [docs/SCHEMA.md "touch_session"](../docs/SCHEMA.md#touch_session); [docs/SCHEMA.md "purge_session_activity"](../docs/SCHEMA.md#purge_session_activity).
 
 ### PR 16 — Money in paise: contract (ADR-004)
 
 - [x] Merged
 
-Branch `feat/p1-16-paise-contract`, PR target `feat/P1`, before the phase PR into `dev` (user decision of 9 November 2026: nothing reaches production until P8, so no deployed API
-still reads the rupee columns when this migration runs anywhere).
+The contract step of ADR-004: `place_order` stops writing rupees, the sync trigger and the rupee columns are dropped, and the seed writes paise only (#35).
 
-**Staging order.** Staging's database takes `feat/P1`'s migrations while its API still runs `dev`, which predates PR 09
-and reads the rupee columns. So this migration reaches staging only after `feat/P1` has merged into `dev` and staging
-runs that API: push it then (`npm run db:push:staging`), and stop or update any other API process connected to the
-staging database first.
-
-Migration `<ts>_money_paise_contract.sql`: `create or replace place_order` without the rupee writes; the audit trigger
-stops watching `price`; drop the `menu_items_sync_price` trigger and its function (PR 09) before the column; drop `menu_items.price`, `orders.total`, `order_items.unit_price` and
-`order_items.line_total`; `npm run db:types`. The seed stops writing them. The whole-rupee checks stay until a paise
-API field replaces each rupee field (ADR-004).
-
-Tests: the full suite passes unchanged (the API contract never moved); `money-boundary.safe.test.ts` still guards the
-class.
-
-Docs: `docs/SCHEMA.md`. Intent: `--server patch`.
+Now documented in: [docs/SCHEMA.md "Migrations"](../docs/SCHEMA.md#migrations); [ADR-004](../docs/adr/004-rupees-and-paise.md).
 
 ## CLAUDE.md edits, aggregated
 

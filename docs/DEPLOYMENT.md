@@ -157,7 +157,8 @@ has a thumbnail, so running it again never re-compresses (and degrades) an image
 ## Schema changes
 
 Schema changes are SQL files in `server/supabase/migrations/`, applied in order everywhere. Once a migration has been
-pushed, it is never edited: later changes go in a new file. The CLI records what it applied in each project's
+pushed, it is never edited: later changes go in a new file. That is why the init migration's comment still says
+`npm run seed`, though the command is `pnpm run seed` now. The CLI records what it applied in each project's
 `supabase_migrations` history table, so `db:push` only sends new files. Anything new must enable RLS and grant
 explicitly (see [PERMISSIONS.md](PERMISSIONS.md#database)).
 

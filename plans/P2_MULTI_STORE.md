@@ -222,523 +222,159 @@ Approved with the plan. PR 00 updates the roadmap to match.
 
 ## The pull requests
 
+Merged pull requests are collapsed to a summary and links; their full specifications are in this file's history.
+
 ### PR 00 — The roadmap says what ADR-001 decided
 
 - [x] Merged (into `feat/P2`, like every P2 PR)
 
-Docs only (`no-release`). `plans/ROADMAP.md`: the P2 design, P2.1, P2.2 and P2.7 follow
-[the model above](#the-model-p2-builds) and the [differences table](#where-p2-differs-from-the-roadmap); P3.1
-becomes the brand template (the [P3 plan](P3_CATALOG_AND_MEDIA.md#the-model-p3-builds) has the text); the roles
-table and the ADR-001 row of the architecture-decisions table say "template" and "owner on the brand"; the P2 and P3
-sections each gain their "How it is built" line. Also closes the P1 plan's other two leftovers: the roadmap's data
-model, P5.1, P5.6 and the ADR-004 row of its architecture-decisions table say paise (ADR-004 as amended), and
-`plans/P0_FOUNDATIONS.md` gets its "done" status and ticks.
+Docs only: the roadmap now says what ADR-001 decided, and the P1 plan's last leftovers (paise, the P0 status) are closed (#46).
 
-The one ADR change P2 needed is **made**: the user amended [ADR-001](../docs/adr/001-brands-own-stores.md) on
-11 November 2026, so the old endpoints serve the oldest store while P2 is built and are removed inside the phase,
-with no configured default store (D1). This PR only brings the roadmap into line with the ADR as it now reads (see
-[ADRs this plan touches](#adrs-this-plan-touches)).
+Now documented in: [ADR-001](../docs/adr/001-brands-own-stores.md), [docs/PERMISSIONS.md "Store roles"](../docs/PERMISSIONS.md#store-roles).
 
 ### PR 01 — Brands and stores: expand, and the seed (P2.1)
 
 - [x] Merged
 
-`/before-write`: schema-guard, NEW TABLE (`brands`), EXTEND (`stores`).
+`brands` and the new `stores` columns, backfilled (one brand per existing store), plus a seed with two brands and three stores (#47).
 
-Migration `<ts>_brands_and_stores.sql`: the enum, `brands` and the `stores` columns
-[above](#the-model-p2-builds), added nullable, backfilled (one brand per existing store, named and slugged after it,
-`ACTIVE`, no owner), then set `not null`. `set_updated_at` triggers on both. Audit triggers:
-`brands_audit` (`'brand.changed', '*'`) and `stores_audit` (`'store.changed'` on `name`, `slug`, `status`, `is_open`,
-`area`, `address_line`, `contact_phone`, `timezone`). RLS on, no policies, revoked from `anon` and `authenticated`
-(the lockdown test covers it). Then `pnpm run db:types`.
-
-Server: `store.service.ts` picks the oldest store deterministically; `toStoreDto` gains `slug`,
-`brand: { id, name, slug }`, `area`, `address`; the client's `Store` type follows (additive). `server/scripts/`
-`seed-data.ts` and `seed.ts` create two brands with their owners: "Campus Cafe" (today's store and menu) and a chain
-with two branches in different areas, each branch with its own copy of a shorter menu. The seed stops assuming one
-store (`seedStore`'s `limit(1)`, "delete every other item").
-
-Tests: `test/api/stores-schema.test.ts` (the backfill leaves no store without a brand or a slug; a duplicate slug is
-refused; a slug that breaks the pattern is refused; an update writes one audit row with the actor). The existing
-`store.safe.test.ts` and `menu-cache.test.ts` pass unchanged: that is the proof the old routes still work.
-
-Docs: `docs/SCHEMA.md`, `docs/API.md` (the new `StoreDto` fields), `docs/ARCHITECTURE.md` (the ER diagram),
-`README.md` (the demo accounts). Intent: `--server minor --client patch`.
-
-Verify: `pnpm run db:reset && pnpm run seed`; `curl :8000/api/store` returns Campus Cafe with its brand; three rows
-in `stores`.
+Now documented in: [docs/SCHEMA.md "brands"](../docs/SCHEMA.md#brands), [docs/SCHEMA.md "stores"](../docs/SCHEMA.md#stores).
 
 ### PR 02 — Public store reads (P2.1)
 
 - [x] Merged
 
-`/before-write`: reuse-scout, expected EXTEND (`store.service.ts`, `menu.service.ts`, `cached()`).
+The three public store reads (list, one store, its menu) with their cache keys and invalidation (#48).
 
-Endpoints, all public, cached with `PUBLIC_READ_TTL_MS` and served with the ETag handling the menu has today:
-
-- `GET /api/stores?area=` → `{ stores: StoreSummaryDto[] }` (`id`, `slug`, `name`, `tagline`, `imageUrl`, `area`,
-  `brand`, `isOpen`), `ACTIVE` stores only, capped by a platform constant; key `stores:list`. The cache holds the
-  whole list of `ACTIVE` stores under that one key; the `area` filter is applied to the cached list in memory, after
-  the cache, so there is one key, one invalidation and no per-area variants.
-- `GET /api/stores/:storeRef` → `{ store }`; key `store:<id>`. A store that is not `ACTIVE` is 404.
-- `GET /api/stores/:storeRef/menu` → today's `MenuResponse` for that store; key `menu:<storeId>`.
-
-`storeRef` resolves a uuid by id and anything else by slug (`resolveStoreRef` in `store.service.ts`, itself cached).
-`getMenu()` takes a store id; the old `GET /api/menu` and `GET /api/store` call the same functions with the oldest
-store. `order.service.ts` invalidates `menu:<storeId>` where it invalidates `menu` today.
-
-Tests: `test/api/stores-read.test.ts` (list, by id, by slug, unknown → 404, a `DRAFT` store → 404 and absent from
-the list, `area` filter, two requests in a row with different `area` values each return only their own stores, the
-auth matrix shows the routes are public); `test/api/store-cache.test.ts` (each of the
-three keys is served from cache, and a status change, an order that takes the last unit and a cancel each
-invalidate the right one: every case seen failing with its `invalidate` removed).
-
-Docs: `docs/API.md` (three routes, `StoreSummaryDto`, the caching table), `docs/BACKEND_STRUCTURE.md`,
-`.claude/rules/backend.md` §2c (the keys). Intent: `--server minor`.
-
-Verify: `curl :8000/api/stores`, then `/api/stores/<slug>/menu` twice: the second is a 304 with `If-None-Match`.
+Now documented in: [docs/API.md "Caching"](../docs/API.md#caching), [docs/API.md "Server read cache"](../docs/API.md#server-read-cache-serversrcutilscachets).
 
 ### PR 03 — Memberships and the capability map (P2.2)
 
 - [x] Merged
 
-`/before-write`: schema-guard, NEW TABLE (`store_memberships`); reuse-scout, NO MATCH (`domain/` is new).
+`store_memberships`, the capability map (`domain/permissions.ts`) and `requireStore(capability)`; `/auth/me` carries the user's memberships and owned brands (#49).
 
-Migration `<ts>_store_memberships.sql`: the enum and table above; every `profiles.role = 'STAFF'` user becomes a
-`STAFF` member of the oldest store (their role stays `STAFF` until PR 16, so the old staff routes still admit
-them); audit trigger `store_memberships_audit` on insert, update and delete (`'membership.changed'`).
-`audit_row_change()` is update-only today (a delete has no new row, so it writes nothing): it is redefined to record
-an insert as `[null, value]` pairs and a delete as `[value, null]` pairs, taking the store and the entity id from
-whichever row exists. RLS on, revoked, lockdown test.
-
-Server:
-
-- `src/domain/permissions.ts`: the `Capability` union, the map [above](#the-model-p2-builds), and
-  `can(access, capability)` where `access` is `'OWNER' | 'MANAGER' | 'STAFF' | 'ADMIN' | null`.
-- `middleware/auth.ts`: `requireAuth`'s one profile read embeds the user's memberships and owned brands;
-  `req.user` gains `memberships: { storeId, role }[]` and `ownedBrandIds: string[]`. New `requireStore(capability)`:
-  loads the store (through the `store:<id>` cache), applies the 404-or-403 rule, sets `req.store`
-  (`{ id, brandId, status, timezone }`) and `req.storeAccess`.
-- `types/auth.ts`, `types/express.d.ts`: the new fields. `Actor` gains `storeRole` when the request is store-scoped,
-  so the audit row says in which capacity someone acted.
-- `GET /api/auth/me`: `UserDto` gains `memberships: { storeId, storeSlug, storeName, role }[]` and
-  `ownedBrands: { id, name, slug }[]` (additive; the client's `User` type follows).
-- `server/scripts/seed-data.ts`: a manager and a staff member per store; the chain's owner owns its brand.
-- `test/setup/helpers.ts`: `createStoreMember(storeId, role)` and `createBrandOwner(brandId)` next to
-  `createTestUser`.
-
-Tests: `test/unit/permissions.safe.test.ts` (every cell of the matrix, and an unknown capability does not compile);
-`test/api/require-store.test.ts` on a throwaway route mounted by the test (member with the capability → 200;
-member without → 403; member of another store → 403; a `DRAFT` store for a stranger → 404; its owner → 200;
-`ADMIN` on `store.pause` → 200 and on `orders.view` → 403; a deleted membership stops working on the next request);
-`auth.test.ts` gains the `/me` fields.
-
-Performance: `perf-auditor` compares `GET /api/auth/me` and `GET /api/orders` p95 before and after the embedded
-read; a regression past the budget moves the membership read behind a short per-user cache with its invalidation on
-every membership write.
-
-Docs: `docs/PERMISSIONS.md` (memberships, the owner, the matrix, 404-or-403), `docs/SCHEMA.md`, `docs/API.md`
-(`UserDto`), `docs/BACKEND_STRUCTURE.md` (`domain/`), `.claude/rules/backend.md` §4 and §10 and
-`.claude/hooks/major-change-gate.js` (`server/src/domain/` is a major-change path), CLAUDE.md §2 (roles). Intent:
-`--server minor --client patch`.
+Now documented in: [docs/PERMISSIONS.md "Store roles"](../docs/PERMISSIONS.md#store-roles), [docs/SCHEMA.md "store_memberships"](../docs/SCHEMA.md#store_memberships).
 
 ### PR 04 — Store-scoped orders and the isolation matrix (P2.3)
 
 - [x] Merged (the split seam taken: the lint rule and `scoped` are PR 04b)
 
-`/before-write`: reuse-scout, expected EXTEND (`order.service.ts`, the order routes).
+Orders are store-scoped: the store order list and status routes, `storeId` on `POST /api/orders`, and the old staff routes limited to the caller's own stores, which closed the cross-store read. `testStoreIsolation` is the tenant matrix every store route runs (#50). The split seam was taken: the lint rule is PR 04b.
 
-Migration `<ts>_orders_store_index.sql`: `create index orders_store_id_status_created_at_idx on public.orders
-(store_id, status, created_at desc)`.
-
-Server:
-
-- `utils/scoped.ts`: `scoped(req).from(table)` returns the supabase-js builder with `.eq('store_id', req.store.id)`
-  already applied.
-- `server/eslint.config.mjs`: a `no-restricted-syntax` rule flags `supabaseAdmin.from('orders' | 'order_items' |
-'store_memberships' | …)` outside the service file that owns the table; store-scoped services take the scoped
-  builder. The rule's own test file proves it fires.
-- Routes: `GET /api/stores/:storeId/orders?status=` (`orders.view`; today's staff list, scoped) and
-  `PATCH /api/stores/:storeId/orders/:orderId/status` (`orders.transition`; an order of another store is 404).
-- `POST /api/orders` accepts `storeId` (optional until PR 16: without it, the oldest store). `createOrder` reads
-  that store, and refuses a store that is not `ACTIVE` with 404.
-- `GET /api/orders/:id`: the customer who placed it, or a caller with `orders.view` at the order's store.
-- The old routes, until PR 16: `GET /api/orders` for a `STAFF` profile lists the stores the caller is a member of
-  (no longer every store), and `PATCH /api/orders/:id/status` resolves the order's store and applies the same
-  capability check. **This closes today's cross-store read**, so it is P2's first security fix, with its guard.
-- `OrderDto.store` gains `slug`.
-- `test/setup/helpers.ts`: `testStoreIsolation(label, makeRequest)`, the tenant matrix every later store route
-  calls: staff of store A on store B's route → 403; store A's staff addressing store B's resource through store
-  A's route → 404; the owner of the other brand → 403; a customer → 403; anonymous → 401.
-
-Tests: `test/api/store-orders.test.ts` (the list holds only the store's orders; the 5×5 status matrix through the
-new route; the isolation matrix on both routes; a staff member of two stores sees each separately); `orders.test.ts`
-gains `storeId` cases (another store's item in the cart → `ITEM_UNAVAILABLE`, not a cross-store order); the old
-suites pass unchanged except the one assertion that a `STAFF` user sees every store's orders, which becomes the
-guard for the fix.
-
-Lifecycle walk (CLAUDE.md §14) through the new routes, with `domain_events` and `audit_log` checked.
-`claude-security` scan and `/break` security group: the PR changes who may read and move orders.
-
-Docs: `docs/API.md`, `docs/PERMISSIONS.md` (the route matrix), `docs/TESTING.md` (`testStoreIsolation`, the lint
-rule), `docs/BACKEND_STRUCTURE.md` (`scoped`), `.claude/rules/backend.md` §10. Intent: `--server minor`.
-
-Split seam if over the limit: the lint rule and `scoped` adoption in existing services move to a PR 04b.
-
-As built: another store's item stays 400 `ITEM_NOT_FOUND` (the stable code its existing test pins), not
-`ITEM_UNAVAILABLE`. `createTestUser('STAFF')` is also a STAFF member of the oldest store, as the memberships backfill
-made every STAFF profile, so the old suites pass unchanged; the guards are new tests in `store-orders.test.ts`.
+Now documented in: [docs/API.md "GET /stores/:storeId/orders"](../docs/API.md#get-storesstoreidorders), [docs/PERMISSIONS.md "Route matrix"](../docs/PERMISSIONS.md#route-matrix), [docs/TESTING.md "Helpers"](../docs/TESTING.md#helpers-servertestsetuphelpersts).
 
 ### PR 04b — `scoped` and the table-ownership lint rule (P2.3)
 
 - [x] Merged
 
-PR 04's split seam: `utils/scoped.ts`, the `no-restricted-syntax` rule in `server/eslint.config.mjs` with its own test
-file, and the adoption in existing services, as PR 04 describes them. Docs: `docs/TESTING.md` (the lint rule),
-`docs/BACKEND_STRUCTURE.md` (`scoped`). Intent: `--server patch`.
+The table-ownership lint rule (`TABLE_OWNERS`) with its own test (#51).
 
-As built: the lint rule only (`TABLE_OWNERS` in `server/eslint.config.mjs`, `table-ownership.safe.test.ts`). `scoped`
-was dropped. A supabase-js `.from()` has no `.eq` before `.select()`/`.update()`, `order_items` has no `store_id`, and
-the board reads several stores at once (`.in('store_id', …)`), so a generic wrapper needed casts and fitted no caller.
-The owning services filter by store explicitly, and `testStoreIsolation` proves each store route. Nothing under
-`server/src` changed, so there is no intent; the PR is `no-release`.
+Now documented in: [docs/TESTING.md "Table ownership"](../docs/TESTING.md#table-ownership).
 
 ### PR 05 — Store settings (P2.3)
 
 - [x] Merged
 
-`/before-write`: schema-guard, NEW TABLE (`store_settings`).
+Per-store settings (`max_quantity_per_item`, `low_stock_threshold`, `staff_order_list_limit`, `last_order_minutes_before_close`) as columns on `stores`, with `GET`/`PATCH /api/stores/:storeId/settings` and the store's cap enforced in `createOrder` (#52).
 
-Migration `<ts>_store_settings.sql`: the roadmap's table with four columns (`max_quantity_per_item`,
-`low_stock_threshold`, `staff_order_list_limit`, `last_order_minutes_before_close`), `updated_at`, `updated_by`; one
-row per existing store, `staff_order_list_limit` copied from `site_settings`; a trigger on `stores` insert creates
-the row, so a store never exists without one; `store_settings_audit` (`'store_settings.changed', '*'`).
-
-Server: `services/storeSettings.service.ts` (`getStoreSettings(storeId)`, cached under `store_settings:<id>`,
-`updateStoreSettings` with the `x-actor` headers, invalidating it and `menu:<storeId>`);
-`PATCH /api/stores/:storeId/settings` and `GET` (`settings.edit`; zod bounds equal to the check constraints, with
-a parity test in the style of `limits-parity.safe.test.ts`); `MenuResponse.rules` reads the store's row; `createOrder`
-caps a line at the store's `max_quantity_per_item`; the store order list is capped by the store's
-`staff_order_list_limit`. `MAX_QUANTITY_PER_ITEM` and the literal `5` go; zod keeps a sanity bound of 50.
-
-Client: `cartRules.ts` takes the limits as arguments instead of `MAX_LINE_QUANTITY` and `LOW_STOCK_MAX`; `useMenu`
-hands `rules` to the cart and the stock pill; the fallback when no menu is loaded lives in
-`config/fallbacks.json` with its parity test.
-
-Tests: `test/api/store-settings.test.ts` (bounds, the auth and isolation matrices, a write invalidates the menu's
-`rules`, an order over the store's cap is refused while the same order at a store with a higher cap passes);
-`cartRules.test.ts` (limits from arguments).
-
-Docs: `docs/CONFIGURATION.md` (the new **store setting** tier and its four rows; `staff_order_list_limit` moves),
-`docs/SCHEMA.md`, `docs/API.md`, `plans/ROADMAP.md` A1 (three rows resolved). Intent: `--server minor --client
-patch`.
-
-As built: the settings are four columns on `stores`, not a `store_settings` table (user decision, 2026-11-12), so there
-is no insert trigger, no `updated_by` and no separate audit trigger on a new table: `stores_settings_audit`
-(`store_settings.changed`) sits beside `stores_audit`. Bounds: `max_quantity_per_item` 1–50 (default 10),
-`low_stock_threshold` 0–50 (5), `staff_order_list_limit` 1–500 (100), `last_order_minutes_before_close` 0–240 (0, stored
-only until PR 06). A new store takes the constant defaults; the migration copied existing stores' `staff_order_list_limit`
-from `site_settings` once, with the audit and `updated_at` triggers disabled, so the backfill wrote no audit rows. The
-client half (`cartRules.ts`, `useMenu`, `fallbacks.json`) is PR 05c.
+Now documented in: [docs/CONFIGURATION.md "Store settings"](../docs/CONFIGURATION.md#store-settings), [docs/API.md "PATCH /stores/:storeId/settings"](../docs/API.md#patch-storesstoreidsettings), [docs/SCHEMA.md "stores"](../docs/SCHEMA.md#stores).
 
 ### PR 05c — Client: the store's limits (P2.3)
 
 - [x] Merged
 
-Split from PR 05 for size. `cartRules.ts` takes the limits as arguments instead of `MAX_LINE_QUANTITY` and
-`LOW_STOCK_MAX`; `useMenu` hands `rules` to the cart and the stock pill; the fallback when no menu is loaded lives in
-`config/fallbacks.json` with its parity test; `cartRules.test.ts` (limits from arguments). The `/admin` page drops its
-"Staff order list limit" field, which no longer does anything (the API keeps accepting it for older clients).
-ROADMAP A1's two client rows; the `docs/API.md` note that the client still applies its own copies goes. Intent:
-`--client patch`.
+The cart takes its limits from the store's menu `rules`, with `storeDefaults` as the fallback (#54).
 
-As built: the limits live on the cart store (`limits`, persisted with the lines, set by `useMenu` and `useReorder`
-through `setLimits`); the fallback is `storeDefaults` in `fallbacks.json`, parity-tested against the `stores` column
-defaults in `limits-parity.safe.test.ts`.
+Now documented in: [docs/CONFIGURATION.md "Store settings"](../docs/CONFIGURATION.md#store-settings), [docs/COMPONENTS.md "features/cart"](../docs/COMPONENTS.md#featurescart).
 
 ### PR 06 — Opening hours: the rule and the reads (P2.4)
 
 - [x] Merged
 
-As built: `store_hours` and `store_schedule_exceptions` with the roadmap's checks plus `< 24:00` bounds; `openState` is computed per read from a cached schedule (`store_hours:<id>`), `createOrder` reads it uncached (`loadSchedule`); the menu attaches its open fields after its cache read; `getSchedules` loads the list's schedules in two paged queries (past the Data API's 1000-row cap), exceptions from the UTC date two days back; the place_order `is_open` check is unchanged.
+Opening hours tables and the pure `openState` rule; the store reads carry `openState`, `nextChangeAt` and `openLabel`, `GET /api/stores/:storeRef/hours` is public, and `createOrder` refuses a closed store with the next opening (#55, #56).
 
-`/before-write`: schema-guard, NEW TABLE ×2; reuse-scout, NO MATCH (`domain/schedule.ts`).
-
-Migration `<ts>_store_hours.sql`: `store_hours` and `store_schedule_exceptions` as in the roadmap, RLS on, revoked.
-
-Server:
-
-- `src/domain/schedule.ts`: `openState({ status, isOpen, pausedUntil, acceptingOrders, timezone }, hours,
-exceptions, lastOrderMinutes, now) → { state, nextChangeAt, label }`, with the roadmap's states and flow. No
-  weekly rows: `OPEN` or `CLOSED` by the manual switch alone. `PAUSED` is wired in PR 08 (the inputs are optional
-  until then).
-- `StoreDto` and `StoreSummaryDto` gain `openState`, `nextChangeAt`, `openLabel`; `isOpen` is now
-  `state ∈ { OPEN, CLOSING_SOON }`. The cached entries are computed on read and live for `PUBLIC_READ_TTL_MS`, so a
-  stale state is at most that old.
-- `GET /api/stores/:storeRef/hours` (public; the week and the exceptions from today on; key `store_hours:<id>`).
-- `createOrder` refuses by `openState` with `STORE_CLOSED`, whose message now names the next opening ("Campus Cafe
-  opens at 9:00 AM") and whose details carry `nextChangeAt` (a new details shape, tagged `kind: 'storeClosed'`).
-- `fast-check` as a server devDependency.
-
-Tests: `test/unit/schedule.safe.test.ts`, property-based: intervals past midnight (yesterday's still counts),
-`SPECIAL_HOURS` replacing the week, `CLOSED` over `SPECIAL_HOURS`, the cutoff to the minute, `nextChangeAt` always
-after `now`, a zone with a clock change; `test/api/store-hours.test.ts` (the public read; an order at a store whose
-only interval ended an hour ago is refused with the next opening; the same order at a store with no hours passes).
-
-Docs: `docs/SCHEMA.md`, `docs/API.md` (the states, the route, the `STORE_CLOSED` details), `docs/ARCHITECTURE.md`
-(the open-state flow), `docs/TESTING.md` (property tests). Intent: `--server minor --client patch`.
+Now documented in: [docs/SCHEMA.md "store_hours"](../docs/SCHEMA.md#store_hours), [docs/ARCHITECTURE.md "The open state"](../docs/ARCHITECTURE.md#44-the-open-state), [docs/API.md "Caching"](../docs/API.md#caching).
 
 ### PR 07 — Opening hours: editing (P2.4)
 
 - [x] Merged
 
-Migration `<ts>_set_store_hours.sql`: `set_store_hours(p_store_id, p_hours jsonb, p_actor, p_request_id)` replaces
-the week in one transaction (overlapping intervals on a day are refused with `P0001` `VALIDATION_ERROR`), sets the
-actor and writes one audit row with the old and new week; audit trigger on `store_schedule_exceptions`.
+Editing hours: `set_store_hours` replaces the week in one transaction, plus the exception routes, with every write invalidating the store's keys (#60).
 
-Server: `PUT /api/stores/:storeId/hours`, `POST /api/stores/:storeId/schedule-exceptions`,
-`DELETE /api/stores/:storeId/schedule-exceptions/:exceptionId` (`hours.edit`; bounds: at most 6 intervals a day and
-50 upcoming exceptions, as platform constants in `schemas/limits.ts`). Each write invalidates `store:<id>`,
-`stores:list`, `store_hours:<id>` and `menu:<storeId>`.
-
-Tests: `test/api/store-hours-edit.test.ts` (auth and isolation matrices; an overlap is refused and leaves the old
-week; a write flips `openState` on the next read, seen failing without the invalidation; an exception of another
-store is 404).
-
-Docs: `docs/API.md`, `docs/SCHEMA.md`, `docs/PERMISSIONS.md`, `docs/CONFIGURATION.md` (the two bounds). Intent:
-`--server minor`.
-
-As built: `20261112120000_set_store_hours.sql` drops 06a's per-row `store_hours_audit` and `set_store_hours` writes the
-one `store_hours.changed` audit row (old and new week, none for an unchanged week) and emits `store.hours_changed`; it is
-security definer because `service_role` cannot insert into `audit_log`. The bounds are `HOURS_LIMITS` in
-`schemas/limits.ts`; exception writes go through the Data API with the `x-actor` and `x-request-id` headers.
+Now documented in: [docs/API.md "PUT /stores/:storeId/hours"](../docs/API.md#put-storesstoreidhours), [docs/SCHEMA.md "store_hours"](../docs/SCHEMA.md#store_hours), [docs/CONFIGURATION.md "Platform constants"](../docs/CONFIGURATION.md#platform-constants).
 
 ### PR 08 — Pause and resume (P2.5)
 
 - [x] Merged
 
-Migration `<ts>_store_pause.sql`: the four pause columns; `pause_store(p_store_id, p_until, p_reason, p_actor,
-p_request_id, p_now default now())` and `resume_store(...)`, each setting the actor and emitting `store.paused` /
-`store.resumed` (a repeat is a no-op that emits nothing); `place_order` re-created from its latest body with one
-more check: a store that is not `ACTIVE`, or is paused at `p_now`, raises `STORE_PAUSED` (or `STORE_CLOSED` for the
-status); and its stock update gains `and store_id = p_store_id`, so the database also refuses another store's item
-(today only `createOrder` drops it, `ITEM_NOT_FOUND`; deferred here from the PR 01 review). `stores_audit` watches the pause columns.
+Pause and resume: `pause_store` and `resume_store`, the store routes, `STORE_PAUSED`, the `PAUSED` open state, and `place_order` refusing a paused or non-`ACTIVE` store and another store's item (#62).
 
-Server: `POST /api/stores/:storeId/pause { minutes | until, reason? }` and `POST .../resume` (`store.pause`);
-`storePaused(storeName, pausedUntil)` → 409 `STORE_PAUSED` ("Campus Cafe has paused new orders. Back at 3:40 PM.");
-`openState` returns `PAUSED`; both writes invalidate the store's keys. The presets (15, 30, 60 minutes, "until I
-resume") are the client's; the server bounds `minutes` at 1–720.
-
-Tests: `test/api/store-pause.test.ts` (auth and isolation matrices; pause → the order is refused → resume → it
-passes; a pause whose `paused_until` passed no longer refuses, with `p_now`; **the race**: `Promise.all` of a pause
-and ten orders leaves every order either placed or refused with `STORE_PAUSED`, stock consistent with the placed
-ones; a repeated pause is 200 with one event). The lifecycle walk checks `domain_events` for both events.
-
-Docs: `docs/API.md` (routes, `STORE_PAUSED`), `docs/SCHEMA.md`, `docs/JOBS.md` (the two events; no subscription
-yet), `plans/ROADMAP.md` A3 and A5. Intent: `--server minor --client patch` (the client learns the code in PR 11).
-
-From PR 04's review (CodeRabbit on #50): `createOrder` checks `stores.status` on its own uncached read, so a store
-suspended between that read and `place_order` can still take one order. The re-created `place_order` checks
-`status = 'ACTIVE'` under its store lock as well, raising a code `createOrder` maps to 404 "Store not found.", with a
-test that suspends the store mid-flight.
-
-As built: the columns are `accepting_orders`, `paused_until`, `pause_reason`, `paused_by` (ROADMAP P2.5). `pause_store`
-and `resume_store` are invoker functions, `service_role` only. `place_order` also checks `status = 'ACTIVE'` (a
-store that stopped trading raises `NOT_FOUND`, mapped to 404 "Store not found.") and `STORE_PAUSED` under its share lock,
-before `STORE_CLOSED`. A foreign item reads as not found inside `place_order` (`INSUFFICIENT_STOCK`, available 0). A
-resume of a pause that already ran out clears the columns without an event.
+Now documented in: [docs/API.md "POST /stores/:storeId/pause"](../docs/API.md#post-storesstoreidpause), [docs/SCHEMA.md "stores"](../docs/SCHEMA.md#stores), [docs/SCHEMA.md "place_order"](../docs/SCHEMA.md#place_order), [docs/JOBS.md "Store events"](../docs/JOBS.md#store-events).
 
 ### PR 09 — Team: members and invites (P2.2)
 
 - [x] Merged
 
-`/before-write`: schema-guard, NEW TABLE (`store_invites`).
+Team: `store_invites`, the member and invite routes, and `accept_store_invite` with its own limiter and token handling, shipped as 09a (#57) and 09b (#59).
 
-Migration `<ts>_store_invites.sql`: the table above; `accept_store_invite(p_token_hash, p_user_id, p_email, p_actor,
-p_request_id, p_now default now())` checks, in one transaction, that the invite exists, is not expired, revoked or
-used, and names the caller's email (case-insensitive), then inserts the membership and marks the invite; a repeat by
-the same user returns the membership; every other failure raises `NOT_FOUND` (one answer, so a token cannot be
-probed). The audit trigger on `store_invites` watches `role`, `email`, `accepted_at` and `revoked_at`, never
-`token_hash`.
-
-Server:
-
-- `GET /api/stores/:storeId/members` (members with name, email and role; pending invites) — `team.manageStaff`.
-- `POST /api/stores/:storeId/invites { email, role }` → `{ invite, token }`, the token shown once. Inviting a
-  `MANAGER` needs `team.manageManagers`. An existing member or an open invite for that email → 409
-  `MEMBERSHIP_EXISTS`. Expiry: 7 days, a platform constant.
-- `DELETE /api/stores/:storeId/invites/:inviteId` (revoke) and `DELETE /api/stores/:storeId/members/:membershipId`
-  (removing a manager needs `team.manageManagers`; removing oneself is allowed).
-- `POST /api/me/invites/accept { token }` (signed in; the token is a bounded string in zod; its own rate limiter
-  through `createRateLimiter`, keyed by user). The token travels in the body, never in a path or query, because the
-  access log keeps the request path and field redaction does not cover it.
-- Tokens: 32 random bytes, base64url; only the hash is stored; the token is never logged (`REDACT_PATHS` gains the
-  body field, with its logging test).
-
-Tests: `test/api/team.test.ts` (auth and isolation matrices on all five routes; a manager cannot invite or remove a
-manager; the owner can; accept with the wrong account, an expired, revoked or used token → 404; accept twice → one
-membership; the access-log line of a successful accept and of a rejected one contains no token; removal takes effect on the next request; every change leaves an audit row naming the actor).
-`claude-security` scan: the PR grants access.
-
-Docs: `docs/API.md`, `docs/PERMISSIONS.md` (who may invite whom), `docs/SCHEMA.md`, `docs/LOGGING.md` (never logged:
-invite tokens), `plans/ROADMAP.md` A3. Intent: `--server minor`.
-
-Shipped in two PRs for size: 09a (the table, the team list and its writes) and 09b (`accept_store_invite` in its own migration, `POST /api/me/invites/accept`, its limiter and the log guard). As built: `team.service.ts` owns `store_memberships` and `store_invites` (`TABLE_OWNERS`). `team.controller.managesManagers` re-checks `accessFor(..., 'team.manageManagers')`, so an admin who is also a member is judged by the standing that holds it; revoking a MANAGER invite also needs `team.manageManagers`. Expired open invites for the email are revoked before a new insert (the open-email index counts them). A member of another role is `NOT_FOUND` and the invite stays open. `REDACT_PATHS` already covered `token` and `*.token`, so the logging guard is `test/api/team-logs.test.ts` instead of a new path. Known limitation: sign-up does not verify email ownership, so the token is the real secret (follow-up in `plans/ROADMAP.md`).
+Now documented in: [docs/PERMISSIONS.md "Team invites and removals"](../docs/PERMISSIONS.md#team-invites-and-removals), [docs/API.md "POST /stores/:storeId/invites"](../docs/API.md#post-storesstoreidinvites), [docs/SCHEMA.md "accept_store_invite"](../docs/SCHEMA.md#accept_store_invite), [docs/LOGGING.md "Never logged"](../docs/LOGGING.md#never-logged).
 
 ### PR 10 — The store's audit trail (P1.3, deferred)
 
 - [x] Merged
 
-`/before-write`: reuse-scout, expected EXTEND (`audit.service.ts`, `auditQuerySchema`).
+`GET /api/stores/:storeId/audit`: the store's own audit trail, with the store filter forced from the route (#53).
 
-`GET /api/stores/:storeId/audit` (`audit.store`): `audit.service.ts`'s existing cursor query with the store filter
-forced from `req.store`, never from the query string. The rows a store can read hold no customer data: the audited
-tables carry statuses, settings, hours and team changes. An invite's row carries the invited email, which the same
-roles already see in the team list.
-
-Tests: `test/api/store-audit.test.ts` (auth and isolation matrices; only the store's rows; the cursor; a `storeId`
-in the query string is ignored).
-
-Docs: `docs/API.md`, `docs/PERMISSIONS.md`. Intent: `--server minor`.
-
-As built: `audit.service.listAudit(query, storeId?)` gains the optional store filter; the route uses `listStoreAudit` with `currentStore(req).id`; `testStoreIsolation` gained an optional `memberRole` (MANAGER here, since `audit.store` excludes STAFF).
+Now documented in: [docs/API.md "GET /stores/:storeId/audit"](../docs/API.md#get-storesstoreidaudit), [docs/PERMISSIONS.md "Route matrix"](../docs/PERMISSIONS.md#route-matrix).
 
 ### PR 11 — Client: the store list and store pages (P2.6)
 
 - [x] Merged
 
-`/before-write`: reuse-scout, expected EXTEND (`StoreCard`, `OpenPill`, `useStore`, `useMenu`). Skill:
-`agent-skills:frontend-ui-engineering`; the store list is a new screen, so `frontend-design:frontend-design` first,
-inside the `@theme` tokens (CLAUDE.md §7, §16).
+The client's store list (`/`, grouped by area) and store pages (`/s/:storeSlug`, `/s/:storeSlug/menu`), with `StoreCard` and `OpenPill` carrying the open state (#58).
 
-- Routes (`App.tsx`, `appShell.ts`): `/` → the store list, grouped by `area`, or straight to the store page when
-  one store is active; `/s/:storeSlug` → today's Home for that store; `/s/:storeSlug/menu` → its menu; `/menu` →
-  a redirect to the cart's store, else `/`.
-- `services/stores.ts` (`GET /stores`, `/stores/:ref`, `/stores/:ref/menu`, `/stores/:ref/hours`);
-  `features/stores/useStores.ts` and `useStoreMenu(storeRef)`, both `useResource` with `persist: true`, keys
-  `stores` and `menu:<storeId>`. `CACHE_PREFIX` is already
-  `fp_cache:v2:` (bumped in PR 01, where the store DTO grew; old entries are dropped on every load, with a test).
-- `StoreCard` gains `variant="compact"` (photo, name, area, open state); `OpenPill` takes `state` and `label`
-  ("Closes at 9 PM", "Opens tomorrow at 8 AM", "Closed for Diwali", "Paused · back at 3:40 PM").
-- Budgets (CLAUDE.md §2b): the first card's photo is the LCP candidate on `/` (eager, 400px `srcset`), the rest
-  lazy; the list payload stays under about 8 KB for 20 stores; `perf-auditor` re-baselines `/`.
-
-Tests: `StoreCard.test.tsx` (the variant, each state's copy), `Home.test.tsx` (list, single-store shortcut, loading,
-empty, error with retry), `useResource.test.ts` (the prefix bump), e2e smoke: open the list, pick a store, see its
-menu. Visual gate at 390px throttled and 1280px.
-
-Docs: `docs/FRONTEND_STRUCTURE.md` (routes, `features/stores/`), `docs/COMPONENTS.md` (`StoreCard`, `OpenPill`),
-`docs/PERF_BASELINE.md`, `.claude/rules/frontend.md` §2c (the keys). Intent: `--client minor`.
+Now documented in: [docs/FRONTEND_STRUCTURE.md "Routes"](../docs/FRONTEND_STRUCTURE.md#routes), [docs/COMPONENTS.md "features/stores"](../docs/COMPONENTS.md#featuresstores).
 
 ### PR 12 — Client: one cart per store (P2.6)
 
 - [x] Merged
 
-- `cartStore` version 2: `{ storeId, storeSlug, storeName, lines }`; `migrate` gives a version-1 cart the store its
-  first line belongs to, found through the menu it was added from, and empties it if that cannot be resolved (a
-  cart is cheap to rebuild; a cart sent to the wrong store is not).
-- Adding from another store opens `ReplaceCartSheet` ("Start a new cart? Your cart has items from Campus Cafe":
-  Replace or Keep), built on the sheet pattern `ItemDetailSheet` uses (`useFocusTrap`, 44px targets).
-- `useReorder` switches to the order's store (`order.store.slug`) after the same confirmation.
-- `Checkout` sends `storeId`; `CartBar` and `Cart` name the store; `STORE_PAUSED` and the new `STORE_CLOSED`
-  details show the reason and keep the cart.
+One cart per store: `cartStore` v2 with its migration, `ReplaceCartSheet`, store-aware reorder and checkout (#61).
 
-Tests: `cartStore.test.ts` (migration from version 1, replace, keep), `useReorder.test.tsx`, `Checkout.test.tsx`
-(the request carries `storeId`; a paused store disables Pay with its reason), `storageKeys.test.ts` unchanged
-(`fp_cart` keeps its scope), e2e: two stores, the replace sheet, an order at the second store.
-
-Docs: `docs/FRONTEND_STRUCTURE.md`, `docs/COMPONENTS.md` (`ReplaceCartSheet`). Intent: `--client minor`.
+Now documented in: [docs/COMPONENTS.md "features/cart"](../docs/COMPONENTS.md#featurescart), [docs/FRONTEND_STRUCTURE.md "Stores"](../docs/FRONTEND_STRUCTURE.md#stores).
 
 ### PR 13 — Client: the staff board per store (P2.2, P2.5)
 
 - [x] Merged
 
-- `features/auth/roles.ts`: `homeFor(user)` → `/admin` for an admin, `/manage` for an owner or manager, `/staff`
-  for staff, `/` otherwise. `RequireMembership` (a store role at the route's store) replaces `RequireRole
-role="STAFF"`; `RequireRole` stays for `/admin`.
-- `/staff` → the store switcher when the user has several stores, else a redirect to `/staff/:storeSlug`, which is
-  today's board reading `GET /api/stores/:storeId/orders` and patching through the store route
-  (`services/orders.ts`, `useOrders({ storeId })`).
-- `StaffHeader` gains the pause control: presets 15, 30 and 60 minutes and "until I resume", the remaining time, and
-  Resume. The tap shows its result at once and rolls back on error (CLAUDE.md §2b).
+The staff board per store: `RequireMembership`, the store switcher, `/staff/:storeSlug` on the store routes, and the pause control (#68).
 
-Tests: `StaffDashboard.test.tsx` (the switcher, the scoped calls, pause and resume with a failing request),
-`roles.test.ts`, `App.test.tsx` (a customer on `/staff/x` goes home; a member of another store too), e2e: staff of
-one store never sees the other's orders.
-
-Docs: `docs/FRONTEND_STRUCTURE.md`, `docs/PERMISSIONS.md` (the client section), `docs/COMPONENTS.md`. Intent:
-`--client minor`.
+Now documented in: [docs/FRONTEND_STRUCTURE.md "Routes"](../docs/FRONTEND_STRUCTURE.md#routes), [docs/PERMISSIONS.md "Client"](../docs/PERMISSIONS.md#client), [docs/ARCHITECTURE.md "Staff dashboard and order status changes"](../docs/ARCHITECTURE.md#8-staff-dashboard-and-order-status-changes).
 
 ### PR 14 — Client: `/manage` with the hours editor (P2.4)
 
 - [x] Merged
 
-`frontend-design:frontend-design` for the direction (a new area), then `agent-skills:frontend-ui-engineering`.
+`/manage` (the store picker and shell) and its opening-hours editor (#63, #70).
 
-- `/manage` (lazy): picks the store (the owner sees every store of the brand; a manager, their own);
-  `/manage/:storeSlug` is the shell with tabs Hours, Settings and Team (P3 adds Menu and Stock).
-- `/manage/:storeSlug/hours`: the week grid (add and remove an interval, copy a day to all days), the special-day
-  list with presets ("Closed for …", "Late hours"), saved through `PUT …/hours` and the exception routes; every
-  mutation reloads the store, the hours and the store list.
-- Phone first: the grid is a list of days at 360px, a table from `md`.
-
-Tests: `ManageHours.test.tsx` (edit, overlap error from the server shown inline, copy to all days, loading, empty,
-error), e2e: a manager closes today and the store page says so. Visual gate, axe, focus order.
-
-Docs: `docs/FRONTEND_STRUCTURE.md` (`/manage`, `features/manage/`), `docs/COMPONENTS.md`, CLAUDE.md §4. Intent:
-`--client minor`.
-
-Split seam: the `/manage` shell and store picker as PR 14a, the editor as 14b.
+Now documented in: [docs/FRONTEND_STRUCTURE.md "Routes"](../docs/FRONTEND_STRUCTURE.md#routes), [docs/COMPONENTS.md "features/manage"](../docs/COMPONENTS.md#featuresmanage).
 
 ### PR 15 — Client: `/manage` settings and team (P2.2, P2.3)
 
 - [x] Merged
 
-- `/manage/:storeSlug/settings`: the four store settings, with `settingsRules.ts`'s pattern from the admin page
-  (bounds from the API's validation errors, not copied).
-- `/manage/:storeSlug/team`: members, pending invites, invite by email with a role; the new invite's link is shown
-  once with a Copy button and a share action (`navigator.share` where present); revoke and remove with a confirm.
-- `/join`: the link a manager shares is `/join#<token>`; the token rides in the URL fragment, which a browser
-  never sends to a server, so nginx, a CDN and the `Referer` header never see it. The page reads the fragment and
-  removes it from the address bar (`history.replaceState`) before doing anything else, keeping the token in memory
-  only. Signed out → sign in or register, then back; signed in → accept → the staff board or `/manage`. A failure says only that the link is no longer valid.
+`/manage` settings and team tabs, and `/join`, where an invited person accepts a store invite (#65, #72).
 
-Tests: `ManageSettings.test.tsx`, `ManageTeam.test.tsx` (a manager sees no "Manager" role option; the token is not
-kept in any store or storage: `storageKeys.test.ts` stays green), `Join.test.tsx`, e2e: owner invites a manager,
-the manager accepts and edits the hours.
-
-Docs: `docs/FRONTEND_STRUCTURE.md`, `docs/COMPONENTS.md`, `README.md` (the two-store demo script). Intent:
-`--client minor`.
+Now documented in: [docs/FRONTEND_STRUCTURE.md "Routes"](../docs/FRONTEND_STRUCTURE.md#routes), [docs/COMPONENTS.md "features/manage"](../docs/COMPONENTS.md#featuresmanage), [docs/PERMISSIONS.md "Team invites and removals"](../docs/PERMISSIONS.md#team-invites-and-removals).
 
 ### PR 16 — Contract: the single-store API and `STAFF` go (P2.7)
 
 - [x] Merged
 
-Branch `feat/p2-16-contract`, last into `feat/P2`.
+The contract: the single-store routes (`GET /api/store`, `GET /api/menu`, `PATCH /api/orders/:id/status`, the staff branch of `GET /api/orders`), `requireStaff`, the "oldest store" fallback and the `STAFF` profile role are gone; access is by membership only. Shipped as 16a (#69, #71), 16b (#73) and 16c (#74).
 
-Migration `<ts>_multi_store_contract.sql`: every `profiles.role = 'STAFF'` becomes `CUSTOMER` (their membership
-holds their access since PR 03); `site_settings.staff_order_list_limit` is dropped; `profiles_audit` records the
-role change with actor `SYSTEM`.
-
-Server: removed — `GET /api/store`, `GET /api/menu`, `PATCH /api/orders/:id/status`, the staff branch of
-`GET /api/orders`, the "oldest store" fallback (`storeId` is required on `POST /api/orders`), `requireStaff`, the
-`store` and `menu` cache keys. `Role` in `types/enums.ts` keeps `STAFF` only as a database value.
-
-Client: `services/store.ts` and `services/menu.ts`, `useStore`, `useMenu`'s single-store form, the `STAFF` branch of
-`homeFor`; `SiteSettings` loses the moved field and the admin page its input.
-
-Tests: the old routes answer 404 (one test, so they cannot come back by accident); the suites that used them move
-to the store routes; a test user is made staff with `createStoreMember`, and `createTestUser('STAFF')` is removed.
-
-Docs: `docs/API.md` (the routes leave; a "Removed in P2" note), `docs/PERMISSIONS.md`, `docs/SCHEMA.md`,
-`docs/CONFIGURATION.md`, CLAUDE.md §2 (roles: `CUSTOMER` and `ADMIN` on the profile; `MANAGER` and `STAFF` as
-memberships; the brand owner), the roadmap's P2.7 checklist ticked. Intent: `--server minor --client minor`, with
-the CHANGELOG note the roadmap asks for.
-
-As built: PR 16 ships in two parts. 16a is the server contract (the migration, the removed routes, `requireStaff`, the
-cache keys and the site-setting field, with the suites moved to the store routes; `createTestUser('STAFF')` stays as
-a CUSTOMER profile plus a STAFF membership at the oldest store). 16b is the client cleanup (`services/store.ts` and
-`services/menu.ts`, `useStore`, the `homeFor` `STAFF` branch and the admin page's field).
+Now documented in: [docs/API.md "Routes"](../docs/API.md#routes), [docs/PERMISSIONS.md "Roles"](../docs/PERMISSIONS.md#roles), [docs/SCHEMA.md "Migrations"](../docs/SCHEMA.md#migrations).
 
 ## CLAUDE.md edits, aggregated
 

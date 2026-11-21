@@ -40,6 +40,9 @@ prompts. The existing shared instructions and tooling remain authoritative.
   that `packageManager` in its `package.json` pins. The three roots (`.`, `client/`, `server/`) are independent: install
   in each one you use. Scripts run as `pnpm run <script> <args>`, with no `--` before the arguments: pnpm passes a `--`
   through, and `pnpm test -- <file>` runs the whole suite instead of `<file>`.
+- **Line endings** are LF everywhere: `.gitattributes` forces them (`* text=auto eol=lf`, and explicitly for `*.sh`,
+  `*.template` and `Dockerfile*`, which break on CRLF) and marks images and fonts binary, so a Windows checkout needs no
+  `core.autocrlf` setting.
 - **Docker** (Docker Desktop, OrbStack or Colima) for the local Supabase stack. Not needed if you develop against staging.
 
 ## Containers
@@ -95,6 +98,7 @@ It prints the URLs and logins when both servers answer. Press **Ctrl+C** once to
 - Reads `APP_ENV` from `server/.env` and starts the web app in the matching mode (`local` → `pnpm run dev`, `staging` → `pnpm run dev:staging`), so the browser signs in to the same Supabase project the API uses. Refuses `APP_ENV=production`.
 - Stops with a clear message if `server/.env` is missing, or (for `local`) the Supabase stack is not running.
 - Runs `pnpm install --frozen-lockfile` in `server/` and `client/` if `node_modules` is missing. An existing checkout built with npm keeps its old `node_modules`, so migrate it once: delete `node_modules` in the repository root, `client/` and `server/`, make sure Corepack is enabled (see Prerequisites), then run `pnpm install` in each of the three.
+- **Stops whole process trees** on exit (pnpm, its shell, `tsx watch` and node), so Ctrl-C leaves no watcher behind.
 - **Frees the API, worker and web ports first** (8000, 8001 and 5173 unless configured) — anything still listening on them (a stray `pnpm run dev`, an earlier `start.sh`) is killed. Don't run it while another copy of the project is deliberately serving those ports.
 - `--seed` runs `pnpm run seed` before starting (see [Re-seeding wipes orders](#re-seeding-wipes-orders)).
 - Starts the API and the job worker (`tsx watch`, auto-reload on server edits) and the web app (Vite, hot reloads client edits). Their output goes to **`.logs/server.log`**, **`.logs/worker.log`** and **`.logs/client.log`** (gitignored) — look there when something misbehaves.

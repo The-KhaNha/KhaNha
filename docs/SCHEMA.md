@@ -648,7 +648,8 @@ are purged nightly (`purge_fake_gateway_orders`).
 | unique constraint                       | `order_items (order_id, line_number)`                                                       |
 | unique constraint                       | `profiles (email)`, `orders (order_number)`, `store_memberships (user_id, store_id)`        |
 
-`site_settings` has no indexes on purpose (one row), including on `updated_by`. `session_activity.last_seen_at` has
+`audit_log` has no index on `occurred_at`; the 13-month retention purge ([JOBS.md](JOBS.md)) will need one when it
+ships ([ROADMAP](../plans/ROADMAP.md), P9.5). `site_settings` has no indexes on purpose (one row), including on `updated_by`. `session_activity.last_seen_at` has
 none either: the API moves it every few minutes per session, and an index would cost each of those updates an index
 write for one small nightly scan.
 
