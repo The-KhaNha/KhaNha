@@ -59,9 +59,10 @@ by itself emits nothing either: it is derived, and a sweep comes with the first 
 `brand.created` is emitted by `create_brand` ([SCHEMA.md](SCHEMA.md#brands)) in the same transaction as the brand.
 `aggregateId` is the brand id and there is no `storeId`. Nothing subscribes to it yet.
 
-| Type            | Emitted when                     | Payload    |
-| --------------- | -------------------------------- | ---------- |
-| `brand.created` | an admin creates a brand (P7.4a) | `{ slug }` |
+| Type                  | Emitted when                                                                     | Payload                        |
+| --------------------- | -------------------------------------------------------------------------------- | ------------------------------ |
+| `brand.created`       | an admin creates a brand (P7.4a)                                                 | `{ slug }`                     |
+| `brand.owner_invited` | an admin issues (or replaces) a brand's owner invite, from `create_brand_invite` | `{ brandId }`; never the email |
 
 ## Menu events
 

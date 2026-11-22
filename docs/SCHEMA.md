@@ -191,7 +191,7 @@ Table CHECKs: `expires_at > created_at`, and `accepted_at is null or revoked_at 
 unique index `brand_invites_open_key` on `(brand_id) where accepted_at is null and revoked_at is null` allows one open
 invite per brand. An expired invite still counts as open there, so `create_brand_invite` (below) closes the brand's
 open invite before it inserts a new one, in the same transaction. RLS is on and all privileges are revoked from `anon` and `authenticated`. Audited by
-`brand_invites_audit` (`brand_invite.changed`: `email`, `accepted_at`, `revoked_at`; never `token_hash`).
+`brand_invites_audit` (`brand_invite.changed`: `brand_id`, `email`, `accepted_at`, `revoked_at`; never `token_hash`).
 
 ### stores
 
@@ -301,7 +301,7 @@ answers `SLUG_TAKEN` only for `brands_slug_key`. P0001 messages: none.
 brand_invites` (plpgsql, invoker, `service_role` only; same migration) locks the brand row, refuses a missing brand
 (`NOT_FOUND`) or one with an owner (`BRAND_HAS_OWNER`, P7.4a D4), closes the brand's open invite and inserts the new
 one, in one transaction: two admins inviting at once both get a link and one stays open, and a closed old link always
-comes with a working new one. The token itself never reaches SQL, only its hash.
+comes with a working new one. The token itself never reaches SQL, only its hash. It emits `brand.owner_invited` (`brand_invite`, no store, `{ brandId }`) in the same transaction.
 
 `push_template_items(p_brand_id, p_template_item_ids uuid[], p_store_ids uuid[], p_fields text[], p_actor, p_request_id)
 returns integer` (same kind) is the template push (P3.1, D2). Every item must be a live item of the brand's template and
@@ -719,7 +719,7 @@ write for one small nightly scan.
 | `store_schedule_exceptions_audit`                              | after insert, update or delete on `store_schedule_exceptions`, each row                                                                                                                                                                                        | `audit_row_change('schedule_exception.changed', …)`                                                                                                                                                       |
 | `stores_audit`                                                 | after update of `name`, `slug`, `status`, `is_open`, `area`, `address_line`, `contact_phone`, `timezone`, `accepting_orders`, `paused_until`, `pause_reason`, `tagline`, `description` on `stores`, each row (its audit row has `store_id = stores.id`)        | `audit_row_change('store.changed', …)`                                                                                                                                                                    |
 | `store_invites_audit`                                          | after insert or update or delete on `store_invites`, each row (`invite.changed`: `role`, `email`, `accepted_at`, `revoked_at`; never `token_hash`)                                                                                                             | `audit_row_change('invite.changed', 'role', 'email', 'accepted_at', 'revoked_at')`                                                                                                                        |
-| `brand_invites_audit`                                          | after insert or update or delete on `brand_invites`, each row (`brand_invite.changed`: `email`, `accepted_at`, `revoked_at`; never `token_hash`)                                                                                                               |
+| `brand_invites_audit`                                          | after insert or update or delete on `brand_invites`, each row (`brand_invite.changed`: `brand_id`, `email`, `accepted_at`, `revoked_at`; never `token_hash`)                                                                                                   |
 | `store_memberships_audit`                                      | after insert or update or delete on `store_memberships`, each row (`membership.changed`: `user_id`, `store_id`, `role`)                                                                                                                                        | `audit_row_change('membership.changed', 'user_id', 'store_id', 'role')`                                                                                                                                   |
 | `feature_flags_audit`                                          | after update on `feature_flags`, each row                                                                                                                                                                                                                      | `audit_row_change('feature_flag.changed', '*')`                                                                                                                                                           |
 | `fake_gateway_orders_set_updated_at`                           | before update on `fake_gateway_orders`, each row                                                                                                                                                                                                               |

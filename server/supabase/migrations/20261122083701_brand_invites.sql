@@ -29,11 +29,12 @@ create index brand_invites_accepted_by_idx on public.brand_invites (accepted_by)
 alter table public.brand_invites enable row level security;
 revoke all on public.brand_invites from anon, authenticated;
 
--- Who invited which email to which brand, and who closed it. Never token_hash.
+-- Who invited which email to which brand, and who closed it. Never token_hash. brand_id is watched so an invite's
+-- rows still name its brand after the brand (and so the invite, by cascade) is deleted.
 create trigger brand_invites_audit
   after insert or update or delete on public.brand_invites
   for each row execute function public.audit_row_change(
-    'brand_invite.changed', 'email', 'accepted_at', 'revoked_at'
+    'brand_invite.changed', 'brand_id', 'email', 'accepted_at', 'revoked_at'
   );
 
 -- A brand and its empty template in one transaction (D7, D8): the owner can build the menu before the first branch.
@@ -102,6 +103,12 @@ begin
   insert into public.brand_invites (brand_id, email, token_hash, expires_at, created_by, created_at)
   values (p_brand_id, p_email, p_token_hash, p_expires_at, (p_actor->>'id')::uuid, p_now)
   returning * into v_invite;
+
+  -- Ids only: an event never carries the email or the token's hash.
+  perform public.emit_event(
+    'brand.owner_invited', 'brand_invite', v_invite.id, null,
+    jsonb_build_object('brandId', p_brand_id), p_actor, p_request_id
+  );
   return v_invite;
 end;
 $$;
