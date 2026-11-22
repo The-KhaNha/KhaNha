@@ -3506,7 +3506,7 @@ R14: onboard restaurants, view app analytics and usage load, and change site set
 today's `/admin` settings page into a console, lazy per section.
 
 The first slice, "an admin creates a restaurant and invites its owner" plus admin MFA, is planned in
-[P7_4A_ONBOARDING.md](P7_4A_ONBOARDING.md) (phase branch `feat/P7-4a`).
+[P7_4A_ONBOARDING.md](P7_4A_ONBOARDING.md) (phase branch `feat/P7`).
 
 | Section        | Does                                                                                                                                                                                                                                                                                                                          |
 | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
