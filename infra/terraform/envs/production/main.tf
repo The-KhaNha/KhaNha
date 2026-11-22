@@ -115,6 +115,7 @@ module "observability" {
     aws.us_east_1 = aws.us_east_1
   }
   name             = local.name
+  account_id       = var.account_id
   region           = var.region
   log_group_prefix = local.log_group_prefix
   namespace        = local.metrics_namespace

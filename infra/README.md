@@ -158,8 +158,9 @@ TF_VAR_account_id=<the account ID> terraform plan
 The alarms ([DEPLOYMENT.md "Alarms and the dashboard"](../docs/DEPLOYMENT.md#alarms-and-the-dashboard)) email the
 SNS topic `khanha-alerts`, which the **bootstrap** creates in ap-south-1 and in us-east-1, subscribed to
 `alert_email`. It lives there so the address stays in the untracked `terraform.tfvars`: production's plans are public.
-`modules/observability` finds both topics by name, so **the bootstrap must be re-applied before the first infra
-apply that carries PR 08**, or production's plan fails to find them. Then:
+`modules/observability` names both topics' ARNs rather than looking them up, so production plans and applies whether
+or not the bootstrap has been re-applied; until it has, the alarms change state but email nobody. After re-applying
+it:
 
 - AWS sends one "Subscription Confirmation" email per region (two in all). Open each link; an unconfirmed
   subscription receives nothing. SNS → Subscriptions shows both as **Confirmed** afterwards.

@@ -3,6 +3,10 @@ variable "name" {
   type        = string
 }
 
+variable "account_id" {
+  type = string
+}
+
 variable "region" {
   description = "Where the host and its logs are (CloudFront's and ACM's metrics are always in us-east-1)."
   type        = string

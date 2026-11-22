@@ -25,19 +25,11 @@ locals {
     { for metric, field in local.worker_line_fields : metric => { service = "worker", field = field } },
   )
 
-  alarm_actions           = [data.aws_sns_topic.alerts.arn]
-  alarm_actions_us_east_1 = [data.aws_sns_topic.alerts_us_east_1.arn]
+  # The bootstrap's topics (it holds the address; infra/README.md "Alarms"). Named, not looked up, so a plan never
+  # depends on the bootstrap having been applied: until it is, the alarms still change state but email nobody.
+  alarm_actions           = ["arn:aws:sns:${var.region}:${var.account_id}:${var.alert_topic_name}"]
+  alarm_actions_us_east_1 = ["arn:aws:sns:us-east-1:${var.account_id}:${var.alert_topic_name}"]
   instance                = { InstanceId = var.instance_id }
-}
-
-# Created by the bootstrap, which holds the address (infra/README.md "Alarms").
-data "aws_sns_topic" "alerts" {
-  name = var.alert_topic_name
-}
-
-data "aws_sns_topic" "alerts_us_east_1" {
-  provider = aws.us_east_1
-  name     = var.alert_topic_name
 }
 
 # --- Logs ------------------------------------------------------------------------------------------------------------

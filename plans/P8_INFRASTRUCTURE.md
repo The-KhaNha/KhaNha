@@ -554,7 +554,8 @@ Built to stay inside CloudWatch's free allowances.
 "Process metrics" line, counted in the process for every request, not from metric filters on the access line: a
 successful read's access line is `debug`, below production's `info`, so filters on it would have seen almost none of
 the traffic. (2) The SNS topics and the email subscription are in the bootstrap, not production's root, so the
-address stays in the user's untracked `terraform.tfvars` (production's plans are public); the root finds them by name.
+address stays in the user's untracked `terraform.tfvars` (production's plans are public); the root names their ARNs,
+so its plans never depend on the bootstrap having been applied.
 The job lines also gained `requestId`, so one query follows a request into the worker.
 
 - `compose.prod.yml`: the `awslogs` driver, one log group per service, kept 30 days.
