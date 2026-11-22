@@ -2,6 +2,11 @@
 
 All notable changes to the client (`client/package.json`). Written by `npm run release` from `.changes/`.
 
+## 0.2.3 — 2026-11-22
+
+- Upgrade to React 19.
+- Each menu card's Add button names its item for screen readers and voice control.
+
 ## 0.2.2 — 2026-11-19
 
 - Upgrade to React 19.
