@@ -109,6 +109,19 @@ export async function createOwnerInvite(
   now = new Date(),
 ): Promise<{ invite: BrandInviteDto; token: string }> {
   if (!isUuid(brandId)) throw notFound('Restaurant not found.');
+  // accept_brand_invite refuses an ADMIN (D6), so such an invite could never be accepted: say so now, not as a dead link.
+  const { data: admin } = await supabaseAdmin
+    .from('profiles')
+    .select('id')
+    .eq('email', email)
+    .eq('role', 'ADMIN')
+    .maybeSingle()
+    .throwOnError();
+  if (admin)
+    throw validationError(
+      "That email belongs to a platform admin, and an admin can't own a restaurant. Invite the owner's own account.",
+      'email',
+    );
   const token = randomBytes(32).toString('base64url');
   try {
     const { data } = await supabaseAdmin

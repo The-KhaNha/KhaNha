@@ -131,7 +131,17 @@ to either.
   refused (409 `BRAND_HAS_OWNER`) while the brand has an owner: no invite replaces an owner.
 - The token is shown once, stored only as a sha-256, never logged (the log lines carry ids only), and every answer is
   `no-store`. The table is reachable only through the API ([SCHEMA.md](SCHEMA.md#brand_invites)).
-- Accepting an owner invite arrives with PR 02.
+- Accepting (`POST /api/me/brand-invites/accept`) needs only a signed-in account whose email is the invite's, plus the
+  token ([API.md](API.md#post-mebrand-invitesaccept)). `accept_brand_invite` sets `brands.owner_id` (audited by
+  `brands_audit`, the accepter as actor). Every refusal is the same 404: an unknown token, another account's email, an
+  expired, revoked or used invite, a brand that has an owner by now (D4: an invite never replaces an owner) and a
+  platform `ADMIN` account (D6: an admin never becomes an owner through an invite, so ADMIN keeps no staff powers).
+- The link is `/join/owner#<token>`, which the admin builds from the token. Like `/join`, the token is in the fragment
+  and `Join.tsx` clears it from the address bar before anything else.
+- Known limitation: sign-up does not verify the email, so whoever holds the link and registers with that address
+  becomes the owner (the same as team invites, with bigger stakes). Share the link only with the person invited. A wrong
+  owner is fixed in SQL until ownership transfer exists: `update public.brands set owner_id = null where id = '…'`,
+  then a new invite.
 
 ## Route matrix
 
@@ -158,6 +168,7 @@ to either.
 | `DELETE /api/stores/:storeId/invites/:inviteId`                                            | 401                                     | 403 unless a MANAGER or OWNER standing there                 | `team.manageStaff` there (MANAGER, OWNER), else 403  | 403 unless a MANAGER/OWNER standing there            | same; a `MANAGER` invite also needs `team.manageManagers`                                                                                                                          |
 | `DELETE /api/stores/:storeId/members/:membershipId`                                        | 401                                     | 403 unless a MANAGER or OWNER standing there                 | `team.manageStaff` there (MANAGER, OWNER), else 403  | 403 unless a MANAGER/OWNER standing there            | same; a `MANAGER` member needs `team.manageManagers`, or is the caller                                                                                                             |
 | `POST /api/me/invites/accept`                                                              | 401                                     | yes, with the invite's token and email                       | yes, with the invite's token and email               | yes, with the invite's token and email               | `requireAuth` + `inviteAcceptLimiter`; every refusal 404                                                                                                                           |
+| `POST /api/me/brand-invites/accept`                                                        | 401                                     | yes, with the invite's token and email                       | yes, with the invite's token and email               | yes, with the invite's token and email               | `requireAuth` + `inviteAcceptLimiter`; every refusal 404                                                                                                                           |
 | `GET /api/admin/audit`                                                                     | 401                                     | 403                                                          | 403                                                  | yes                                                  | `requireAuth` + `requireAdmin`                                                                                                                                                     |
 | `PATCH /api/admin/flags/:key`                                                              | 401                                     | 403                                                          | 403                                                  | yes (unknown key 404)                                | `requireAuth` + `requireAdmin`                                                                                                                                                     |
 | `GET /api/admin/brands`                                                                    | 401                                     | 403                                                          | 403                                                  | yes                                                  | `requireAuth` + `requireAdmin`                                                                                                                                                     |

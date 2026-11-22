@@ -129,6 +129,23 @@ describe('authStore with browser storage full', () => {
   });
 });
 
+describe('authStore.addOwnedBrand', () => {
+  const brand = { id: 'b1', name: 'Waffles', slug: 'waffles' };
+
+  it('adds the brand once', () => {
+    useAuthStore.setState({ user: { ...me, ownedBrands: [] }, token: 't' });
+    useAuthStore.getState().addOwnedBrand(brand);
+    useAuthStore.getState().addOwnedBrand(brand);
+    expect(useAuthStore.getState().user?.ownedBrands).toEqual([brand]);
+  });
+
+  it('does nothing when nobody is signed in', () => {
+    useAuthStore.setState({ user: null, token: null });
+    useAuthStore.getState().addOwnedBrand(brand);
+    expect(useAuthStore.getState().user).toBeNull();
+  });
+});
+
 describe('authStore.addMembership', () => {
   const cafe = { storeId: 's1', storeSlug: 'cafe', storeName: 'Cafe', role: 'STAFF' as const };
 

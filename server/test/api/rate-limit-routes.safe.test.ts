@@ -10,6 +10,7 @@ import { createTestUser, deleteTestUser, oldestStoreId, type TestUser } from '..
 // no account, order or status change is ever made.
 const WRITE_MAX = 2;
 const REGISTER_MAX = 2;
+const INVITE_ACCEPT_MAX = 2;
 let server: Server;
 let staff: TestUser;
 let staffTwo: TestUser;
@@ -24,6 +25,7 @@ beforeAll(async () => {
   vi.resetModules();
   process.env.RATE_LIMIT_WRITE_MAX = String(WRITE_MAX);
   process.env.RATE_LIMIT_REGISTER_MAX = String(REGISTER_MAX);
+  process.env.RATE_LIMIT_INVITE_ACCEPT_MAX = String(INVITE_ACCEPT_MAX);
   const { createApp } = await import('../../src/app.js');
   server = createApp().listen(0, '127.0.0.1');
   await once(server, 'listening');
@@ -32,6 +34,7 @@ beforeAll(async () => {
 afterAll(async () => {
   process.env.RATE_LIMIT_WRITE_MAX = '0';
   process.env.RATE_LIMIT_REGISTER_MAX = '0';
+  delete process.env.RATE_LIMIT_INVITE_ACCEPT_MAX;
   vi.resetModules();
   await new Promise<void>((resolve) => server.close(() => resolve()));
   await Promise.all([staff, staffTwo, customer].map((u) => deleteTestUser(u)));
@@ -132,6 +135,25 @@ describe('restaurant onboarding writes (P7.4a)', () => {
       for (const write of writes) expectRateLimited(await write());
     } finally {
       await deleteTestUser(admin);
+    }
+  });
+});
+
+describe('invite accept limiter', () => {
+  it('store and owner invite accepts count against one limit, so guesses cannot be split across them', async () => {
+    const user = await createTestUser('CUSTOMER');
+    const acceptAt = (path: string) =>
+      request(server)
+        .post(path)
+        .set('Authorization', bearer(user))
+        .send({ token: 'x'.repeat(43) });
+    try {
+      expect((await acceptAt('/api/me/invites/accept')).status).toBe(404);
+      expect((await acceptAt('/api/me/brand-invites/accept')).status).toBe(404);
+      expectRateLimited(await acceptAt('/api/me/brand-invites/accept'));
+      expectRateLimited(await acceptAt('/api/me/invites/accept'));
+    } finally {
+      await deleteTestUser(user);
     }
   });
 });

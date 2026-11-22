@@ -75,6 +75,13 @@ it('create, invite and revoke (twice) leave no token and no invitee email in any
     .delete(`/api/admin/brands/${brandId}/invites/${sent.body.invite.id}`)
     .set(auth);
   expect(again.status).toBe(204);
+  // And an accept (PR 02): a refused one, with a real-looking token, logs neither the token nor the email.
+  const guess = 'y'.repeat(43);
+  const refused = await request(server)
+    .post('/api/me/brand-invites/accept')
+    .set(auth)
+    .send({ token: guess });
+  expect(refused.status).toBe(404);
 
   await vi.waitFor(() =>
     expect(lines.filter((line) => typeof line.msg === 'string').map((l) => l.msg)).toEqual(
@@ -85,5 +92,6 @@ it('create, invite and revoke (twice) leave no token and no invitee email in any
   expect(lines.filter((l) => l.msg === 'Owner invite revoked')).toHaveLength(1);
   const all = JSON.stringify(lines);
   expect(all).not.toContain(sent.body.token);
+  expect(all).not.toContain(guess);
   expect(all).not.toContain(email);
 });

@@ -30,6 +30,8 @@ interface AuthState {
   clearSession: () => void;
   /** Records a membership the API just granted (an accepted invite), so the guards see it without a profile reload. */
   addMembership: (membership: User['memberships'][number]) => void;
+  /** Records a brand the account now owns (an accepted owner invite), for the same reason. */
+  addOwnedBrand: (brand: User['ownedBrands'][number]) => void;
 }
 
 let hydrating: Promise<void> | null = null;
@@ -84,6 +86,13 @@ export const useAuthStore = create<AuthState>()(
         if (!user) return;
         const others = (user.memberships ?? []).filter((m) => m.storeId !== membership.storeId);
         set({ user: { ...user, memberships: [...others, membership] } });
+      },
+
+      addOwnedBrand(brand) {
+        const user = get().user;
+        if (!user) return;
+        const others = (user.ownedBrands ?? []).filter((b) => b.id !== brand.id);
+        set({ user: { ...user, ownedBrands: [...others, brand] } });
       },
 
       hydrate() {

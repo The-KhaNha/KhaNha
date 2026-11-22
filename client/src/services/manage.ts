@@ -42,3 +42,12 @@ export const acceptInvite = async (token: string) =>
       };
     }>('/me/invites/accept', { method: 'POST', body: { token } })
   ).membership;
+
+/** Accepts an owner invite (P7.4a): the signed-in account becomes the brand's owner. Every refusal is a 404. */
+export const acceptOwnerInvite = async (token: string) =>
+  (
+    await request<{ brand: { id: string; name: string; slug: string } }>(
+      '/me/brand-invites/accept',
+      { method: 'POST', body: { token } },
+    )
+  ).brand;

@@ -3,7 +3,11 @@ import { useState } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const state = vi.hoisted(() => ({ user: null as { id: string } | null, addMembership: vi.fn() }));
+const state = vi.hoisted(() => ({
+  user: null as { id: string } | null,
+  addMembership: vi.fn(),
+  addOwnedBrand: vi.fn(),
+}));
 vi.mock('../features/auth/authStore', () => ({
   selectUser: (s: { user: unknown }) => s.user,
   useAuthStore: Object.assign((select: (s: typeof state) => unknown) => select(state), {
@@ -11,7 +15,8 @@ vi.mock('../features/auth/authStore', () => ({
   }),
 }));
 const accept = vi.hoisted(() => vi.fn());
-vi.mock('../services/manage', () => ({ acceptInvite: accept }));
+const acceptOwner = vi.hoisted(() => vi.fn());
+vi.mock('../services/manage', () => ({ acceptInvite: accept, acceptOwnerInvite: acceptOwner }));
 
 async function renderJoin() {
   const { JoinPage } = await import('./Join');
@@ -25,6 +30,78 @@ async function renderJoin() {
     </MemoryRouter>,
   );
 }
+
+async function renderOwnerJoin() {
+  const { JoinPage } = await import('./Join');
+  return render(
+    <MemoryRouter initialEntries={['/join/owner']}>
+      <Routes>
+        <Route path="/join/owner" element={<JoinPage kind="owner" />} />
+        <Route path="/manage" element={<p>manage list</p>} />
+      </Routes>
+    </MemoryRouter>,
+  );
+}
+
+describe('/join/owner (P7.4a)', () => {
+  beforeEach(() => {
+    window.history.replaceState(null, '', '/join/owner#own456');
+  });
+
+  it('accepts through the owner endpoint, records the brand and lands on /manage', async () => {
+    state.user = { id: 'u' };
+    const brand = { id: 'b', name: 'Waffles', slug: 'waffles' };
+    acceptOwner.mockImplementation(async () => {
+      expect(window.location.hash).toBe('');
+      return brand;
+    });
+    await renderOwnerJoin();
+    expect(await screen.findByText('manage list')).toBeInTheDocument();
+    expect(acceptOwner).toHaveBeenCalledWith('own456');
+    expect(accept).not.toHaveBeenCalled();
+    expect(state.addOwnedBrand).toHaveBeenCalledWith(brand);
+  });
+
+  it('signed out, both links come back to /join/owner', async () => {
+    await renderOwnerJoin();
+    expect(screen.getByRole('heading', { name: 'Set up your restaurant' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute(
+      'href',
+      '/login?next=%2Fjoin%2Fowner',
+    );
+    expect(screen.getByRole('link', { name: 'Create an account' })).toHaveAttribute(
+      'href',
+      '/register?next=%2Fjoin%2Fowner',
+    );
+  });
+
+  it('a token picked up on /join/owner is never sent to the team endpoint', async () => {
+    await renderOwnerJoin(); // signed out: the token waits in memory
+    window.history.replaceState(null, '', '/join');
+    state.user = { id: 'u' };
+    const { JoinPage } = await import('./Join');
+    render(
+      <MemoryRouter initialEntries={['/join']}>
+        <Routes>
+          <Route path="/join" element={<JoinPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(await screen.findAllByText(/no longer valid/)).not.toHaveLength(0);
+    expect(accept).not.toHaveBeenCalled();
+  });
+
+  it('a refused invite shows the invalid-link message', async () => {
+    state.user = { id: 'u' };
+    const { ApiError } = await import('../services/api');
+    acceptOwner.mockRejectedValue(
+      new ApiError(404, 'NOT_FOUND', 'That invite is not valid any more.'),
+    );
+    await renderOwnerJoin();
+    expect(await screen.findByText(/no longer valid/)).toBeInTheDocument();
+    expect(state.addOwnedBrand).not.toHaveBeenCalled();
+  });
+});
 
 beforeEach(() => {
   // A fresh module each test: the page keeps the invite token in a module variable.
