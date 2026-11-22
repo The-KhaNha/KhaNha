@@ -226,7 +226,10 @@ The layers, in the order a request passes them:
 2. `schemas/<resource>.schema.ts`: the zod schema and its `z.infer` type.
 3. `controllers/<resource>.controller.ts`: a thin handler, no `try`/`catch`.
 4. `services/<resource>.service.ts`: the logic and the queries through `supabaseAdmin`, scoped by user where it
-   matters (see [PERMISSIONS.md](PERMISSIONS.md#why-every-query-scopes-by-user)).
+   matters (see [PERMISSIONS.md](PERMISSIONS.md#why-every-query-scopes-by-user)). A store is scoped by an explicit
+   `.eq('store_id', …)` (or `.in('store_id', …)` where the board reads several stores) in the owning service; a
+   generic `scoped(req).from(table)` wrapper was tried and dropped, because `order_items` has no `store_id` and it
+   fitted no caller without casts.
 5. `utils/serializers.ts` + `types/api.ts`: row → DTO. Mirror the DTO in `client/src/types/api.ts`.
 6. Errors: throw an `AppError` factory from `utils/errors.ts`; add a new code to `ErrorCode`.
 7. Document it in [API.md](API.md) and add a suite under `server/test/api/`.

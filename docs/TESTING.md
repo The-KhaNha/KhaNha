@@ -259,7 +259,9 @@ Dependabot keeps current: a tag can be repointed, a SHA cannot. Each root's `pnp
 `minimumReleaseAge: 10080` (minutes), so an install never resolves a version published in the last week (a hijacked
 release is usually caught by then), and `strictDepBuilds` with `allowBuilds` keeps every dependency install script
 from running: one not listed fails the install. `scripts/ci/package-manager.test.mjs` (root `pnpm test`) guards these
-settings, the one pinned pnpm and the absence of npm commands.
+settings, the one pinned pnpm and the absence of npm commands (in workflows, Dockerfiles, scripts, app code, tests, compose and
+`.env` files). `packageManager` carries corepack's `+sha512.<hash>`
+integrity hash, so the pnpm that installs everything is pinned by content, and the guard requires the hash.
 
 Validate a workflow change with `docker run --rm -v "$PWD":/repo -w /repo rhysd/actionlint:latest -color`.
 
