@@ -17,13 +17,21 @@ let pending: { kind: JoinKind; token: string } | null = null;
 const INVALID = 'This invite link is no longer valid. Ask for a new one.';
 
 /** Where an accepted invite lands, after the session has been told what it now grants. */
-async function acceptAndRoute(kind: JoinKind, token: string): Promise<string> {
+async function acceptAndRoute(
+  kind: JoinKind,
+  token: string,
+  userId: string,
+): Promise<string | null> {
+  // The grant belongs to the account that asked: if the session changed while the request was out, record nothing.
+  const stillTheSameAccount = () => useAuthStore.getState().user?.id === userId;
   if (kind === 'owner') {
     const brand = await acceptOwnerInvite(token);
+    if (!stillTheSameAccount()) return null;
     useAuthStore.getState().addOwnedBrand(brand);
     return '/manage';
   }
   const membership = await acceptInvite(token);
+  if (!stillTheSameAccount()) return null;
   // The session's memberships predate this one: add it from the answer itself (a profile reload could be one
   // already in flight, or fail) before landing on a page that checks it.
   useAuthStore.getState().addMembership({
@@ -73,7 +81,8 @@ export function JoinPage({ kind = 'team' }: JoinPageProps) {
   });
   const [error, setError] = useState<ApiError | null>(null);
   const [attempt, setAttempt] = useState(0);
-  const started = useRef(-1);
+  // Which attempt, for which account, has started: a different account signing in may accept afresh.
+  const started = useRef('');
   // A ref, not an effect cleanup: StrictMode's second effect run would otherwise drop the only completion.
   const mounted = useRef(true);
   useEffect(() => {
@@ -84,11 +93,14 @@ export function JoinPage({ kind = 'team' }: JoinPageProps) {
   }, []);
 
   useEffect(() => {
-    if (!token || !user || started.current === attempt) return;
-    started.current = attempt;
+    const key = user ? `${attempt}:${user.id}` : '';
+    if (!token || !user || started.current === key) return;
+    started.current = key;
     setError(null);
-    acceptAndRoute(kind, token)
+    acceptAndRoute(kind, token, user.id)
       .then((to) => {
+        // null: the account changed mid-request. Keep the token for whoever is signed in now.
+        if (to === null) return;
         pending = null;
         if (mounted.current) navigate(to, { replace: true });
       })

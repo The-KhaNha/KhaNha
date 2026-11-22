@@ -62,6 +62,19 @@ describe('/join/owner (P7.4a)', () => {
     expect(state.addOwnedBrand).toHaveBeenCalledWith(brand);
   });
 
+  it('records nothing and stays put when the account changes while the accept is out', async () => {
+    state.user = { id: 'u' };
+    acceptOwner.mockImplementation(async () => {
+      state.user = { id: 'someone-else' }; // signed out and in again meanwhile
+      return { id: 'b', name: 'Waffles', slug: 'waffles' };
+    });
+    await renderOwnerJoin();
+    await waitFor(() => expect(acceptOwner).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(state.addOwnedBrand).not.toHaveBeenCalled();
+    expect(screen.queryByText('manage list')).toBeNull();
+  });
+
   it('signed out, both links come back to /join/owner', async () => {
     await renderOwnerJoin();
     expect(screen.getByRole('heading', { name: 'Set up your restaurant' })).toBeInTheDocument();
