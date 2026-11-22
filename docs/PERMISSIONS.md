@@ -35,6 +35,28 @@ work exactly like a customer's. Its only privileges are the admin dashboard (`/a
   published staff password on shared staging would expose every customer's name, phone and notes (see
   [DEPLOYMENT.md](DEPLOYMENT.md#production-first-time-setup)).
 
+## Admin second factor
+
+Decision (P7.4a PR 04): every admin power needs `aal2`. Context: one admin password would otherwise change the whole
+site and onboard restaurants. Decision: while `ADMIN_MFA_REQUIRED` is on (the default; refused off in production by
+`productionProblems`), `requireAuth` treats a profile with role `ADMIN` whose verified access token's `aal` claim is
+not `aal2` (no TOTP code this sign-in) as a `CUSTOMER` for that request (`req.user.role = 'CUSTOMER'`,
+`adminMfaPending: true`). Consequence: such an admin can do nothing admin, on any route, including the `ADMIN` standing
+in `server/src/domain/permissions.ts` (`store.pause`, `audit.store`). `requireAdmin` answers them 403 `MFA_REQUIRED`,
+a real customer 403 `FORBIDDEN`. `GET /api/auth/me` reads the profile, so it still says `ADMIN`; `/admin` uses that to
+show the code step ([FRONTEND_STRUCTURE.md](FRONTEND_STRUCTURE.md#pages)).
+
+- The factor is TOTP through Supabase Auth, enrolled and verified in the browser on `/admin` (first visit: QR code and
+  key; later: the 6-digit code). Hosted projects have TOTP on by default; locally `config.toml` sets
+  `[auth.mfa.totp]` `enroll_enabled` and `verify_enabled`. Supabase ends a user's other sessions when a factor is first verified.
+- A lost device: delete the admin's factor ([DEPLOYMENT.md](DEPLOYMENT.md#admin-second-factor)); the next `/admin` visit enrols again.
+- **Known limit: the first factor is trusted on first use** (the user's choice, 22 November 2026). Enrolling needs
+  only the password, so whoever holds an admin's password and reaches `/admin` before the admin does can enrol their
+  own authenticator. The window is from an admin account's first password until its first `/admin` visit: enrol at
+  once (after each release that turns this on, and for each new admin). If an unknown factor appears ("Enter your
+  code" for a factor you never set up), delete it in the dashboard and change the password. The stronger fix, a
+  factor approved from a terminal with the secret key, was offered and not taken.
+
 ## Store roles
 
 Decision (ADR-001, P2.2): staff and managers are memberships of one store, not a site-wide profile role. Context: a
@@ -195,7 +217,8 @@ Code: `server/src/middleware/auth.ts`.
 - `requireAuth` verifies the bearer token against the project's JWKS (`verifyCredentials` from `@supabase/server`),
   loads `id, role` from `profiles`, and sets `req.user`. A token from another Supabase project fails verification.
   A valid token whose profile is gone is 401.
-- `requireAdmin` must run after `requireAuth`. It returns 403 `FORBIDDEN` unless `req.user.role === 'ADMIN'`. It
+- `requireAdmin` must run after `requireAuth`. It returns 403 `FORBIDDEN` unless `req.user.role === 'ADMIN'`, and 403
+  `MFA_REQUIRED` for an admin without a second factor ([below](#admin-second-factor)). It
   guards `adminRouter` (`adminRouter.use(requireAuth, requireAdmin)`), so a store member cannot reach `/api/admin/*` either.
 - `currentUser(req)` reads `req.user` and throws 401 if a route forgot `requireAuth`.
 - `orderRouter.use(requireAuth)` guards every path under `/api/orders`; `adminRouter.use(requireAuth, requireAdmin)`

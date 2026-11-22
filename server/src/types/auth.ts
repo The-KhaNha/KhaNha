@@ -9,6 +9,11 @@ export interface AuthUser {
   memberships: { storeId: string; role: StoreRole }[];
   /** The brands the caller owns: OWNER of every store of each (ADR-001). */
   ownedBrandIds: string[];
+  /**
+   * An ADMIN signed in without a second factor while ADMIN_MFA_REQUIRED is on: `role` is CUSTOMER for this request,
+   * so no route grants admin power, and requireAdmin answers MFA_REQUIRED (P7.4a PR 04).
+   */
+  adminMfaPending?: boolean;
 }
 
 /** The store a store route names, set by `requireStore` with the caller's access there. */

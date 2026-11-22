@@ -356,6 +356,13 @@ is its own lazy chunk (confirm that it is).
 
 - [ ] Merged
 
+As built: an admin without `aal2` is a customer for that request (`role` CUSTOMER, `adminMfaPending`), so the ADMIN
+standing in `domain/permissions.ts` (pause, store audit) is closed too, not only `requireAdmin`'s routes; `/auth/me`
+still says ADMIN. `ADMIN_MFA_REQUIRED` (default on, refused off in production) lets local development skip it; the
+server suites run with it off and `admin-mfa.test.ts` turns it on. The client's check is the settings read answering
+`MFA_REQUIRED`, so e2e specs with a mocked API never meet the step. The first factor is trusted on first use (the user's choice after
+review; a terminal-approved factor was offered): enrol right after the release.
+
 **Theme:** a leaked admin password alone opens nothing (ROADMAP P7.4 "Hardening"). Main agent (auth).
 
 - **Supabase:** TOTP MFA (`[auth.mfa.totp] enroll_enabled = true, verify_enabled = true` in

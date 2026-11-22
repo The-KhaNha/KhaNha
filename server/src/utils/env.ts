@@ -91,6 +91,14 @@ const envSchema = z
       .string()
       .url('CLIENT_ORIGIN must be a URL such as http://localhost:5173.')
       .default('http://localhost:5173'),
+    /**
+     * Whether an admin's powers need a second factor (P7.4a PR 04): an ADMIN whose access token is not `aal2` (no TOTP
+     * code this sign-in) acts as a customer, and admin routes answer 403 MFA_REQUIRED. Refused off in production.
+     */
+    ADMIN_MFA_REQUIRED: z
+      .enum(['true', 'false'], 'ADMIN_MFA_REQUIRED must be true or false.')
+      .default('true')
+      .transform((v) => v === 'true'),
     /** The commit this build came from (image build arg); reported by GET /api/health. */
     GIT_COMMIT: z.string().min(1).default('unknown'),
     // Must exceed the load balancer's idle timeout (60 s on an ALB), or Node closes a kept-alive connection the
@@ -157,6 +165,7 @@ export function productionProblems(
     | 'TRUST_PROXY_HOPS'
     | 'MEDIA_STORAGE'
     | 'PAYMENT_PROVIDER'
+    | 'ADMIN_MFA_REQUIRED'
   >,
 ): string[] {
   if (e.APP_ENV !== 'production') return [];
@@ -173,6 +182,10 @@ export function productionProblems(
     );
   if (e.MEDIA_STORAGE === 'local')
     problems.push('MEDIA_STORAGE=local is for development: production stores photos in S3.');
+  if (!e.ADMIN_MFA_REQUIRED)
+    problems.push(
+      'ADMIN_MFA_REQUIRED=false lets a leaked admin password alone change the whole site: production needs it on.',
+    );
   if (e.PAYMENT_PROVIDER === 'fake')
     problems.push(
       'PAYMENT_PROVIDER=fake marks orders paid with no money: production uses a real provider or none.',

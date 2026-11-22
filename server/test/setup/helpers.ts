@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { randomBytes, randomUUID } from 'node:crypto';
+import { createHmac, randomBytes, randomUUID } from 'node:crypto';
 import request from 'supertest';
 import { createClient } from '@supabase/supabase-js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -89,6 +89,45 @@ export async function signInAgain(
     session_id: string;
   };
   return { token, refresh: data.session.refresh_token, sessionId: claims.session_id };
+}
+
+/** The 6-digit TOTP code for a base32 secret at `now` (RFC 6238: SHA-1, 30 s steps), as an authenticator app shows. */
+export function totpCode(secret: string, now = Date.now()): string {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  let bits = '';
+  for (const char of secret.replace(/=+$/, '').toUpperCase())
+    bits += alphabet.indexOf(char).toString(2).padStart(5, '0');
+  const key = Buffer.from(bits.match(/.{8}/g)?.map((byte) => parseInt(byte, 2)) ?? []);
+  const counter = Buffer.alloc(8);
+  counter.writeBigUInt64BE(BigInt(Math.floor(now / 30_000)));
+  const hmac = createHmac('sha1', key).update(counter).digest();
+  const offset = (hmac[hmac.length - 1] ?? 0) & 0xf;
+  return String((hmac.readUInt32BE(offset) & 0x7fffffff) % 1_000_000).padStart(6, '0');
+}
+
+/**
+ * Signs `user` in, enrols a TOTP factor and verifies a code: an access token at `aal2`, as an admin's is after the
+ * authenticator step (P7.4a PR 04). Returns that token and the factor's secret.
+ */
+export async function signInWithSecondFactor(
+  user: TestUser,
+): Promise<{ token: string; secret: string }> {
+  const client = throwawayClient();
+  const { error } = await client.auth.signInWithPassword({
+    email: user.email,
+    password: user.password,
+  });
+  if (error) throw error;
+  const { data: factor, error: enrollError } = await client.auth.mfa.enroll({ factorType: 'totp' });
+  if (enrollError) throw enrollError;
+  const { error: verifyError } = await client.auth.mfa.challengeAndVerify({
+    factorId: factor.id,
+    code: totpCode(factor.totp.secret),
+  });
+  if (verifyError) throw verifyError;
+  const { data } = await client.auth.getSession();
+  if (!data.session) throw new Error('No session after the second factor');
+  return { token: data.session.access_token, secret: factor.totp.secret };
 }
 
 export async function deleteTestUser(user: TestUser | undefined): Promise<void> {

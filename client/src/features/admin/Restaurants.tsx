@@ -137,7 +137,7 @@ export function Restaurants() {
         <Card as="section" padding="lg" aria-busy aria-label="Loading restaurants">
           <Skeleton className="h-11 w-full rounded-control" />
         </Card>
-      ) : error || !data ? (
+      ) : error?.code === 'MFA_REQUIRED' ? null : error || !data ? ( // The page shows the second-factor step instead (pages/Admin.tsx).
         <ErrorState
           compact
           unreachable={error?.isUnreachable}
