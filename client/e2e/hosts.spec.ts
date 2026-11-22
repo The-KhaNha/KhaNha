@@ -2,8 +2,8 @@ import { expect, test } from '@playwright/test';
 import { mockApi } from './fixtures';
 
 // Production's three hosts (P8 PR 05b, lib/hosts.ts), played by localhost aliases whose requests the page answers
-// from the one dev server on 127.0.0.1, where Vite listens (no browser resolves them the same way). The settings arrive the way the web image sends
-// them, in /runtime-env.js.
+// from the one dev server at baseURL (no browser resolves the aliases the same way, and Vite binds 127.0.0.1 on one
+// machine and ::1 on another). The settings arrive the way the web image sends them, in /runtime-env.js.
 test.beforeEach(async ({ page, baseURL }) => {
   const port = new URL(baseURL ?? '').port;
   const hosts = {
@@ -13,10 +13,8 @@ test.beforeEach(async ({ page, baseURL }) => {
   };
   await mockApi(page);
   await page.route(/^http:\/\/(staff|admin)\.localhost:\d+\/(?!api\/)/, async (route) => {
-    const url = route
-      .request()
-      .url()
-      .replace(/\/\/(staff|admin)\.localhost/, '//127.0.0.1');
+    const { pathname, search } = new URL(route.request().url());
+    const url = new URL(`${pathname}${search}`, baseURL).href;
     await route.fulfill({ response: await route.fetch({ url }) });
   });
   await page.route('**/runtime-env.js', (route) =>
