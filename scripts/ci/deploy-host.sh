@@ -3,6 +3,7 @@
 # tags they are the candidate; with none the host applies the release parameter's tags (the undo). The host returns
 # to the parameter's release by itself when the candidate never becomes ready, so a failure here leaves it there.
 # Usage: scripts/ci/deploy-host.sh [<web-tag> <server-tag>]
+#   DEPLOY_WAIT_SECONDS / DEPLOY_POLL_SECONDS: the whole wait and the poll interval (tests shorten them).
 set -euo pipefail
 
 hosts=$(aws ec2 describe-instances \
@@ -30,7 +31,7 @@ echo "deploy-host: command $command on $host"
 
 # Until the agent has the command its invocation does not exist yet. Any other error (throttling, a network blip) is
 # retried until the deadline: giving up early could leave the command still changing the host under the undo.
-wait_s=$((delivery_s + 900 + 60))
+wait_s=${DEPLOY_WAIT_SECONDS:-$((delivery_s + 900 + 60))}
 deadline=$((SECONDS + wait_s))
 while :; do
   if ! status=$(aws ssm get-command-invocation --command-id "$command" --instance-id "$host" \
@@ -41,13 +42,20 @@ while :; do
     esac
     status=Pending
   fi
-  case $status in Pending | InProgress | Delayed) ;; *) break ;; esac
+  case $status in Pending | InProgress | Delayed | Cancelling) ;; *) break ;; esac
   if [ "$SECONDS" -ge "$deadline" ]; then
     status="still $status after ${wait_s}s"
     break
   fi
-  sleep 10
+  sleep "${DEPLOY_POLL_SECONDS:-10}"
 done
+
+# A cancelled command's script may still be running (SSM does not promise to stop it), so the undo waits until the
+# command's whole window has passed.
+if [ "$status" = Cancelled ] && [ "$SECONDS" -lt "$deadline" ]; then
+  echo "deploy-host: the command was cancelled; waiting $((deadline - SECONDS))s until it can no longer act" >&2
+  sleep $((deadline - SECONDS))
+fi
 
 aws ssm get-command-invocation --command-id "$command" --instance-id "$host" \
   --query '[StandardOutputContent, StandardErrorContent]' --output text || true
