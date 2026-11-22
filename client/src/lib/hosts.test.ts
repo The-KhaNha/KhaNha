@@ -56,6 +56,16 @@ describe('hostRedirect', () => {
     expect(hostRedirect(at('admin.khanha.in', '/'), hosts)).toBe('/admin');
   });
 
+  it('keeps the query and fragment when the root opens its section', () => {
+    expect(hostRedirect(at('staff.khanha.in', '/', '?x=1', '#tok'), hosts)).toBe('/staff?x=1#tok');
+  });
+
+  it('matches a host setting written in capitals (host names ignore case)', () => {
+    const shouting = { customer: 'KHANHA.IN', staff: 'STAFF.KHANHA.IN', admin: 'Admin.Khanha.In' };
+    expect(hostRedirect(at('staff.khanha.in', '/'), shouting)).toBe('/staff');
+    expect(hostRedirect(at('khanha.in', '/admin'), shouting)).toBe('https://Admin.Khanha.In/admin');
+  });
+
   it('stays for a path of this host, and for sign-in on any host', () => {
     expect(hostRedirect(at('khanha.in', '/'), hosts)).toBeNull();
     expect(hostRedirect(at('staff.khanha.in', '/manage'), hosts)).toBeNull();

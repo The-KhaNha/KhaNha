@@ -29,6 +29,9 @@ check REQUEST_TIMEOUT_MS "${REQUEST_TIMEOUT_MS:-}" no
 # Unset, every section shares one origin.
 for name in CUSTOMER_HOST STAFF_HOST ADMIN_HOST; do
   eval "value=\${$name:-}"
+  # grep matches line by line, so a value with a line break could pass on its first line: refuse any line break first.
+  case "$value" in *"
+"*) fail "$name must be a host such as staff.example.com (one line)" ;; esac
   if [ -n "$value" ] && ! printf '%s' "$value" | grep -Eqx '[a-z0-9.-]+(:[0-9]+)?'; then
     fail "$name must be a host such as staff.example.com (no scheme, path or capitals)"
   fi

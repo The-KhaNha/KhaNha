@@ -55,7 +55,13 @@ test('unset hosts are written empty (one origin, sections by path)', () => {
 });
 
 test('a host that is a URL or has capitals is refused, so it never misses location.host', () => {
-  for (const value of ['https://staff.khanha.in', 'Staff.khanha.in', 'staff.khanha.in/x']) {
+  for (const value of [
+    'https://staff.khanha.in',
+    'Staff.khanha.in',
+    'staff.khanha.in/x',
+    'staff.khanha.in\nevil',
+    'staff.khanha.in\n',
+  ]) {
     const r = run({ STAFF_HOST: value });
     assert.equal(r.status, 1, value);
     assert.match(r.err, /STAFF_HOST must be a host/);

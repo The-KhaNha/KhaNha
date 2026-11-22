@@ -42,9 +42,11 @@ const configured = (hosts: Hosts): hosts is Required<Hosts> =>
 /** Null for a host that is none of the three (CloudFront's own name before go-live): no routing by host there. */
 function sectionOfHost(host: string, hosts: Hosts): Section | null {
   if (!configured(hosts)) return null;
-  if (host === hosts.customer) return 'customer';
-  if (host === hosts.staff) return 'staff';
-  if (host === hosts.admin) return 'admin';
+  // Host names are case-insensitive: a build value written in capitals must still match location.host.
+  const same = (setting: string) => setting.toLowerCase() === host.toLowerCase();
+  if (same(hosts.customer)) return 'customer';
+  if (same(hosts.staff)) return 'staff';
+  if (same(hosts.admin)) return 'admin';
   return null;
 }
 
@@ -56,7 +58,9 @@ function sectionOfHost(host: string, hosts: Hosts): Section | null {
 export function hostRedirect(place: Place, hosts: Hosts): string | null {
   const here = sectionOfHost(place.host, hosts);
   if (here === null || !configured(hosts)) return null;
-  if (place.pathname === '/' && here !== 'customer') return SECTION_HOME[here];
+  // The query and fragment ride along, as they do across hosts below.
+  if (place.pathname === '/' && here !== 'customer')
+    return `${SECTION_HOME[here]}${place.search}${place.hash}`;
   const wanted = sectionOfPath(place.pathname);
   if (wanted === null || wanted === here) return null;
   return `${place.protocol}//${hosts[wanted]}${place.pathname}${place.search}${place.hash}`;
