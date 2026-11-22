@@ -106,3 +106,32 @@ describe('write limiter is per signed-in account', () => {
     }
   });
 });
+
+describe('restaurant onboarding writes (P7.4a)', () => {
+  it('create, invite and revoke share the write limit; every attempt here is refused, so nothing is made', async () => {
+    const admin = await createTestUser('ADMIN');
+    const id = randomUUID();
+    const writes = [
+      () => request(server).post('/api/admin/brands').set('Authorization', bearer(admin)).send({}),
+      () =>
+        request(server)
+          .post(`/api/admin/brands/${id}/invites`)
+          .set('Authorization', bearer(admin))
+          .send({}),
+      () =>
+        request(server)
+          .delete(`/api/admin/brands/${id}/invites/${id}`)
+          .set('Authorization', bearer(admin)),
+    ];
+    try {
+      for (const write of writes) {
+        // A fresh window per route would hide a missing limiter, so the count runs across all three.
+        const res = await write();
+        expect([400, 404, 429]).toContain(res.status);
+      }
+      for (const write of writes) expectRateLimited(await write());
+    } finally {
+      await deleteTestUser(admin);
+    }
+  });
+});
