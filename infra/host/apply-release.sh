@@ -44,7 +44,7 @@ up() {
   local web server
   read -r web server <<<"$1"
   echo "apply-release: starting web $web, server $server"
-  IMAGE_PREFIX=$image_prefix WEB_TAG=$web SERVER_TAG=$server \
+  IMAGE_PREFIX=$image_prefix WEB_TAG=$web SERVER_TAG=$server LOG_GROUP_PREFIX=/khanha/$environment \
     docker compose -f "$here/compose.prod.yml" up -d --pull missing --remove-orphans
 }
 

@@ -1,0 +1,7 @@
+# host-metrics.sh for one environment (%i), started by khanha-host-metrics@<environment>.timer (P8 PR 08).
+[Unit]
+Description=Publish the host's memory and swap to CloudWatch (%i)
+
+[Service]
+Type=oneshot
+ExecStart=/opt/khanha/host-metrics.sh %i

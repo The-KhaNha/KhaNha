@@ -46,6 +46,8 @@ const envSchema = z
     PORT: z.coerce.number().int().positive().default(8000),
     /** The worker process's GET /health (src/worker.ts); the API never listens on it. */
     WORKER_HEALTH_PORT: z.coerce.number().int().positive().default(8001),
+    /** The "Process metrics" line's period (utils/processMetrics.ts); CloudWatch's alarms read one line per period. */
+    PROCESS_METRICS_LOG_MS: z.coerce.number().int().min(10_000).max(3_600_000).default(300_000),
     /** How long public reads (menu, store, site settings) stay in the per-process cache. 0 turns it off. */
     PUBLIC_READ_TTL_MS: z.coerce.number().int().min(0).max(600_000).default(10_000),
     // Proxies in front of the API whose X-Forwarded-For Express should trust (compose's nginx: 1). 0 trusts none, so

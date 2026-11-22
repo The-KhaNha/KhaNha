@@ -1,8 +1,12 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { Writable } from 'node:stream';
 import pino from 'pino';
 import { describe, expect, it } from 'vitest';
+import { queueFields } from '../src/jobs/health';
 import { IntegrationError } from '../src/utils/errors';
 import { LOG_SERIALIZERS, REDACT_PATHS } from '../src/utils/logger';
+import { PROCESS_METRICS_MSG, takeRequestStats } from '../src/utils/processMetrics';
 import { api } from './setup/api';
 
 function capture() {
@@ -118,5 +122,38 @@ describe('request id', () => {
       .get('/api/health')
       .set('x-request-id', '<script>' + 'x'.repeat(80));
     expect(unsafe.headers['x-request-id']).toMatch(uuid);
+  });
+});
+
+// The production alarms read log lines through metric filters (infra/terraform/modules/observability/main.tf, its
+// locals). A field or a message renamed here without there would leave an alarm silently blind, never firing.
+describe('the lines the production alarms read', () => {
+  const tf = readFileSync(
+    join(__dirname, '../../infra/terraform/modules/observability/main.tf'),
+    'utf8',
+  );
+  const local = (name: string) => tf.match(new RegExp(`^\\s*${name}\\s*=\\s*"([^"]+)"`, 'm'))?.[1];
+  const fields = (name: string) => {
+    const block = tf.match(new RegExp(`${name} = \\{([^}]*)\\}`))?.[1] ?? '';
+    return [...block.matchAll(/=\s*"(\w+)"/g)].map((m) => m[1]);
+  };
+
+  it('match the message the metrics timer and the runner log', () => {
+    expect(local('metrics_message')).toBe(PROCESS_METRICS_MSG);
+    const runner = readFileSync(join(__dirname, '../src/jobs/runner.ts'), 'utf8');
+    expect(runner).toContain(`'${local('dead_letter_message')}'`);
+  });
+
+  it("read fields the API's metrics line carries", async () => {
+    await api().get('/api/health');
+    const line = takeRequestStats();
+    expect(fields('api_line_fields')).toHaveLength(3);
+    for (const field of fields('api_line_fields')) expect(line).toHaveProperty(field!);
+  });
+
+  it("read fields the worker's metrics line carries", () => {
+    const line = queueFields(['q'], [{ depth: 1, oldestAgeSec: 2 }]);
+    expect(fields('worker_line_fields')).toHaveLength(2);
+    for (const field of fields('worker_line_fields')) expect(line).toHaveProperty(field!);
   });
 });

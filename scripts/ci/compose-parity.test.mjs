@@ -30,6 +30,7 @@ function services(file) {
         IMAGE_PREFIX: 'registry.example/khanha',
         WEB_TAG: 'web',
         SERVER_TAG: 'server',
+        LOG_GROUP_PREFIX: '/khanha/production',
       },
     },
   );
@@ -53,4 +54,15 @@ for (const name of ['api', 'web', 'worker']) {
 test('web reaches the API at the same address', { skip }, () => {
   const { local, prod } = load();
   assert.equal(prod.web.environment.API_UPSTREAM, local.web.environment.API_UPSTREAM);
+});
+
+// Terraform creates exactly these groups (infra/terraform/modules/observability, local.services) and the host role
+// may create none: a service logging anywhere else would fail to start on the host.
+test('each production service ships its log to its own group, without blocking', { skip }, () => {
+  const { prod } = load();
+  for (const name of ['api', 'web', 'worker']) {
+    assert.equal(prod[name].logging?.driver, 'awslogs', name);
+    assert.equal(prod[name].logging.options['awslogs-group'], `/khanha/production/${name}`, name);
+    assert.equal(prod[name].logging.options.mode, 'non-blocking', name);
+  }
 });

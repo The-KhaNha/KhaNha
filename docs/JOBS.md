@@ -212,6 +212,10 @@ schedule that purges by age calls a SQL function that takes `p_now timestamptz d
 Local: `cd server && pnpm exec supabase db query "<sql>"`. Staging: the dashboard's SQL editor. Production is the
 user's.
 
+In production the `dead-letter` and `queue-age` alarms email when a job is dead-lettered or a message waits more than
+five minutes ([DEPLOYMENT.md](DEPLOYMENT.md#alarms-and-the-dashboard)); the `dead-letters` saved query shows each one
+with its `requestId`, and the rows below say what to do next.
+
 | To                                            | Run                                                                                                                                                            |
 | --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | see each queue's depth and oldest message age | `select queue_name, queue_length, oldest_msg_age_sec from pgmq.metrics_all();`                                                                                 |

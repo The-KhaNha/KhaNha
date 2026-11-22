@@ -550,6 +550,13 @@ rollback skips; nothing is reverted, fix forward; docs/DEPLOYMENT.md "Applying m
 
 Built to stay inside CloudWatch's free allowances.
 
+**As built (two changes from the text below).** (1) The API's request count, 5xx count and p95 come from its
+"Process metrics" line, counted in the process for every request, not from metric filters on the access line: a
+successful read's access line is `debug`, below production's `info`, so filters on it would have seen almost none of
+the traffic. (2) The SNS topics and the email subscription are in the bootstrap, not production's root, so the
+address stays in the user's untracked `terraform.tfvars` (production's plans are public); the root finds them by name.
+The job lines also gained `requestId`, so one query follows a request into the worker.
+
 - `compose.prod.yml`: the `awslogs` driver, one log group per service, kept 30 days.
 - `modules/observability`: the log groups; metric filters on the access line (requests, 5xx, duration) and on the
   worker's lines (dead letters, queue depth, oldest message age); alarms to an SNS topic with the user's
