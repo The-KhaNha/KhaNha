@@ -4,6 +4,8 @@ locals {
   name        = "khanha-production"
   environment = "production"
   domain      = "khanha.in" # D3
+  # The customer, staff and admin hosts, in that order (D3, PR 05b).
+  hosts = [local.domain, "staff.${local.domain}", "admin.${local.domain}"]
   # The release parameter the deploy role writes sits under this path (bootstrap/main.tf).
   parameter_path = "/khanha/${local.environment}"
   secret_name    = "khanha/${local.environment}/app"
@@ -43,8 +45,12 @@ module "secrets" {
     # Empty until the production Supabase project exists (a one-line PR then); an empty setting creates nothing.
     SUPABASE_URL             = var.supabase_url
     SUPABASE_PUBLISHABLE_KEY = var.supabase_publishable_key
-    # PR 05b turns this into the three hosts' list.
-    CLIENT_ORIGIN = "https://${local.domain}"
+    # The three hosts (D3, PR 05b): each is its own origin with its own sign-in, so CORS allows each.
+    CLIENT_ORIGIN = join(",", [for host in local.hosts : "https://${host}"])
+    # The web image hands these to the client (runtime-env.js), which picks the section by host.
+    CUSTOMER_HOST = local.hosts[0]
+    STAFF_HOST    = local.hosts[1]
+    ADMIN_HOST    = local.hosts[2]
     # CloudFront, then the web container's nginx. Measured, not assumed, once CloudFront is in front (PR 05).
     TRUST_PROXY_HOPS = "2"
     LOG_LEVEL        = "info"
@@ -60,7 +66,7 @@ module "media" {
   bucket = local.media_bucket
   # The app's hosts (D3), plus CloudFront's own hostname for the dark period before domain_live.
   upload_origins = concat(
-    [for host in ["", "staff.", "admin."] : "https://${host}${local.domain}"],
+    [for host in local.hosts : "https://${host}"],
     ["https://${module.cdn.domain_name}"],
   )
 }

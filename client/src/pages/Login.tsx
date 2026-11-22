@@ -6,8 +6,7 @@ import { IconButton } from '../components/IconButton';
 import { Input } from '../components/Input';
 import { AuthCard } from '../features/auth/AuthCard';
 import { selectUser, useAuthStore } from '../features/auth/authStore';
-import { homeFor } from '../features/auth/roles';
-import { useAuthRedirect } from '../features/auth/useAuthRedirect';
+import { homeHere, useAuthRedirect } from '../features/auth/useAuthRedirect';
 import { errorOnBlur, errorOnChange, validateEmail } from '../features/auth/validation';
 import { ApiError } from '../services/api';
 
@@ -23,7 +22,7 @@ export function LoginPage() {
   const [serverError, setServerError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  if (user) return <Navigate to={homeFor(user)} replace />;
+  if (user) return <Navigate to={homeHere(user)} replace />;
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();

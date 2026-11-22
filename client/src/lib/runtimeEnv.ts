@@ -6,6 +6,10 @@ export interface RuntimeEnv {
   SUPABASE_PUBLISHABLE_KEY?: string;
   LOG_LEVEL?: string;
   REQUEST_TIMEOUT_MS?: string;
+  /** The three hosts as location.host has them (P8 PR 05b, lib/hosts.ts); unset, every section shares one origin. */
+  CUSTOMER_HOST?: string;
+  STAFF_HOST?: string;
+  ADMIN_HOST?: string;
 }
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
@@ -30,6 +34,11 @@ export function resolveRuntimeEnv(runtime: RuntimeEnv, build: RuntimeEnv) {
       positiveInt(nonEmpty(runtime.REQUEST_TIMEOUT_MS)) ??
       positiveInt(nonEmpty(build.REQUEST_TIMEOUT_MS)) ??
       DEFAULT_REQUEST_TIMEOUT_MS,
+    hosts: {
+      customer: nonEmpty(runtime.CUSTOMER_HOST) ?? nonEmpty(build.CUSTOMER_HOST),
+      staff: nonEmpty(runtime.STAFF_HOST) ?? nonEmpty(build.STAFF_HOST),
+      admin: nonEmpty(runtime.ADMIN_HOST) ?? nonEmpty(build.ADMIN_HOST),
+    },
   };
 }
 
@@ -41,5 +50,8 @@ export const runtimeEnv = resolveRuntimeEnv(
     SUPABASE_PUBLISHABLE_KEY: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
     LOG_LEVEL: import.meta.env.VITE_LOG_LEVEL,
     REQUEST_TIMEOUT_MS: import.meta.env.VITE_REQUEST_TIMEOUT_MS,
+    CUSTOMER_HOST: import.meta.env.VITE_CUSTOMER_HOST,
+    STAFF_HOST: import.meta.env.VITE_STAFF_HOST,
+    ADMIN_HOST: import.meta.env.VITE_ADMIN_HOST,
   },
 );

@@ -73,6 +73,10 @@ client/
 
 From `client/src/App.tsx`. Guards are described in [PERMISSIONS.md](PERMISSIONS.md#client).
 
+In production the section's host comes first: `HostGate` sends a path of another section to its host (`lib/hosts.ts`,
+[DEPLOYMENT.md "The three hosts"](DEPLOYMENT.md#the-three-hosts)) before any route renders; with the hosts unset it
+renders the shell straight away.
+
 | Path                   | Page                   | Guard                                        | Top bar                            | Bottom nav | Cart button | Cart bar | Layout       | Loaded |
 | ---------------------- | ---------------------- | -------------------------------------------- | ---------------------------------- | ---------- | ----------- | -------- | ------------ | ------ |
 | `/`                    | `StoreListPage`        | none                                         | wordmark, `tone: 'brand'`          | yes        | yes         | yes      | column       | eager  |

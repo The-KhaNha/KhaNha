@@ -18,6 +18,8 @@ import { worksAStore } from '../features/auth/roles';
 import { APP_COMMIT, APP_VERSION } from '../lib/appVersion';
 import { cn } from '../lib/cn';
 import { initialOf } from '../lib/format';
+import { hrefFor } from '../lib/hosts';
+import { runtimeEnv } from '../lib/runtimeEnv';
 import { APP_TITLE } from '../config/app';
 
 export function ProfilePage() {
@@ -95,7 +97,7 @@ export function ProfilePage() {
         />
         {worksAStore(user) && (
           <ProfileRow
-            to="/staff"
+            to={hrefFor('/staff', window.location, runtimeEnv.hosts)}
             icon={<LayoutDashboard className="h-5 w-5" aria-hidden />}
             label="Staff dashboard"
             className="border-t border-line/70"
@@ -103,7 +105,7 @@ export function ProfilePage() {
         )}
         {user.role === 'ADMIN' && (
           <ProfileRow
-            to="/admin"
+            to={hrefFor('/admin', window.location, runtimeEnv.hosts)}
             icon={<Settings className="h-5 w-5" aria-hidden />}
             label="Admin dashboard"
             className="border-t border-line/70"
