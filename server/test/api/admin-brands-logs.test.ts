@@ -39,7 +39,16 @@ afterAll(async () => {
   await new Promise<void>((resolve) => server.close(() => resolve()));
   vi.doUnmock('../../src/utils/logger');
   if (!brandId) return deleteTestStores([], [], [admin]);
-  await supabaseAdmin.from('domain_events').delete().eq('aggregate_id', brandId).throwOnError();
+  const { data: invites } = await supabaseAdmin
+    .from('brand_invites')
+    .select('id')
+    .eq('brand_id', brandId)
+    .throwOnError();
+  await supabaseAdmin
+    .from('domain_events')
+    .delete()
+    .in('aggregate_id', [brandId, ...invites.map((i) => i.id)])
+    .throwOnError();
   const { data: stores } = await supabaseAdmin
     .from('stores')
     .select('id')

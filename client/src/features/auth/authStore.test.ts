@@ -18,17 +18,20 @@ const me: User = {
   memberships: [],
   ownedBrands: [],
 };
+// No session unless a case gives one; fetchMe answers `me` unless a case says otherwise.
+const session = vi.hoisted(() => ({ current: null as { access_token: string } | null }));
+const fetchMe = vi.hoisted(() => vi.fn());
 vi.mock('../../lib/supabase', () => ({
   getSupabase: async () => ({
     auth: {
-      getSession: async () => ({ data: { session: null } }),
+      getSession: async () => ({ data: { session: session.current } }),
       onAuthStateChange: () => {},
     },
   }),
   mayHaveSession: () => true,
 }));
 vi.mock('../../services/auth', () => ({
-  fetchMe: async () => ({ user: me }),
+  fetchMe: () => fetchMe(),
   signIn: vi.fn(),
   signOut: () => signOut(),
   register: vi.fn(),
@@ -40,6 +43,11 @@ vi.mock('../../services/api', () => ({
 
 // A visibilitychange listener is registered once, as a side effect of importing this module.
 const { useAuthStore } = await import('./authStore');
+
+beforeEach(() => {
+  fetchMe.mockReset();
+  fetchMe.mockResolvedValue({ user: me });
+});
 
 function setHidden(hidden: boolean) {
   Object.defineProperty(document, 'hidden', { value: hidden, configurable: true });
@@ -131,6 +139,27 @@ describe('authStore with browser storage full', () => {
 
 describe('authStore.addOwnedBrand', () => {
   const brand = { id: 'b1', name: 'Waffles', slug: 'waffles' };
+
+  it('a profile read that started before an accepted invite reads again, so the new brand stays', async () => {
+    session.current = { access_token: 'tok' };
+    markActive();
+    useAuthStore.setState({ user: me, token: 'tok' });
+    // The first answer was read on the server before the accept: it has no brand. The accept lands meanwhile.
+    fetchMe
+      .mockImplementationOnce(async () => {
+        useAuthStore.getState().addOwnedBrand(brand);
+        return { user: me };
+      })
+      .mockResolvedValueOnce({ user: { ...me, ownedBrands: [brand] } });
+    try {
+      await useAuthStore.getState().hydrate();
+      expect(useAuthStore.getState().user?.ownedBrands).toEqual([brand]);
+      expect(fetchMe).toHaveBeenCalledTimes(2);
+    } finally {
+      session.current = null;
+      localStorage.clear();
+    }
+  });
 
   it('adds the brand once', () => {
     useAuthStore.setState({ user: { ...me, ownedBrands: [] }, token: 't' });

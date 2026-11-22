@@ -107,6 +107,8 @@ describe('accepting an owner invite', () => {
       .from('domain_events')
       .select('type, payload, actor')
       .eq('aggregate_id', inviteId)
+      // The invite also carries brand.owner_invited (PR 01): only the accept's event counts here.
+      .eq('type', 'brand.owner_joined')
       .throwOnError();
     expect(events).toEqual([
       {
@@ -135,6 +137,8 @@ describe('accepting an owner invite', () => {
       .from('domain_events')
       .select('id')
       .eq('aggregate_id', inviteId)
+      // The invite also carries brand.owner_invited (PR 01): only the accept's event counts here.
+      .eq('type', 'brand.owner_joined')
       .throwOnError();
     expect(events).toHaveLength(1);
   });
@@ -250,9 +254,12 @@ describe('every refusal is the same 404, and the brand keeps no owner', () => {
           .set(auth(admin))
           .send({ email: owner.email }),
       ]);
-      // Either order is fine (accept first: the re-issue is 409; re-issue first: the old link is 404). Never a 500.
-      expect([200, 404]).toContain(accepted.status);
-      expect([201, 409]).toContain(reissued.status);
+      // One order or the other, as a pair: accept first (200) leaves an owner, so the re-issue is 409; re-issue first
+      // (201) closes the old link, so the accept is 404. Never a 500, and never both or neither.
+      expect([
+        [200, 409],
+        [404, 201],
+      ]).toContainEqual([accepted.status, reissued.status]);
     }
   });
 });

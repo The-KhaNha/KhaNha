@@ -53,8 +53,17 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (brandIds.length === 0) return deleteTestStores([], [], users);
-  // brand.created has no store, so deleteTestStores (by store) leaves it.
-  await supabaseAdmin.from('domain_events').delete().in('aggregate_id', brandIds).throwOnError();
+  // brand.created and brand.owner_invited have no store, so deleteTestStores (by store) leaves them.
+  const { data: invites } = await supabaseAdmin
+    .from('brand_invites')
+    .select('id')
+    .in('brand_id', brandIds)
+    .throwOnError();
+  await supabaseAdmin
+    .from('domain_events')
+    .delete()
+    .in('aggregate_id', [...brandIds, ...invites.map((i) => i.id)])
+    .throwOnError();
   const { data: stores } = await supabaseAdmin
     .from('stores')
     .select('id')
@@ -200,6 +209,22 @@ describe('owner invites', () => {
       expect.objectContaining({ action: 'brand_invite.changed', actor_id: admin.id }),
     ]);
     expect(JSON.stringify(audit[0]?.changes)).not.toContain('token');
+    // The brand is named in the row, so it survives the brand's (cascading) deletion.
+    expect(JSON.stringify(audit[0]?.changes)).toContain(brand.id);
+
+    const { data: events } = await supabaseAdmin
+      .from('domain_events')
+      .select('type, payload, actor')
+      .eq('aggregate_id', res.body.invite.id)
+      .throwOnError();
+    expect(events).toEqual([
+      {
+        type: 'brand.owner_invited',
+        payload: { brandId: brand.id },
+        actor: expect.objectContaining({ id: admin.id }),
+      },
+    ]);
+    expect(JSON.stringify(events)).not.toContain('example.test');
   });
 
   it('a second invite closes the first, so one link is open per brand', async () => {

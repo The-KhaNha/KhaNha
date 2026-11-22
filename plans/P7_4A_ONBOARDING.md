@@ -3,7 +3,7 @@
 The smallest slice of [ROADMAP.md P7.4](ROADMAP.md#p74-platform-admin-dashboard) "Onboarding" that delivers one
 flow: **a platform ADMIN creates a brand and invites its owner; the invited person signs in with that email, accepts,
 becomes `brands.owner_id`, and lands in `/manage`, where they open stores and invite managers and staff** (both of
-which already exist), behind admin MFA. Four pull requests into the phase branch `feat/P7-4a`, then one into `dev`.
+which already exist), behind admin MFA. Four pull requests into the phase branch `feat/P7`, then one into `dev`.
 
 > **Status: decided (the user, 22 November 2026).** D2 as recommended; D6 refuses an ADMIN; D9 a phase branch; admin
 > MFA (PR 04) lands before the production release that carries the admin screen. The rest as recommended. Every
@@ -51,7 +51,7 @@ which already exist), behind admin MFA. Four pull requests into the phase branch
 | D6  | An ADMIN account accepts an owner invite (including one it issued to itself) | **Refused** (the user): `accept_brand_invite` answers an `ADMIN` profile with the same uniform 404, so "ADMIN has no staff powers" stays literal and an admin cannot quietly gain a seeded store's customer orders. A speed bump only (a second address defeats it); the audit rows and MFA (PR 04) are the real controls                                                                                                                                                                                                                                                                                                                                                                                             | Allow, audited                                                                                                                                                                                           | 02     |
 | D7  | A new brand's `status`                                                       | **`ACTIVE`**, as the seed writes. Nothing reads the column; leaving the `DRAFT` default would make new brands differ from seeded ones for no effect today and a surprise later                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | Leave `DRAFT` until P7.4's activate step                                                                                                                                                                 | 01     |
 | D8  | When is the brand's template made?                                           | **In `create_brand`.** Every existing brand has one (the P3 backfill), and the owner then sees "Brand template" in `/manage` at once and can build the menu before the first branch                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | Leave it to the first `create_store_from_template`                                                                                                                                                       | 01     |
-| D9  | Branch model                                                                 | **A phase branch, `feat/P7-4a`** (the user), cut from `dev`. PRs 01 to 04 target it and the agent merges each once clear; the phase branch's PR into `dev` is the user's (workflow.md §21 "Who merges"). This plan file ships in PR 01 as `plans/P7_4A_ONBOARDING.md`                                                                                                                                                                                                                                                                                                                                                                                                                                                 | Straight into `dev`                                                                                                                                                                                      | all    |
+| D9  | Branch model                                                                 | **A phase branch, `feat/P7`** (the user; first named `feat/P7-4a`, renamed so the `ci-ok required` ruleset's `feat/P[0-9]` pattern covers it), cut from `dev`. PRs 01 to 04 target it and the agent merges each once clear; the phase branch's PR into `dev` is the user's (workflow.md §21 "Who merges"). This plan file ships in PR 01 as `plans/P7_4A_ONBOARDING.md`                                                                                                                                                                                                                                                                                                                                               | Straight into `dev`                                                                                                                                                                                      | all    |
 | D10 | Where on `/admin`                                                            | **One "Restaurants" section above "Site settings"** on the existing page. Tabs arrive with the P7.4 console                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | `/admin/restaurants` as its own lazy route now                                                                                                                                                           | 03     |
 | D11 | Invite lifetime                                                              | **Reuse `INVITE_EXPIRY_DAYS` (7).** One platform constant for both invite kinds                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | A separate constant                                                                                                                                                                                      | 01     |
 | D12 | Create brand and invite in one call?                                         | **Two calls** (create, then invite), made in sequence by the form. A brand with no owner and no invite is already a normal, listed, recoverable state (after a revoke or an expiry), so an atomic pair buys nothing                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | One `create_brand_with_invite` function                                                                                                                                                                  | 01, 03 |
@@ -215,17 +215,21 @@ create function public.accept_brand_invite(
   p_actor jsonb default null, p_request_id text default null, p_now timestamptz default now()
 ) returns public.brands language plpgsql set search_path = '' as $$
 declare
+  v_brand_id uuid;
   v_invite public.brand_invites;
   v_brand public.brands;
 begin
   perform set_config('app.actor', coalesce(p_actor::text, ''), true);
   perform set_config('app.request_id', coalesce(p_request_id, ''), true);
 
+  -- The brand row first, then the invite: create_brand_invite's order, so an accept and a re-issue never deadlock.
+  select brand_id into v_brand_id from public.brand_invites where token_hash = p_token_hash;
+  if not found then raise exception using message = 'NOT_FOUND'; end if;
+  select * into v_brand from public.brands where id = v_brand_id for update;
   select * into v_invite from public.brand_invites where token_hash = p_token_hash for update;
   if not found or v_invite.email is distinct from lower(p_email) then
     raise exception using message = 'NOT_FOUND';
   end if;
-  select * into v_brand from public.brands where id = v_invite.brand_id for update;
 
   if v_invite.accepted_at is not null then
     if v_invite.accepted_by = p_user_id and v_brand.owner_id = p_user_id then
@@ -360,10 +364,13 @@ As built: an admin without `aal2` is a customer for that request (`role` CUSTOME
 standing in `domain/permissions.ts` (pause, store audit) is closed too, not only `requireAdmin`'s routes; `/auth/me`
 still says ADMIN. `ADMIN_MFA_REQUIRED` (default on, refused off in production) lets local development skip it; the
 server suites run with it off and `admin-mfa.test.ts` turns it on. The client's check is the settings read answering
-`MFA_REQUIRED`, so e2e specs with a mocked API never meet the step. The first factor is trusted on first use (the user's choice after
-review; a terminal-approved factor was offered): enrol right after the release.
+`MFA_REQUIRED`, so e2e specs with a mocked API never meet the step.
 
-**Theme:** a leaked admin password alone opens nothing (ROADMAP P7.4 "Hardening"). Main agent (auth).
+**Theme:** a leaked admin password alone opens nothing once the admin has enrolled (ROADMAP P7.4 "Hardening"). Main
+agent (auth). **Known limit, the user's choice (22 November 2026):** the first factor is trusted on first use, since
+enrolling needs only the password; whoever reaches `/admin` first with the password could enrol their own
+authenticator. Admins enrol right after the release that ships this; a factor approved from a terminal with the secret
+key was offered as the stronger option and declined.
 
 - **Supabase:** TOTP MFA (`[auth.mfa.totp] enroll_enabled = true, verify_enabled = true` in
   `server/supabase/config.toml`; on by default on hosted projects, every plan). A user step: confirm it in the
@@ -405,8 +412,8 @@ app, sign out and in again, enter a code, reach `/admin`; a wrong code is refuse
   screens can receive). No `min_client_version` bump. An old client that opens `/join/owner` shows its not-found
   page with the token still in the address bar until the tab reloads into the new build; acceptable, as links are
   only issued from the new admin screen.
-- **Two migrations, append-only once merged into `dev`.** Check for a second session's migrations with a later
-  timestamp before each PR (`resolve-conflicts` covers the ordering check).
+- **Two migrations, immutable once merged into the phase branch** (not only once they reach `dev`). Check for a
+  second session's migrations with a later timestamp before each PR (`resolve-conflicts` covers the ordering check).
 
 ## Closing
 
