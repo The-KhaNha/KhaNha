@@ -33,10 +33,15 @@ export function Restaurants() {
   // The one-time token lives in this component's state only: never a store or browser storage.
   const [link, setLink] = useState<Link | null>(null);
   const [pending, setPending] = useState<Pending>(null);
+  // One invite at a time, and none while a one-time link is still on screen (rows and the create form alike): a
+  // second link would replace it before the admin copied it.
+  const [sending, setSending] = useState(false);
+  const linkLocked = sending || link !== null;
   const [actionError, setActionError] = useState<string | null>(null);
 
   async function create(event: FormEvent) {
     event.preventDefault();
+    if (linkLocked) return;
     const next: { name?: string; email?: string } = {};
     if (name.trim().length < 2) next.name = 'Enter the restaurant name.';
     const problem = validateEmail(email);
@@ -45,7 +50,6 @@ export function Restaurants() {
     if (next.name || next.email) return;
     setBusy(true);
     setActionError(null);
-    setLink(null);
     let brandId: string;
     try {
       brandId = (await createBrand({ name: name.trim() })).id;
@@ -113,7 +117,7 @@ export function Restaurants() {
             onChange={(e) => setEmail(e.target.value)}
             error={errors.email}
           />
-          <Button type="submit" fullWidth loading={busy && !pending}>
+          <Button type="submit" fullWidth loading={busy && !pending} disabled={linkLocked}>
             Create and get link
           </Button>
         </form>
@@ -158,6 +162,8 @@ export function Restaurants() {
             <BrandRow
               key={brand.id}
               brand={brand}
+              locked={busy || linkLocked}
+              onSending={setSending}
               onLink={(next) => {
                 setLink(next);
                 setActionError(null);
@@ -187,10 +193,14 @@ export function Restaurants() {
 
 function BrandRow({
   brand,
+  locked,
+  onSending,
   onLink,
   onRevoke,
 }: {
   brand: AdminBrand;
+  locked: boolean;
+  onSending: (sending: boolean) => void;
   onLink: (link: Link) => void;
   onRevoke: (inviteId: string, email: string) => void;
 }) {
@@ -205,6 +215,7 @@ function BrandRow({
 
   async function sendInvite(to: string) {
     setBusy(true);
+    onSending(true);
     setError(null);
     try {
       const { token } = await createOwnerInvite(brand.id, to);
@@ -215,6 +226,7 @@ function BrandRow({
       setError(message(err));
     } finally {
       setBusy(false);
+      onSending(false);
     }
   }
 
@@ -222,6 +234,7 @@ function BrandRow({
     event.preventDefault();
     const problem = validateEmail(email);
     if (problem) return setError(problem);
+    if (locked) return;
     void sendInvite(email.trim());
   }
 
@@ -247,6 +260,7 @@ function BrandRow({
               <Button
                 variant="secondary"
                 loading={busy}
+                disabled={locked}
                 onClick={() => void sendInvite(invite.email)}
               >
                 New link
@@ -274,12 +288,12 @@ function BrandRow({
                   onChange={(e) => setEmail(e.target.value)}
                   error={error ?? undefined}
                 />
-                <Button type="submit" loading={busy}>
+                <Button type="submit" loading={busy} disabled={locked}>
                   Create link
                 </Button>
               </form>
             ) : (
-              <Button variant="secondary" onClick={() => setOpen(true)}>
+              <Button variant="secondary" disabled={locked} onClick={() => setOpen(true)}>
                 Invite owner
               </Button>
             )}
