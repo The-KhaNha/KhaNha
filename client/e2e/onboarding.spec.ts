@@ -42,18 +42,16 @@ test('an admin creates a restaurant and gets its owner link', async ({ page }) =
   });
   await page.route('**/api/admin/brands/b9/invites', (route) => {
     posted.push(route.request().postDataJSON());
-    return route.fulfill({
-      status: 201,
-      json: {
-        token: 'tok-e2e',
-        invite: {
-          id: 'i9',
-          email: 'owner@example.com',
-          expiresAt: '2030-01-01T00:00:00Z',
-          createdAt: '',
-        },
-      },
-    });
+    const invite = {
+      id: 'i9',
+      email: 'owner@example.com',
+      expiresAt: '2030-01-01T00:00:00Z',
+      createdAt: '',
+    };
+    // The list reload must show the open invite, as the real API would.
+    const stored = brands.find((b) => (b as { id: string }).id === 'b9') as { invite: unknown };
+    stored.invite = invite;
+    return route.fulfill({ status: 201, json: { token: 'tok-e2e', invite } });
   });
 
   await page.goto('/admin');
@@ -64,7 +62,8 @@ test('an admin creates a restaurant and gets its owner link', async ({ page }) =
   await page.getByRole('button', { name: 'Create and get link' }).click();
 
   await expect(page.getByText(/\/join\/owner#tok-e2e$/)).toBeVisible();
-  await expect(page.getByText('No owner')).toBeVisible();
+  await expect(page.getByText(/Invite open for owner@example\.com/)).toBeVisible();
+  await expect(page.getByRole('button', { name: /New link/ })).toBeVisible();
   expect(posted).toEqual([{ name: 'Chai Point' }, { email: 'owner@example.com' }]);
   await noHorizontalOverflow(page);
 });

@@ -97,7 +97,17 @@ describe('Restaurants', () => {
     fill('Chai Point', 'o@x.test');
     fireEvent.click(screen.getByRole('button', { name: 'Create and get link' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('That email belongs to an admin.');
-    expect(await screen.findByRole('button', { name: 'Invite owner' })).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: 'Invite owner' }));
+    expect(svc.createBrand).toHaveBeenCalledTimes(1);
+
+    // Recovery: the row's own form (the last "Owner email", after the create form) sends a second invite.
+    svc.createOwnerInvite.mockResolvedValueOnce({ invite, token: 'tok456' });
+    fireEvent.change(screen.getAllByLabelText('Owner email').at(-1)!, {
+      target: { value: 'fixed@x.test' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Create link' }));
+    expect(await screen.findByText(url('tok456'))).toBeInTheDocument();
+    expect(svc.createOwnerInvite).toHaveBeenLastCalledWith('b1', 'fixed@x.test');
     expect(svc.createBrand).toHaveBeenCalledTimes(1);
   });
 
@@ -156,5 +166,28 @@ describe('Restaurants', () => {
     expect(await screen.findByText(url('fresh'))).toBeInTheDocument();
     expect(svc.createOwnerInvite).toHaveBeenCalledWith('b1', 'o@x.test');
     await waitFor(() => expect(svc.fetchAdminBrands).toHaveBeenCalledTimes(2));
+  });
+
+  it('locks every invite action while one is in flight, so a one-time link is never replaced', async () => {
+    svc.fetchAdminBrands.mockResolvedValue([
+      brand({ id: 'a', name: 'A', invite }),
+      brand({ id: 'b', name: 'B', invite: { ...invite, id: 'i2', email: 'p@x.test' } }),
+    ]);
+    let resolve!: (v: unknown) => void;
+    svc.createOwnerInvite.mockReturnValueOnce(new Promise((res) => (resolve = res)));
+    render(<Restaurants />);
+    const buttons = await screen.findAllByRole('button', { name: 'New link' });
+    fireEvent.click(buttons[0]!);
+    await waitFor(() => expect(buttons[1]).toBeDisabled());
+    fireEvent.click(buttons[1]!);
+    expect(svc.createOwnerInvite).toHaveBeenCalledTimes(1);
+    resolve({ invite, token: 'first' });
+    expect(await screen.findByText(url('first'))).toBeInTheDocument();
+    // The link stays locked until the admin is done with it.
+    expect(screen.getAllByRole('button', { name: 'New link' })[1]).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Create and get link' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    expect(screen.getAllByRole('button', { name: 'New link' })[1]).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Create and get link' })).toBeEnabled();
   });
 });
