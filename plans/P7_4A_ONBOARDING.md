@@ -197,6 +197,11 @@ step (backend.md §14).
 
 - [ ] Merged
 
+As built: `accept_brand_invite` locks the brand row before the invite, in `create_brand_invite`'s order (review found
+the reverse order could deadlock an accept against a re-issue). The admin's invite form refuses an admin's email up
+front (400 on `email`), since D6 makes such an invite unacceptable; the SQL refusal stays as the backstop. `Join.tsx`
+keeps its in-memory token with its kind. The signed-out join view is centred and padded (it ran edge to edge).
+
 **Theme:** the accept path end to end. Estimated 600 lines counted.
 
 **Migration** `server/supabase/migrations/<ts>_accept_brand_invite.sql`:

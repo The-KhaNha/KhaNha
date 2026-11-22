@@ -79,7 +79,7 @@ A blank value (`RATE_LIMIT_IP_MAX=`) counts as unset and takes the default; writ
 | `RATE_LIMIT_WRITE_MAX` | 30 | ≥ 0 (0 = off) | writes per signed-in user per window (`POST /orders`, the store writes under `/stores/:storeId` such as an order's status, hours, pause, settings and team, `PATCH /admin/settings`, `PATCH /admin/flags/:key`, `POST /admin/brands` and its owner-invite writes): the real abuse limit |
 | `RATE_LIMIT_REGISTER_MAX` | 10 | ≥ 0 (0 = off) | `POST /auth/register` per address per window |
 | `RATE_LIMIT_CLIENT_ERRORS_MAX` | 30 | ≥ 0 (0 = off) | `POST /client-errors` requests (each up to 5 reports) per address per window |
-| `RATE_LIMIT_INVITE_ACCEPT_MAX` | 10 | ≥ 0 (0 = off) | `POST /me/invites/accept` per signed-in user per window (`inviteAcceptLimiter`) |
+| `RATE_LIMIT_INVITE_ACCEPT_MAX` | 10 | ≥ 0 (0 = off) | `POST /me/invites/accept` and `POST /me/brand-invites/accept` together, per signed-in user per window (`inviteAcceptLimiter`) |
 | `RATE_LIMIT_UPLOAD_MAX` | 20 | ≥ 0 (0 = off) | `POST /stores/:storeId/media/uploads` per signed-in user per window (`uploadLimiter`) |
 
 Every other environment variable is in [DEPLOYMENT.md](DEPLOYMENT.md).

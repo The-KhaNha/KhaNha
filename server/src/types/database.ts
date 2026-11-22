@@ -1280,6 +1280,34 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      accept_brand_invite: {
+        Args: {
+          p_actor?: Json;
+          p_email: string;
+          p_now?: string;
+          p_request_id?: string;
+          p_token_hash: string;
+          p_user_id: string;
+        };
+        Returns: {
+          created_at: string;
+          description: string;
+          id: string;
+          logo_url: string | null;
+          name: string;
+          owner_id: string | null;
+          slug: string;
+          status: Database['public']['Enums']['store_status'];
+          template_store_id: string | null;
+          updated_at: string;
+        };
+        SetofOptions: {
+          from: '*';
+          to: 'brands';
+          isOneToOne: true;
+          isSetofReturn: false;
+        };
+      };
       accept_store_invite: {
         Args: {
           p_actor?: Json;
