@@ -72,6 +72,10 @@ made, so it is not lost with the laptop:
 aws s3 cp terraform.tfstate "s3://$(terraform output -raw state_bucket)/bootstrap/terraform.tfstate"
 ```
 
+**When the bootstrap changes** (a PR edits `bootstrap/`), re-apply it the same way from that directory once the PR is
+merged: `terraform plan` should show only the change the PR describes (for example the deploy role's policy updated
+in place), then `terraform apply` and copy the state to the bucket again. CI never applies it.
+
 **Verify the budget's address.** A new address receives no budget alerts until it is verified. Open Billing and Cost
 Management → Budgets → `khanha-monthly` and read its email recipient's status:
 
@@ -112,6 +116,15 @@ done
 
 None of these values is secret; they are variables, not secrets, so they show in logs and nothing has to be masked.
 
+The one exception is the deploy's migrate step, which needs two **secrets** in the `production` Environment (never
+repository secrets, so only the approved deploy job reads them; [DEPLOYMENT.md "Applying migrations"](../docs/DEPLOYMENT.md#applying-migrations)).
+`gh secret set` asks for each value, so it never lands in the shell history:
+
+```bash
+gh secret set SUPABASE_ACCESS_TOKEN --env production   # an access token that can manage the production project
+gh secret set SUPABASE_DB_PASSWORD --env production    # the production database password
+```
+
 ## 3. Plan and apply (every change)
 
 1. A pull request that touches `infra/terraform/**` runs `infra.yml`'s **plan**; the plan is in the run's summary.
@@ -139,7 +152,7 @@ TF_VAR_account_id=<the account ID> terraform plan
 One EC2 `t4g.micro` (about $9.20 a month with its public address and disk), Amazon Linux 2023 on arm64. Its first
 boot installs docker, the compose plugin and 2 GB of swap (`modules/compute/user-data.sh`); nothing is built on it.
 The app arrives through the SSM document `khanha-deploy`, which writes `infra/host/*` to `/opt/khanha` and runs
-`apply-release.sh`: with candidate tags from the deploy workflow (PR 07), or with none, the tags in
+`apply-release.sh`: with candidate tags from `deploy-production.yml` ([DEPLOYMENT.md "Production releases"](../docs/DEPLOYMENT.md#production-releases)), or with none, the tags in
 `/khanha/production/release` (`"<web-tag> <server-tag>"`, the last release that passed). A State Manager association
 runs it once on every new host, so a replaced machine comes back on that release by itself; before the first release
 it does nothing.
@@ -161,7 +174,11 @@ The domain goes live in two applies (the user, 19 November 2026):
 1. With `domain_live = false` (`envs/production/variables.tf`) the Route 53 zone exists and the app answers at
    `terraform output cloudfront_domain` (the `d….cloudfront.net` name, also in the plan's summary once applied).
 2. **(user)** At the registrar of `khanha.in`, set the four name servers from `terraform output name_servers`.
-   `dig NS khanha.in +short` shows them once the change has spread (minutes to hours).
+   `dig NS khanha.in +short` shows them once the change has spread (minutes to hours). Some networks answer port 53
+   from their own cache; if `dig` disagrees with the registrar, ask over HTTPS:
+   `curl -s 'https://cloudflare-dns.com/dns-query?name=khanha.in&type=NS' -H 'accept: application/dns-json'` must
+   list exactly the four from `terraform output name_servers` (another Route 53 zone's would look alike). Done for
+   `khanha.in` on 20 November 2026 (Porkbun).
 3. A one-line PR sets `domain_live = true`. Its apply requests the certificate (us-east-1), validates it through the
    zone, attaches `khanha.in`, `www.`, `staff.` and `admin.`, and points their A and AAAA records at the distribution.
 
@@ -170,7 +187,7 @@ The certificate is not requested earlier: before the delegation it would fail va
 **Media.** `khanha-media-production-<account>`: private, read by CloudFront through origin access control, written
 by the host's role and by browsers through the API's presigned form (CORS for the three hosts and the CloudFront
 name). Old object versions expire after 30 days; an object tagged `stage=original` (an upload never processed or
-swept) after a day, once the API tags its uploads (the follow-up server PR).
+swept) after a day; the API's presigned form adds the tag.
 
 ## Changing a secret
 
@@ -182,7 +199,9 @@ deploy fails at `render-env.sh`. A changed value reaches the containers on the n
 ## Moving to another account
 
 Everything account-specific is a variable or an output, so the setup can move (after the credits end, if it ever has
-to): bootstrap in the new account, connect GitHub to its outputs, apply, re-enter the secret and the parameters, copy
-the media bucket, deploy the last release and smoke-test it at the new CloudFront hostname. Then, at cutover, remove
-the domain from the old distribution, add it to the new one and move DNS
-([P8 plan, Risks](../plans/P8_INFRASTRUCTURE.md#risks-and-gotchas)).
+to): bootstrap in the new account, connect GitHub to its outputs, apply with `domain_live = false` (with `true` the
+apply would wait on a certificate the old zone cannot validate), re-enter the secret and the parameters, copy the
+media bucket, deploy the last release and smoke-test it at the new CloudFront hostname. Then, at cutover, remove the
+domain from the old distribution, point the registrar at the new zone's name servers, and apply `domain_live = true`
+in the new account ([The edge and the domain](#the-edge-and-the-domain), [P8 plan,
+Risks](../plans/P8_INFRASTRUCTURE.md#risks-and-gotchas)).

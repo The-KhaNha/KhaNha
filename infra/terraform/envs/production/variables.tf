@@ -16,19 +16,19 @@ variable "region" {
 
 # Public values (they reach every browser), so they live here rather than in a secret.
 variable "supabase_url" {
-  description = "The production Supabase project's URL, https://<ref>.supabase.co. Empty until the project exists."
+  description = "The production Supabase project's URL (created 21 November 2026)."
   type        = string
-  default     = ""
+  default     = "https://eysxljhpzyuzntemrojv.supabase.co"
 }
 
 variable "supabase_publishable_key" {
-  description = "The production project's publishable key (sb_publishable_...). Empty until the project exists."
+  description = "The production project's publishable key (public: every browser gets it)."
   type        = string
-  default     = ""
+  default     = "sb_publishable_Y7EHGcTmrplcYKBD-G9T6A_IRYKT7PF"
 }
 
 variable "domain_live" {
-  description = "Set true (a one-line PR) once the registrar of khanha.in points at the zone's four name servers."
+  description = "True once the registrar of khanha.in points at the zone's four name servers (delegated 20 November 2026)."
   type        = bool
-  default     = false
+  default     = true
 }

@@ -2,6 +2,12 @@
 
 All notable changes to the API server (`server/package.json`). Written by `npm run release` from `.changes/`.
 
+## 0.4.0 — 2026-11-22
+
+- A payment gateway port and a fake provider for local, CI and staging
+- Photo uploads to the bucket are tagged as originals, so an original that is never processed expires after a day.
+- db:push:production targets the production Supabase project, now that it exists.
+
 ## 0.3.0 — 2026-11-19
 
 - A payment gateway port and a fake provider for local, CI and staging

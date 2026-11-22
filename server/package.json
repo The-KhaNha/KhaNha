@@ -1,7 +1,7 @@
 {
   "name": "food-pickup-server",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Food Pickup V0 API server (Express + Supabase)",
   "main": "dist/src/server.js",
   "engines": {

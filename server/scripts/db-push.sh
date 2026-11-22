@@ -10,7 +10,7 @@ cd "$(dirname "$0")/.."
 
 # Project refs are not secret: they are the subdomain in each project's URL (https://<ref>.supabase.co).
 STAGING_REF="xkddnlxeeizaqpefhqlv"
-PRODUCTION_REF="" # set this after creating the production project (Project Settings → General → Project ID)
+PRODUCTION_REF="eysxljhpzyuzntemrojv" # the production project (Project Settings → General → Project ID)
 
 env="${1:-}"
 shift || true

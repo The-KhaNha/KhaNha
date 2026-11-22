@@ -165,3 +165,64 @@ test('the guard refuses an approving environment reachable from a pull request',
   const text = job('    environment: production\n    permissions:\n      id-token: write');
   assert.match(checkWorkflow(text).join(), /environment production can run on a pull request/);
 });
+
+// Production deploys (P8 PR 07): every job that can reach AWS waits for the user's approval, a dev commit deploys
+// only while production is dark, and one deploy never cancels another half-way through.
+test('deploy-production keeps its rules', () => {
+  const text = readFileSync(new URL('deploy-production.yml', dir), 'utf8');
+  const jobs = text
+    .slice(text.indexOf('\njobs:\n'))
+    .split(/\n(?= {2}[\w-]+:\n)/)
+    .slice(1);
+  const minting = jobs.filter((body) => grantsIdToken(body));
+  assert.ok(minting.length > 0, 'a deploy job mints a token');
+  for (const body of minting)
+    assert.match(body, /^ {4}environment: production$/m, body.split('\n')[0]);
+  assert.match(
+    text,
+    /merge-base --is-ancestor "\$commit" origin\/main/,
+    'a release must be on main',
+  );
+  assert.match(
+    text,
+    /\[ "\$DARK" = true \] && git merge-base --is-ancestor "\$commit" origin\/dev/,
+    'a rehearsal needs PRODUCTION_DARK',
+  );
+  assert.match(text, /DARK: \$\{\{ vars\.PRODUCTION_DARK \}\}/);
+  // On the deploy job: at the workflow level a queued tag run could replace the one the duplicate check keeps.
+  assert.doesNotMatch(text, /^concurrency:/m, 'no workflow-level concurrency');
+  const deployJob = minting.find((body) => /^deploy:/.test(body.trimStart())) ?? '';
+  const concurrency = deployJob.match(/^ {4}concurrency:\n((?: {6}.*\n)+)/m)?.[1] ?? '';
+  assert.match(concurrency, /cancel-in-progress: false/);
+  assert.match(concurrency, /group: deploy-production\n/, 'one group for every production deploy');
+  // Inside that lock, a tag run older than the recorded release stops (builds finish in any order).
+  assert.match(
+    deployJob,
+    /\[ "\$EVENT" = push \][\s\S]*merge-base --is-ancestor "\$COMMIT" "\$recorded"/,
+  );
+
+  // Migrations ship with the deploy (the user, 21 November 2026): behind the approval, before the code, with
+  // credentials checked before anything is pushed and held by that one job alone.
+  const migrating = jobs.filter((body) => /deploy-migrate\.sh "\$/.test(body));
+  assert.equal(migrating.length, 1, 'one job migrates');
+  const [deploy] = migrating;
+  assert.match(
+    deploy,
+    /^ {4}environment: production$/m,
+    'the migrating job waits for the approval',
+  );
+  const at = (re) => deploy.search(re);
+  assert.ok(
+    at(/name: Deploy to the host/) > at(/deploy-migrate\.sh "\$/),
+    'migrations before code',
+  );
+  assert.ok(at(/deploy-migrate\.sh --check/) !== -1, 'the credentials are checked');
+  assert.ok(at(/deploy-migrate\.sh --check/) < at(/push: true/), 'before any image is pushed');
+  const secret = /secrets\.SUPABASE_(ACCESS_TOKEN|DB_PASSWORD)/;
+  for (const body of jobs.filter((b) => b !== deploy))
+    assert.doesNotMatch(body, secret, `${body.split('\n')[0]} holds no Supabase secret`);
+  for (const file of readdirSync(dir).filter(
+    (f) => /\.ya?ml$/.test(f) && f !== 'deploy-production.yml',
+  ))
+    assert.doesNotMatch(readFileSync(new URL(file, dir), 'utf8'), secret, file);
+});

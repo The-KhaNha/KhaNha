@@ -164,6 +164,7 @@ data "aws_iam_policy_document" "deploy" {
       "ecr:BatchGetImage",
       "ecr:CompleteLayerUpload",
       "ecr:DescribeImages",
+      "ecr:GetDownloadUrlForLayer", # the deploy pulls what it pushed and smokes it
       "ecr:InitiateLayerUpload",
       "ecr:PutImage",
       "ecr:UploadLayerPart",
