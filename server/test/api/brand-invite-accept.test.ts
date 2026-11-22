@@ -107,6 +107,8 @@ describe('accepting an owner invite', () => {
       .from('domain_events')
       .select('type, payload, actor')
       .eq('aggregate_id', inviteId)
+      // The invite also carries brand.owner_invited (PR 01): only the accept's event counts here.
+      .eq('type', 'brand.owner_joined')
       .throwOnError();
     expect(events).toEqual([
       {
@@ -135,6 +137,8 @@ describe('accepting an owner invite', () => {
       .from('domain_events')
       .select('id')
       .eq('aggregate_id', inviteId)
+      // The invite also carries brand.owner_invited (PR 01): only the accept's event counts here.
+      .eq('type', 'brand.owner_joined')
       .throwOnError();
     expect(events).toHaveLength(1);
   });
