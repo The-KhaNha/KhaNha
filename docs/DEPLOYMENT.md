@@ -430,6 +430,13 @@ with today's steps.
 4. **(user)** `pnpm run seed --production` for the first store, `pnpm run migrate:media --production`, and the
    accounts ([Production first-time setup](#production-first-time-setup), steps 4–7).
 
+### Keeping the free project awake
+
+A free Supabase project is paused after seven days without activity. `.github/workflows/keep-alive.yml` asks
+production's `/api/ready` every three days (it reads the database through the API), and can be run by hand from the
+Actions tab. A failed run means production was not ready; GitHub emails whoever last edited the schedule. Delete the
+workflow once production is on a paid plan or has daily traffic.
+
 ### Rolling back
 
 Run deploy-production with `ref` = the earlier release's tag (`server-v…` or `client-v…`) and approve it. Its images
