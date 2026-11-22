@@ -6,6 +6,10 @@ import type { SiteSettings } from '../types/api';
 const admin = vi.hoisted(() => ({
   fetchSiteSettings: vi.fn(),
   updateSiteSettings: vi.fn(),
+  fetchAdminBrands: vi.fn().mockResolvedValue([]),
+  createBrand: vi.fn(),
+  createOwnerInvite: vi.fn(),
+  revokeOwnerInvite: vi.fn(),
 }));
 vi.mock('../services/admin', () => admin);
 vi.mock('../services/api', () => ({
@@ -37,6 +41,18 @@ const saved: SiteSettings = {
 describe('AdminPage', () => {
   afterEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('renders the Restaurants section above Site settings', async () => {
+    admin.fetchSiteSettings.mockResolvedValue(saved);
+    render(<AdminPage />);
+
+    const restaurants = await screen.findByRole('heading', { name: 'Restaurants' });
+    const settings = screen.getByRole('heading', { name: 'Site settings' });
+    expect(
+      restaurants.compareDocumentPosition(settings) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(await screen.findByText('No restaurants yet')).toBeInTheDocument();
   });
 
   it('renders the loaded values', async () => {

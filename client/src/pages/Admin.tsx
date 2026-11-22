@@ -15,6 +15,7 @@ import {
   validateSetting,
   type SettingsDraft,
 } from '../features/admin/settingsRules';
+import { Restaurants } from '../features/admin/Restaurants';
 import { useSiteSettings } from '../features/admin/useSiteSettings';
 import { ApiError } from '../services/api';
 import { updateSiteSettings } from '../services/admin';
@@ -28,6 +29,7 @@ export function AdminPage() {
 
   return (
     <div className="space-y-4 pt-4 animate-fade-up">
+      <Restaurants />
       <div>
         <h2 className="text-xl font-extrabold">Site settings</h2>
         <p className="mt-1 text-sm text-muted">

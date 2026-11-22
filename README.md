@@ -150,7 +150,7 @@ developer/operator role (the `/admin` dashboard), not a restaurant role — see
 
 - **Customer app:** http://localhost:5173 — designed for a phone; on a laptop, a narrow window or the browser's device toolbar (390 × 844) shows it as intended.
 - **Staff dashboard:** http://localhost:5173/login → sign in with the staff account → you land on http://localhost:5173/staff. Non-staff accounts are sent back to the home page.
-- **Admin dashboard:** http://localhost:5173/login → sign in with the admin account → you land on http://localhost:5173/admin. Non-admin accounts are sent back to the home page.
+- **Admin dashboard:** http://localhost:5173/login → sign in with the admin account → you land on http://localhost:5173/admin. Non-admin accounts are sent back to the home page. The Restaurants section creates a restaurant and its owner invite link (nothing is emailed).
 
 > **Demo tip:** when the customer and staff run in the _same_ browser, open the staff dashboard in a private/incognito window (or another browser). Both tabs share one login otherwise, and after a page reload the most recent login wins. In real use they are on different devices.
 

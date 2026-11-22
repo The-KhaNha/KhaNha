@@ -313,6 +313,11 @@ the address bar after load, in the API log or in `audit_log`.
 
 - [ ] Merged
 
+As built: the e2e covers the admin's half (create, get the `/join/owner#…` link); the owner's half is the real
+walk recorded on PR 02 and its unit tests, not a second mocked context. The form has no slug field, so a slug
+problem shows on the name. An invite past its time reads "expired". `InviteLink` scrolls itself into view, since a
+row's new link appears at the top of the section.
+
 **Theme:** the admin's screen. Estimated 650 lines counted. A `sonnet` implementer may take it.
 
 **Files**
