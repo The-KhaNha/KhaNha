@@ -6,16 +6,16 @@ are drawn in [ARCHITECTURE.md](ARCHITECTURE.md#3-authentication). Status codes a
 
 ## Roles
 
-| Role       | Who                                                       | Can                                                                                                                                                                  |
-| ---------- | --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| anonymous  | anyone without a token                                    | read the store and menu, register, sign in                                                                                                                           |
-| `CUSTOMER` | every new account (the `profiles.role` default)           | place orders, list and read their own orders                                                                                                                         |
-| `STAFF`    | a store membership role only (no `profiles.role`)         | at their store: read its orders, change order status (see [Store roles](#store-roles))                                                                               |
-| `ADMIN`    | accounts whose `profiles.role` was set to `ADMIN` by hand | read and edit the site settings (`GET`/`PATCH /api/admin/settings`), read the audit log (`GET /api/admin/audit`), flip feature flags (`PATCH /api/admin/flags/:key`) |
+| Role       | Who                                                       | Can                                                                                                                                                                                                                                                                |
+| ---------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| anonymous  | anyone without a token                                    | read the store and menu, register, sign in                                                                                                                                                                                                                         |
+| `CUSTOMER` | every new account (the `profiles.role` default)           | place orders, list and read their own orders                                                                                                                                                                                                                       |
+| `STAFF`    | a store membership role only (no `profiles.role`)         | at their store: read its orders, change order status (see [Store roles](#store-roles))                                                                                                                                                                             |
+| `ADMIN`    | accounts whose `profiles.role` was set to `ADMIN` by hand | read and edit the site settings (`GET`/`PATCH /api/admin/settings`), read the audit log (`GET /api/admin/audit`), flip feature flags (`PATCH /api/admin/flags/:key`), create brands and invite their owners (`/api/admin/brands`, [Owner invites](#owner-invites)) |
 
 `ADMIN` is a **site-wide developer/operator role**, not a restaurant role: a separate track from `STAFF` with no
 staff powers (an admin without a store standing gets 403 on a store's order routes like a customer) and no special powers over orders — an admin's own orders and profile
-work exactly like a customer's. Its only privilege is the admin dashboard (`/admin`, the `site_settings` row); see
+work exactly like a customer's. Its only privileges are the admin dashboard (`/admin`: the `site_settings` row, and brands with their owner invites); see
 [SCHEMA.md](SCHEMA.md#site_settings).
 
 - The role is `profiles.role` (enum `user_role`) and nothing else. It is never read from the token or from
@@ -119,6 +119,20 @@ token **and** registers with that email can accept it, so the token is the real 
 band, and it is shown once, stored only as a hash and never logged. Follow-up: verify the email at sign-up
 ([ROADMAP](../plans/ROADMAP.md)).
 
+## Owner invites
+
+Code: `server/src/controllers/admin.controller.ts`, `server/src/services/adminBrand.service.ts`. Only a site `ADMIN` makes
+a brand or an owner invite ([API.md](API.md#restaurant-onboarding-admin)); a brand's owner or manager has no route
+to either.
+
+- An invite makes someone the brand's **owner** (`brands.owner_id`), the one standing above MANAGER, so it is an admin's
+  act and never a store's `team.manageStaff` (a store invite can only make STAFF or MANAGER).
+- A brand has one open invite: a new one closes the old, so a lost link is replaced, not duplicated. An invite is
+  refused (409 `BRAND_HAS_OWNER`) while the brand has an owner: no invite replaces an owner.
+- The token is shown once, stored only as a sha-256, never logged (the log lines carry ids only), and every answer is
+  `no-store`. The table is reachable only through the API ([SCHEMA.md](SCHEMA.md#brand_invites)).
+- Accepting an owner invite arrives with PR 02.
+
 ## Route matrix
 
 | Route                                                                                      | anonymous                               | CUSTOMER                                                     | STAFF                                                | ADMIN                                                | Enforced by                                                                                                                                                                        |
@@ -146,6 +160,10 @@ band, and it is shown once, stored only as a hash and never logged. Follow-up: v
 | `POST /api/me/invites/accept`                                                              | 401                                     | yes, with the invite's token and email                       | yes, with the invite's token and email               | yes, with the invite's token and email               | `requireAuth` + `inviteAcceptLimiter`; every refusal 404                                                                                                                           |
 | `GET /api/admin/audit`                                                                     | 401                                     | 403                                                          | 403                                                  | yes                                                  | `requireAuth` + `requireAdmin`                                                                                                                                                     |
 | `PATCH /api/admin/flags/:key`                                                              | 401                                     | 403                                                          | 403                                                  | yes (unknown key 404)                                | `requireAuth` + `requireAdmin`                                                                                                                                                     |
+| `GET /api/admin/brands`                                                                    | 401                                     | 403                                                          | 403                                                  | yes                                                  | `requireAuth` + `requireAdmin`                                                                                                                                                     |
+| `POST /api/admin/brands`                                                                   | 401                                     | 403                                                          | 403                                                  | yes (a taken slug 409)                               | `requireAuth` + `requireAdmin` + `writeLimiter`                                                                                                                                    |
+| `POST /api/admin/brands/:brandId/invites`                                                  | 401                                     | 403                                                          | 403                                                  | yes (unknown brand 404, a brand with an owner 409)   | `requireAuth` + `requireAdmin` + `writeLimiter`                                                                                                                                    |
+| `DELETE /api/admin/brands/:brandId/invites/:inviteId`                                      | 401                                     | 403                                                          | 403                                                  | yes (unknown or accepted invite 404)                 | `requireAuth` + `requireAdmin` + `writeLimiter`                                                                                                                                    |
 | `GET /api/fake-gateway/:gatewayOrderId`, `POST /api/fake-gateway/:gatewayOrderId/:outcome` | yes, only while `PAYMENT_PROVIDER=fake` | yes, same                                                    | yes, same                                            | yes, same                                            | – (public: the unguessable gateway order id is the capability, as at a real provider; 404 when the provider is not `fake`, so never in production; before the client version gate) |
 | `/staff` (client route, the switcher)                                                      | → `/login`                              | the switcher (an account with no store sees how to join one) | the switcher                                         | the switcher                                         | `RequireMembership` (signed in only)                                                                                                                                               |
 | `/staff/:storeSlug` (client route, the board)                                              | → `/login`                              | → `/` unless a member there or the brand's owner             | the board of the store                               | → `/` unless a member                                | `RequireMembership` (client only; the API checks `orders.view` per store)                                                                                                          |
@@ -262,7 +280,7 @@ flowchart LR
   end
 
   subgraph Postgres["Postgres, public schema"]
-    Tables["profiles, brands, stores, store_memberships, store_invites, menu_items,<br/>orders, order_items, site_settings,<br/>domain_events, event_subscriptions, job_failures,<br/>feature_flags, session_activity, fake_gateway_orders, audit_log (service_role: select only)<br/>RLS ON, no policies,<br/>all privileges revoked from anon/authenticated"]
+    Tables["profiles, brands, stores, store_memberships, store_invites, brand_invites, menu_items,<br/>orders, order_items, site_settings,<br/>domain_events, event_subscriptions, job_failures,<br/>feature_flags, session_activity, fake_gateway_orders, audit_log (service_role: select only)<br/>RLS ON, no policies,<br/>all privileges revoked from anon/authenticated"]
     Fns["place_order, update_order_status,<br/>reset_demo_orders, emit_event,<br/>queue_*, purge_domain_events,<br/>fake_gateway_refund, purge_fake_gateway_orders<br/>EXECUTE only for service_role"]
     Trg["handle_new_user, handle_user_email_change, audit_row_change,<br/>audit_log_append_only<br/>security definer, fired by their triggers only"]
   end

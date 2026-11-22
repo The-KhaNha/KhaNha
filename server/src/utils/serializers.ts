@@ -6,6 +6,8 @@ import type { StoreRole } from '../types/enums';
 import type {
   AuditEntryDto,
   FeatureFlagDto,
+  AdminBrandDto,
+  BrandInviteDto,
   InviteDto,
   MemberDto,
   ManagedMenuItemDto,
@@ -132,6 +134,36 @@ export function toMemberDto(member: MemberRow): MemberDto {
     email: member.user.email,
     role: member.role,
     joinedAt: toIso(member.created_at),
+  };
+}
+
+export function toBrandInviteDto(
+  invite: Pick<Tables<'brand_invites'>, 'id' | 'email' | 'expires_at' | 'created_at'>,
+): BrandInviteDto {
+  return {
+    id: invite.id,
+    email: invite.email,
+    expiresAt: toIso(invite.expires_at),
+    createdAt: toIso(invite.created_at),
+  };
+}
+
+/** A brand row with its owner and branch count embedded (adminBrand.service's select), and its open invite. */
+export function toAdminBrandDto(
+  brand: Pick<Tables<'brands'>, 'id' | 'name' | 'slug' | 'created_at'> & {
+    owner: AdminBrandDto['owner'];
+    branches: { count: number }[];
+  },
+  invite: Parameters<typeof toBrandInviteDto>[0] | undefined,
+): AdminBrandDto {
+  return {
+    id: brand.id,
+    name: brand.name,
+    slug: brand.slug,
+    createdAt: toIso(brand.created_at),
+    branchCount: brand.branches[0]?.count ?? 0,
+    owner: brand.owner,
+    invite: invite ? toBrandInviteDto(invite) : null,
   };
 }
 

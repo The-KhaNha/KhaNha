@@ -18,6 +18,7 @@ export type ErrorCode =
   | 'MODIFIER_REQUIRED'
   | 'MODIFIER_INVALID'
   | 'SLUG_TAKEN'
+  | 'BRAND_HAS_OWNER'
   | 'MENU_FULL'
   | 'STORE_NOT_READY'
   | 'UPLOAD_INVALID'
@@ -307,10 +308,13 @@ export const menuFull = (max: number): AppError =>
   );
 
 /** Another store already has the slug a new branch asked for (or was given from its name). */
-export const slugTaken = (): AppError =>
-  new AppError(409, 'SLUG_TAKEN', 'Another store already uses that web address. Choose another.', {
-    field: 'slug',
-  });
+export const slugTaken = (
+  message = 'Another store already uses that web address. Choose another.',
+): AppError => new AppError(409, 'SLUG_TAKEN', message, { field: 'slug' });
+
+/** An owner invite for a brand that has its owner already: an invite never replaces one (P7.4a D4). */
+export const brandHasOwner = (): AppError =>
+  new AppError(409, 'BRAND_HAS_OWNER', 'That restaurant already has an owner.');
 
 /** A publish refused because the store is not ready; `missing` says what to add. */
 export const storeNotReady = (missing: string[]): AppError =>

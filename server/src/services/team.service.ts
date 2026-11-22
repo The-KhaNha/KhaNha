@@ -8,14 +8,15 @@ import { isUuid } from '../utils/ids';
 import { toInviteDto, toMemberDto } from '../utils/serializers';
 import { raisedByDatabase, supabaseAdmin } from '../utils/supabase';
 
-const DAY_MS = 24 * 60 * 60 * 1000;
+export const DAY_MS = 24 * 60 * 60 * 1000;
 const INVITE_SELECT = 'id, role, email, expires_at, created_at';
 
 /** Only the hash is stored: a leaked table cannot be turned back into a link that works. */
-const hashToken = (token: string): string => createHash('sha256').update(token).digest('hex');
+export const hashToken = (token: string): string =>
+  createHash('sha256').update(token).digest('hex');
 
 /** The headers audit_row_change reads who and which request from, on every write to an audited table. */
-const audited = <T extends { setHeader(name: string, value: string): T }>(
+export const audited = <T extends { setHeader(name: string, value: string): T }>(
   query: T,
   ctx: RequestContext,
 ): T =>
