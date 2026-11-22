@@ -105,8 +105,9 @@ describe('StockList', () => {
     fireEvent.click(screen.getByRole('button', { name: 'One less Tea' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Only 0 Tea left');
     expect(countOf('Tea')).toHaveTextContent('2');
-    // The list is reloaded, so the screen catches up with what the server has.
-    expect(api.fetchStock).toHaveBeenCalledTimes(2);
+    // The list is reloaded, so the screen catches up with what the server has. The reload's fetch runs in an effect
+    // React schedules after the commit that shows the alert, so it can still be pending when findByRole returns.
+    await waitFor(() => expect(api.fetchStock).toHaveBeenCalledTimes(2));
   });
 
   it('a change with no answer never says "try again" (it may have landed) and checks the count again', async () => {
@@ -123,7 +124,8 @@ describe('StockList', () => {
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent("couldn't confirm the change");
     expect(alert).not.toHaveTextContent(/try again/i);
-    expect(api.fetchStock).toHaveBeenCalledTimes(2);
+    // As above: the reload's fetch runs in an effect after the alert's commit.
+    await waitFor(() => expect(api.fetchStock).toHaveBeenCalledTimes(2));
   });
 
   it('"Mark sold out" sets the count to zero', async () => {

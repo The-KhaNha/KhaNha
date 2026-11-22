@@ -77,7 +77,9 @@ describe('ManageHoursPage', () => {
       { dayOfWeek: 2, opensAt: '09:00', closesAt: '17:00' },
     ]);
     expect(reloadStores).not.toHaveBeenCalled();
-    expect(api.fetchStoreHours).toHaveBeenCalledTimes(2);
+    // reloadAll() calls onChanged right after reload(), whose fetch starts in an effect React runs a task later:
+    // waiting for onChanged alone can see one call.
+    await waitFor(() => expect(api.fetchStoreHours).toHaveBeenCalledTimes(2));
   });
 
   it("shows the server's overlap error inline and keeps the edit", async () => {
