@@ -57,12 +57,15 @@ by itself emits nothing either: it is derived, and a sweep comes with the first 
 ## Brand events
 
 `brand.created` is emitted by `create_brand` ([SCHEMA.md](SCHEMA.md#brands)) in the same transaction as the brand, with the
-brand id as `aggregateId`; `brand.owner_joined` by [`accept_brand_invite`](SCHEMA.md#accept_brand_invite). Neither has a `storeId`. Nothing subscribes to them yet.
+brand id as `aggregateId`; `brand.owner_invited` by `create_brand_invite` and `brand.owner_joined` by
+[`accept_brand_invite`](SCHEMA.md#accept_brand_invite), each with the invite as `aggregateId`. None has a `storeId`.
+Nothing subscribes to them yet.
 
-| Type                 | Emitted when                                                                                   | Payload       |
-| -------------------- | ---------------------------------------------------------------------------------------------- | ------------- |
-| `brand.created`      | an admin creates a brand (P7.4a)                                                               | `{ slug }`    |
-| `brand.owner_joined` | an invited owner accepts, in `accept_brand_invite` (`aggregateId` is the invite, no `storeId`) | `{ brandId }` |
+| Type                  | Emitted when                                                                                   | Payload                        |
+| --------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------ |
+| `brand.created`       | an admin creates a brand (P7.4a)                                                               | `{ slug }`                     |
+| `brand.owner_invited` | an admin issues (or replaces) a brand's owner invite, from `create_brand_invite`               | `{ brandId }`; never the email |
+| `brand.owner_joined`  | an invited owner accepts, in `accept_brand_invite` (`aggregateId` is the invite, no `storeId`) | `{ brandId }`                  |
 
 ## Menu events
 
