@@ -1,0 +1,285 @@
+name: deploy-production
+
+# Deploys a release to production (P8 PR 07; docs/DEPLOYMENT.md "How a release reaches production"): build and smoke
+# both arm64 images, then, after the user's approval in the `production` Environment, push them, smoke what was
+# pushed, push the release's migrations to the database, run the host's deploy document, smoke the public address,
+# and record the release, or put the last one back.
+#
+# Triggers: the client-v* / server-v* tags release.yml pushes on main (tags pushed with GITHUB_TOKEN start no
+# workflow, so this needs the release App), and a manual run with `ref`:
+#   - a release tag (or a commit on main): deploy that release; an earlier one is the rollback;
+#   - a commit or branch on dev: a rehearsal, refused unless the repository variable PRODUCTION_DARK is 'true'.
+on:
+  push:
+    tags: ['client-v*', 'server-v*']
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: A release tag (deploy or roll back), or while PRODUCTION_DARK is true a dev commit (rehearsal)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    outputs:
+      skip: ${{ steps.what.outputs.skip }}
+      commit: ${{ steps.what.outputs.commit }}
+      web_tag: ${{ steps.what.outputs.web_tag }}
+      server_tag: ${{ steps.what.outputs.server_tag }}
+      supabase_url: ${{ steps.what.outputs.supabase_url }}
+      project_ref: ${{ steps.what.outputs.project_ref }}
+    steps:
+      # The workflow's own commit supplies the scripts and settings (a rollback to an old tag still runs today's
+      # deploy); the release commit, checked out into release/, supplies only the images.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: What this run deploys
+        id: what
+        env:
+          EVENT: ${{ github.event_name }}
+          TAG: ${{ github.ref_name }}
+          REF: ${{ inputs.ref || github.sha }}
+          DARK: ${{ vars.PRODUCTION_DARK }}
+        run: |
+          commit=$(git rev-parse -q --verify "$REF^{commit}" || git rev-parse --verify "origin/$REF^{commit}")
+          # A release pushes both tags at one commit: the first tag's run deploys it, the other stops here.
+          if [ "$EVENT" = push ]; then
+            first=$(git tag --points-at "$commit" --list 'client-v*' 'server-v*' | sort | head -1)
+            if [ "$first" != "$TAG" ]; then
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              echo "$first deploys commit $commit; nothing to do for $TAG." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+          fi
+          if git merge-base --is-ancestor "$commit" origin/main; then
+            kind=release
+          elif [ "$DARK" = true ] && git merge-base --is-ancestor "$commit" origin/dev; then
+            kind=rehearsal
+          else
+            echo "::error::$commit is not on main. A rehearsal of a dev commit needs PRODUCTION_DARK=true."
+            exit 1
+          fi
+          ref=$(sed -n 's/^PRODUCTION_REF="\([a-z0-9]*\)".*/\1/p' server/scripts/db-push.sh)
+          [ -n "$ref" ] || { echo "::error::PRODUCTION_REF is empty in server/scripts/db-push.sh"; exit 1; }
+          {
+            echo "commit=$commit"
+            echo "web_tag=$(git show "$commit:client/package.json" | jq -r .version)-${commit:0:7}"
+            echo "server_tag=$(git show "$commit:server/package.json" | jq -r .version)-${commit:0:7}"
+            echo "supabase_url=https://$ref.supabase.co"
+            echo "project_ref=$ref"
+          } >> "$GITHUB_OUTPUT"
+          echo "A $kind of $commit." >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.what.outputs.skip != 'true'
+        with:
+          ref: ${{ steps.what.outputs.commit }}
+          path: release
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        if: steps.what.outputs.skip != 'true'
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        if: steps.what.outputs.skip != 'true'
+        with:
+          context: release/server
+          load: true
+          tags: fp-api:ci
+          build-args: GIT_COMMIT=${{ steps.what.outputs.commit }}
+          cache-from: type=gha,scope=api-arm64
+          cache-to: type=gha,mode=max,scope=api-arm64
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        if: steps.what.outputs.skip != 'true'
+        with:
+          context: release/client
+          load: true
+          tags: fp-web:ci
+          build-args: GIT_COMMIT=${{ steps.what.outputs.commit }}
+          cache-from: type=gha,scope=web-arm64
+          cache-to: type=gha,mode=max,scope=web-arm64
+      # The release's own image smoke: an older release's images answer to the checks of their day.
+      - name: Smoke test the images
+        if: steps.what.outputs.skip != 'true'
+        env:
+          COMMIT: ${{ steps.what.outputs.commit }}
+        run: release/scripts/ci/image-smoke.sh "$COMMIT"
+
+  # One job behind the approval, so a release asks once: that approval also lets this job push the release's
+  # migrations (the user's decision, 21 November 2026; CLAUDE.md §2). Seeding production stays the user's.
+  deploy:
+    needs: build
+    if: needs.build.outputs.skip != 'true'
+    runs-on: ubuntu-24.04-arm
+    # Builds and pushes, migrations, then up to two host waits (the deploy and the undo, about 26 minutes each).
+    timeout-minutes: 80
+    environment: production
+    # One production deploy at a time, and a running one is never cancelled. On this job, not the workflow, so both
+    # tag runs of a release reach the build job's duplicate check before any queueing: a newer pending deploy
+    # replacing an older pending one is then always a newer release (or a rollback) replacing an older one.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      COMMIT: ${{ needs.build.outputs.commit }}
+      WEB_TAG: ${{ needs.build.outputs.web_tag }}
+      SERVER_TAG: ${{ needs.build.outputs.server_tag }}
+      REGISTRY: ${{ vars.AWS_ACCOUNT_ID }}.dkr.ecr.ap-south-1.amazonaws.com
+      RELEASE_PARAMETER: /khanha/production/release
+    steps:
+      # Full history: the stale-release check below compares commits.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.build.outputs.commit }}
+          path: release
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ap-south-1
+      # Inside the lock. A tag run whose release is already contained in the recorded one stops: builds finish in any
+      # order, so an older release must not land over a newer one. A manual run (a rollback) is never stopped here.
+      - name: Deployed already?
+        id: released
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if ! current=$(aws ssm get-parameter --name "$RELEASE_PARAMETER" --query Parameter.Value --output text 2>&1); then
+            case $current in *ParameterNotFound*) current= ;; *) echo "$current" >&2; exit 1 ;; esac
+          fi
+          echo "previous=$current" >> "$GITHUB_OUTPUT"
+          echo "Previous release: ${current:-none}. Candidate: $WEB_TAG $SERVER_TAG." >> "$GITHUB_STEP_SUMMARY"
+          if [ "$current" = "$WEB_TAG $SERVER_TAG" ]; then
+            echo "deployed=true" >> "$GITHUB_OUTPUT"
+            echo "Already the release; nothing to do." >> "$GITHUB_STEP_SUMMARY"
+          elif [ "$EVENT" = push ] && [ -n "$current" ]; then
+            # Tags end in -<sha7>; the server tag names the recorded release's commit.
+            recorded=$(git rev-parse -q --verify "${current##*-}^{commit}" || true)
+            if [ -n "$recorded" ] && git merge-base --is-ancestor "$COMMIT" "$recorded"; then
+              echo "deployed=true" >> "$GITHUB_OUTPUT"
+              echo "Superseded: the recorded release ($current) already contains $COMMIT; nothing to do." \
+                >> "$GITHUB_STEP_SUMMARY"
+            fi
+          fi
+      # Before anything changes, so a missing secret never stops a deploy half-way.
+      - name: Migration credentials
+        if: steps.released.outputs.deployed != 'true'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: scripts/ci/deploy-migrate.sh --check
+      # Tags are immutable: an image already pushed (a rollback, a re-run) is used as it is.
+      - name: Which images are new
+        id: images
+        if: steps.released.outputs.deployed != 'true'
+        run: |
+          aws ecr get-login-password | docker login --username AWS --password-stdin "$REGISTRY"
+          for pair in "web $WEB_TAG" "server $SERVER_TAG"; do
+            read -r repo tag <<<"$pair"
+            if aws ecr describe-images --repository-name "khanha/$repo" --image-ids "imageTag=$tag" >/dev/null 2>&1; then
+              echo "khanha/$repo:$tag is already pushed"
+            else
+              echo "$repo=push" >> "$GITHUB_OUTPUT"
+            fi
+          done
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        if: steps.images.outputs.web == 'push' || steps.images.outputs.server == 'push'
+      # Rebuilt from the build job's layer cache (seconds), pushed with provenance and an SBOM.
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        if: steps.images.outputs.server == 'push'
+        with:
+          context: release/server
+          push: true
+          tags: ${{ env.REGISTRY }}/khanha/server:${{ env.SERVER_TAG }}
+          build-args: GIT_COMMIT=${{ env.COMMIT }}
+          cache-from: type=gha,scope=api-arm64
+          provenance: mode=max
+          sbom: true
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        if: steps.images.outputs.web == 'push'
+        with:
+          context: release/client
+          push: true
+          tags: ${{ env.REGISTRY }}/khanha/web:${{ env.WEB_TAG }}
+          build-args: GIT_COMMIT=${{ env.COMMIT }}
+          cache-from: type=gha,scope=web-arm64
+          provenance: mode=max
+          sbom: true
+      # The pushed images are the ones smoked: a push without the layer cache is a fresh build, and a rollback's
+      # images were pushed by an earlier run. The release's own smoke, on the tags it expects.
+      - name: Smoke the pushed images
+        if: steps.released.outputs.deployed != 'true'
+        run: |
+          docker pull "$REGISTRY/khanha/server:$SERVER_TAG"
+          docker pull "$REGISTRY/khanha/web:$WEB_TAG"
+          docker tag "$REGISTRY/khanha/server:$SERVER_TAG" fp-api:ci
+          docker tag "$REGISTRY/khanha/web:$WEB_TAG" fp-web:ci
+          release/scripts/ci/image-smoke.sh "$COMMIT"
+      # The Supabase CLI pinned by the workflow's own server lockfile, as ci.yml installs it. --ignore-scripts: this job
+      # holds production's cloud credentials, and the CLI needs no install script (its binary arrives as an optional
+      # dependency).
+      - uses: ./.github/actions/setup-pnpm
+        if: steps.released.outputs.deployed != 'true'
+      - name: Install the Supabase CLI
+        if: steps.released.outputs.deployed != 'true'
+        run: |
+          pnpm --dir server install --frozen-lockfile --ignore-scripts
+          echo "$PWD/server/node_modules/.bin" >> "$GITHUB_PATH"
+      # Migrations before code (docs/DEPLOYMENT.md "Applying migrations"): the release's migrations, today's script. A
+      # failure stops the run before the host changes; a rollback (the database ahead of the release) skips. Nothing
+      # here ever reverts a migration: a later failure puts the previous code back on the new schema (fix forward).
+      - name: Migrate the database
+        if: steps.released.outputs.deployed != 'true'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          PROJECT_REF: ${{ needs.build.outputs.project_ref }}
+        run: scripts/ci/deploy-migrate.sh "$PROJECT_REF" release/server
+      - name: Deploy to the host
+        id: deploy
+        if: steps.released.outputs.deployed != 'true'
+        run: scripts/ci/deploy-host.sh "$WEB_TAG" "$SERVER_TAG"
+      - name: Smoke the public address
+        id: smoke
+        if: steps.released.outputs.deployed != 'true'
+        env:
+          PUBLIC_URL: ${{ vars.PRODUCTION_URL || 'https://khanha.in' }}
+          SUPABASE_URL: ${{ needs.build.outputs.supabase_url }}
+        run: scripts/ci/deploy-smoke.sh "$PUBLIC_URL" "$COMMIT" "$SUPABASE_URL"
+      # Last, so the parameter always names the last release that passed (a replaced host comes up on it).
+      - name: Record the release
+        if: steps.released.outputs.deployed != 'true'
+        run: |
+          for attempt in 1 2 3; do
+            aws ssm put-parameter --name "$RELEASE_PARAMETER" --type String --overwrite \
+              --value "$WEB_TAG $SERVER_TAG" >/dev/null && break
+            [ "$attempt" -lt 3 ] || exit 1
+            sleep 5
+          done
+          echo "Released: web $WEB_TAG, server $SERVER_TAG." >> "$GITHUB_STEP_SUMMARY"
+      # Whatever failed once the deploy started (a candidate that never became ready, a wait that ran out, the smoke,
+      # the record), the host goes back to the parameter's release, the last one that passed. The database keeps the
+      # release's migrations: expand and contract keeps them safe for the previous code (fix forward).
+      - name: Put the last release back
+        if: failure() && (steps.deploy.outcome == 'success' || steps.deploy.outcome == 'failure')
+        env:
+          PREVIOUS: ${{ steps.released.outputs.previous }}
+        run: |
+          if [ -z "$PREVIOUS" ]; then
+            echo "::error::No earlier release to go back to: the failed candidate stays on the host. Fix forward."
+            echo "No earlier release: the failed candidate is still on the host." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          scripts/ci/deploy-host.sh
+          echo "The deploy failed; the host is back on $PREVIOUS." >> "$GITHUB_STEP_SUMMARY"

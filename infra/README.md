@@ -72,6 +72,10 @@ made, so it is not lost with the laptop:
 aws s3 cp terraform.tfstate "s3://$(terraform output -raw state_bucket)/bootstrap/terraform.tfstate"
 ```
 
+**When the bootstrap changes** (a PR edits `bootstrap/`), re-apply it the same way from that directory once the PR is
+merged: `terraform plan` should show only the change the PR describes (for example the deploy role's policy updated
+in place), then `terraform apply` and copy the state to the bucket again. CI never applies it.
+
 **Verify the budget's address.** A new address receives no budget alerts until it is verified. Open Billing and Cost
 Management → Budgets → `khanha-monthly` and read its email recipient's status:
 
@@ -112,6 +116,15 @@ done
 
 None of these values is secret; they are variables, not secrets, so they show in logs and nothing has to be masked.
 
+The one exception is the deploy's migrate step, which needs two **secrets** in the `production` Environment (never
+repository secrets, so only the approved deploy job reads them; [DEPLOYMENT.md "Applying migrations"](../docs/DEPLOYMENT.md#applying-migrations)).
+`gh secret set` asks for each value, so it never lands in the shell history:
+
+```bash
+gh secret set SUPABASE_ACCESS_TOKEN --env production   # an access token that can manage the production project
+gh secret set SUPABASE_DB_PASSWORD --env production    # the production database password
+```
+
 ## 3. Plan and apply (every change)
 
 1. A pull request that touches `infra/terraform/**` runs `infra.yml`'s **plan**; the plan is in the run's summary.
@@ -139,7 +152,7 @@ TF_VAR_account_id=<the account ID> terraform plan
 One EC2 `t4g.micro` (about $9.20 a month with its public address and disk), Amazon Linux 2023 on arm64. Its first
 boot installs docker, the compose plugin and 2 GB of swap (`modules/compute/user-data.sh`); nothing is built on it.
 The app arrives through the SSM document `khanha-deploy`, which writes `infra/host/*` to `/opt/khanha` and runs
-`apply-release.sh`: with candidate tags from the deploy workflow (PR 07), or with none, the tags in
+`apply-release.sh`: with candidate tags from `deploy-production.yml` ([DEPLOYMENT.md "Production releases"](../docs/DEPLOYMENT.md#production-releases)), or with none, the tags in
 `/khanha/production/release` (`"<web-tag> <server-tag>"`, the last release that passed). A State Manager association
 runs it once on every new host, so a replaced machine comes back on that release by itself; before the first release
 it does nothing.

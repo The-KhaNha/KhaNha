@@ -6,7 +6,7 @@ name: perf
 on:
   push:
     branches: [dev]
-    paths: ['client/**', '.github/workflows/perf.yml']
+    paths: ['client/**', '.github/workflows/perf.yml', 'scripts/ci/deploy-smoke.sh']
   workflow_dispatch:
 
 permissions:
@@ -39,6 +39,9 @@ jobs:
           SUPABASE_PUBLISHABLE_KEY=$(grep VITE_SUPABASE_PUBLISHABLE_KEY client/.env.development | cut -d= -f2)
           export SUPABASE_PUBLISHABLE_KEY
           docker compose up -d --build --wait web api
+      # The smoke production's deploy runs (deploy-production.yml), proven here on the same stack first.
+      - name: Deploy smoke
+        run: scripts/ci/deploy-smoke.sh http://localhost:8080 "$GITHUB_SHA" http://127.0.0.1:54321
       - name: Lighthouse
         working-directory: client
         run: pnpm dlx @lhci/cli@0.15.x autorun

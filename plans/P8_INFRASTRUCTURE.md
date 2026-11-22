@@ -27,6 +27,10 @@ PR merges, tick its box here and in the roadmap.
 > **Revised 17 November 2026:** staging on AWS is brought forward. It is built as soon as PRs 02, 04, 05 and 07 are
 > applied, for the payment providers' sandbox webhooks; it deploys `dev`, takes infrastructure changes before
 > production does, and its bill is reviewed in early February 2027 ([Later: staging on AWS](#later-staging-on-aws)).
+>
+> **Revised 21 November 2026:** production migrations ship with the pipeline. The deploy pushes the release's
+> migrations after the user's approval and before the host deploy (D6, PR 07); an agent still never pushes or seeds
+> production, and seeding production stays the user's.
 
 ## Ask the user before starting
 
@@ -230,9 +234,10 @@ to deploy to; and observability lands on a running, dark production, where its a
   document, not the machine.
 - **A deploy is a short outage, by decision.** With one host and no load balancer, `docker compose up -d` means a
   few seconds of errors. The smoke test waits for it. This is the first thing a second host removes.
-- **Migrations before code, only forwards, and by the user.** The production workflow waits while the user runs
-  `pnpm run db:push:production` (CLAUDE.md §2). Expand and contract (the PR template's checkbox) is what makes
-  "migrate, then deploy" and "roll back the code, not the database" both safe.
+- **Migrations before code, only forwards, and behind the user's approval.** The production deploy pushes the
+  release's migrations after the approval and before the host deploy, and a rollback skips them (revised 21 November
+  2026; first, the workflow waited while the user ran `pnpm run db:push:production`). Expand and contract (the PR
+  template's checkbox) is what makes "migrate, then deploy" and "roll back the code, not the database" both safe.
 - **Metrics come from the logs the app already writes.** CloudWatch metric filters read the access line and the
   worker's lines; no metrics library, no agent, and one new log line (queue depth and each process's memory, every
   few minutes). The one exception is the host's own memory, which no log line can see: a small timer on the host
@@ -485,8 +490,9 @@ parameter already names this release, that is, when it is deployed):
    attestations, `GIT_COMMIT` as a build argument), smoke-tested with `image-smoke.sh`, pushed as
    `<version>-<sha7>` through the `deploy` role. An image whose tag already exists is not pushed again (tags are
    immutable) and the run carries on.
-2. **wait**: the Environment `production` has the user as its required reviewer. Before approving, the user runs
-   `pnpm run db:push:production` (CLAUDE.md §2: never the pipeline, never the agent).
+2. **wait**: the Environment `production` has the user as its required reviewer. Approving also lets the deploy push
+   the release's migrations (revised 21 November 2026; first, the user ran `pnpm run db:push:production` before
+   approving). An agent never runs it.
 3. **deploy**: read the release parameter (the previous release), send `khanha-deploy` to the host with the
    candidate tags as the command's parameters, wait for it, and fail the run if it fails. The host returns to the
    parameter's release by itself when `/api/ready` never comes. The parameter is not written here.
@@ -512,6 +518,26 @@ group keyed by the release commit with `cancel-in-progress` off.
 Docs: `docs/DEPLOYMENT.md` gains "How a release reaches production", "The first production release" (below) and
 "Rolling back"; CLAUDE.md §2 and §21 (what a release now triggers; `dev` still deploys nothing); `infra/README.md`;
 `README.md`.
+
+**As built (21 November 2026):** the deploy role trusts only jobs in the `production` Environment, and each job in a
+protected Environment asks for its own approval, so pushing images before the wait would mean two approvals. The
+`build` job therefore builds and smoke-tests without AWS, and one `deploy` job behind the approval pushes the images
+(rebuilt from the build job's layer cache, only when the tag is absent), deploys, smokes and records or undoes. The
+concurrency group is one for every production deploy (not one per commit), so two releases can never interleave; a
+newer pending run replaces an older pending one. It sits on the `deploy` job, not the workflow: when both tags of a
+release arrive, only the first tag's run goes on, and that check must run before any queueing (at the workflow level
+the surviving queued run could be the one the check skips). `deploy-host.sh` bounds delivery (600 s) as well as
+execution (900 s) and waits past both, retrying status errors, so the undo never starts while the first command can
+still change the host. The deploy role gained `ecr:GetDownloadUrlForLayer` for the pulled-image smoke (a bootstrap
+change the user applies). Until the release App exists, tags pushed by `GITHUB_TOKEN` start no workflow, so a release is deployed with
+`workflow_dispatch` and `ref` = its tag (the same path as a rollback). The deploy smoke runs in `perf.yml` (compose
+with a seeded Supabase), which the images job does not have. Helpers: `scripts/ci/deploy-host.sh` (find the host by
+its tags, run the document, wait) and `scripts/ci/deploy-smoke.sh`. The scripts come from the workflow's commit and
+the release commit only builds the images (a rollback to a tag older than this PR still works), and the undo runs
+after any failure past the deploy step, not only a failed smoke. Revised 21 November 2026: after the push the job
+pulls both tags back and runs the release's image smoke on exactly those images, then `scripts/ci/deploy-migrate.sh`
+pushes the release's migrations before the host deploy (its two secrets checked before anything is pushed; a
+rollback skips; nothing is reverted, fix forward; docs/DEPLOYMENT.md "Applying migrations").
 
 ### PR 08 — Logs, metrics, alarms (P8.7)
 
@@ -577,8 +603,8 @@ Everything since P0 reaches `main` for the first time (P1's and later plans' "at
 2. **(user)** Set the production secret value and parameters; confirm the SNS address.
 3. `release.yml` → `prepare` opens the release PR `dev` → `main`; **(user)** merges it. Tags and the back-merge
    follow.
-4. **(user)** `pnpm run db:push:production`: every migration since `init`, in order; check that pgmq and pg_cron
-   show under the project's Integrations. Then approve the waiting deploy.
+4. **(user)** Approve the waiting deploy: it pushes every migration since `init`, in order. Afterwards pgmq and
+   pg_cron should show under the project's Integrations.
 5. **(user)** `pnpm run seed -- --production` if the first restaurant's data comes from the seed;
    `migrate-media --production` if P3 is in; the first platform admin's account.
 6. The smoke passes; the dashboard shows traffic only from the smoke.
@@ -686,7 +712,7 @@ answered, or have a default the plan follows.
 | D3  | Domain name                                     | **answered (the user, 18 November 2026): `khanha.in`, bought**, registered outside AWS. Hosts: `khanha.in` (customers), `staff.khanha.in` (the staff shell) and `admin.khanha.in` (site admins); `www.` redirects to the apex. One distribution and one client build; the hostname picks the section (PR 05b). Each host keeps its own sign-in. Staging: `staging.`, `staff.staging.`, `admin.staging.`. Serving the apex costs a 5 to 15 minute outage at the one account move: removing the alias from the old distribution before adding it to the new one avoids AWS Support ([risks](#risks-and-gotchas)). The VPC origin stays the expected form: AWS lists a private subnet as a prerequisite, yet its own migration guide creates the VPC origin while the resource is still public, so PR 05 proves it on the real host first. HTTPS to `origin.khanha.in` remains the fallback | 05         |
 | D4  | Host architecture and size                      | **answered (the user, 11 November 2026):** small; `t4g.micro` (2 vCPU, 1 GB, arm64), standard CPU credits                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | 03, 04     |
 | D5  | Staging migrations inside a pipeline            | **answered (the user, 11 November 2026): yes**, with staging's credentials in a GitHub Environment; it takes effect with the AWS staging. Until then, by hand                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | later      |
-| D6  | Production migrations (roadmap decision 11)     | manual, by the user, while the deploy waits                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | 07         |
+| D6  | Production migrations (roadmap decision 11)     | **changed (the user, 21 November 2026): in the pipeline**, behind the deploy's approval, before the code. First decided: manual, by the user, while the deploy waits                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | 07         |
 | D7  | Compose on EC2, or ECS (roadmap decision 12)    | compose on EC2 (ADR-007)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | 04         |
 | D8  | A staging on AWS                                | **answered (the user, 11 November 2026):** not at first; one to two months after the first release. **Changed (the user, 17 November 2026): brought forward**, for P4's sandbox spike and P5's webhooks ([below](#later-staging-on-aws))                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | later      |
 | D9  | Production hosts                                | **answered (the user, 11 November 2026):** a single host; replicas come with funding                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | 04         |

@@ -4,9 +4,10 @@ Environments, configuration, database changes and production setup. The environm
 [ARCHITECTURE.md](ARCHITECTURE.md#2-environments-and-configuration). Day-to-day local start-up is in the
 [README](../README.md#quick-start).
 
-> Production is changed by a person, never by an agent or a test run: `pnpm run db:push:production` and
-> `pnpm run seed --production` are run by the user only. Tests run against local Supabase only
-> ([TESTING.md](TESTING.md#the-test-target-guard-server)).
+> Production is changed only by the user or by deploy-production after the user approves it, never by an agent or a
+> test run. A release's migrations are pushed by that pipeline ([Applying migrations](#applying-migrations)); an agent
+> never runs `pnpm run db:push:production` or a production seed, and `pnpm run seed --production` is the user's alone.
+> Tests run against local Supabase only ([TESTING.md](TESTING.md#the-test-target-guard-server)).
 
 ## Environments
 
@@ -167,7 +168,7 @@ pnpm run db:new add_something       # creates supabase/migrations/<timestamp>_ad
 pnpm run db:reset                   # local: rebuild the local database from all migrations (wipes local data)
 pnpm run db:types                   # regenerate src/types/database.ts from the local database
 pnpm run db:push:staging            # apply new migrations to staging
-pnpm run db:push:production         # the same for production (user only)
+pnpm run db:push:production         # production by hand (user only); a release migrates in deploy-production
 ```
 
 ```mermaid
@@ -179,8 +180,9 @@ flowchart TD
   Code --> PR["Commit migration + types + code"]
   PR --> Stg["pnpm run db:push:staging<br/>(supabase login once, DB password)"]
   Stg --> Verify["Point server/.env at staging (APP_ENV=staging), run ./start.sh, check"]
-  Verify --> Prod["pnpm run db:push:production<br/>type 'production' to confirm, CLI lists migrations and asks again"]
-  Prod --> Deploy["Deploy the API and web app build that expect the new schema"]
+  Verify --> Release["Release PR merged into main, tags pushed"]
+  Release --> Prod["deploy-production, after the approval:<br/>scripts/ci/deploy-migrate.sh pushes the migrations"]
+  Prod --> Deploy["then deploys the API and web app that expect the new schema"]
 ```
 
 `20260927094610_admin_settings_collected.sql` (the `ADMIN` role, `COMPLETED` → `COLLECTED`, `site_settings`) is
@@ -213,6 +215,45 @@ migration first, then deploy the new API.
 CI fails on any key or flag the Supabase CLI reports as deprecated (`ci.yml`, server-tests).
 
 One-time: `pnpm exec supabase login` (opens the browser).
+
+**In a production release** the pipeline pushes the migrations (the user's decision, 21 November 2026): the `deploy`
+job of `deploy-production.yml`, behind the same approval as the code, after the images are pushed and smoked and
+before the host deploy. `scripts/ci/deploy-migrate.sh` (tested in `scripts/ci/deploy-migrate.test.mjs`):
+
+1. `--check`, early in the job, before any image is pushed: an empty `SUPABASE_ACCESS_TOKEN` or
+   `SUPABASE_DB_PASSWORD` (secrets of the `production` Environment) stops the run with "Missing …", having changed
+   nothing.
+2. `supabase migration list --remote=<ref> --output-format json` against the release commit's
+   `server/supabase/migrations` (`release/server`; the script itself is the workflow's). A version the database has
+   and the release lacks means an older release is being redeployed: a **rollback skips**, pushes nothing, reverts
+   nothing, and the job summary says "Migrations skipped: the database is ahead of this release (…)". If the release
+   also has migrations the database lacks (a release cut from an older base than a rehearsed `dev` commit), the run
+   **stops** with an `::error::` naming both sets and pushes nothing, so code never ships without its migration.
+3. Otherwise `supabase db push --remote=<ref> --yes` (`--yes` because a hosted change has no prompt to ask on in CI).
+   The CLI reads the token and the password from the environment; the script never prints them or puts them on a
+   command line. The job summary records how many migrations were new.
+4. A failed push fails the job before the host deploy starts. Files the CLI applied before the failing one stay.
+
+**Fix forward.** Once migrations are in, nothing rolls them back. If the host deploy or the smoke fails afterwards,
+the undo step puts the previous release's code back, on the new schema; expand and contract (migrations only add,
+the API stays compatible with the deployed client, CLAUDE.md §2) is what makes that safe. A broken migration is
+repaired by a new migration in a new release. A rehearsal ([Rehearsals](#rehearsals)) migrates too: its code needs
+its schema.
+
+```mermaid
+flowchart TD
+  Approve["deploy job, after the approval"] --> Check{"SUPABASE_ACCESS_TOKEN and<br/>SUPABASE_DB_PASSWORD set?"}
+  Check -->|"no"| Stop1["Fail before any image is pushed"]
+  Check -->|"yes"| Images["Push the images, smoke the pushed tags"]
+  Images --> List["supabase migration list<br/>(the release's migrations)"]
+  List --> Ahead{"the database has versions<br/>the release lacks?"}
+  Ahead -->|"yes: a rollback"| Skip["Skip: nothing pushed, nothing reverted,<br/>the job summary says so"]
+  Ahead -->|"no"| Push["supabase db push --yes"]
+  Push -->|"fails"| Stop2["Fail: the host deploy never starts"]
+  Push -->|"ok"| Host["Deploy to the host, smoke"]
+  Skip --> Host
+  Host -->|"fails"| Undo["Previous code back, on the new schema (fix forward)"]
+```
 
 ## Seeding
 
@@ -289,26 +330,27 @@ flowchart TD
 Run by the user, once.
 
 1. Create a new project in the Supabase dashboard (a region near your users; save the database password).
-2. Put its ref in `PRODUCTION_REF` in `server/scripts/db-push.sh`, then `pnpm run db:push:production`.
-3. Create `client/.env.production` with its `VITE_SUPABASE_URL` and publishable key (see `client/.env.example`).
-   `pnpm run build` refuses to run without it.
-4. On the production API host set `APP_ENV=production`, `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `PORT`,
-   `CLIENT_ORIGIN` and optionally `LOG_LEVEL`.
-5. Load the store and menu once, with the production values in the environment: `pnpm run seed --production`. It
+2. Put its ref in `PRODUCTION_REF` in `server/scripts/db-push.sh`, and the deploy's two secrets in the `production`
+   Environment ([How a release reaches production](#how-a-release-reaches-production)); the first release pushes
+   every migration.
+3. Its URL and publishable key go in `infra/terraform/envs/production/variables.tf` and its secret key in Secrets
+   Manager; the host and the images take them from there ([infra/README.md](../infra/README.md)). The first deploy is
+   [The first production release](#the-first-production-release).
+4. Load the store and menu once, with the production values in the environment: `pnpm run seed --production`. It
    only works while production has no store, and creates no accounts. The plain `pnpm run seed` refuses to run
    against production.
-6. Create staff and admin accounts in the dashboard (Authentication → Add user, with auto-confirm), then in the SQL
+5. Create staff and admin accounts in the dashboard (Authentication → Add user, with auto-confirm), then in the SQL
    editor: `update public.profiles set role = 'STAFF' where email = '…';` for staff, plus their store's membership
    (`insert into public.store_memberships (user_id, store_id, role) select id, '<store id>', 'STAFF' from public.profiles where email = '…';`; without it their board is empty, [PERMISSIONS.md#store-roles](PERMISSIONS.md#store-roles)), or
    `update public.profiles set role = 'ADMIN' where email = '…';` for the site-wide developer/operator role (the
    `/admin` dashboard — see [PERMISSIONS.md#roles](PERMISSIONS.md#roles)).
-7. Required in the dashboard (Authentication → Sign In / Providers): turn off **Allow new users to sign up**.
+6. Required in the dashboard (Authentication → Sign In / Providers): turn off **Allow new users to sign up**.
    Accounts are created by the API's `/auth/register` with the secret key, which still works. Left on, anyone can
    sign up directly with the publishable key (it ships in the bundle) and skip the API's checks on name, phone and
    password; local Supabase has it off already (`enable_signup = false`). The `handle_new_user` trigger bounds the
    profile either way ([SCHEMA.md](SCHEMA.md#profile_name-and-profile_phone)), but the setting is what keeps
    unchecked accounts out.
-8. Recommended in the dashboard (Authentication → Sessions): set the same idle-session limit as local
+7. Recommended in the dashboard (Authentication → Sessions): set the same idle-session limit as local
    (see [Hosted session timeout](#hosted-session-timeout) below).
 
 ```mermaid
@@ -316,17 +358,18 @@ sequenceDiagram
   autonumber
   actor Dev as Developer
   participant Dash as Supabase dashboard
-  participant CLI as Supabase CLI (db-push.sh)
+  participant GH as deploy-production
   participant Prod as Production project
   participant Host as API host
   participant Seed as pnpm run seed
 
   Dev->>Dash: create project (region, DB password)
   Dev->>Dev: PRODUCTION_REF in server/scripts/db-push.sh
-  Dev->>CLI: pnpm run db:push:production
-  CLI->>Prod: apply all migrations
-  Dev->>Dev: client/.env.production (URL + publishable key), pnpm run build
-  Dev->>Host: set APP_ENV=production, SUPABASE_URL, SUPABASE_SECRET_KEY, PORT, CLIENT_ORIGIN
+  Dev->>Dev: SUPABASE_ACCESS_TOKEN, SUPABASE_DB_PASSWORD in the production Environment
+  Dev->>Host: URL + publishable key in Terraform, secret key in Secrets Manager
+  Dev->>GH: run the first release, approve it
+  GH->>Prod: push every migration
+  GH->>Host: deploy the release
   Dev->>Seed: pnpm run seed --production (production env vars)
   Seed->>Prod: store + menu only (refuses if a store exists)
   Dev->>Dash: Authentication → Add user for each staff/admin member (auto-confirm)
@@ -335,6 +378,70 @@ sequenceDiagram
   Dev->>Dash: turn off Allow new users to sign up (the API's /auth/register still works)
   Dev->>Dash: Authentication → Sessions: set the inactivity timeout to 168h (7 days), matching local
 ```
+
+## Production releases
+
+### How a release reaches production
+
+`.github/workflows/deploy-production.yml` (P8 PR 07). A release is the release PR merged into `main`
+([workflow.md §21](../.claude/rules/workflow.md)); its tags `client-v*` / `server-v*` start the workflow once the
+release App pushes them. Until the App exists, start it by hand: Actions → deploy-production → Run workflow, `ref` =
+the new tag.
+
+1. **build** (no AWS): both images for arm64 at the release commit, tagged `<package version>-<sha7>`, smoke-tested
+   with `scripts/ci/image-smoke.sh`. When both tags arrive for one commit, only the first tag's run goes on.
+2. **approval**: the job `deploy` waits in the `production` Environment. Approving it also lets it push the
+   release's migrations; nobody runs `db:push:production` by hand.
+3. **deploy**: if `/khanha/production/release` already names these tags it stops. Otherwise it checks the two
+   Supabase secrets (`scripts/ci/deploy-migrate.sh --check`, before anything changes), pushes the images that are not
+   in ECR yet (tags are immutable; with provenance and an SBOM), pulls both tags back and runs the release's
+   `scripts/ci/image-smoke.sh` on exactly those images (a push without the layer cache is a fresh build), and
+   **migrates** ([Applying migrations](#applying-migrations): migrations before code, a rollback skips). Then it runs
+   `scripts/ci/deploy-host.sh`: the SSM document `khanha-deploy` on the host, which returns to the parameter's
+   release by itself if the new one never answers `/api/ready`.
+4. **smoke**: `scripts/ci/deploy-smoke.sh` through `PRODUCTION_URL` (an Environment or repository variable;
+   `https://khanha.in` when unset): `/api/health` reports the commit, `/api/ready` is 200, `/` is uncached and the
+   script it names is immutable, `/runtime-env.js` names the production project (`PRODUCTION_REF`), and
+   `/api/config` answers 304 to its own ETag. No orders. `perf.yml` runs the same script against compose.
+5. **record or undo**: a passing smoke writes the tags to `/khanha/production/release`, last. Any failure once the
+   deploy has started (the host never ready, the wait run out, the smoke, the record) runs the document again with
+   no tags, which puts the parameter's release back, and fails the run. The database keeps the release's migrations
+   (fix forward). On the very first release there is nothing to go back to: the run says so and the failed candidate
+   stays until a fix is deployed.
+
+**Setup (user, once):** add `SUPABASE_ACCESS_TOKEN` (an access token of an account that can manage the production
+project, from the Supabase dashboard's Account → Access Tokens) and `SUPABASE_DB_PASSWORD` (the production database
+password) as secrets of the `production` Environment (Settings → Environments → production → Environment secrets),
+never as repository secrets: only the approved job may read them. Without them every deploy stops at its first step.
+
+The scripts and settings always come from the workflow's own commit (`main`); the release commit is checked out
+into `release/` only to build its images and run its own image smoke, so a rollback to an old tag still deploys
+with today's steps.
+
+### The first production release
+
+1. **(user)** The production project exists, its values are in Terraform and Secrets Manager, the infra apply that
+   carries them has run, and the two Supabase secrets are in the `production` Environment
+   ([Production first-time setup](#production-first-time-setup)).
+2. The release PR is merged into `main` and tagged.
+3. Run deploy-production with the new tag and approve it. Its migrate step pushes every migration, in order (pgmq and
+   pg_cron then show under the project's Integrations), before the host deploy.
+4. **(user)** `pnpm run seed --production` for the first store, `pnpm run migrate:media --production`, and the
+   accounts ([Production first-time setup](#production-first-time-setup), steps 4–7).
+
+### Rolling back
+
+Run deploy-production with `ref` = the earlier release's tag (`server-v…` or `client-v…`) and approve it. Its images
+are already in ECR, so nothing is rebuilt into the registry; the host takes them, the smoke runs, and the parameter
+then names that release. A migration is never rolled back: the migrate step finds the database ahead of the release
+and skips, and the old release must still work on the newer schema (CLAUDE.md §2, migrations only add).
+
+### Rehearsals
+
+While the repository variable `PRODUCTION_DARK` is `true` (before launch), deploy-production also takes a commit or
+branch on `dev`: the same flow and approval, images tagged with `dev`'s package versions and that commit. It
+migrates too, since its code needs its schema; a migration is immutable once merged into `dev`, so the release that
+later carries it finds it applied. Any other commit not on `main` is refused. The launch checklist (P9.5) sets `PRODUCTION_DARK` to `false` for good.
 
 ## Hosted session timeout
 
