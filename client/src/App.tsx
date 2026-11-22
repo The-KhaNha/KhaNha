@@ -1,5 +1,5 @@
 import { lazy, useEffect, useMemo, useRef } from 'react';
-import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { BottomNav } from './components/BottomNav';
 import { CartButton } from './components/CartButton';
 import { PageBoundary } from './components/PageBoundary';
@@ -14,6 +14,8 @@ import { selectCount, useCartStore } from './features/cart/cartStore';
 import { OutdatedBanner } from './features/version/OutdatedBanner';
 import { documentTitle, getShellConfig } from './appShell';
 import { cn } from './lib/cn';
+import { hostRedirect } from './lib/hosts';
+import { runtimeEnv } from './lib/runtimeEnv';
 import { setSamplePercent } from './lib/errorReporter';
 import { useConfig } from './features/config/useConfig';
 import { CartPage } from './pages/Cart';
@@ -50,6 +52,22 @@ const StaffStoresPage = lazy(() =>
 );
 
 const WIDTH_CLASS = { default: 'max-w-md md:max-w-lg', wide: 'max-w-md md:max-w-2xl' } as const;
+
+/**
+ * With the three hosts set (lib/hosts.ts), a path of another section leaves for its host before anything renders, and
+ * the root of `staff.` and `admin.` opens their section.
+ */
+function HostGate() {
+  const location = useLocation();
+  const { host, protocol } = window.location;
+  const target = hostRedirect({ ...location, host, protocol }, runtimeEnv.hosts);
+  const leaves = target !== null && !target.startsWith('/');
+  useEffect(() => {
+    if (leaves) window.location.replace(target);
+  }, [leaves, target]);
+  if (target === null) return <AppShell />;
+  return leaves ? null : <Navigate to={target} replace />;
+}
 
 function AppShell() {
   const { pathname } = useLocation();
@@ -234,7 +252,7 @@ export default function App() {
       <PageBoundary scope="app">
         <BrowserRouter>
           <OutdatedBanner />
-          <AppShell />
+          <HostGate />
         </BrowserRouter>
       </PageBoundary>
     </>

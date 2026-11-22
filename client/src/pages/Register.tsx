@@ -4,8 +4,7 @@ import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { AuthCard } from '../features/auth/AuthCard';
 import { REGISTER_DRAFT_KEY, selectUser, useAuthStore } from '../features/auth/authStore';
-import { homeFor } from '../features/auth/roles';
-import { useAuthRedirect } from '../features/auth/useAuthRedirect';
+import { homeHere, useAuthRedirect } from '../features/auth/useAuthRedirect';
 import {
   NAME_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
@@ -42,7 +41,7 @@ export function RegisterPage() {
   const [serverError, setServerError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  if (user) return <Navigate to={homeFor(user)} replace />;
+  if (user) return <Navigate to={homeHere(user)} replace />;
 
   const validators: Record<Field, (value: string) => string | undefined> = {
     name: validateName,
