@@ -1,4 +1,4 @@
-# The host's instance role: pull its images, take Session Manager and deploy commands, write its own logs, read its own
+# The host's instance role: pull its images, take Session Manager and deploy commands, write its own logs and metrics, read its own
 # parameters and secret, use the media bucket. Every grant is scoped to this environment's names, so a staging host
 # can never read production's secret. tests/scoping.tftest.hcl is the guard.
 
@@ -66,6 +66,15 @@ locals {
         Effect   = "Allow"
         Action   = ["logs:CreateLogStream", "logs:PutLogEvents"]
         Resource = "${local.arn_prefix}:logs:${var.region}:${var.account_id}:log-group:${var.log_group_prefix}/*:*"
+      },
+      {
+        # The host's memory and swap (infra/host/host-metrics.sh). PutMetricData takes no resource; the condition keeps
+        # it to this environment's namespace.
+        Sid       = "OwnMetrics"
+        Effect    = "Allow"
+        Action    = ["cloudwatch:PutMetricData"]
+        Resource  = "*"
+        Condition = { StringEquals = { "cloudwatch:namespace" = var.metrics_namespace } }
       },
       {
         Sid      = "MediaObjects"

@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { createApp } from './app';
 import { env, refuseUnsafeProduction } from './utils/env';
 import { logger } from './utils/logger';
+import { logProcessMetrics, takeRequestStats } from './utils/processMetrics';
 import { onShutdown } from './utils/shutdown';
 import { APP_VERSION, GIT_COMMIT } from './utils/version';
 
@@ -17,6 +18,8 @@ const server = createApp().listen(env.PORT, () => {
 // can drop a request that arrives just as the idle timer fires.
 server.keepAliveTimeout = env.KEEP_ALIVE_TIMEOUT_MS;
 server.headersTimeout = env.KEEP_ALIVE_TIMEOUT_MS + 1000;
+
+logProcessMetrics(logger, env.PROCESS_METRICS_LOG_MS, takeRequestStats);
 
 // supabase-js talks HTTP, so there is no database connection to close. Stop accepting, let in-flight requests finish
 // (utils/shutdown.ts gives them SHUTDOWN_DEADLINE_MS), then the log is flushed.

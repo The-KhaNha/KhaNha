@@ -240,3 +240,37 @@ resource "aws_budgets_budget" "monthly" {
     subscriber_email_addresses = [var.alert_email]
   }
 }
+
+# --- The alarms' topics ----------------------------------------------------------------------------------------------
+
+# Here rather than in production's root, so the address stays in the untracked terraform.tfvars and never reaches a
+# public plan. The production root finds the topics by name (modules/observability). One per region: an alarm can
+# only notify a topic in its own region, and CloudFront's and ACM's metrics are in us-east-1. Each subscription
+# waits for the user to click the confirmation email AWS sends.
+# Declined on purpose: AWS-0095 and AWS-0136, encryption. A CloudWatch alarm cannot publish to a topic under the
+# AWS-managed SNS key, and a customer-managed key is $1 a month per region (ADR-011) to guard alarm names.
+#trivy:ignore:AWS-0095
+#trivy:ignore:AWS-0136
+resource "aws_sns_topic" "alerts" {
+  name = "khanha-alerts"
+}
+
+resource "aws_sns_topic_subscription" "alerts" {
+  topic_arn = aws_sns_topic.alerts.arn
+  protocol  = "email"
+  endpoint  = var.alert_email
+}
+
+#trivy:ignore:AWS-0095
+#trivy:ignore:AWS-0136
+resource "aws_sns_topic" "alerts_us_east_1" {
+  provider = aws.us_east_1
+  name     = "khanha-alerts"
+}
+
+resource "aws_sns_topic_subscription" "alerts_us_east_1" {
+  provider  = aws.us_east_1
+  topic_arn = aws_sns_topic.alerts_us_east_1.arn
+  protocol  = "email"
+  endpoint  = var.alert_email
+}
