@@ -434,7 +434,7 @@ asserts `/api/*` uses CachingDisabled and the domain stays detached until `domai
 
 ### PR 05b — Three hosts: the apex, `staff.` and `admin.` (P8.3)
 
-- [ ] Merged
+- [x] Merged
 
 As built: the client reads three host settings, not two (`CUSTOMER_HOST` too, so `staff.` and `admin.` can send a
 customer path back to the apex), from `/runtime-env.js` like the Supabase values, so one image serves every
@@ -484,7 +484,7 @@ Intent: `--server patch`.
 
 ### PR 07 — Deploy to production from a release (P8.5)
 
-- [ ] Merged
+- [x] Merged
 
 `.github/workflows/deploy-production.yml`, on the `client-v*` and `server-v*` tags `release.yml` creates on `main`
 (the two tags of one release point at the same commit, so they share a `concurrency` group keyed by that commit,
