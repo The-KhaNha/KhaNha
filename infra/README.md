@@ -6,21 +6,22 @@ is [DEPLOYMENT.md "Hosted environments"](../docs/DEPLOYMENT.md#hosted-environmen
 
 ```text
 terraform/
-  bootstrap/          run once by the user: state bucket, GitHub OIDC, the three roles, the $35 budget
+  bootstrap/          run once by the user: state bucket, GitHub OIDC, the three roles, the $35 budget, the alarm topics
   envs/production/    production's root: the modules with production's names
   modules/
     network/          VPC, two public subnets, no NAT; free S3 endpoint; the host's security group
     ecr/              khanha/web and khanha/server: immutable tags, scan on push, newest 10 kept
-    iam/              the host's instance role, scoped to its own parameters, secret, logs and media bucket
+    iam/              the host's instance role, scoped to its own parameters, secret, logs, metrics and media bucket
     secrets/          the host's settings in Parameter Store, and the container of its one secret
     compute/          the host (t4g.micro, standard credits), its first boot, the deploy document
     media/            the media bucket: private, versioned, CORS for the upload form, lifecycle rules
     cdn/              CloudFront (VPC origin to the host, the bucket at /media/*), the zone, the certificate
-                      (observability arrives with PR 08)
+    observability/    log groups, metric filters, 9 alarms, the dashboard, saved log queries
 host/                 what the deploy document writes to the host and runs
   compose.prod.yml    web, api, worker from ECR, with memory limits (scripts/ci/compose-parity.test.mjs)
   render-env.sh       parameters and the secret -> env files on tmpfs, root only
   apply-release.sh    candidate tags, else the release parameter's; back to the parameter's if not ready
+  host-metrics.sh     the host's used memory and swap -> CloudWatch, every 5 minutes (khanha-host-metrics@.timer)
 ```
 
 **Only CloudFront reaches the host.** No SSH, ever (Session Manager replaces it). The host is a CloudFront VPC
@@ -29,7 +30,8 @@ VPC origin's interfaces, so no other distribution and nothing on the internet ca
 
 **Module tests.** A module with a `tests/` folder has `terraform test` against a mocked provider, run by `ci.yml`'s
 `infra` job; `cd terraform/modules/<name> && terraform init -backend=false && terraform test` locally. `iam`'s
-asserts no data-reading grant is on `*` and that a staging role names nothing of production's.
+asserts no data-reading grant is on `*`, that metrics go only to the environment's namespace, and that a staging
+role names nothing of production's.
 
 **Who runs what.** The bootstrap is the one thing applied by hand, by the user, with their own administrator
 credentials. Everything else is applied by `.github/workflows/infra.yml` through the roles the bootstrap creates, and
@@ -151,12 +153,25 @@ terraform init -backend-config="bucket=$(terraform -chdir=../../bootstrap output
 TF_VAR_account_id=<the account ID> terraform plan
 ```
 
+## Alarms
+
+The alarms ([DEPLOYMENT.md "Alarms and the dashboard"](../docs/DEPLOYMENT.md#alarms-and-the-dashboard)) email the
+SNS topic `khanha-alerts`, which the **bootstrap** creates in ap-south-1 and in us-east-1, subscribed to
+`alert_email`. It lives there so the address stays in the untracked `terraform.tfvars`: production's plans are public.
+`modules/observability` names both topics' ARNs rather than looking them up, so production plans and applies whether
+or not the bootstrap has been re-applied; until it has, the alarms change state but email nobody. After re-applying
+it:
+
+- AWS sends one "Subscription Confirmation" email per region (two in all). Open each link; an unconfirmed
+  subscription receives nothing. SNS → Subscriptions shows both as **Confirmed** afterwards.
+- Seeing one fire is a Closing P8 step (DEPLOYMENT.md, "Seen firing").
+
 ## The host
 
 One EC2 `t4g.micro` (about $9.20 a month with its public address and disk), Amazon Linux 2023 on arm64. Its first
 boot installs docker, the compose plugin and 2 GB of swap (`modules/compute/user-data.sh`); nothing is built on it.
-The app arrives through the SSM document `khanha-deploy`, which writes `infra/host/*` to `/opt/khanha` and runs
-`apply-release.sh`: with candidate tags from `deploy-production.yml` ([DEPLOYMENT.md "Production releases"](../docs/DEPLOYMENT.md#production-releases)), or with none, the tags in
+The app arrives through the SSM document `khanha-deploy`, which writes `infra/host/*` to `/opt/khanha`, enables the
+host-metrics timer and runs `apply-release.sh`: with candidate tags from `deploy-production.yml` ([DEPLOYMENT.md "Production releases"](../docs/DEPLOYMENT.md#production-releases)), or with none, the tags in
 `/khanha/production/release` (`"<web-tag> <server-tag>"`, the last release that passed). A State Manager association
 runs it once on every new host, so a replaced machine comes back on that release by itself; before the first release
 it does nothing.

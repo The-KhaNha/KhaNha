@@ -20,3 +20,16 @@ provider "aws" {
     }
   }
 }
+
+# CloudFront's and ACM's metrics live in us-east-1, so their alarms and the topic they notify do too.
+provider "aws" {
+  alias  = "us_east_1"
+  region = "us-east-1"
+
+  default_tags {
+    tags = {
+      app        = "khanha"
+      managed-by = "terraform-bootstrap"
+    }
+  }
+}

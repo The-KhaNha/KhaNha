@@ -40,3 +40,8 @@ variable "media_bucket" {
   description = "The media bucket's name (created by modules/media in PR 05)."
   type        = string
 }
+
+variable "metrics_namespace" {
+  description = "The only CloudWatch namespace the host may publish to, e.g. KhaNha/production."
+  type        = string
+}

@@ -1,11 +1,12 @@
 import 'dotenv/config';
 import { createServer } from 'node:http';
-import { healthReport, readQueueMetrics } from './jobs/health';
+import { healthReport, queueFields, readQueueMetrics } from './jobs/health';
 import { mediaHandler } from './jobs/media';
 import { notifyHandler } from './jobs/notify';
 import { runQueue, type JobHandler } from './jobs/runner';
 import { env, refuseUnsafeProduction } from './utils/env';
 import { logger } from './utils/logger';
+import { logProcessMetrics } from './utils/processMetrics';
 import { onShutdown } from './utils/shutdown';
 import { APP_VERSION, GIT_COMMIT } from './utils/version';
 
@@ -63,6 +64,11 @@ health.listen(env.WORKER_HEALTH_PORT, () => {
     'Food Pickup worker running',
   );
 });
+
+const queues = HANDLERS.map((handler) => handler.queue);
+logProcessMetrics(logger, env.PROCESS_METRICS_LOG_MS, async () =>
+  queueFields(queues, await Promise.all(queues.map(readQueueMetrics))),
+);
 
 onShutdown(async () => {
   // Reading stops at once; runQueue resolves when the jobs in flight have finished.
