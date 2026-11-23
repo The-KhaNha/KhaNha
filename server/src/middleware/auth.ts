@@ -6,7 +6,7 @@ import { accessFor, can, canAtTemplate, type Capability } from '../domain/permis
 import { getStoreById } from '../services/store.service';
 import type { AuthUser, RequestContext, StoreContext } from '../types/auth';
 import { env } from '../utils/env';
-import { forbidden, IntegrationError, notFound, unauthorized } from '../utils/errors';
+import { forbidden, IntegrationError, mfaRequired, notFound, unauthorized } from '../utils/errors';
 import { isUuid } from '../utils/ids';
 import { supabaseAdmin, supabaseEnv } from '../utils/supabase';
 
@@ -70,9 +70,15 @@ export const requireAuth: RequestHandler = async (req, _res, next) => {
   if (!profile) throw unauthorized('That account no longer exists. Please sign in again.');
 
   await enforceSessionIdle(auth.jwtClaims?.session_id, profile.id, token, req.log);
+  // An admin's powers need the second factor: without it the admin is a customer here, everywhere at once (requireAdmin
+  // and the ADMIN standing in domain/permissions.ts both read `role`). GET /auth/me reads the profile, so the client
+  // still knows the account is an admin and can ask for the code.
+  const adminMfaPending =
+    profile.role === 'ADMIN' && env.ADMIN_MFA_REQUIRED && auth.jwtClaims?.aal !== 'aal2';
   req.user = {
     id: profile.id,
-    role: profile.role,
+    role: adminMfaPending ? 'CUSTOMER' : profile.role,
+    ...(adminMfaPending && { adminMfaPending }),
     memberships: profile.memberships.map((m) => ({ storeId: m.store_id, role: m.role })),
     ownedBrandIds: profile.brands.map((b) => b.id),
   };
@@ -174,6 +180,7 @@ async function checkSession(
  * an admin has no staff powers and staff cannot change site settings.
  */
 export const requireAdmin: RequestHandler = (req, _res, next) => {
+  if (currentUser(req).adminMfaPending) throw mfaRequired();
   if (currentUser(req).role !== 'ADMIN') throw forbidden('Only admins can do that.');
   next();
 };

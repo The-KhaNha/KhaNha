@@ -6,8 +6,18 @@ import type { SiteSettings } from '../types/api';
 const admin = vi.hoisted(() => ({
   fetchSiteSettings: vi.fn(),
   updateSiteSettings: vi.fn(),
+  fetchAdminBrands: vi.fn().mockResolvedValue([]),
+  createBrand: vi.fn(),
+  createOwnerInvite: vi.fn(),
+  revokeOwnerInvite: vi.fn(),
 }));
 vi.mock('../services/admin', () => admin);
+// The real step talks to Supabase Auth (SecondFactor.test.tsx); here it only has to appear and report back.
+vi.mock('../features/admin/SecondFactor', () => ({
+  SecondFactor: ({ onVerified }: { onVerified: () => void }) => (
+    <button onClick={onVerified}>verify second factor</button>
+  ),
+}));
 vi.mock('../services/api', () => ({
   ApiError: class ApiError extends Error {
     status: number;
@@ -37,6 +47,29 @@ const saved: SiteSettings = {
 describe('AdminPage', () => {
   afterEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('asks for the second factor when the API answers MFA_REQUIRED, then loads the page', async () => {
+    admin.fetchSiteSettings
+      .mockRejectedValueOnce(new ApiError(403, 'MFA_REQUIRED', 'Enter the code.'))
+      .mockResolvedValue(saved);
+    render(<AdminPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'verify second factor' }));
+    expect(await screen.findByRole('heading', { name: 'Site settings' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Restaurants' })).toBeInTheDocument();
+    expect(admin.fetchSiteSettings).toHaveBeenCalledTimes(2);
+  });
+
+  it('renders the Restaurants section above Site settings', async () => {
+    admin.fetchSiteSettings.mockResolvedValue(saved);
+    render(<AdminPage />);
+
+    const restaurants = await screen.findByRole('heading', { name: 'Restaurants' });
+    const settings = screen.getByRole('heading', { name: 'Site settings' });
+    expect(
+      restaurants.compareDocumentPosition(settings) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(await screen.findByText('No restaurants yet')).toBeInTheDocument();
   });
 
   it('renders the loaded values', async () => {

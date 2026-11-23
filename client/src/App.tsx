@@ -143,6 +143,7 @@ function AppShell() {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
             <Route path="/join" element={<JoinPage />} />
+            <Route path="/join/owner" element={<JoinPage kind="owner" />} />
             <Route
               path="/staff"
               element={

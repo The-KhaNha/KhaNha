@@ -15,3 +15,11 @@ meRouter.post(
   validate(acceptInviteSchema),
   team.acceptInvite,
 );
+// An owner invite (P7.4a). The same limiter instance as store invites, so guesses at either count together.
+meRouter.post(
+  '/brand-invites/accept',
+  requireAuth,
+  inviteAcceptLimiter,
+  validate(acceptInviteSchema),
+  team.acceptOwnerInvite,
+);
