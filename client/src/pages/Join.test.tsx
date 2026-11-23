@@ -75,6 +75,19 @@ describe('/join/owner (P7.4a)', () => {
     expect(screen.queryByText('manage list')).toBeNull();
   });
 
+  it('ignores a refusal that comes back after the account changed', async () => {
+    state.user = { id: 'u' };
+    const { ApiError } = await import('../services/api');
+    acceptOwner.mockImplementation(async () => {
+      state.user = { id: 'someone-else' };
+      throw new ApiError(404, 'NOT_FOUND', 'That invite is not valid any more.');
+    });
+    await renderOwnerJoin();
+    await waitFor(() => expect(acceptOwner).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.queryByText(/no longer valid/)).toBeNull();
+  });
+
   it('signed out, both links come back to /join/owner', async () => {
     await renderOwnerJoin();
     expect(screen.getByRole('heading', { name: 'Set up your restaurant' })).toBeInTheDocument();

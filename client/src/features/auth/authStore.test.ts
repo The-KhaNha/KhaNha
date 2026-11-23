@@ -190,3 +190,23 @@ describe('authStore.addMembership', () => {
     expect(useAuthStore.getState().user).toBeNull();
   });
 });
+
+describe('authStore.hydrate: sign-out while the profile read is out', () => {
+  it('does not write the late profile back after clearSession', async () => {
+    session.current = { access_token: 'tok' };
+    markActive();
+    useAuthStore.setState({ user: null, token: 'tok' });
+    fetchMe.mockImplementationOnce(async () => {
+      useAuthStore.getState().clearSession();
+      return { user: me };
+    });
+    try {
+      await useAuthStore.getState().hydrate();
+      expect(useAuthStore.getState().user).toBeNull();
+      expect(useAuthStore.getState().token).toBeNull();
+    } finally {
+      session.current = null;
+      localStorage.clear();
+    }
+  });
+});

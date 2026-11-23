@@ -40,6 +40,11 @@ let hydrating: Promise<void> | null = null;
  * than it, so hydrate reads again instead of letting the late answer drop the new store or brand.
  */
 let grantsVersion = 0;
+/**
+ * Bumped when a session ends or a new one starts (logout, clearSession, a sign-out seen by supabase-js, login). A
+ * profile read that began under an older one belongs to a session that is gone and must not be written back.
+ */
+let sessionEpoch = 0;
 
 /** warn, the lowest level production builds keep: a "why was I signed out?" report then has a trace. */
 function logIdleExpiry(lastActive: number | null): void {
@@ -57,6 +62,7 @@ export const useAuthStore = create<AuthState>()(
         // signIn loads the same module and puts its failure in the form; this copy would only be an unhandled rejection.
         watchAuth().catch(() => undefined);
         const session = await signIn(email, password);
+        sessionEpoch += 1;
         try {
           const { user } = await fetchMe();
           set({ user, token: session.access_token });
@@ -75,12 +81,14 @@ export const useAuthStore = create<AuthState>()(
       },
 
       logout() {
+        sessionEpoch += 1;
         set({ user: null, token: null });
         clearActivity();
         void signOut();
       },
 
       clearSession() {
+        sessionEpoch += 1;
         set({ user: null, token: null });
         clearActivity();
         void signOut();
@@ -146,7 +154,9 @@ export const useAuthStore = create<AuthState>()(
             // A grant landing mid-read makes that answer stale: read again (the server has the grant by then).
             for (let read = 0; read < 3; read += 1) {
               const before = grantsVersion;
+              const epoch = sessionEpoch;
               const { user } = await fetchMe();
+              if (epoch !== sessionEpoch) return;
               if (before === grantsVersion) {
                 set({ user });
                 break;
@@ -180,7 +190,10 @@ async function watchAuth() {
     watching = true;
     supabase.auth.onAuthStateChange((_event, session) => {
       if (session) useAuthStore.setState({ token: session.access_token });
-      else useAuthStore.setState({ user: null, token: null });
+      else {
+        sessionEpoch += 1;
+        useAuthStore.setState({ user: null, token: null });
+      }
     });
   }
   return supabase;
