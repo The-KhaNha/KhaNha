@@ -162,10 +162,15 @@ to either.
   and `Join.tsx` clears it from the address bar before anything else.
 - Known limitation: sign-up does not verify the email, so whoever holds the link and registers with that address
   becomes the owner (the same as team invites, with bigger stakes). Share the link only with the person invited. A wrong
-  owner is fixed in SQL until ownership transfer exists: first list the team they built
+  owner is fixed in SQL until ownership transfer exists, in this order, so the wrong owner cannot act in between:
+  first `update public.brands set owner_id = null where id = '…'` (the owner's authority ends here, and an owner can no
+  longer issue store invites); then revoke the store invites they left open
+  (`update public.store_invites set revoked_at = now() where created_by = '…' and accepted_at is null and revoked_at
+is null;` with their profile id), since a cooperating account could still accept one; then list the team they built
   (`select m.id, m.role, p.email from public.store_memberships m join public.profiles p on p.id = m.user_id join
 public.stores s on s.id = m.store_id where s.brand_id = '…';`) and delete the memberships they should not keep, since
-  clearing the owner does not remove them; then `update public.brands set owner_id = null where id = '…'`, then a new
+  clearing the owner does not remove them; last, issue a new owner invite. A request the wrong owner had in flight can
+  still land just after the first step, so re-run the invite revoke and the membership list once more before the new
   invite.
 
 ## Route matrix

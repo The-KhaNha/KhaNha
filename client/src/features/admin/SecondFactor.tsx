@@ -108,6 +108,18 @@ export function SecondFactor({ onVerified }: { onVerified: () => void }) {
         supabase.auth.mfa.challengeAndVerify({ factorId: step.factorId, code: digits }),
       ),
     ).catch((e: unknown) => ({ error: e instanceof Error ? e : new Error('MFA request failed') }));
+    if (verifyError && !('status' in verifyError && verifyError.status !== undefined)) {
+      // No answer reached us (timeout or dropped connection), but Supabase may have verified the code and saved the
+      // upgraded session anyway: only an aal2 session counts as success, so the requirement is not weakened.
+      const upgraded = await getSupabase()
+        .then((s) => s.auth.mfa.getAuthenticatorAssuranceLevel())
+        .then(({ data }) => data?.currentLevel === 'aal2')
+        .catch(() => false);
+      if (upgraded) {
+        setBusy(false);
+        return onVerified();
+      }
+    }
     setBusy(false);
     if (verifyError) return setError(verifyMessage(verifyError));
     onVerified();

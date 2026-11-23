@@ -7,6 +7,7 @@ const mfa = vi.hoisted(() => ({
   enroll: vi.fn(),
   unenroll: vi.fn(),
   challengeAndVerify: vi.fn(),
+  getAuthenticatorAssuranceLevel: vi.fn(),
 }));
 vi.mock('../../lib/supabase', () => ({ getSupabase: async () => ({ auth: { mfa } }) }));
 
@@ -161,5 +162,33 @@ describe('SecondFactor', () => {
     typeCode('123456');
     await act(() => vi.advanceTimersByTimeAsync(30 * 1000));
     expect(screen.getByText(/couldn't check the code/)).toBeInTheDocument();
+  });
+
+  it('a verify that timed out but left the session at aal2 counts as verified; aal1 does not', async () => {
+    mfa.listFactors.mockResolvedValue({
+      data: { all: [verifiedFactor], totp: [verifiedFactor] },
+      error: null,
+    });
+    mfa.challengeAndVerify.mockReturnValue(new Promise(() => {}));
+    mfa.getAuthenticatorAssuranceLevel.mockResolvedValue({
+      data: { currentLevel: 'aal1' },
+      error: null,
+    });
+    const onVerified = vi.fn();
+    render(<SecondFactor onVerified={onVerified} />);
+    await screen.findByRole('heading', { name: 'Enter your code' });
+    vi.useFakeTimers();
+    typeCode('123456');
+    await act(() => vi.advanceTimersByTimeAsync(30 * 1000));
+    expect(onVerified).not.toHaveBeenCalled();
+    expect(screen.getByText(/couldn't check the code/)).toBeInTheDocument();
+
+    mfa.getAuthenticatorAssuranceLevel.mockResolvedValue({
+      data: { currentLevel: 'aal2' },
+      error: null,
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    await act(() => vi.advanceTimersByTimeAsync(30 * 1000));
+    expect(onVerified).toHaveBeenCalledTimes(1);
   });
 });

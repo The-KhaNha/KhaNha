@@ -105,6 +105,8 @@ export function JoinPage({ kind = 'team' }: JoinPageProps) {
         if (mounted.current) navigate(to, { replace: true });
       })
       .catch((err: unknown) => {
+        // A failure from an earlier account's attempt is not the current account's: keep its token and error out.
+        if (useAuthStore.getState().user?.id !== user.id) return;
         if (err instanceof ApiError && err.status === 404) pending = null;
         setError(
           err instanceof ApiError ? err : new ApiError(0, 'UNREACHABLE', 'Something went wrong.'),
