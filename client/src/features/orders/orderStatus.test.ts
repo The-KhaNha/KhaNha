@@ -59,6 +59,26 @@ describe('STATUS_META (COLLECTED wording)', () => {
   });
 });
 
+// A copy of the server's ALLOWED_TRANSITIONS (server/src/services/order.service.ts). Nothing reads one side from the
+// other, so a change to the server's table changes this one in the same PR, or staff see buttons the API refuses.
+const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
+  PLACED: ['PREPARING', 'CANCELLED'],
+  PREPARING: ['READY', 'CANCELLED'],
+  READY: ['COLLECTED'],
+  COLLECTED: [],
+  CANCELLED: [],
+};
+
+describe('STATUS_META agrees with the server transitions', () => {
+  it.each(Object.entries(ALLOWED_TRANSITIONS) as [OrderStatus, OrderStatus[]][])(
+    '%s: next and canCancel',
+    (status, targets) => {
+      expect(STATUS_META[status].next).toBe(targets.find((t) => t !== 'CANCELLED') ?? null);
+      expect(STATUS_META[status].canCancel).toBe(targets.includes('CANCELLED'));
+    },
+  );
+});
+
 describe('matchesFilter', () => {
   function filter(key: (typeof STAFF_FILTERS)[number]['key']) {
     const found = STAFF_FILTERS.find((f) => f.key === key);

@@ -85,6 +85,21 @@ async function currentAccessToken(): Promise<string | undefined> {
   return (await (await loadSupabase()).auth.getSession()).data.session?.access_token;
 }
 
+/**
+ * An empty body is null (a 204, or a 200 a proxy emptied). A 2xx body that is not JSON was not written by the API (a
+ * captive portal's sign-in page): it throws, which `request` turns into the unreachable state, never a null result.
+ * An error page that is not JSON (nginx's 502) is null too, and the status decides the error.
+ */
+function parseBody(text: string, ok: boolean): unknown {
+  if (text === '') return null;
+  try {
+    return JSON.parse(text);
+  } catch (err) {
+    if (ok) throw err;
+    return null;
+  }
+}
+
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { method = 'GET', body, auth = true, signal, keepalive, blob, timeoutMs } = options;
   // supabase-js hands out the current access token, refreshing it first when it has expired. Public requests
@@ -118,8 +133,9 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
       signal: controller.signal,
       keepalive,
     });
-    payload = await response.json().catch(() => null);
+    const text = await response.text();
     if (controller.signal.aborted) throw controller.signal.reason;
+    payload = parseBody(text, response.ok);
   } catch (err) {
     if (signal?.aborted) throw err;
     // debug only: a polling screen that goes offline would otherwise log every few seconds.
