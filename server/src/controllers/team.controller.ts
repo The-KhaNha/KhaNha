@@ -65,3 +65,14 @@ export const acceptInvite: BodyHandler<AcceptInviteInput> = async (req, res) => 
   req.log.info({ storeId: membership.store.id, membershipId: membership.id }, 'Invite accepted');
   res.json({ membership });
 };
+
+/** POST /api/me/brand-invites/accept, after requireAuth: the account becomes the brand's owner (P7.4a). */
+export const acceptOwnerInvite: BodyHandler<AcceptInviteInput> = async (req, res) => {
+  const brand = await team.acceptOwnerInvite(
+    req.body.token,
+    currentUser(req).id,
+    requestContext(req),
+  );
+  req.log.info({ brandId: brand.id }, 'Owner invite accepted');
+  res.json({ brand });
+};

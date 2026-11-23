@@ -204,7 +204,7 @@ The server redacts these paths to `[Redacted]` (`REDACT_PATHS` in `server/src/ut
   `webhookSecret`, `webhook_secret`, `vpa`, `pickupCode`, `pickup_code`, `customerPhone`, `customer_phone`, and
   `headers.authorization` (an outbound call's headers), each at the top level and one level down
 
-An invite token travels in the request body (`POST /api/me/invites/accept`) and comes back once in the answer of `POST /api/stores/:storeId/invites`; `token` and `*.token` are in the list above, and `server/test/api/team-logs.test.ts` fails if a token reaches a log line. The shared link carries the token in the URL fragment (`/join#<token>`), which a browser never sends, so it is in no request line or access log either ([PERMISSIONS.md](PERMISSIONS.md#team-invites-and-removals)).
+An invite token travels in the request body (`POST /api/me/invites/accept` and `POST /api/me/brand-invites/accept`) and comes back once in the answer of `POST /api/stores/:storeId/invites` and of `POST /api/admin/brands/:brandId/invites` (the admin's `Owner invite created` line carries ids only, and the answer is `no-store`); `token` and `*.token` are in the list above, and `server/test/api/team-logs.test.ts` fails if a token reaches a log line. The shared link carries the token in the URL fragment (`/join#<token>`, `/join/owner#<token>`), which a browser never sends, so it is in no request line or access log either ([PERMISSIONS.md](PERMISSIONS.md#team-invites-and-removals)).
 
 Redaction only covers object keys. Never put a token, password, email or phone number into a message string, and
 never log a whole request body. The client `logger` does no redaction: never pass tokens or PII to it. The browser

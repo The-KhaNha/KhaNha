@@ -231,6 +231,27 @@ export interface InviteDto {
   createdAt: string;
 }
 
+/** An open owner invite (P7.4a); its token is returned once, when it is made, and never again. */
+export interface BrandInviteDto {
+  id: string;
+  email: string;
+  expiresAt: string;
+  createdAt: string;
+}
+
+/** One brand on the admin's Restaurants list: its owner, or the invite waiting for one. */
+export interface AdminBrandDto {
+  id: string;
+  name: string;
+  slug: string;
+  createdAt: string;
+  /** Branches, the template not counted. */
+  branchCount: number;
+  owner: { id: string; name: string; email: string } | null;
+  /** The open invite, when there is one (even an expired one, until it is closed). */
+  invite: BrandInviteDto | null;
+}
+
 /** Site-wide limits edited on the admin dashboard (the site_settings row). */
 export interface SiteSettingsDto {
   customerOrderHistoryLimit: number;

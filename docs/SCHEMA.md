@@ -56,6 +56,8 @@ a new file (see [DEPLOYMENT.md](DEPLOYMENT.md#schema-changes)).
 | `20261113140540_push_template_items.sql`           | `push_template_items()` (`service_role` only): the template push                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `20261113142425_store_readiness.sql`               | `store_publish_missing()` (`service_role` only), the go-live checklist; `set_store_status` (same signature) reads it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `20261119151656_fake_gateway.sql`                  | adds `fake_gateway_orders` (RLS, revoked, `service_role` only), `fake_gateway_refund()` and `purge_fake_gateway_orders()` (`service_role` only), and schedules `purge-fake-gateway-orders` nightly: the fake payment provider (P5.1)                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `20261122083701_brand_invites.sql`                 | adds `brand_invites` (RLS on, revoked; two CHECKs, `brand_invites_open_key` and three more indexes) with `brand_invites_audit`, `create_brand()` and `create_brand_invite()` (P7.4a)                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `20261122090158_accept_brand_invite.sql`           | adds `accept_brand_invite()` (`service_role` only): an invited owner accepts in one transaction (P7.4a PR 02)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `20261113183803_bundled_photos.sql`                | adds `bundled_photo_refs()`, `bundled_photo_row_count()` and `move_bundled_photo()` (`service_role` only): the bundled photos' move to the media store (P3.3)                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `20261113174022_media_sweep.sql`                   | subscribes `media.sweep` to `q_media`, adds `media_upload_shown()` and `media_sweep_candidates()` (`service_role` only), the partial index `order_items_media_image_idx` and the nightly `media-sweep` schedule (P3.3)                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `20261114092236_modifier_editing.sql`              | `save_modifier_group()`, `archive_modifier_group()`, `set_item_modifier_groups()` (`service_role` only): the modifier editor (P3.2, PR 14)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
@@ -105,7 +107,7 @@ the account was made.
 ### brands
 
 A brand is the business; it records its owner (ADR-001), who is treated as owner of every store of the brand. Created
-through the seed until P7.4. Each brand points at its template store (`template_store_id`, below).
+through the seed, or by an admin through `create_brand` ([API.md](API.md#post-adminbrands)). Each brand points at its template store (`template_store_id`, below).
 
 | Column              | Type           | Null | Default             | Notes                                                                                                          |
 | ------------------- | -------------- | ---- | ------------------- | -------------------------------------------------------------------------------------------------------------- |
@@ -165,6 +167,32 @@ allows one open invite per email per store, so a second is 409 `MEMBERSHIP_EXIST
 open there, so the API revokes a store's expired invites for that email before it inserts. RLS is on and all privileges
 are revoked from `anon` and `authenticated`. Audited by `store_invites_audit` (`invite.changed`: `role`, `email`,
 `accepted_at`, `revoked_at`; never `token_hash`).
+
+### brand_invites
+
+An open invitation for a person to become a brand's owner (`20261122083701_brand_invites.sql`, P7.4a). The API creates one
+with a random token and keeps only the token's sha-256 (`token_hash`), like `store_invites`. Nothing but the API
+(secret key) reads or writes it. `accept_brand_invite` (below) turns an accepted invite into `brands.owner_id`. Who may
+invite: [PERMISSIONS.md](PERMISSIONS.md#owner-invites).
+
+| Column        | Type        | Null | Default             | Notes                                                                             |
+| ------------- | ----------- | ---- | ------------------- | --------------------------------------------------------------------------------- |
+| `id`          | uuid        | no   | `gen_random_uuid()` | primary key                                                                       |
+| `brand_id`    | uuid        | no   |                     | references `brands (id)` on delete cascade; indexed                               |
+| `email`       | text        | no   |                     | the account that may accept it; CHECK `email = lower(email)` and 3–320 characters |
+| `token_hash`  | text        | no   |                     | unique; never audited                                                             |
+| `expires_at`  | timestamptz | no   |                     | the API sets now + `INVITE_EXPIRY_DAYS` (7)                                       |
+| `accepted_at` | timestamptz | yes  |                     |                                                                                   |
+| `accepted_by` | uuid        | yes  |                     | references `profiles (id)` on delete set null; indexed                            |
+| `revoked_at`  | timestamptz | yes  |                     |                                                                                   |
+| `created_by`  | uuid        | yes  |                     | references `profiles (id)` on delete set null; indexed                            |
+| `created_at`  | timestamptz | no   | `now()`             |                                                                                   |
+
+Table CHECKs: `expires_at > created_at`, and `accepted_at is null or revoked_at is null` (never both). The partial
+unique index `brand_invites_open_key` on `(brand_id) where accepted_at is null and revoked_at is null` allows one open
+invite per brand. An expired invite still counts as open there, so `create_brand_invite` (below) closes the brand's
+open invite before it inserts a new one, in the same transaction. RLS is on and all privileges are revoked from `anon` and `authenticated`. Audited by
+`brand_invites_audit` (`brand_invite.changed`: `brand_id`, `email`, `accepted_at`, `revoked_at`; never `token_hash`).
 
 ### stores
 
@@ -262,6 +290,19 @@ photo, copies the template's unarchived items with `template_item_id` set and th
 (`copy_template_modifiers`), and emits `store.created`
 (`{ brandId, templateStoreId }`). A taken slug fails the whole call (`23505`), leaving nothing behind. The seed opens
 each brand's later branches with it.
+
+`create_brand(p_name, p_slug, p_actor, p_request_id) returns uuid` (plpgsql, invoker, `service_role` only;
+`20261122083701_brand_invites.sql`, P7.4a) inserts an `ACTIVE` brand with no owner, runs `ensure_brand_template` on it
+(an empty template, so the owner can build the menu before the first branch) and emits `brand.created`
+(`{ slug }`, no store) in one transaction. `brands_audit` fires on update only, so the creation is recorded by the event.
+A taken slug, the brand's or the template store's, fails the whole call (`23505`), leaving nothing behind; the API
+answers `SLUG_TAKEN` only for `brands_slug_key`. P0001 messages: none.
+
+`create_brand_invite(p_brand_id, p_email, p_token_hash, p_expires_at, p_actor, p_request_id, p_now) returns
+brand_invites` (plpgsql, invoker, `service_role` only; same migration) locks the brand row, refuses a missing brand
+(`NOT_FOUND`) or one with an owner (`BRAND_HAS_OWNER`, P7.4a D4), closes the brand's open invite and inserts the new
+one, in one transaction: two admins inviting at once both get a link and one stays open, and a closed old link always
+comes with a working new one. The token itself never reaches SQL, only its hash. It emits `brand.owner_invited` (`brand_invite`, no store, `{ brandId }`) in the same transaction.
 
 `push_template_items(p_brand_id, p_template_item_ids uuid[], p_store_ids uuid[], p_fields text[], p_actor, p_request_id)
 returns integer` (same kind) is the template push (P3.1, D2). Every item must be a live item of the brand's template and
@@ -630,6 +671,10 @@ are purged nightly (`purge_fake_gateway_orders`).
 | `store_invites_store_id_idx`            | `store_invites (store_id)`                                                                  |
 | `store_invites_created_by_idx`          | `store_invites (created_by)`                                                                |
 | `store_invites_accepted_by_idx`         | `store_invites (accepted_by)`                                                               |
+| `brand_invites_open_key`                | unique `brand_invites (brand_id)` where `accepted_at is null and revoked_at is null`        |
+| `brand_invites_brand_id_idx`            | `brand_invites (brand_id)`, the foreign key and the cascade                                 |
+| `brand_invites_created_by_idx`          | `brand_invites (created_by)`                                                                |
+| `brand_invites_accepted_by_idx`         | `brand_invites (accepted_by)`                                                               |
 | `stores_brand_id_idx`                   | `stores (brand_id)`                                                                         |
 | `menu_items_store_id_category_idx`      | `menu_items (store_id, category)`                                                           |
 | `orders_user_id_created_at_idx`         | `orders (user_id, created_at)`                                                              |
@@ -675,6 +720,7 @@ write for one small nightly scan.
 | `store_schedule_exceptions_audit`                              | after insert, update or delete on `store_schedule_exceptions`, each row                                                                                                                                                                                        | `audit_row_change('schedule_exception.changed', …)`                                                                                                                                                       |
 | `stores_audit`                                                 | after update of `name`, `slug`, `status`, `is_open`, `area`, `address_line`, `contact_phone`, `timezone`, `accepting_orders`, `paused_until`, `pause_reason`, `tagline`, `description` on `stores`, each row (its audit row has `store_id = stores.id`)        | `audit_row_change('store.changed', …)`                                                                                                                                                                    |
 | `store_invites_audit`                                          | after insert or update or delete on `store_invites`, each row (`invite.changed`: `role`, `email`, `accepted_at`, `revoked_at`; never `token_hash`)                                                                                                             | `audit_row_change('invite.changed', 'role', 'email', 'accepted_at', 'revoked_at')`                                                                                                                        |
+| `brand_invites_audit`                                          | after insert or update or delete on `brand_invites`, each row (`brand_invite.changed`: `brand_id`, `email`, `accepted_at`, `revoked_at`; never `token_hash`)                                                                                                   |
 | `store_memberships_audit`                                      | after insert or update or delete on `store_memberships`, each row (`membership.changed`: `user_id`, `store_id`, `role`)                                                                                                                                        | `audit_row_change('membership.changed', 'user_id', 'store_id', 'role')`                                                                                                                                   |
 | `feature_flags_audit`                                          | after update on `feature_flags`, each row                                                                                                                                                                                                                      | `audit_row_change('feature_flag.changed', '*')`                                                                                                                                                           |
 | `fake_gateway_orders_set_updated_at`                           | before update on `fake_gateway_orders`, each row                                                                                                                                                                                                               |
@@ -700,6 +746,9 @@ object (SQLSTATE `P0001`). How the API maps them is in [API.md](API.md#database-
 | `reset_demo_orders()`                      | sql      | definer  | void                | `server/scripts/seed.ts`                                                                                      | `service_role`       |
 | `emit_event(...)`                          | plpgsql  | definer  | uuid                | `place_order`, `update_order_status`, `accept_store_invite`, `menu_items_emit_changed`, `stores_emit_changed` | `service_role`       |
 | `accept_store_invite(...)`                 | plpgsql  | invoker  | `store_memberships` | `team.service.acceptInvite`                                                                                   | `service_role`       |
+| `create_brand(...)`                        | plpgsql  | invoker  | uuid                | `adminBrand.service.createBrand`                                                                              | `service_role`       |
+| `create_brand_invite(...)`                 | plpgsql  | invoker  | `brand_invites`     | `adminBrand.service.createOwnerInvite`                                                                        | `service_role`       |
+| `accept_brand_invite(...)`                 | plpgsql  | invoker  | `brands`            | `team.service.acceptOwnerInvite`                                                                              | `service_role`       |
 | `set_store_hours(...)`                     | plpgsql  | definer  | boolean             | `storeHours.service.setStoreHours`                                                                            | `service_role`       |
 | `lock_store_menu(...)`                     | plpgsql  | invoker  | void                | `reorder_menu`, `set_menu_availability`                                                                       | `service_role`       |
 | `reorder_menu(...)`                        | plpgsql  | invoker  | void                | `menu.service.reorderMenu`                                                                                    | `service_role`       |
@@ -903,6 +952,19 @@ member with the same role consumes the invite; one with another role is refused,
 | Message     | When                                                                                                                                                        |
 | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `NOT_FOUND` | every refusal, with no detail: unknown token, another account's email, expired, revoked, accepted by someone else, a member of another role (it stays open) |
+
+### accept_brand_invite
+
+`accept_brand_invite(p_token_hash, p_user_id, p_email, p_actor, p_request_id, p_now) returns brands` (plpgsql, invoker,
+`service_role` only; `20261122090158_accept_brand_invite.sql`) locks the brand row and then the invite (the order
+`create_brand_invite` takes, so an accept and a re-issue never deadlock), sets
+`brands.owner_id` (`brands_audit` records `brand.changed` with the accepter as actor), marks the invite accepted
+(`accepted_at`, `accepted_by`) and emits `brand.owner_joined` (`brand_invite`, no store, `{ brandId }`). A repeat by the
+account that accepted it returns the brand and changes nothing.
+
+| Message     | When                                                                                                                                                                                      |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NOT_FOUND` | every refusal, with no detail: unknown token, another account's email, expired, revoked, accepted by someone else, a brand that has an owner by now (D4), a platform `ADMIN` account (D6) |
 
 ### reset_demo_orders
 

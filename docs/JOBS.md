@@ -54,6 +54,19 @@ Emitted by `pause_store` and `resume_store`, `create_store_from_template` and th
 A repeated pause or resume emits nothing, and neither does a resume of a pause that already ran out. A pause that ends
 by itself emits nothing either: it is derived, and a sweep comes with the first consumer.
 
+## Brand events
+
+`brand.created` is emitted by `create_brand` ([SCHEMA.md](SCHEMA.md#brands)) in the same transaction as the brand, with the
+brand id as `aggregateId`; `brand.owner_invited` by `create_brand_invite` and `brand.owner_joined` by
+[`accept_brand_invite`](SCHEMA.md#accept_brand_invite), each with the invite as `aggregateId`. None has a `storeId`.
+Nothing subscribes to them yet.
+
+| Type                  | Emitted when                                                                                   | Payload                        |
+| --------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------ |
+| `brand.created`       | an admin creates a brand (P7.4a)                                                               | `{ slug }`                     |
+| `brand.owner_invited` | an admin issues (or replaces) a brand's owner invite, from `create_brand_invite`               | `{ brandId }`; never the email |
+| `brand.owner_joined`  | an invited owner accepts, in `accept_brand_invite` (`aggregateId` is the invite, no `storeId`) | `{ brandId }`                  |
+
 ## Menu events
 
 `menu.changed` (`aggregateId` and `storeId`: the store; payload `{ itemIds }`) is emitted by the `menu_items_emit_changed`

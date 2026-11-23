@@ -15,6 +15,8 @@ import {
   validateSetting,
   type SettingsDraft,
 } from '../features/admin/settingsRules';
+import { Restaurants } from '../features/admin/Restaurants';
+import { SecondFactor } from '../features/admin/SecondFactor';
 import { useSiteSettings } from '../features/admin/useSiteSettings';
 import { ApiError } from '../services/api';
 import { updateSiteSettings } from '../services/admin';
@@ -25,9 +27,25 @@ export function AdminPage() {
   const { settings, isLoading, error, retry, mutate } = useSiteSettings();
   // Held here, not in the form: a save changes updatedAt, which remounts the form with the saved values.
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  // Bumped after the second factor: the Restaurants section mounts afresh with the upgraded session.
+  const [verifiedAt, setVerifiedAt] = useState(0);
+
+  // The settings read is the check: the API refuses every admin route until this sign-in has a TOTP code.
+  if (error?.code === 'MFA_REQUIRED')
+    return (
+      <div className="space-y-4 pt-4 animate-fade-up">
+        <SecondFactor
+          onVerified={() => {
+            setVerifiedAt(Date.now());
+            retry();
+          }}
+        />
+      </div>
+    );
 
   return (
     <div className="space-y-4 pt-4 animate-fade-up">
+      <Restaurants key={verifiedAt} />
       <div>
         <h2 className="text-xl font-extrabold">Site settings</h2>
         <p className="mt-1 text-sm text-muted">

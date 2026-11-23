@@ -286,6 +286,21 @@ describe('/manage/:storeSlug shell', () => {
     expect(screen.getByText('Page not found')).toBeInTheDocument();
   });
 
+  it('a new owner (P7.4a) with only the template stays on the list: the template, a hint and Open a branch', () => {
+    state.user = owner();
+    state.brands = [
+      { ...brand, template: managedStore('t', { isTemplate: true, status: 'DRAFT' }), stores: [] },
+    ];
+    state.stores = [];
+    renderAt('/manage');
+    expect(screen.getByRole('link', { name: /Brand template/ })).toHaveAttribute(
+      'href',
+      '/manage/t',
+    );
+    expect(screen.getByText(/No branches yet/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Open a branch' })).toBeInTheDocument();
+  });
+
   it('a template has only what branches copy: Menu, Profile and Settings, and no Go live', () => {
     state.user = owner();
     state.brands = [

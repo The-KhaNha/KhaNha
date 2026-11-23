@@ -69,6 +69,68 @@ export type Database = {
         };
         Relationships: [];
       };
+      brand_invites: {
+        Row: {
+          accepted_at: string | null;
+          accepted_by: string | null;
+          brand_id: string;
+          created_at: string;
+          created_by: string | null;
+          email: string;
+          expires_at: string;
+          id: string;
+          revoked_at: string | null;
+          token_hash: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          accepted_at?: string | null;
+          accepted_by?: string | null;
+          brand_id: string;
+          created_at?: string;
+          created_by?: string | null;
+          email: string;
+          expires_at: string;
+          id?: string;
+          revoked_at?: string | null;
+          token_hash: string;
+        };
+        Update: {
+          accepted_at?: string | null;
+          accepted_by?: string | null;
+          brand_id?: string;
+          created_at?: string;
+          created_by?: string | null;
+          email?: string;
+          expires_at?: string;
+          id?: string;
+          revoked_at?: string | null;
+          token_hash?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'brand_invites_accepted_by_fkey';
+            columns: ['accepted_by'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'brand_invites_brand_id_fkey';
+            columns: ['brand_id'];
+            isOneToOne: false;
+            referencedRelation: 'brands';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'brand_invites_created_by_fkey';
+            columns: ['created_by'];
+            isOneToOne: false;
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       brands: {
         Row: {
           created_at: string;
@@ -1218,6 +1280,34 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      accept_brand_invite: {
+        Args: {
+          p_actor?: Json;
+          p_email: string;
+          p_now?: string;
+          p_request_id?: string;
+          p_token_hash: string;
+          p_user_id: string;
+        };
+        Returns: {
+          created_at: string;
+          description: string;
+          id: string;
+          logo_url: string | null;
+          name: string;
+          owner_id: string | null;
+          slug: string;
+          status: Database['public']['Enums']['store_status'];
+          template_store_id: string | null;
+          updated_at: string;
+        };
+        SetofOptions: {
+          from: '*';
+          to: 'brands';
+          isOneToOne: true;
+          isSetofReturn: false;
+        };
+      };
       accept_store_invite: {
         Args: {
           p_actor?: Json;
@@ -1276,6 +1366,39 @@ export type Database = {
       copy_template_modifiers: {
         Args: { p_copy_item_ids: string[]; p_sync: boolean };
         Returns: string[];
+      };
+      create_brand: {
+        Args: { p_actor?: Json; p_name: string; p_request_id?: string; p_slug: string };
+        Returns: string;
+      };
+      create_brand_invite: {
+        Args: {
+          p_actor?: Json;
+          p_brand_id: string;
+          p_email: string;
+          p_expires_at: string;
+          p_now?: string;
+          p_request_id?: string;
+          p_token_hash: string;
+        };
+        Returns: {
+          accepted_at: string | null;
+          accepted_by: string | null;
+          brand_id: string;
+          created_at: string;
+          created_by: string | null;
+          email: string;
+          expires_at: string;
+          id: string;
+          revoked_at: string | null;
+          token_hash: string;
+        };
+        SetofOptions: {
+          from: '*';
+          to: 'brand_invites';
+          isOneToOne: true;
+          isSetofReturn: false;
+        };
       };
       create_store_from_template: {
         Args: {

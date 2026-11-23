@@ -8,7 +8,7 @@ import { createStoreSchema } from '../schemas/store.schema';
 
 export const brandRouter = Router();
 
-// A brand's owner opens branches (P3.1, D6); brands themselves are still made by the seed or in SQL until P7.4.
+// A brand's owner opens branches (P3.1, D6); a platform admin makes brands (/api/admin/brands, P7.4a).
 brandRouter.get('/mine', requireAuth, brand.listMyBrands);
 brandRouter.post(
   '/:brandId/stores',

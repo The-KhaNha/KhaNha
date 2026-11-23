@@ -291,6 +291,27 @@ export interface Invite {
   createdAt: string;
 }
 
+/** An open owner invite (P7.4a); its token is in the create response only. */
+export interface BrandInvite {
+  id: string;
+  email: string;
+  expiresAt: string;
+  createdAt: string;
+}
+
+/** One brand on the admin's Restaurants list (GET /api/admin/brands). */
+export interface AdminBrand {
+  id: string;
+  name: string;
+  slug: string;
+  createdAt: string;
+  /** Branches, the template not counted. */
+  branchCount: number;
+  owner: { id: string; name: string; email: string } | null;
+  /** The open invite, when there is one (even an expired one, until it is closed). */
+  invite: BrandInvite | null;
+}
+
 export interface StoreSettings {
   maxQuantityPerItem: number;
   lowStockThreshold: number;

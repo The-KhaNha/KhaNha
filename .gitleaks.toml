@@ -19,4 +19,7 @@ regexes = [
   # The placeholder seed password in scripts/ci/docker-env.test.mjs, which docker-env.sh must refuse (and the
   # server/.env.staging template's placeholder). Not a secret by construction; in history since PR #41.
   '''REPLACE_ME_12_CHARS_MIN''',
+  # A made-up TOTP secret in client/src/features/admin/SecondFactor.test.tsx's enrol mock (P7.4a PR 04): the screen
+  # must show it for manual entry. Not a secret by construction; in history since that PR.
+  '''ABCDEF234567''',
 ]

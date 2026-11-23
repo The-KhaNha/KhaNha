@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { ROLES } from '../types/enums';
 import { LIMITS } from './limits';
+import { createStoreSchema } from './store.schema';
+import { createInviteSchema } from './team.schema';
 
 // Same bounds as the check constraints on public.site_settings, so a bad value is a 400, never a database error.
 const integer = (name: string, min: number, max: number) =>
@@ -49,6 +51,7 @@ export const AUDIT_ENTITY_TYPES = [
   'store_hours',
   'schedule_exception',
   'invite',
+  'brand_invite',
   'modifier_group',
   'modifier_option',
 ] as const;
@@ -135,3 +138,11 @@ export const updateFlagSchema = z
   });
 
 export type UpdateFlagInput = z.infer<typeof updateFlagSchema>;
+
+// Restaurant onboarding (P7.4a): the store's name and slug rules, because create_brand names the brand's template
+// store after the brand; the store invite's email rule.
+export const createBrandSchema = createStoreSchema.pick({ name: true, slug: true });
+export type CreateBrandInput = z.infer<typeof createBrandSchema>;
+
+export const createBrandInviteSchema = createInviteSchema.pick({ email: true });
+export type CreateBrandInviteInput = z.infer<typeof createBrandInviteSchema>;

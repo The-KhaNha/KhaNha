@@ -9,6 +9,7 @@ const safe = {
   TRUST_PROXY_HOPS: 2,
   MEDIA_STORAGE: 's3' as const,
   PAYMENT_PROVIDER: 'none' as const,
+  ADMIN_MFA_REQUIRED: true,
 };
 
 describe('productionProblems', () => {
@@ -47,6 +48,12 @@ describe('productionProblems', () => {
     ]);
   });
 
+  it('refuses admin MFA turned off (a leaked password alone would open the admin routes)', () => {
+    expect(productionProblems({ ...safe, ADMIN_MFA_REQUIRED: false })).toEqual([
+      expect.stringContaining('ADMIN_MFA_REQUIRED'),
+    ]);
+  });
+
   it('refuses the fake payment provider (it marks orders paid with no money)', () => {
     expect(productionProblems({ ...safe, PAYMENT_PROVIDER: 'fake' })).toEqual([
       expect.stringContaining('PAYMENT_PROVIDER'),
@@ -60,6 +67,7 @@ describe('productionProblems', () => {
       TRUST_PROXY_HOPS: 0,
       MEDIA_STORAGE: 'local' as const,
       PAYMENT_PROVIDER: 'fake' as const,
+      ADMIN_MFA_REQUIRED: false,
     };
     expect(productionProblems({ ...loose, APP_ENV: 'staging' })).toEqual([]);
     expect(productionProblems({ ...loose, APP_ENV: 'local' })).toEqual([]);
