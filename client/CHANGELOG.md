@@ -2,6 +2,17 @@
 
 All notable changes to the client (`client/package.json`). Written by `npm run release` from `.changes/`.
 
+## 0.3.0 — 2026-11-23
+
+- Upgrade to React 19.
+- Each menu card's Add button names its item for screen readers and voice control.
+- Keyboard focus moves to the admin settings confirmation in the same commit as a save, never resting on the page body in between
+- Production's three hosts: the API allows a list of client origins, and the client sends each section to its own host (the apex for customers, staff. for the board and manage, admin. for admin)
+- An invited owner accepts at /join/owner and becomes the restaurant's owner, landing in /manage; platform admins cannot accept owner invites
+- Admins onboard restaurants from /admin: create a restaurant, share its owner invite link, see owners and open invites
+- Admin tools need a second factor: an admin signs in, sets up an authenticator app once, and enters its code; without it every admin route answers MFA_REQUIRED
+- Sign-in edge cases: a second-factor check that answers after the screen gave up still counts when the session reached aal2; a profile read from before a sign-out can no longer restore the old account; an invite failure from an earlier account is ignored
+
 ## 0.2.3 — 2026-11-22
 
 - Upgrade to React 19.
