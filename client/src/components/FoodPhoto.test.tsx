@@ -22,7 +22,7 @@ describe('FoodPhotoGate', () => {
 
   it('never holds a photo outside a gate', () => {
     const { container } = render(<FoodPhoto src="/images/espresso.jpg" alt="Espresso" />);
-    expect(container.querySelector('img')).not.toBeNull();
+    expect(container.querySelector('img')?.getAttribute('src')).toBe('/images/espresso.jpg');
   });
 });
 

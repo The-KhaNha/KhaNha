@@ -31,7 +31,7 @@ describe('validateName', () => {
 
   it('trims before counting', () => {
     expect(validateName(`  ${'a'.repeat(NAME_MAX_LENGTH)}  `)).toBeUndefined();
-    expect(validateName('   ')).toBeDefined();
+    expect(validateName('   ')).toBe('Please enter your name.');
   });
 });
 
@@ -62,7 +62,7 @@ describe('validateName and validateNote: invisible characters and emoji', () => 
     const padded = `${'a'.repeat(NAME_MAX_LENGTH - text.length + 1)}${text}`;
     expect(validateName(padded)).toBe(`Keep your name to ${NAME_MAX_LENGTH} characters or fewer.`);
     const note = `${'a'.repeat(NOTE_MAX_LENGTH - text.length + 1)}${text}`;
-    expect(validateNote(note)).toBeDefined();
+    expect(validateNote(note)).toBe(`Keep the note to ${NOTE_MAX_LENGTH} characters or fewer.`);
   });
 
   it('counts only visible characters toward the minimum', () => {
@@ -81,20 +81,22 @@ describe('validateName and validateNote: invisible characters and emoji', () => 
 
   it('limits a note by UTF-16 units and ignores invisible padding at its ends', () => {
     expect(validateNote('🍔'.repeat(100))).toBeUndefined();
-    expect(validateNote('🍔'.repeat(101))).toBeDefined();
+    expect(validateNote('🍔'.repeat(101))).toBe(
+      `Keep the note to ${NOTE_MAX_LENGTH} characters or fewer.`,
+    );
     expect(validateNote(`\u200b${'a'.repeat(NOTE_MAX_LENGTH)}\u200b`)).toBeUndefined();
   });
 });
 
 describe('validateEmail', () => {
   it('requires a value', () => {
-    expect(validateEmail('')).toBeDefined();
-    expect(validateEmail('   ')).toBeDefined();
+    expect(validateEmail('')).toBe('Please enter your email.');
+    expect(validateEmail('   ')).toBe('Please enter your email.');
   });
 
   it('rejects a value with no @ or no domain', () => {
-    expect(validateEmail('not-an-email')).toBeDefined();
-    expect(validateEmail('a@b')).toBeDefined();
+    expect(validateEmail('not-an-email')).toBe('That email address doesn’t look right.');
+    expect(validateEmail('a@b')).toBe('That email address doesn’t look right.');
   });
 
   it('accepts a normal address', () => {
@@ -119,7 +121,7 @@ describe('validatePassword', () => {
   });
 
   it('requires a value', () => {
-    expect(validatePassword('')).toBeDefined();
+    expect(validatePassword('')).toBe('Please enter your password.');
   });
 });
 
@@ -144,7 +146,9 @@ describe('validatePhone', () => {
   });
 
   it('rejects letters', () => {
-    expect(validatePhone('abcdefghij')).toBeDefined();
+    expect(validatePhone('abcdefghij')).toBe(
+      'Use digits only (spaces, dashes and brackets are fine).',
+    );
   });
 
   it('allows a leading +', () => {

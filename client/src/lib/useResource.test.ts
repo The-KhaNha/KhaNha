@@ -11,8 +11,11 @@ function flush(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+// Fake timers: runs timers and microtasks inside act, so no test waits on the wall clock.
+async function advance(ms: number): Promise<void> {
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(ms);
+  });
 }
 
 describe('useResource persist', () => {
@@ -54,11 +57,11 @@ describe('useResource persist', () => {
 describe('useResource polling', () => {
   afterEach(() => {
     delete (document as { hidden?: boolean }).hidden; // restore jsdom's own getter
+    vi.useRealTimers();
   });
 
   it('pauses while the tab is hidden and resumes with an immediate fetch once visible again', async () => {
-    // Fetch resolution is driven by hand (not real time), so only the "nothing happened while
-    // hidden" assertion depends on a bounded real sleep; everything else is deterministic.
+    vi.useFakeTimers();
     const resolvers: ((value: { n: number }) => void)[] = [];
     const fetcher = vi.fn(() => new Promise<{ n: number }>((r) => resolvers.push(r)));
     const { result } = renderHook(() =>
@@ -66,18 +69,20 @@ describe('useResource polling', () => {
     );
 
     resolvers[0]!({ n: 1 });
-    await waitFor(() => expect(result.current.data).toEqual({ n: 1 }));
+    await advance(0);
+    expect(result.current.data).toEqual({ n: 1 });
 
     Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
     document.dispatchEvent(new Event('visibilitychange')); // cancels the pending 100ms poll timer
 
-    await sleep(350); // well past when the cancelled poll would otherwise have fired
+    await advance(350); // well past when the cancelled poll would otherwise have fired
     expect(fetcher).toHaveBeenCalledTimes(1); // no poll was scheduled while hidden
 
     Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
     document.dispatchEvent(new Event('visibilitychange')); // fetcher() runs synchronously inside
     resolvers[1]!({ n: 2 });
-    await waitFor(() => expect(result.current.data).toEqual({ n: 2 })); // resumed at once
+    await advance(0);
+    expect(result.current.data).toEqual({ n: 2 }); // resumed at once
   });
 });
 
@@ -168,7 +173,10 @@ describe('useResource persist when storage is blocked', () => {
 });
 
 describe('useResource after 426 CLIENT_OUTDATED', () => {
+  afterEach(() => vi.useRealTimers());
+
   it('stops polling: every retry would be refused until the page reloads', async () => {
+    vi.useFakeTimers();
     const { ApiError } = await import('../services/api');
     let calls = 0;
     const fetcher = async () => {
@@ -179,9 +187,10 @@ describe('useResource after 426 CLIENT_OUTDATED', () => {
     const { result } = renderHook(() =>
       useResource(fetcher, { key: 'orders', pollInterval: () => 5 }),
     );
-    await waitFor(() => expect(result.current.error).not.toBeNull());
+    await advance(10);
+    expect(result.current.error).not.toBeNull();
     const after = calls;
-    await sleep(40);
+    await advance(40);
     expect(calls).toBe(after);
     expect(result.current.data).toEqual({ n: 1 });
   });
@@ -237,5 +246,60 @@ describe('clearPersistedCache', () => {
     expect(localStorage.getItem(CACHE)).toBeNull();
     expect(localStorage.getItem('fp_cache:v2:config')).toBeNull();
     expect(localStorage.getItem('fp_cart')).toBe('{"lines":[]}');
+  });
+});
+
+describe('useResource races', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('a slow fetch of the old key never overwrites the new key', async () => {
+    const resolvers: Record<string, (value: { k: string }) => void> = {};
+    const { result, rerender } = renderHook(
+      ({ k }: { k: string }) =>
+        useResource(() => new Promise<{ k: string }>((r) => (resolvers[k] = r)), { key: k }),
+      { initialProps: { k: 'one' } },
+    );
+    rerender({ k: 'two' });
+    await waitFor(() => expect(resolvers.two).toBeDefined());
+
+    resolvers.two!({ k: 'two' });
+    await waitFor(() => expect(result.current.data).toEqual({ k: 'two' }));
+    // The old key's request lands last: it must be dropped.
+    await act(async () => {
+      resolvers.one!({ k: 'one' });
+      await flush();
+    });
+    expect(result.current.data).toEqual({ k: 'two' });
+  });
+
+  it('recovers from an error when reload() succeeds', async () => {
+    let fail = true;
+    const fetcher = vi.fn(async () => {
+      if (fail) throw new Error('down');
+      return { ok: true };
+    });
+    const { result } = renderHook(() => useResource(fetcher, { key: 'retry' }));
+    await waitFor(() => expect(result.current.error).not.toBeNull());
+    expect(result.current.data).toBeNull();
+
+    fail = false;
+    act(() => result.current.reload());
+    await waitFor(() => expect(result.current.data).toEqual({ ok: true }));
+    expect(result.current.error).toBeNull();
+    expect(result.current.isLoading).toBe(false);
+  });
+
+  // The poll after a resolve is what the cancelled flag stops; result.current is frozen at unmount, so it proves nothing.
+  it('unmounting mid-fetch stops polling once that fetch resolves', async () => {
+    vi.useFakeTimers();
+    let resolve!: (value: { n: number }) => void;
+    const fetcher = vi.fn(() => new Promise<{ n: number }>((r) => (resolve = r)));
+    const { unmount } = renderHook(() =>
+      useResource(fetcher, { key: 'gone', pollInterval: () => 10 }),
+    );
+    unmount();
+    resolve({ n: 1 });
+    await advance(100);
+    expect(fetcher).toHaveBeenCalledTimes(1);
   });
 });

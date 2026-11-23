@@ -1,5 +1,6 @@
 import { RefreshCw } from 'lucide-react';
 import { Button } from '../../components/Button';
+import { reloadPage } from '../../lib/reloadPage';
 import { useVersionStore } from './versionStore';
 
 /** Shown on every screen once the API says this build is too old; a reload loads the current one. */
@@ -16,7 +17,7 @@ export function OutdatedBanner() {
         <p className="text-sm font-semibold">New version available</p>
         <Button
           variant="tint"
-          onClick={() => window.location.reload()}
+          onClick={reloadPage}
           iconLeft={<RefreshCw className="h-4 w-4" aria-hidden />}
         >
           Refresh

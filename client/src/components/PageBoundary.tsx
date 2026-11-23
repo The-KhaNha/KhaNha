@@ -1,6 +1,7 @@
 import { Component, Suspense, type ReactNode } from 'react';
 import { logger } from '../lib/logger';
 import { CHUNK_FAILURE, reportError } from '../lib/errorReporter';
+import { reloadPage } from '../lib/reloadPage';
 import { clearPersistedCache } from '../lib/useResource';
 import { ErrorState } from './ErrorState';
 import { Skeleton } from './Skeleton';
@@ -56,7 +57,7 @@ export class PageBoundary extends Component<
               : 'Please reload the page and try again.'
           }
           retryLabel={this.state.chunk ? 'Try Again' : 'Reload'}
-          onRetry={() => window.location.reload()}
+          onRetry={reloadPage}
         />
       );
     }

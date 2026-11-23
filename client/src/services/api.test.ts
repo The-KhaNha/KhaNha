@@ -1,11 +1,13 @@
+// @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const getSupabase = vi.hoisted(() =>
   vi.fn(async () => ({ auth: { getSession: async () => ({ data: { session: null } }) } })),
 );
 vi.mock('../lib/supabase', () => ({ getSupabase }));
+const clearSession = vi.hoisted(() => vi.fn());
 vi.mock('../features/auth/authStore', () => ({
-  useAuthStore: { getState: () => ({ clearSession: () => {} }) },
+  useAuthStore: { getState: () => ({ clearSession }) },
 }));
 
 const { ApiError, REQUEST_TIMEOUT_MS, request } = await import('./api');
@@ -51,7 +53,7 @@ describe('request timeout', () => {
         ok: true,
         status: 200,
         headers: new Headers(),
-        json: () => stalledFetch('', init),
+        text: () => stalledFetch('', init),
       })),
     );
     const pending = request('/menu');
@@ -69,6 +71,78 @@ describe('request timeout', () => {
     );
     await expect(request('/health')).resolves.toEqual({ ok: true });
     expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+describe('a reply that is not the API’s', () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const reply = (body: BodyInit | null, status: number, type = 'text/html') =>
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(body, { status, headers: { 'Content-Type': type } })),
+    );
+
+  // Campus Wi-Fi: the portal redirects every request to its own 200 sign-in page. Resolving that as null crashed
+  // the screen that read the result; it is the unreachable state, with its retry.
+  it('a 200 whose body is not JSON (a captive portal’s sign-in page) is unreachable, never null', async () => {
+    reply('<html><body>Sign in to Campus Wi-Fi</body></html>', 200);
+    await expect(request('/menu')).rejects.toSatisfy(
+      (err) => err instanceof ApiError && err.isUnreachable && err.code === 'UNREACHABLE',
+    );
+  });
+
+  it.each([
+    ['a 204', 204],
+    ['a 200 a proxy emptied', 200],
+  ])('%s with no body resolves null', async (_label, status) => {
+    reply(null, status);
+    await expect(request('/stores/s/menu/i', { method: 'DELETE' })).resolves.toBeNull();
+  });
+
+  it.each([
+    [413, 'INTERNAL', false],
+    [502, 'UNREACHABLE', true],
+  ])('a %i HTML page from a proxy keeps its status', async (status, code, unreachable) => {
+    reply('<html>nginx</html>', status);
+    await expect(request('/menu')).rejects.toSatisfy(
+      (err) =>
+        err instanceof ApiError &&
+        err.status === status &&
+        err.code === code &&
+        err.isUnreachable === unreachable,
+    );
+  });
+});
+
+describe('a 401 mid-session', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    clearSession.mockClear();
+  });
+  const unauthorized = { error: { code: 'UNAUTHORIZED', message: 'Sign in again.' } };
+
+  it('signs out a caller who sent a token, and still throws the server message', async () => {
+    getSupabase.mockResolvedValueOnce({
+      auth: { getSession: async () => ({ data: { session: { access_token: 't' } } }) },
+    } as never);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify(unauthorized), { status: 401 })),
+    );
+    await expect(request('/orders')).rejects.toMatchObject({ code: 'UNAUTHORIZED' });
+    expect(clearSession).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['a public request', { auth: false }],
+    ['a request sent without a token', {}],
+  ])('leaves the session alone for %s', async (_label, options) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify(unauthorized), { status: 401 })),
+    );
+    await expect(request('/orders', options)).rejects.toMatchObject({ code: 'UNAUTHORIZED' });
+    expect(clearSession).not.toHaveBeenCalled();
   });
 });
 
@@ -100,6 +174,54 @@ describe('426 CLIENT_OUTDATED', () => {
       (err) => err instanceof ApiError && err.code === 'CLIENT_OUTDATED',
     );
     expect(useVersionStore.getState().outdated).toBe(true);
+  });
+});
+
+describe('a body that errors mid-read', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    clearSession.mockClear();
+  });
+  const broken = (status: number) =>
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            new ReadableStream({
+              start(c) {
+                c.error(new Error('reset'));
+              },
+            }),
+            { status },
+          ),
+      ),
+    );
+
+  it('a 426 still marks the build outdated and keeps its status', async () => {
+    const { useVersionStore } = await import('../features/version/versionStore');
+    useVersionStore.setState({ outdated: false });
+    broken(426);
+    await expect(request('/menu')).rejects.toSatisfy(
+      (err) => err instanceof ApiError && err.status === 426,
+    );
+    expect(useVersionStore.getState().outdated).toBe(true);
+  });
+
+  it('a 401 sent with a token still signs the caller out', async () => {
+    getSupabase.mockResolvedValueOnce({
+      auth: { getSession: async () => ({ data: { session: { access_token: 't' } } }) },
+    } as never);
+    broken(401);
+    await expect(request('/orders')).rejects.toMatchObject({ status: 401 });
+    expect(clearSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('a 2xx whose body errors is unreachable', async () => {
+    broken(200);
+    await expect(request('/menu')).rejects.toSatisfy(
+      (err) => err instanceof ApiError && err.isUnreachable && err.status === 0,
+    );
   });
 });
 

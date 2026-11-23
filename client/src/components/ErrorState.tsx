@@ -4,6 +4,7 @@ import { Button } from './Button';
 import { cardClasses } from './Card';
 import { useVersionStore } from '../features/version/versionStore';
 import { cn } from '../lib/cn';
+import { reloadPage } from '../lib/reloadPage';
 
 interface ErrorStateProps {
   title: string;
@@ -74,7 +75,7 @@ export function ErrorState({
         <Button
           variant="secondary"
           className="mt-6 min-w-40"
-          onClick={mustReload ? () => window.location.reload() : onRetry}
+          onClick={mustReload ? reloadPage : onRetry}
           loading={!mustReload && retrying}
           iconLeft={<RefreshCw className="h-4 w-4" aria-hidden />}
         >

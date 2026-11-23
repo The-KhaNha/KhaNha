@@ -12,6 +12,9 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
+    // jsdom once per worker instead of once per file: the run went from ~15 s to ~5 s, every file still isolated in
+    // its own VM context. In a VM, globals like window.location cannot be redefined: mock a module (lib/reloadPage).
+    pool: 'vmThreads',
     include: ['src/**/*.test.{ts,tsx}'],
     setupFiles: ['src/test/setup.ts'],
   },
