@@ -42,6 +42,26 @@ export function healthReport(queues: QueueState[], now: number) {
   return { status: ok ? 200 : 503, body: { ok, queues: lines } };
 }
 
+/**
+ * The worker's "Process metrics" fields: each queue, plus the total depth and the oldest message across them, which
+ * the alarms read (0 when every queue is empty). The totals are left out when a queue did not answer, so a database
+ * outage leaves a gap in the metric rather than a false zero.
+ */
+export function queueFields(queues: string[], metrics: (QueueMetrics | null)[]) {
+  const lines = queues.map((queue, i) => ({
+    queue,
+    depth: metrics[i]?.depth ?? null,
+    oldestAgeSec: metrics[i]?.oldestAgeSec ?? null,
+  }));
+  const answered = metrics.filter((m): m is QueueMetrics => m !== null);
+  if (answered.length < queues.length) return { queues: lines };
+  return {
+    queues: lines,
+    queueDepth: answered.reduce((sum, m) => sum + m.depth, 0),
+    oldestAgeSec: Math.max(0, ...answered.map((m) => m.oldestAgeSec ?? 0)),
+  };
+}
+
 /** A queue's depth and oldest message age. A database that does not answer within a second is the answer: null. */
 export async function readQueueMetrics(queue: string): Promise<QueueMetrics | null> {
   try {

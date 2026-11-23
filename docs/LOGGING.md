@@ -41,6 +41,29 @@ response goes out with `features: {}`, once until a read succeeds again (per pro
 - Client: set `VITE_LOG_LEVEL` in `client/.env.<mode>`: one of `debug`, `info`, `warn`, `error`, `silent`. It is read
   at build time. In a production build `logger.debug` and `logger.info` are no-ops whatever the level says.
 
+## Shipping and the metrics line
+
+On the AWS host each container writes to its own CloudWatch log group, `/khanha/<environment>/api`, `/web` and
+`/worker`, kept 30 days (`infra/host/compose.prod.yml`'s `awslogs` driver, `infra/terraform/modules/observability`).
+The driver is non-blocking: when CloudWatch is slow, lines are dropped from a 4 MB buffer rather than stalling the
+app. `docker logs` on the host still works. Saved queries in CloudWatch Logs Insights, under
+`khanha-production/`: `errors-by-code`, `slowest-routes` (writes and failures only: successful reads are `debug`),
+`one-request` (the API's `req.id` and a job's `requestId`) and `dead-letters`.
+
+Every `PROCESS_METRICS_LOG_MS` (five minutes) the API and the worker each log one `info` line, "Process metrics",
+from a timer (`utils/processMetrics.ts`), never once per poll:
+
+| Process | Fields                                                                                                                                                                                                          |
+| ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| both    | `rssMb`, `heapUsedMb`: which process grew (the host's memory alarm reads `/proc/meminfo`, not this)                                                                                                             |
+| api     | `requests`, `serverErrors` (5xx) and `p95Ms` (left out when there were no requests) since the last line, counted for every request whatever its access line's level (`countRequests` in `app.ts`)               |
+| worker  | `queues` (each queue's `depth` and `oldestAgeSec`, as on `GET /health`), `queueDepth` (their total) and `oldestAgeSec` (the oldest, 0 when all are empty); both totals are left out when a queue did not answer |
+
+The production alarms read these fields and the worker's "Job dead-lettered" line through metric filters
+([DEPLOYMENT.md](DEPLOYMENT.md#alarms-and-the-dashboard)). `test/logging.safe.test.ts` fails when a field or a
+message changes here without the Terraform, which would leave an alarm silently blind. A failure building the line
+is `warn` "Process metrics failed" (`{ err }`).
+
 ## Request ids
 
 - `pino-http` gives every request an id. It keeps a caller's `x-request-id` if it is 1–64 characters of
@@ -102,7 +125,7 @@ pino-http runs with `wrapSerializers: false` so its own `err` serializer cannot 
 ## Jobs
 
 The job runner (`server/src/jobs/runner.ts`) is the boundary for a job, as the error handler is for a request: it logs
-each outcome once. Every line about a message carries `queue`, `jobId`, `eventId`, `eventType` and `attempt` (a child
+each outcome once. Every line about a message carries `queue`, `jobId`, `eventId`, `eventType`, `requestId` (the API request that raised the event) and `attempt` (a child
 logger, also handed to the handler); never the payload.
 
 | Line                       | Level   | Fields                            | When                                                                                                         |
@@ -118,12 +141,13 @@ An empty poll logs nothing.
 
 ### The worker process
 
-| Line                         | Level   | Fields                                                  | When                                                                                     |
-| ---------------------------- | ------- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| "Food Pickup worker running" | `info`  | `healthPort`, `queues`, `logLevel`, `version`, `commit` | the health port is listening                                                             |
-| "Worker loop crashed"        | `error` | `err`                                                   | a `runQueue` loop threw (it should not); the process then exits 1                        |
-| "Shutting down"              | `info`  | `signal`                                                | SIGTERM or SIGINT, once: API and worker alike (`utils/shutdown.ts`); repeats are ignored |
-| "Shutdown failed"            | `error` | `err`                                                   | the stop function rejected; exit 1                                                       |
+| Line                         | Level   | Fields                                                            | When                                                                                     |
+| ---------------------------- | ------- | ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| "Food Pickup worker running" | `info`  | `healthPort`, `queues`, `logLevel`, `version`, `commit`           | the health port is listening                                                             |
+| "Worker loop crashed"        | `error` | `err`                                                             | a `runQueue` loop threw (it should not); the process then exits 1                        |
+| "Process metrics"            | `info`  | memory and queue totals ([above](#shipping-and-the-metrics-line)) | every `PROCESS_METRICS_LOG_MS`                                                           |
+| "Shutting down"              | `info`  | `signal`                                                          | SIGTERM or SIGINT, once: API and worker alike (`utils/shutdown.ts`); repeats are ignored |
+| "Shutdown failed"            | `error` | `err`                                                             | the stop function rejected; exit 1                                                       |
 
 `GET /health` and a failed `queue_metrics` read are deliberately not logged: it is a polling path, and the depth is
 `null` in the body when the read fails. A handler's own lines (`notifyHandler`'s `info` "Order event"; `mediaHandler`'s `info` "Photo processed" with

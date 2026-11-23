@@ -8,6 +8,11 @@ mock_provider "aws" {
   }
 }
 
+# The alarm topic in us-east-1 (main.tf): without its own mock, the alias would look for real credentials.
+mock_provider "aws" {
+  alias = "us_east_1"
+}
+
 variables {
   alert_email = "alerts@example.com"
 }

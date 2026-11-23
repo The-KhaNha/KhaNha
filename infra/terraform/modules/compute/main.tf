@@ -51,7 +51,15 @@ resource "aws_instance" "this" { # nosemgrep: terraform.aws.security.aws-ec2-has
 }
 
 locals {
-  host_files = ["compose.prod.yml", "render-env.sh", "apply-release.sh"]
+  # Every file in infra/host (scripts/ci/host-metrics.test.mjs fails on one left out).
+  host_files = [
+    "compose.prod.yml",
+    "render-env.sh",
+    "apply-release.sh",
+    "host-metrics.sh",
+    "khanha-host-metrics@.service",
+    "khanha-host-metrics@.timer",
+  ]
 
   # The host files travel inside the document, so changing them changes the document, not the machine.
   commands = concat(
@@ -65,6 +73,10 @@ locals {
     [for file in local.host_files : "echo ${base64encode(file("${var.host_dir}/${file}"))} | base64 -d > /opt/khanha/${file}"],
     [
       "chmod 700 /opt/khanha/*.sh",
+      # Before the release: apply-release.sh may exit non-zero, and set -e would skip anything after it.
+      "install -m 644 /opt/khanha/khanha-host-metrics@.service /opt/khanha/khanha-host-metrics@.timer /etc/systemd/system/",
+      "systemctl daemon-reload",
+      "systemctl enable --now khanha-host-metrics@${var.environment}.timer",
       "/opt/khanha/apply-release.sh ${var.environment} ${var.image_prefix} '{{ webTag }}' '{{ serverTag }}'",
     ],
   )

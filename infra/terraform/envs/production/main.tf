@@ -11,6 +11,10 @@ locals {
   secret_name    = "khanha/${local.environment}/app"
   # Created by modules/media in PR 05; ends in the account ID because bucket names are global.
   media_bucket = "khanha-media-${local.environment}-${var.account_id}"
+  # The log groups' prefix and the custom metrics' namespace (modules/observability); host-metrics.sh derives the
+  # namespace from the environment the same way.
+  log_group_prefix  = "/khanha/${local.environment}"
+  metrics_namespace = "KhaNha/${local.environment}"
 }
 
 module "network" {
@@ -25,15 +29,16 @@ module "ecr" {
 }
 
 module "iam" {
-  source           = "../../modules/iam"
-  name             = "${local.name}-host"
-  account_id       = var.account_id
-  region           = var.region
-  repository_arns  = module.ecr.repository_arns
-  parameter_path   = local.parameter_path
-  secret_name      = local.secret_name
-  log_group_prefix = "/khanha/${local.environment}"
-  media_bucket     = local.media_bucket
+  source            = "../../modules/iam"
+  name              = "${local.name}-host"
+  account_id        = var.account_id
+  region            = var.region
+  repository_arns   = module.ecr.repository_arns
+  parameter_path    = local.parameter_path
+  secret_name       = local.secret_name
+  log_group_prefix  = local.log_group_prefix
+  metrics_namespace = local.metrics_namespace
+  media_bucket      = local.media_bucket
 }
 
 module "secrets" {
@@ -101,4 +106,21 @@ module "compute" {
   # The bootstrap's deploy role may run this document and no other.
   deploy_document_name = "khanha-deploy"
   host_dir             = "${path.module}/../../../host"
+}
+
+module "observability" {
+  source = "../../modules/observability"
+  providers = {
+    aws           = aws
+    aws.us_east_1 = aws.us_east_1
+  }
+  name             = local.name
+  account_id       = var.account_id
+  region           = var.region
+  log_group_prefix = local.log_group_prefix
+  namespace        = local.metrics_namespace
+  instance_id      = module.compute.instance_id
+  distribution_id  = module.cdn.distribution_id
+  domain_live      = var.domain_live
+  certificate_arn  = module.cdn.certificate_arn
 }

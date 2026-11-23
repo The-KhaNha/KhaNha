@@ -159,6 +159,8 @@ async function handleOne<T>(
     jobId: row.msg_id,
     eventId: event?.eventId,
     eventType: event?.type,
+    // The API request that raised the event: one id finds a request's lines in both processes' logs.
+    requestId: event?.requestId,
     attempt: row.read_ct,
   });
   const started = now();

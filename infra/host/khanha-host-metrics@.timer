@@ -1,0 +1,11 @@
+# Every five minutes, the period the host-memory alarm reads (modules/observability). Installed and enabled by the
+# deploy document (modules/compute), so a replaced host has it after its first deploy.
+[Unit]
+Description=Publish the host's memory and swap every five minutes (%i)
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+
+[Install]
+WantedBy=timers.target
