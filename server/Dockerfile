@@ -4,7 +4,7 @@
 # Every node:24-alpine3.24 and alpine:3.24 below must name the same Alpine release: the runtime copies the node binary
 # out of the Node image, and it needs the C and C++ libraries it was built against.
 
-FROM node:24-alpine3.24 AS deps
+FROM node:26-alpine3.24 AS deps
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 # corepack (shipped with Node 24) fetches the pnpm that package.json's packageManager pins. No dependency script runs
@@ -18,7 +18,7 @@ COPY scripts ./scripts
 # dist/scripts stays, so staging can be seeded with `node dist/scripts/seed.js` (it refuses APP_ENV=production).
 RUN pnpm run build
 
-FROM node:24-alpine3.24 AS prod-deps
+FROM node:26-alpine3.24 AS prod-deps
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 # pnpm's node_modules holds relative symlinks into node_modules/.pnpm, so the runtime copies the folder whole.
