@@ -460,26 +460,30 @@ metrics, 3 dashboards, 5 GB of logs a month): 9 alarms, 8 custom metrics in `Kha
 `khanha-production`, and the log groups and saved queries in [LOGGING.md](LOGGING.md#shipping-and-the-metrics-line).
 Each alarm emails the `khanha-alerts` topic when it fires and again when it recovers. The bootstrap creates that topic
 in ap-south-1 and in us-east-1 (CloudFront's and ACM's metrics live there), so the address stays in the user's
-untracked `terraform.tfvars` ([infra/README.md](../infra/README.md#alarms)). No data is never a breach.
+untracked `terraform.tfvars` ([infra/README.md](../infra/README.md#alarms)). No data is not a breach, except for
+the queue age: a worker that stops reporting for ten minutes fires it.
 
-| Alarm                  | Fires when                                                    | Source                                            | First look                                                            |
-| ---------------------- | ------------------------------------------------------------- | ------------------------------------------------- | --------------------------------------------------------------------- |
-| `…-cloudfront-5xx`     | more than 5% of CloudFront's responses are 5xx over 5 minutes | CloudFront (us-east-1): sees the host or API down | the host status alarm; `docker compose ps` in a Session Manager shell |
-| `…-api-5xx-rate`       | more than 2% of API requests answer 5xx over 5 minutes        | the API's "Process metrics" line                  | the `errors-by-code` query                                            |
-| `…-api-p95`            | the API's p95 is above 1 s for 10 minutes                     | the API's "Process metrics" line                  | the CPU credit balance; Supabase's status; the `slowest-routes` query |
-| `…-dead-letter`        | a job is dead-lettered                                        | the worker's "Job dead-lettered" line             | the `dead-letters` query, then [JOBS.md](JOBS.md#runbook)             |
-| `…-queue-age`          | a queued message is older than 5 minutes                      | the worker's "Process metrics" line               | the worker container; [JOBS.md](JOBS.md#runbook)                      |
-| `…-host-status`        | the host fails its status check for 2 minutes                 | EC2                                               | auto-recovery acts on a failed system check; else replace the host    |
-| `…-host-memory`        | the host's used memory is above 85% for 10 minutes            | `infra/host/host-metrics.sh`, every 5 minutes     | `rssMb` in each process's "Process metrics" line; `docker stats`      |
-| `…-cpu-credits`        | fewer than 30 CPU credits are left for 15 minutes             | EC2                                               | standard credits throttle at 0: find the busy process, or `t4g.small` |
-| `…-certificate-expiry` | the domain's certificate expires within 21 days               | ACM (us-east-1)                                   | ACM's renewal status and the validation records in the zone           |
+| Alarm                  | Fires when                                                                      | Source                                            | First look                                                            |
+| ---------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------- | --------------------------------------------------------------------- |
+| `…-cloudfront-5xx`     | more than 5% of CloudFront's responses are 5xx over 5 minutes                   | CloudFront (us-east-1): sees the host or API down | the host status alarm; `docker compose ps` in a Session Manager shell |
+| `…-api-5xx-rate`       | more than 2% of API requests answer 5xx over 5 minutes                          | the API's "Process metrics" line                  | the `errors-by-code` query                                            |
+| `…-api-p95`            | the API's p95 is above 1 s for 10 minutes                                       | the API's "Process metrics" line                  | the CPU credit balance; Supabase's status; the `slowest-routes` query |
+| `…-dead-letter`        | a job is dead-lettered                                                          | the worker's "Job dead-lettered" line             | the `dead-letters` query, then [JOBS.md](JOBS.md#runbook)             |
+| `…-queue-age`          | a queued message is older than 5 minutes, or the worker has not reported for 10 | the worker's "Process metrics" line               | the worker container; [JOBS.md](JOBS.md#runbook)                      |
+| `…-host-status`        | the host fails its status check for 2 minutes                                   | EC2                                               | auto-recovery acts on a failed system check; else replace the host    |
+| `…-host-memory`        | the host's used memory is above 85% for 10 minutes                              | `infra/host/host-metrics.sh`, every 5 minutes     | `rssMb` in each process's "Process metrics" line; `docker stats`      |
+| `…-cpu-credits`        | fewer than 30 CPU credits are left for 15 minutes                               | EC2                                               | standard credits throttle at 0: find the busy process, or `t4g.small` |
+| `…-certificate-expiry` | the domain's certificate expires within 21 days                                 | ACM (us-east-1)                                   | ACM's renewal status and the validation records in the zone           |
 
 **Targets** (what the roadmap calls SLOs, measured by the alarms above): fewer than 2% of API requests answer 5xx,
 and the API's p95 stays under 1 s, each over any 5-minute window. They are targets for a dark, single-host
 production, not promises; P9 revisits them with real traffic.
 
-**Seen firing (Closing P8):** stop `api` from a Session Manager shell (`docker compose -p khanha stop api`), open
-the site so CloudFront sees 502s, wait for the `cloudfront-5xx` email, start it again, wait for the recovery email.
+**Seen firing (Closing P8):** stop `api` from a Session Manager shell (`sudo docker stop khanha-api-1`), open the
+site so CloudFront sees 502s, wait for the `cloudfront-5xx` email, then
+`sudo docker start khanha-api-1 && sudo docker restart khanha-web-1` (nginx resolves the API once, at its start) and
+wait for the recovery email. By container name, not `docker compose`: the compose file needs
+the release's tags in the environment, which only `apply-release.sh` sets.
 
 ## Hosted session timeout
 

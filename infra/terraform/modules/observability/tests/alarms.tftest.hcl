@@ -43,6 +43,15 @@ run "each_alarm_notifies_its_own_regions_topic_on_firing_and_recovery" {
   }
 }
 
+run "a_silent_worker_is_an_alarm" {
+  command = plan
+
+  assert {
+    condition     = aws_cloudwatch_metric_alarm.queue_age.treat_missing_data == "breaching" && aws_cloudwatch_metric_alarm.queue_age.period > 300
+    error_message = "A worker that stops reporting must fire the queue-age alarm, over a window longer than one metrics line."
+  }
+}
+
 run "no_certificate_alarm_before_the_domain_is_live" {
   command = plan
 

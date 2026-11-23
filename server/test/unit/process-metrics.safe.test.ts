@@ -28,4 +28,13 @@ describe('the API request counter', () => {
     expect(takeRequestStats()).toEqual({ requests: 1, serverErrors: 1, p95Ms: 1200 });
     expect(takeRequestStats()).toEqual({ requests: 0, serverErrors: 0 });
   });
+
+  it('keeps sampling past the cap, so a slowdown late in a busy window still moves the p95', () => {
+    for (let i = 0; i < 20_000; i += 1) request(200, 10);
+    for (let i = 0; i < 10_000; i += 1) request(200, 2000);
+    const stats = takeRequestStats();
+    expect(stats.requests).toBe(30_000);
+    // A third of the traffic is slow, so the p95 is a slow request (sampled, so not an exact count).
+    expect(stats.p95Ms).toBe(2000);
+  });
 });

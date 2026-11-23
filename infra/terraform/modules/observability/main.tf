@@ -71,8 +71,8 @@ resource "aws_cloudwatch_log_metric_filter" "dead_letters" {
 }
 
 # --- Alarms ----------------------------------------------------------------------------------------------------------
-# Each one emails when it fires and again when it recovers. Missing data is never a breach: a quiet hour has no
-# lines, and the host being down is the status check's and CloudFront's to say.
+# Each one emails when it fires and again when it recovers. Missing data is not a breach (a quiet hour has no lines,
+# and the host being down is the status check's and CloudFront's to say), except for the queue age below.
 
 resource "aws_cloudwatch_metric_alarm" "api_5xx_rate" {
   alarm_name          = "${var.name}-api-5xx-rate"
@@ -142,17 +142,19 @@ resource "aws_cloudwatch_metric_alarm" "dead_letter" {
   ok_actions          = local.alarm_actions
 }
 
+# The worker reports its queues every five minutes, so ten minutes without a line means it is down (or cannot read
+# the database), which no other alarm sees: missing data is a breach here. An idle worker still reports 0.
 resource "aws_cloudwatch_metric_alarm" "queue_age" {
   alarm_name          = "${var.name}-queue-age"
-  alarm_description   = "A queued message is older than five minutes: the worker is down or behind (docs/JOBS.md \"Runbook\")."
+  alarm_description   = "A queued message is older than five minutes, or the worker has not reported for ten: it is down or behind (docs/JOBS.md \"Runbook\")."
   namespace           = var.namespace
   metric_name         = "OldestMessageAgeSec"
   statistic           = "Maximum"
-  period              = 300
+  period              = 600
   evaluation_periods  = 1
   comparison_operator = "GreaterThanThreshold"
   threshold           = 300
-  treat_missing_data  = "notBreaching"
+  treat_missing_data  = "breaching"
   alarm_actions       = local.alarm_actions
   ok_actions          = local.alarm_actions
 }

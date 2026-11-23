@@ -8,8 +8,9 @@ import type { Logger } from 'pino';
 export const PROCESS_METRICS_MSG = 'Process metrics';
 
 const MB = 1024 * 1024;
-// ponytail: a window samples at most this many durations for its p95 (about 70 a second over five minutes); later
-// requests still count, they just do not move the p95. A histogram if traffic outgrows it.
+// A window keeps at most this many durations for its p95 (about 70 a second over five minutes). Past it, each new
+// request replaces a random kept one with the right odds (reservoir sampling), so late traffic counts as much as
+// early traffic and memory stays bounded.
 const MAX_SAMPLES = 20_000;
 
 let requests = 0;
@@ -23,9 +24,14 @@ let durations: number[] = [];
 export const countRequests: RequestHandler = (_req, res, next) => {
   const started = performance.now();
   res.on('finish', () => {
+    const duration = performance.now() - started;
     requests += 1;
     if (res.statusCode >= 500) serverErrors += 1;
-    if (durations.length < MAX_SAMPLES) durations.push(performance.now() - started);
+    if (durations.length < MAX_SAMPLES) durations.push(duration);
+    else {
+      const slot = Math.floor(Math.random() * requests);
+      if (slot < MAX_SAMPLES) durations[slot] = duration;
+    }
   });
   next();
 };
