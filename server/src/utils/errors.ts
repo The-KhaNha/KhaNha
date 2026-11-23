@@ -19,6 +19,7 @@ export type ErrorCode =
   | 'MODIFIER_INVALID'
   | 'SLUG_TAKEN'
   | 'BRAND_HAS_OWNER'
+  | 'MFA_REQUIRED'
   | 'MENU_FULL'
   | 'STORE_NOT_READY'
   | 'UPLOAD_INVALID'
@@ -311,6 +312,10 @@ export const menuFull = (max: number): AppError =>
 export const slugTaken = (
   message = 'Another store already uses that web address. Choose another.',
 ): AppError => new AppError(409, 'SLUG_TAKEN', message, { field: 'slug' });
+
+/** An admin route, from an admin who has not entered a second factor this sign-in (P7.4a PR 04). */
+export const mfaRequired = (): AppError =>
+  new AppError(403, 'MFA_REQUIRED', 'Enter the code from your authenticator app to continue.');
 
 /** An owner invite for a brand that has its owner already: an invite never replaces one (P7.4a D4). */
 export const brandHasOwner = (): AppError =>

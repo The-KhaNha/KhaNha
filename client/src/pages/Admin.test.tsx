@@ -12,6 +12,12 @@ const admin = vi.hoisted(() => ({
   revokeOwnerInvite: vi.fn(),
 }));
 vi.mock('../services/admin', () => admin);
+// The real step talks to Supabase Auth (SecondFactor.test.tsx); here it only has to appear and report back.
+vi.mock('../features/admin/SecondFactor', () => ({
+  SecondFactor: ({ onVerified }: { onVerified: () => void }) => (
+    <button onClick={onVerified}>verify second factor</button>
+  ),
+}));
 vi.mock('../services/api', () => ({
   ApiError: class ApiError extends Error {
     status: number;
@@ -41,6 +47,17 @@ const saved: SiteSettings = {
 describe('AdminPage', () => {
   afterEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('asks for the second factor when the API answers MFA_REQUIRED, then loads the page', async () => {
+    admin.fetchSiteSettings
+      .mockRejectedValueOnce(new ApiError(403, 'MFA_REQUIRED', 'Enter the code.'))
+      .mockResolvedValue(saved);
+    render(<AdminPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'verify second factor' }));
+    expect(await screen.findByRole('heading', { name: 'Site settings' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Restaurants' })).toBeInTheDocument();
+    expect(admin.fetchSiteSettings).toHaveBeenCalledTimes(2);
   });
 
   it('renders the Restaurants section above Site settings', async () => {

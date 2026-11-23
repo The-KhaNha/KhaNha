@@ -360,6 +360,12 @@ is its own lazy chunk (confirm that it is).
 
 - [ ] Merged
 
+As built: an admin without `aal2` is a customer for that request (`role` CUSTOMER, `adminMfaPending`), so the ADMIN
+standing in `domain/permissions.ts` (pause, store audit) is closed too, not only `requireAdmin`'s routes; `/auth/me`
+still says ADMIN. `ADMIN_MFA_REQUIRED` (default on, refused off in production) lets local development skip it; the
+server suites run with it off and `admin-mfa.test.ts` turns it on. The client's check is the settings read answering
+`MFA_REQUIRED`, so e2e specs with a mocked API never meet the step.
+
 **Theme:** a leaked admin password alone opens nothing once the admin has enrolled (ROADMAP P7.4 "Hardening"). Main
 agent (auth). **Known limit, the user's choice (22 November 2026):** the first factor is trusted on first use, since
 enrolling needs only the password; whoever reaches `/admin` first with the password could enrol their own

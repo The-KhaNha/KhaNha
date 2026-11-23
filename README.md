@@ -125,16 +125,16 @@ The Vite dev server proxies `/api/*` to `http://localhost:8000`. The only client
 
 ## Test accounts
 
-| Role                        | Email                                                                | Password (local)         |
-| --------------------------- | -------------------------------------------------------------------- | ------------------------ |
-| Customer                    | `anishka@example.com`                                                | `test1234`               |
-| Staff                       | `staff@campuscafe.local`                                             | `staff123`               |
-| Manager (Campus Cafe)       | `manager@campuscafe.local`                                           | `manager123`             |
-| Staff, manager (North Gate) | `staff@northgate.brewlane.local`, `manager@northgate.brewlane.local` | `staff123`, `manager123` |
-| Staff, manager (Tech Park)  | `staff@techpark.brewlane.local`, `manager@techpark.brewlane.local`   | `staff123`, `manager123` |
-| Admin                       | `admin@campuscafe.local`                                             | `admin123`               |
-| Owner (Campus Cafe)         | `owner@campuscafe.local`                                             | `owner123`               |
-| Owner (Brew Lane)           | `owner@brewlane.local`                                               | `owner123`               |
+| Role                                  | Email                                                                | Password (local)         |
+| ------------------------------------- | -------------------------------------------------------------------- | ------------------------ |
+| Customer                              | `anishka@example.com`                                                | `test1234`               |
+| Staff                                 | `staff@campuscafe.local`                                             | `staff123`               |
+| Manager (Campus Cafe)                 | `manager@campuscafe.local`                                           | `manager123`             |
+| Staff, manager (North Gate)           | `staff@northgate.brewlane.local`, `manager@northgate.brewlane.local` | `staff123`, `manager123` |
+| Staff, manager (Tech Park)            | `staff@techpark.brewlane.local`, `manager@techpark.brewlane.local`   | `staff123`, `manager123` |
+| Admin (needs an authenticator, below) | `admin@campuscafe.local`                                             | `admin123`               |
+| Owner (Campus Cafe)                   | `owner@campuscafe.local`                                             | `owner123`               |
+| Owner (Brew Lane)                     | `owner@brewlane.local`                                               | `owner123`               |
 
 Store team accounts (staff and manager) have the `STAFF` profile role until P2 PR 16, so the current `/staff` board admits them; their store role is a membership ([PERMISSIONS.md](docs/PERMISSIONS.md#store-roles)).
 
@@ -144,7 +144,7 @@ These passwords work on the local stack only. Shared staging uses deployment-pro
 
 Or tap **Create an account** in the app; new accounts are customers. The admin account is a site-wide
 developer/operator role (the `/admin` dashboard), not a restaurant role — see
-[docs/PERMISSIONS.md](docs/PERMISSIONS.md#roles).
+[docs/PERMISSIONS.md](docs/PERMISSIONS.md#roles). The first `/admin` visit asks the admin to set up an authenticator app (TOTP); set `ADMIN_MFA_REQUIRED=false` in `server/.env` to skip it locally ([docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#admin-second-factor)).
 
 ## Opening the apps
 

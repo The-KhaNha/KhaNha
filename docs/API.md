@@ -41,7 +41,10 @@ gets it from `supabase.auth.signInWithPassword` and supabase-js refreshes it (`j
 5. Sets `req.user = { id, role }`.
 
 `requireAdmin` (guards `/api/admin/*`) must run after `requireAuth`. A role other than `ADMIN` is 403 `FORBIDDEN`
-"Only admins can do that." `ADMIN` is a separate, site-wide developer/operator role: it has no staff powers, so it
+"Only admins can do that." An `ADMIN` whose access token is not `aal2` (no authenticator code this sign-in) while
+`ADMIN_MFA_REQUIRED` is on is 403 `MFA_REQUIRED` "Enter the code from your authenticator app to continue." (see
+[PERMISSIONS.md](PERMISSIONS.md#admin-second-factor)); `requireAuth` treats that admin as a `CUSTOMER` on every other
+route. `GET /api/auth/me` still reports `role: 'ADMIN'`, which is how the client knows to ask for the code. `ADMIN` is a separate, site-wide developer/operator role: it has no staff powers, so it
 reads and moves orders only through a store membership (see [PERMISSIONS.md](PERMISSIONS.md#roles)).
 
 The API has no sign-in or sign-out route. The browser signs in and out with supabase-js directly
@@ -809,6 +812,7 @@ and store (key `'site_settings'`; see [Caching](#caching)).
 | 200    |                | `{ settings: SiteSettingsDto }`       |
 | 401    | `UNAUTHORIZED` | see [Authentication](#authentication) |
 | 403    | `FORBIDDEN`    | caller is not `ADMIN`                 |
+| 403    | `MFA_REQUIRED` | `ADMIN` without an `aal2` token       |
 
 ### PATCH /admin/settings
 
@@ -888,6 +892,7 @@ Query (`server/src/schemas/admin.schema.ts`), every parameter optional:
 | 400    | `VALIDATION_ERROR` | a parameter out of bounds or malformed; `entityId` without `entityType`; `from` not before `to` |
 | 401    | `UNAUTHORIZED`     | see [Authentication](#authentication)                                                           |
 | 403    | `FORBIDDEN`        | caller is not `ADMIN`                                                                           |
+| 403    | `MFA_REQUIRED`     | `ADMIN` without an `aal2` token                                                                 |
 
 ### PATCH /admin/flags/:key
 
@@ -915,6 +920,7 @@ Body (`server/src/schemas/admin.schema.ts`), every field optional but at least o
 | 400    | `VALIDATION_ERROR` | a field of the wrong type, a malformed rule, or nothing sent |
 | 401    | `UNAUTHORIZED`     | see [Authentication](#authentication)                        |
 | 403    | `FORBIDDEN`        | caller is not `ADMIN`                                        |
+| 403    | `MFA_REQUIRED`     | `ADMIN` without an `aal2` token                              |
 | 404    | `NOT_FOUND`        | no flag has that key                                         |
 
 ### Restaurant onboarding (admin)
@@ -938,6 +944,7 @@ Code: `requireAuth` → `requireAdmin` → `admin.controller.listBrands` → `ad
 | 200    |                | `{ brands }`                          |
 | 401    | `UNAUTHORIZED` | see [Authentication](#authentication) |
 | 403    | `FORBIDDEN`    | caller is not `ADMIN`                 |
+| 403    | `MFA_REQUIRED` | `ADMIN` without an `aal2` token       |
 
 ### POST /admin/brands
 
@@ -954,6 +961,7 @@ an empty template, in one transaction. The controller logs `Brand created` with 
 | 400    | `VALIDATION_ERROR` | bad name or slug, or a name too short to make a slug (`details.field` `slug`)                                             |
 | 401    | `UNAUTHORIZED`     | see [Authentication](#authentication)                                                                                     |
 | 403    | `FORBIDDEN`        | caller is not `ADMIN`                                                                                                     |
+| 403    | `MFA_REQUIRED`     | `ADMIN` without an `aal2` token                                                                                           |
 | 409    | `SLUG_TAKEN`       | another brand uses the slug ("Another restaurant already uses that web address. Choose another."); `details.field` `slug` |
 | 429    | `RATE_LIMITED`     | the per-user write limit                                                                                                  |
 
@@ -1263,6 +1271,7 @@ shape carries a `kind`, and the client narrows on it.
 | 400    | `STORE_CLOSED`              | `POST /orders` (the API's check, or `place_order`'s)                                                                                                                                                                                                                                                                                                                                                                               |
 | 409    | `STORE_PAUSED`              | `POST /orders` (the API's check, or `place_order`'s): "<store name> has paused new orders. Back at 3:40 PM."                                                                                                                                                                                                                                                                                                                       |
 | 401    | `UNAUTHORIZED`              | `requireAuth`                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| 403    | `MFA_REQUIRED`              | `requireAdmin`: an `ADMIN` whose token is not `aal2` while `ADMIN_MFA_REQUIRED` is on ("Enter the code from your authenticator app to continue.")                                                                                                                                                                                                                                                                                  |
 | 403    | `FORBIDDEN`                 | `requireAdmin`, `requireStore`; the team routes when acting on a manager without `team.manageManagers`                                                                                                                                                                                                                                                                                                                             |
 | 429    | `RATE_LIMITED`              | `middleware/rateLimit.ts`: more requests than the window allows from one account (writes) or one address (all of `/api`, `POST /auth/register`); "Too many requests. Please wait a minute and try again." with `Retry-After`, `RateLimit-Policy` and `RateLimit` headers and `details: { kind: 'rateLimit', retryAfterSeconds }` (`RateLimitDetails`). Logged at `warn` for the first refusal per key per window, `debug` after it |
 | 426    | `CLIENT_OUTDATED`           | every route mounted after the [client version gate](#client-version-gate): the client's `X-Client-Version` is below `site_settings.min_client_version`. "A new version of Food Pickup is available. Refresh the page to continue." Logged at `debug`                                                                                                                                                                               |

@@ -81,6 +81,11 @@ table gets a row in the same change. Tests and scripts are exempt; they set up f
   route; `foreignJwt()` makes a well-formed JWT with a random signature (fails JWKS verification like a foreign or tampered
   token); `deleteAccountByEmail(email)` removes an account a test
   registered.
+- `totpCode(secret)` computes an RFC 6238 code; `signInWithSecondFactor(user)` enrols and verifies a TOTP factor and
+  returns an `aal2` token (Supabase ends the user's other sessions when a factor is first verified). The server suites run
+  with `ADMIN_MFA_REQUIRED=false` (`vitest.config.mts`) so admin tokens from `createTestUser('ADMIN')` keep working;
+  `test/api/admin-mfa.test.ts` loads its own app with it on (aal1 admin: 403 `MFA_REQUIRED` on `/api/admin/*`, a
+  customer on every other route, `GET /api/auth/me` still `ADMIN`; aal2 admin: through).
 - `resetDemoData()` runs `scripts/seed.ts`. That wipes every order through `reset_demo_orders` and restores the
   store, the menu (including stock) and the two demo accounts. It refuses to run unless the target is local.
 - `localSql(sql)` runs one row-returning statement as `postgres` (`supabase db query`, local by default) for what the API
