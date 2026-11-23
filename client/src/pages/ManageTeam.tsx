@@ -1,11 +1,12 @@
 import { useState, type FormEvent } from 'react';
-import { Check, Copy, Share2, UsersRound } from 'lucide-react';
+import { UsersRound } from 'lucide-react';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { ConfirmSheet } from '../components/ConfirmSheet';
 import { EmptyState } from '../components/EmptyState';
 import { ErrorState } from '../components/ErrorState';
 import { Input } from '../components/Input';
+import { InviteLink } from '../components/InviteLink';
 import { Skeleton } from '../components/Skeleton';
 import { TimeText } from '../components/TimeText';
 import { canManageManagers, canRemoveMember } from '../features/manage/manageRules';
@@ -33,7 +34,6 @@ export function ManageTeamTab({
   const [busy, setBusy] = useState(false);
   // The one-time token lives in this component's state only: never a store, localStorage or sessionStorage.
   const [link, setLink] = useState<{ email: string; url: string } | null>(null);
-  const [copied, setCopied] = useState(false);
   const [pending, setPending] = useState<Pending>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const mayManageManagers = canManageManagers(user, store);
@@ -47,7 +47,6 @@ export function ManageTeamTab({
     try {
       const { token } = await createInvite(store.id, { email: email.trim(), role });
       setLink({ email: email.trim(), url: `${window.location.origin}/join#${token}` });
-      setCopied(false);
       setEmail('');
       reload();
     } catch (err) {
@@ -72,15 +71,6 @@ export function ManageTeamTab({
       setActionError(err instanceof ApiError ? err.message : 'Something went wrong.');
     } finally {
       setBusy(false);
-    }
-  }
-
-  async function copy(url: string) {
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-    } catch {
-      setCopied(false);
     }
   }
 
@@ -114,31 +104,12 @@ export function ManageTeamTab({
           </Button>
         </form>
         {link && (
-          <div role="status" className="mt-4 space-y-2 rounded-card bg-surface-2 p-3">
-            <p className="text-sm font-semibold">Link for {link.email}. It is shown only once.</p>
-            <p className="break-all text-caption text-muted">{link.url}</p>
-            <div className="flex gap-2">
-              <Button variant="secondary" onClick={() => copy(link.url)}>
-                {copied ? (
-                  <Check className="h-4 w-4" aria-hidden />
-                ) : (
-                  <Copy className="h-4 w-4" aria-hidden />
-                )}
-                {copied ? 'Copied' : 'Copy'}
-              </Button>
-              {typeof navigator.share === 'function' && (
-                <Button
-                  variant="secondary"
-                  onClick={() => navigator.share({ url: link.url }).catch(() => undefined)}
-                >
-                  <Share2 className="h-4 w-4" aria-hidden /> Share
-                </Button>
-              )}
-              <Button variant="ghost" onClick={() => setLink(null)}>
-                Done
-              </Button>
-            </div>
-          </div>
+          <InviteLink
+            key={link.url}
+            email={link.email}
+            url={link.url}
+            onDone={() => setLink(null)}
+          />
         )}
       </Card>
 

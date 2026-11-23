@@ -445,7 +445,9 @@ The menu is public and is not polled. The Cart and Checkout pages load it again 
 `domain/schedule.ts` (`openState`, pure) turns a store row, its weekly hours, its exceptions, `last_order_minutes_before_close`
 and the clock into `{ state, nextChangeAt, label }`; `schedule.service` loads the schedule (cached `store_hours:<id>`)
 and the store reads, the menu and `createOrder` call it. Intervals belong to the local date they start on, so a
-past-midnight interval still counts the next morning.
+past-midnight interval still counts the next morning. `getSchedules` reads exceptions only from the UTC date two days
+back, since an earlier one can never matter (at UTC-12 the previous local day, whose overnight exception still runs
+into today, can be that date).
 
 ```mermaid
 flowchart TD

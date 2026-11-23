@@ -270,39 +270,14 @@ Approved with the plan. Each row is written into the roadmap's P5 section by the
 
 - [x] Merged
 
-`/before-write`: reuse-scout, expected EXTEND (the `integrations/media` layout, `IntegrationError`, the
-`productionProblems` guard); schema-guard, expected NEW TABLE (`fake_gateway_orders`, justified below).
+The payment gateway port, the fake provider (with its `fake_gateway_orders` table and local pay page) and the
+`PAYMENT_PROVIDER` setting, refused in production, are in place (#159).
 
-Server, `server/src/integrations/payments/`:
+Now documented in: [PAYMENTS "The port"](../docs/PAYMENTS.md#the-port),
+[PAYMENTS "The fake provider"](../docs/PAYMENTS.md#the-fake-provider),
+[PAYMENTS "Choosing a provider"](../docs/PAYMENTS.md#choosing-a-provider).
 
-- `port.ts`: `interface PaymentGateway` with `provider`, `createOrder({ orderId, amountPaise, customer, returnUrl,
-notifyUrl, expiresAt })` → `{ gatewayOrderId, session }`, `getOrderStatus(gatewayOrderId)`,
-  `verifyWebhook(rawBody, headers)` → a verified event or `null`, `refund({ gatewayOrderId, refundId, amountPaise,
-note })` and `getRefund(gatewayOrderId, refundId)`. `CheckoutSession` is `{ mode: 'redirect', url }`; an `sdk`
-  mode is added by the adapter PR only if P4's spike calls for it.
-- `fake.ts`: a provider that behaves like one. It keeps each order in `fake_gateway_orders` (id, amount, status,
-  refunds), because the API, the worker and the reconciler are separate processes. Its session is a redirect to a
-  page the API serves at `/api/fake-gateway/:gatewayOrderId`: plain HTML with three forms and no script ("Pay",
-  "Fail", "Leave it pending"), each of which sets the status, posts a signed webhook to our own route once PR 10
-  exists, and redirects to the `returnUrl`. Tests script it directly (`fake.setOutcome(id, …)`).
-- `index.ts`: `paymentGateway()` for new checkouts (from `PAYMENT_PROVIDER`) and `gatewayFor(provider)` for an
-  existing payment; each adapter built once, as `mediaStore()` does.
-- `utils/env.ts`: `PAYMENT_PROVIDER`, with `fake` (the default outside production) and `none` (no provider: the
-  default in production until G3), and `FAKE_GATEWAY_SECRET` (signs the fake's webhooks). `productionProblems`
-  refuses `PAYMENT_PROVIDER=fake`, and the fake's routes are not mounted in production. With `none`,
-  `paymentGateway()` throws an `AppError` the checkout route answers as 409 `PAYMENTS_NOT_ENABLED`; nothing else in
-  the API depends on a provider being set, so production starts and serves menus as before.
-
-Migration `<ts>_fake_gateway.sql`: the table, RLS on, `service_role` only, and a nightly purge of rows older than
-seven days added to an existing purge function's schedule.
-
-Tests: `test/unit/payments-port.contract.ts`, a suite any adapter must pass (create is idempotent on our order id,
-a status read of an unknown id fails as `IntegrationError`, a refund is idempotent on our refund id, a tampered
-webhook body verifies to `null`), run here against the fake; `env.test.ts` gains the production refusal.
-
-Docs: a new `docs/PAYMENTS.md` (the port, the fake, how to pay locally) with its row in `docs/README.md`'s
-ownership map; `docs/CONFIGURATION.md`, `docs/DEPLOYMENT.md` and `server/.env.example`;
-`docs/BACKEND_STRUCTURE.md`. Intent: `--server minor`.
+Merged pull requests are collapsed to a summary and links; their full specifications are in this file's history.
 
 ### PR 02 — Lifecycle v2: the states and one transition table (P5.2)
 

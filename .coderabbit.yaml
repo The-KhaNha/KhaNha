@@ -22,6 +22,9 @@ reviews:
       - 'release: client '
       - 'release: server '
       - 'Back-merge main ('
+      # A trivial no-release PR (docs, plans, a one-line setting) opts out by title, so the hour's single review is kept
+      # for a source PR (.claude/rules/workflow.md §21).
+      - '[skip review]'
   # Approval is a signal only: the ruleset requires `ci-ok`, not reviews, and the user still merges. Approval needs the
   # latest commit reviewed, so after fix pushes it waits for an `@coderabbitai review` (one review from the budget).
   auto_approvals:

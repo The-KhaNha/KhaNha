@@ -73,10 +73,11 @@ test('status errors are retried, not taken as the end', () => {
 });
 
 test('Cancelling is waited through, and after Cancelled the whole window passes before it returns', () => {
-  const r = run(['InProgress', 'Cancelling', 'Cancelling', 'Cancelled'], { wait: 2 });
+  // bash's SECONDS counts whole seconds, so a window of N can end up to a second early in real time: wait 3, expect 2.
+  const r = run(['InProgress', 'Cancelling', 'Cancelling', 'Cancelled'], { wait: 3 });
   assert.equal(r.status, 1);
   assert.match(r.out, /cancelled; waiting/);
-  assert.ok(r.seconds >= 1.5, `returned after ${r.seconds}s, before the window ended`);
+  assert.ok(r.seconds >= 1.9, `returned after ${r.seconds}s, before the window ended`);
 });
 
 test('a command still running at the deadline fails without returning early', () => {

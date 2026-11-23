@@ -70,435 +70,135 @@ configuration registry last because it is the largest step and blocks nothing el
 
 ## The pull requests
 
+Merged pull requests are collapsed to a summary and links; their full specifications are in this file's history.
+
 ### PR 01 — Toolchain pin and line endings (P0.1)
 
 - [x] Merged
 
-| File                                                    | Purpose                                                                                                                                                                        |
-| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `.nvmrc`, `.node-version` (both `24`)                   | nvm reads the first; fnm and nodenv read both; `actions/setup-node` reads `.node-version`                                                                                      |
-| `client/.npmrc`, `server/.npmrc` (`engine-strict=true`) | `npm ci` and `npm install` refuse another Node major (`EBADENGINE`); this covers Volta and plain installs                                                                      |
-| `client/package.json`, `server/package.json`            | `"engines": { "node": "24.x" }`; server `@types/node` → `^24`                                                                                                                  |
-| root `package.json`                                     | `private`, `engines`, devDependency `prettier`, scripts `format` and `format:check` (`scripts/**`, `.github/**`, `plans/**`); later PRs add their scripts                      |
-| `.gitattributes`                                        | keep the graphify merge line; add `* text=auto eol=lf`, `*.sh text eol=lf`, `*.template text eol=lf`, `Dockerfile* text eol=lf`, `*.{png,jpg,jpeg,webp,ico,woff,woff2} binary` |
-| `README.md`, `CLAUDE.md` §3                             | prerequisites "Node 24 with any installer; `npm ci` refuses other majors" (replacing "Node 20+ … Node 26"); tooling row                                                        |
+Node 24 is pinned for every installer, the packages refuse another major, and the repository normalises line endings to LF.
 
-Details: inspect `git ls-files --eol` first, then run `git add --renormalize .` once in this PR and nowhere else, so
-the renormalisation diff stays isolated.
-
-Verify: `node -v` prints 24.x; `npm ci` in both packages; the gate in both; in a Node 22 shell `npm ci` fails with
-`EBADENGINE`; `git ls-files --eol | grep -c crlf` prints 0.
+Now documented in: [README.md](../README.md) "Prerequisites"
 
 ### PR 02 — CI static jobs, `ci-ok`, bundle budget, Dependabot, PR template (P0.2)
 
 - [x] Merged
 
-| File                               | Purpose                                                                                                                                                                 |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `.github/workflows/ci.yml`         | triggers `pull_request: { branches: [dev, main] }` and `push: { branches: [dev, main] }`; jobs `client`, `server-static`, `repo`, `ci-ok`                               |
-| `client/vite.config.ts`            | `build.manifest: true`                                                                                                                                                  |
-| `client/perf-budget.json`          | `{ "initialJsGzipKb": 170 }` — the budget lives in a file, not in the script                                                                                            |
-| `scripts/ci/check-bundle.mjs`      | entry chunk plus its static `imports` from `client/dist/.vite/manifest.json`, gzip level 9, a table, exit 1 when over; lazy chunks listed for information               |
-| `.github/dependabot.yml`           | npm in `/client` and `/server`, `github-actions`, `docker` (active from PR 09); weekly; grouped minor/patch; `target-branch: dev`; `labels: [dependencies, no-release]` |
-| `.github/pull_request_template.md` | checkboxes: intent recorded or `no-release`; docs updated per §6; migration expand/contract stage stated; `/post-change` run                                            |
-| `docs/TESTING.md`, `CLAUDE.md` §13 | a "Continuous integration" section replaces "Staging later (GitHub Actions)"; §13 gains "CI runs the same gate on every PR into `dev` and `main`"                       |
+CI runs the static jobs on every pull request into `dev` and `main`, gated by one required `ci-ok` check, with the initial-JS budget in `client/perf-budget.json`, grouped Dependabot updates and a pull request template.
 
-Details:
-
-- `concurrency: { group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}, cancel-in-progress: ${{ github.event_name == 'pull_request' }} }`.
-- `actions/setup-node@v4` with `node-version-file: .node-version`, `cache: npm`, `cache-dependency-path` per package.
-- `client`: `npm ci`, typecheck, lint, `format:check`, test, `build:staging`, `node scripts/ci/check-bundle.mjs`.
-  `server-static`: `npm ci --ignore-scripts` (skips the Supabase CLI binary download), typecheck, lint,
-  `format:check`, build. `repo`: root `npm ci`, `format:check`, `node --test scripts`.
-- `ci-ok`: `needs` every other job, `if: always()`, fails when any result is `failure` or `cancelled`; `skipped`
-  counts as success.
-
-Verify: `docker run --rm -v "$PWD":/repo -w /repo rhysd/actionlint:latest -color`; a draft PR into `dev` shows `ci-ok`
-green; setting the budget to 10 turns the `client` job red.
-
-User steps: labels `no-release` and `dependencies`; rulesets on `dev` and `main` requiring a PR and `ci-ok` (no
-bypass list; `main` accepts PRs from `release/*` and `hotfix/*` only); make `dev` the GitHub default branch.
+Now documented in: [docs/TESTING.md "Continuous integration"](../docs/TESTING.md#continuous-integration) (including Dependabot)
 
 ### PR 03 — Supabase in CI, migrations job, generated-types drift (P0.2)
 
 - [x] Merged
 
-| File                                   | Purpose                                                                                                                                                                                                                                                                                                                     |
-| -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `server/package.json`                  | script `db:start:ci`: `supabase start -x studio,storage-api,imgproxy,mailpit,realtime,edge-runtime,logflare,vector,supavisor,postgres-meta` (the devDependency CLI, pinned by the lockfile; check the `-x` names against `npx supabase start --help`)                                                                       |
-| `.github/workflows/ci.yml`             | job `server-tests`: `npm ci`, `npm run db:start:ci`, `cp .env.example .env`, `npm run seed`, `npm test`, then `npm run db:types && git diff --exit-code -- src/types/database.ts`; `timeout-minutes: 15`; `if: always()` → `npm run db:stop`. Job `migrations`: `if: github.event_name == 'pull_request'`, `fetch-depth: 0` |
-| `scripts/ci/check-migrations.mjs`      | `--base origin/<base>`: `git diff --name-status --no-renames <base>...HEAD -- server/supabase/migrations/` may contain only `A` rows; every added 14-digit prefix sorts after the newest on the base; files already on `origin/main` are ignored (hotfix back-merges)                                                       |
-| `scripts/ci/check-migrations.test.mjs` | `node --test` against a scratch repository, the same technique as `major-change-gate.js --self-test`                                                                                                                                                                                                                        |
-| `docs/TESTING.md`, `CLAUDE.md` §2      | what runs in CI, the 15-minute budget, how to reproduce locally; §2 "append-only once pushed (enforced by the `migrations` CI job)"                                                                                                                                                                                         |
+The server suite runs against a slim local Supabase in CI, generated types are checked for drift, and a `migrations` job rejects edits to pushed migrations and out-of-order timestamps.
 
-Details: `cp .env.example .env` works because `server/.env.example` already holds the local CLI's default keys and
-`http://127.0.0.1:54321`, so the test-target guard sees `APP_ENV=local`. `run-lock.ts` needs nothing: one job, one
-test process. Expect 8–10 minutes for the whole workflow (image pulls 2–4 min, tests 1–3 min).
-
-Verify: a branch that edits an existing migration turns `migrations` red; one that adds an older-timestamped migration
-turns it red; a clean branch is green and `database.ts` shows no drift.
+Now documented in: [docs/TESTING.md "Continuous integration"](../docs/TESTING.md#continuous-integration)
 
 ### PR 04 — `security.yml` (P0.2)
 
 - [x] Merged
 
-Triggers: PRs into `dev` and `main`, and a weekly schedule. Not a required check. Jobs: `audit`
-(`npm audit --omit=dev --audit-level=high` in each package); `secrets` (the gitleaks **binary** downloaded from its
-release, `gitleaks detect --redact`, `fetch-depth: 0`; the GitHub Action needs a licence for organisation repos);
-CodeQL is a **user step** (default setup in the repository's Code security settings), possible only if the repository
-is public or has GitHub Code Security; otherwise skip it and say so in `docs/TESTING.md`.
+`security.yml` runs `npm audit` and a gitleaks scan on pull requests and weekly, as an advisory check; CodeQL stayed a user step.
 
-Verify: the workflow is green; a scratch commit containing a fake `sb_secret_` string turns `secrets` red.
+Now documented in: [docs/TESTING.md "Security checks"](../docs/TESTING.md#security-checks-securityyml), [docs/adr/011-free-tiers.md](../docs/adr/011-free-tiers.md) (CodeQL)
 
 ### PR 05 — Versioning with change intents (P0.3)
 
 - [x] Merged
 
-| File                                         | Behaviour                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `.changes/README.md`                         | the format (front matter `client:` / `server:` = major, minor or patch, then a summary), the level rules table from the roadmap, "docs-only changes need no intent"                                                                                                                                                                                                                                                                                                             |
-| `scripts/version/change.mjs`                 | `npm run change -- --client minor --server patch "summary"` writes `.changes/<yyyymmdd>-<hhmmss>-<4hex>.md`; validates the levels; needs at least one package; `--dry-run`                                                                                                                                                                                                                                                                                                      |
-| `scripts/version/release.mjs`                | highest level per package; writes `version` into `package.json` and `package-lock.json` (`""` and `packages[""]`) directly, without `npm version` (no lifecycle scripts, no git checks); prepends `## <version> — <date>` and the summaries to `client/CHANGELOG.md` and `server/CHANGELOG.md`; deletes the consumed intents; writes gitignored `release.json` (`{ client: { version, tag }, server: {…} }`); refuses `major` before 1.0.0 without `--allow-major`; `--dry-run` |
-| `scripts/version/check.mjs`                  | PR into `dev`, or `hotfix/*` into `main`: source changed (`client/src`, `server/src`, `server/scripts`, `server/supabase/migrations`, any `package.json`) ⇒ a file was **added** under `.changes/`, unless `--allow-missing` (the `no-release` label, which Dependabot PRs carry). PR from `release/*` into `main`: `.changes/` is empty and both versions are above the latest `client-v*` / `server-v*` tags. Never runs on `push`                                            |
-| `scripts/version/*.test.mjs`                 | `node --test`, run by the `repo` job                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| root `package.json`                          | scripts `change`, `release`, `release:dry`, `change:check`                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| `.github/workflows/ci.yml`                   | job `version-intent` (PR only) runs `check.mjs` with the flags derived from `github.base_ref`, `github.head_ref` and the labels                                                                                                                                                                                                                                                                                                                                                 |
-| `.github/workflows/release.yml`              | job `prepare` (`workflow_dispatch`, input `dry_run` default `true`): check out `dev`, `npm run release`, commit on `release/<yyyymmdd>`, push, open the PR into `main` with an `actions/create-github-app-token` token. Job `tag-and-backmerge` (`push` to `main`): for each package whose version has no tag, create `client-vX` / `server-vY`; push `backmerge/<sha7>` and open the PR into `dev` labelled `no-release`                                                       |
-| `client/CHANGELOG.md`, `server/CHANGELOG.md` | seeded with `## 0.1.0`                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `.claude/hooks/major-change-gate.js`         | a pure `needsIntent(files)`; a one-time reminder "source changed, no `.changes/*.md`: run `npm run change`"; `--self-test` cases                                                                                                                                                                                                                                                                                                                                                |
-| `.claude/skills/post-change/SKILL.md`        | scope `origin/dev...HEAD`; a step "record the intent if missing"                                                                                                                                                                                                                                                                                                                                                                                                                |
-| 14 `.claude/**` files that say `origin/main` | one convention: "the PR's base branch: `origin/dev` for features, `origin/main` for hotfixes" (10 agents, `hooks/block-destructive-git.js`, skills `db-migration`, `post-change`, `resolve-conflicts`)                                                                                                                                                                                                                                                                          |
-| `CLAUDE.md`                                  | new **"Versioning and branches"** section (branch model, level rules, `npm run change`, the release PR, tags, back-merge, hotfixes, "the release commit inside the release PR is the one automated commit; Claude never commits or tags"); §3 root scripts; §6 rows for `.changes/README.md` and the CHANGELOGs; §12 note                                                                                                                                                       |
-| `.changes/<date>-p0-foundations.md`          | the first intent: `client: patch`, `server: patch`                                                                                                                                                                                                                                                                                                                                                                                                                              |
+Versions come from change intents in `.changes/`: `change`, `release` and `check` scripts, a release workflow that opens the release PR and the back-merge, and the branch model in the agent rules.
 
-Details: staging images are tagged `dev-<sha7>`; `package.json` keeps the last released version; `/api/health.commit`
-and Profile disambiguate; the 426 gate compares the numeric triple only, so staging is never "outdated" against a new
-`min_client_version`.
-
-Verify: two branches that each add an intent merge cleanly; `npm run release:dry` shows one bump per package;
-`node scripts/version/check.mjs --base origin/dev` fails after touching `server/src` without an intent and passes with
-`--allow-missing`; `release.yml` with `dry_run=true` prints the same plan.
-
-User steps: create the GitHub App (contents and pull-requests write), install it on the repository, store
-`RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY` as repository secrets.
+Now documented in: [.changes/README.md](../.changes/README.md), [.claude/rules/workflow.md §21](../.claude/rules/workflow.md#21-branches-pr-size-versions-and-releases), [docs/adr/008-semver-from-change-intents.md](../docs/adr/008-semver-from-change-intents.md)
 
 ### PR 06 — Architecture decision records (P0.8)
 
 - [x] Merged
 
-`docs/adr/0000-template.md` (Status, Date, Context, Options considered, Decision, Consequences, Links),
-`docs/adr/README.md` (the index), and `001-brands-own-stores.md`, `002-outbox-pgmq-pg-cron.md`,
-`003-payment-aggregator-chosen-in-p4.md`, `004-rupees-and-paise.md`, `005-modular-monolith-three-processes.md`,
-`006-media-s3-cloudfront.md`, `007-pilot-on-ec2-compose.md`, `008-semver-from-change-intents.md`,
-`009-rate-limiting-token-buckets.md`, `010-polling-plus-web-push.md`, each `Status: Proposed`, lifted from the
-roadmap's ADR table (decision, rejected alternative, consequences) and linking the roadmap step that depends on it.
-Docs: CLAUDE.md §6 row "a decision worth recording → `docs/adr/NNN-title.md` (`agent-skills:documentation-and-adrs`)";
-README docs table row.
+ADR-001 to ADR-010 were written from the roadmap's decision table with a template and an index.
 
-User step: move each ADR to Accepted or amend it; ADR-002 and ADR-007 before PR 09.
+Now documented in: [docs/adr/README.md](../docs/adr/README.md#index)
 
 ### PR 07 — Health, readiness, keep-alive, client version (P0.7a)
 
 - [x] Merged
 
-Server:
+`/api/health` reports version and commit, `/api/ready` probes the database in about a second, keep-alive is tuned for the load balancer, and every request carries `X-Client-Version`.
 
-| File                                   | Change                                                                                                                                                                                                                    |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/utils/version.ts`                 | `APP_VERSION` read from `package.json` relative to `process.cwd()` (`server/` in dev and tests, `/app` in the image; never `__dirname`, which differs between `src/` and `dist/src/`); `GIT_COMMIT` from env              |
-| `src/utils/env.ts`                     | `GIT_COMMIT` (string, default `unknown`); `KEEP_ALIVE_TIMEOUT_MS` (positive int, default `65000`)                                                                                                                         |
-| `src/controllers/health.controller.ts` | `GET /api/health` → `{ ok: true, version, commit }`; `GET /api/ready` → one `site_settings` select with `AbortSignal.timeout(1000)`, 200 `{ ready: true }` or 503 `{ ready: false }`, never thrown into the error handler |
-| `src/routes/index.ts`                  | `/health` and `/ready` registered first (PR 08 mounts the gate after them)                                                                                                                                                |
-| `src/server.ts`                        | `server.keepAliveTimeout = env.KEEP_ALIVE_TIMEOUT_MS`; `server.headersTimeout = env.KEEP_ALIVE_TIMEOUT_MS + 1000` (must stay larger); a 10 s shutdown deadline (`setTimeout(() => process.exit(1), 10_000).unref()`)      |
-| `src/middleware/clientVersion.ts`      | `readClientVersion(req)`: accepts `^\d+\.\d+\.\d+(-[\w.]+)?$` up to 32 chars, else `undefined` (no log injection)                                                                                                         |
-| `src/app.ts`                           | `pinoHttp({ …, customProps: (req) => ({ clientVersion: readClientVersion(req) ?? 'none' }) })`                                                                                                                            |
-
-Client:
-
-| File                                 | Change                                                                                                                                                                                                                                                              |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `vite.config.ts`, `vitest.config.ts` | `define: { __APP_VERSION__: JSON.stringify(pkg.version), __APP_COMMIT__: JSON.stringify(process.env.GIT_COMMIT ?? 'local') }` in both (otherwise `api.ts` throws `ReferenceError` in unit tests); `src/vite-env.d.ts` declares both                                 |
-| `src/lib/appVersion.ts`              | exports `APP_VERSION`, `APP_COMMIT`                                                                                                                                                                                                                                 |
-| `src/services/api.ts`                | sends `X-Client-Version: APP_VERSION` on every request (same origin through the Vite proxy and nginx: no preflight)                                                                                                                                                 |
-| `src/pages/Profile.tsx`              | footer "Food Pickup v0.1.0 (1a2b3c4)"                                                                                                                                                                                                                               |
-| `src/features/orders/orderStatus.ts` | `FALLBACK_STATUS_META` ("Updating…", neutral tokens, `next: null`, `actionLabel: null`, `canCancel: false`) and a `statusMeta(status: string)` accessor (the `Record<OrderStatus, …>` type would make `?? FALLBACK` dead code); replace every `STATUS_META[…]` read |
-
-Tests: `test/api/health.safe.test.ts` (`version` matches `^\d+\.\d+\.\d+`, `/api/ready` 200);
-`test/unit/readiness.safe.test.ts` (a rejecting probe → 503); client `api.test.ts` asserts the header;
-`orderStatus.test.ts` covers the fallback.
-
-Docs: `docs/API.md` (`GET /health`, new `GET /ready`, a Headers row for `X-Client-Version`); `docs/DEPLOYMENT.md` and
-`server/.env.example` (`GIT_COMMIT`, `KEEP_ALIVE_TIMEOUT_MS` and why it exceeds the ALB's 60 s); `docs/LOGGING.md`
-(`clientVersion` on access lines); `docs/BACKEND_STRUCTURE.md`; `docs/COMPONENTS.md` (`lib/appVersion.ts`);
-`docs/FRONTEND_STRUCTURE.md` (Profile).
-
-Verify: `curl -s localhost:8000/api/health` shows version and commit; `npm run db:stop` → `/api/ready` answers 503
-within about a second while `/api/health` stays 200; Profile shows the version at 390 px.
+Now documented in: [docs/API.md "GET /health"](../docs/API.md#get-health), [docs/API.md "GET /ready"](../docs/API.md#get-ready), [docs/DEPLOYMENT.md "Server environment variables"](../docs/DEPLOYMENT.md#server-environment-variables), [docs/LOGGING.md](../docs/LOGGING.md)
 
 ### PR 08 — `min_client_version` and the 426 gate (P0.7b)
 
 - [x] Merged
 
-| File                                                     | Change                                                                                                                                                                                                                                                                                |
-| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `server/supabase/migrations/<ts>_min_client_version.sql` | `alter table public.site_settings add column min_client_version text not null default '0.0.0' check (min_client_version ~ '^\d+\.\d+\.\d+$');` then `npm run db:types`                                                                                                                |
-| `src/utils/semver.ts`                                    | `parseSemver`, `compareSemver` on the numeric triple (prerelease ignored, see the staging labelling)                                                                                                                                                                                  |
-| `src/utils/errors.ts`                                    | `ErrorCode` + `CLIENT_OUTDATED`; factory `clientOutdated()` → `AppError(426, …, 'A new version of Food Pickup is available. Refresh the page to continue.')`                                                                                                                          |
-| `src/middleware/clientVersion.ts`                        | `clientVersionGate`: `readClientVersion(req) ?? '0.1.0'` (missing or malformed = the legacy V0 client); `await getSettings()` (already `cached('site_settings')`, so no database hit per request); throw when below                                                                   |
-| `src/routes/index.ts`                                    | **exemption by mount order:** `/health`, `/ready` (later `/config` and the webhooks) are registered before `apiRouter.use(clientVersionGate)`; no path list and no `OPTIONS` case (`cors()` answers preflights before the router; same-origin sends none); a comment says why         |
-| `src/middleware/errorHandler.ts`                         | a 426 logs at `debug`: a stale tab will keep asking                                                                                                                                                                                                                                   |
-| serializer, DTOs, schema, seed                           | `SiteSettingsDto.minClientVersion` on both sides; `updateSettingsSchema.minClientVersion` (`^\d+\.\d+\.\d+$`); `updateSettings` passes it; `scripts/seed.ts` resets it to `'0.0.0'`. The admin form field arrives with the registry rework in PR 13; until then the API is the editor |
-| `client/src/services/api.ts`                             | handles 426 next to the 401 branch: sets an `outdated` flag in a tiny store                                                                                                                                                                                                           |
-| `client/src/App.tsx`                                     | a top banner "New version available" with a Refresh `Button` while the flag is set                                                                                                                                                                                                    |
-| `client/src/lib/useResource.ts`                          | stops polling once the last error was a 426 (otherwise a staff board with data on screen would keep polling every 4 s, because `ErrorState` renders only without data)                                                                                                                |
+`site_settings.min_client_version` and a gate that answers 426 `CLIENT_OUTDATED` to older clients, with a refresh banner in the client.
 
-The deployed V0 client, which lacks the banner, still shows the envelope's message in `ErrorState` because
-`request()` maps any error envelope to an `ApiError` whose message the UI shows. That is the intended fallback for the
-first gated release.
-
-Tests: `test/unit/semver.safe.test.ts`; `test/api/client-version.test.ts` (destructive: set `9.0.0` through
-`supabaseAdmin` and `invalidate('site_settings')`; `GET /api/menu` with `X-Client-Version: 0.1.0` → 426 with
-`{ error: { code: 'CLIENT_OUTDATED' } }`; without the header → 426; with `9.0.0` → 200; `/api/health` → 200;
-`resetDemoData()` in `afterAll`); `admin.test.ts` accepts and rejects the field; client `api.test.ts` sets the flag on
-426; `useResource.test.ts` stops polling.
-
-Docs: `docs/SCHEMA.md` (`site_settings`); `docs/API.md` (426 row, the admin settings body, a "Client version gate"
-paragraph); `docs/BACKEND_STRUCTURE.md`; `docs/FRONTEND_STRUCTURE.md` (the banner); CLAUDE.md §2 "a change the
-deployed client cannot survive ships with a `min_client_version` bump".
-
-Verify: the gate tests are green; `PATCH /api/admin/settings` with `{"minClientVersion":"9.0.0"}` makes an old tab
-show the banner and `curl -i localhost:8000/api/menu` answer `426`; reset to `0.0.0`.
+Now documented in: [docs/API.md "Client version gate"](../docs/API.md#client-version-gate)
 
 ### PR 09 — Dockerfiles, nginx, runtime env (P0.6a)
 
 - [x] Merged
 
-**`server/Dockerfile`** (the roadmap's three stages): `deps` runs `npm ci --ignore-scripts` (skips the Supabase CLI
-binary); `build` runs `npm run build` and keeps `dist/scripts` (so P8.5 can seed staging with
-`node dist/scripts/seed.js`; the demo seed already refuses `APP_ENV=production`); `runtime` runs
-`npm ci --omit=dev --ignore-scripts`, `ARG GIT_COMMIT=unknown` → `ENV GIT_COMMIT`, `ENV NODE_ENV=production`,
-`USER node`, `EXPOSE 8000`, a shell-form `HEALTHCHECK` on `http://127.0.0.1:${PORT:-8000}/api/health` so `$PORT`
-expands, and the exec-form `CMD ["node","dist/src/server.js"]` so Node is PID 1 and receives SIGTERM.
-`server/.dockerignore`: `node_modules`, `dist`, `.env*`, `supabase/.temp`, `test`, `coverage`.
+The API and web Dockerfiles, nginx with security headers and a report-only CSP, and a runtime env script so one web image serves any environment.
 
-**`client/Dockerfile`**: stage 1 `node:24-alpine`, `ARG GIT_COMMIT`, `npm ci`, `npm run build:container` (new script
-`vite build --mode container`; `vite.config.ts` skips its required-env check when `mode === 'container'`; a committed
-`client/.env.container` holds placeholders); stage 2 `nginxinc/nginx-unprivileged:1.27-alpine`,
-`COPY --from=build /app/dist /usr/share/nginx/html`, `COPY nginx/default.conf.template /etc/nginx/templates/`,
-`COPY nginx/security.conf /etc/nginx/snippets/`, `COPY --chmod=755 nginx/runtime-env.sh
-/docker-entrypoint.d/40-runtime-env.sh`, `EXPOSE 8080`, `HEALTHCHECK` on `/healthz`. `client/.dockerignore`:
-`node_modules`, `dist`, `.env*`.
-
-**`client/nginx/default.conf.template`** (rendered by the image's entrypoint, which substitutes only variables present
-in the environment, so `$uri` and `$host` survive): `listen 8080`; `location = /healthz` → 200; `location =
-/runtime-env.js` → `alias /tmp/runtime-env/runtime-env.js` with `Cache-Control: no-cache`; `/assets/` →
-`public, max-age=31536000, immutable`; `/images/` → one week; `location = /index.html` → `no-cache`; `/api/` →
-`proxy_pass ${API_UPSTREAM}` (**no trailing slash**, or nginx strips `/api`), `proxy_http_version 1.1`, `Host`,
-`X-Forwarded-For`, `X-Forwarded-Proto`, `proxy_read_timeout 30s`; `location /` → `try_files $uri /index.html`; gzip on
-for text, CSS, JavaScript, JSON and SVG; `include /etc/nginx/snippets/security.conf` in **every** location, because an
-`add_header` inside a location discards the inherited ones.
-
-**`client/nginx/security.conf`**: `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`,
-`Permissions-Policy: camera=(self)`, and the CSP as **`Content-Security-Policy-Report-Only`** in P0:
-`default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src
-https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' ${SUPABASE_URL}; frame-ancestors 'none';
-base-uri 'self'`. The inline font `onload=` handler in `index.html` moves into `main.tsx` in this PR, so enforcing
-later needs no `'unsafe-inline'` for scripts. Flipping to enforce is a user decision once staging shows no reports.
-
-**`client/nginx/runtime-env.sh`**: fails fast when `SUPABASE_URL` or `SUPABASE_PUBLISHABLE_KEY` is empty or contains a
-quote; writes `window.__RUNTIME_ENV__={"SUPABASE_URL":…,"SUPABASE_PUBLISHABLE_KEY":…,"LOG_LEVEL":…,"REQUEST_TIMEOUT_MS":…};`
-to `/tmp/runtime-env/runtime-env.js` (uid 101 cannot write the html directory).
-
-**Client code**: `index.html` loads `/runtime-env.js` as a classic script before the module script;
-`client/public/runtime-env.js` is `window.__RUNTIME_ENV__ = {};` for development (Vite copies it to `dist/` and the
-nginx `alias` shadows it); new `src/lib/runtimeEnv.ts` returns each value as
-`nonEmpty(window.__RUNTIME_ENV__?.X) ?? import.meta.env.VITE_X` (static property access, so Vite still inlines the
-build value); `lib/supabase.ts`, `lib/logger.ts` and `services/api.ts` (`REQUEST_TIMEOUT_MS`, closing that A1 row)
-read through it; `src/vite-env.d.ts` declares `Window.__RUNTIME_ENV__`. Test `runtimeEnv.test.ts`: runtime wins over
-build; unset falls back to build; empty string falls back to build.
-
-Docs: `docs/DEPLOYMENT.md` "Containers" replaces "Future: Docker + nginx" (images, build args, the runtime env table,
-the nginx header table, size budgets 50 MB web / 200 MB server); `client/.env.example` note on runtime env; one README
-line; CLAUDE.md §2c future note becomes present tense; `docs/COMPONENTS.md` (`lib/runtimeEnv.ts`);
-`docs/FRONTEND_STRUCTURE.md` (`nginx/`, `public/runtime-env.js`).
-
-Verify:
-
-```bash
-docker build -t fp-api --build-arg GIT_COMMIT=$(git rev-parse --short HEAD) server
-docker run --rm -p 8000:8000 --env-file server/.env -e SUPABASE_URL=http://host.docker.internal:54321 fp-api
-curl -s localhost:8000/api/health          # shows the commit
-docker build -t fp-web client
-docker run --rm -p 8080:8080 -e API_UPSTREAM=http://host.docker.internal:8000 \
-  -e SUPABASE_URL=http://127.0.0.1:54321 -e SUPABASE_PUBLISHABLE_KEY=<local publishable key> fp-web
-curl -i localhost:8080/runtime-env.js      # no-cache, JSON body; /assets/* immutable; /menu serves index.html
-docker image inspect --format '{{.Size}}' fp-web fp-api
-docker exec <id> id -u                     # not 0, in both
-```
-
-**First hour:** sign in through the container and call `/api/orders`. If a 401 "session expired" appears, the
-server library validates the JWT issuer, and the API must reach Supabase at the browser's URL (`network_mode: host`
-on Linux). Record the finding in `docs/DEPLOYMENT.md`.
+Now documented in: [docs/DEPLOYMENT.md "Containers"](../docs/DEPLOYMENT.md#containers), [docs/DEPLOYMENT.md "Web image runtime environment"](../docs/DEPLOYMENT.md#web-image-runtime-environment)
 
 ### PR 10 — `compose.yaml` and the `images` CI job (P0.6b)
 
 - [x] Merged
 
-`compose.yaml` at the root: `api` (build `server` with `GIT_COMMIT: ${GIT_COMMIT:-local}`, `env_file: server/.env`,
-`SUPABASE_URL` per PR 09's finding, `CLIENT_ORIGIN: http://localhost:8080`, `TRUST_PROXY_HOPS: 1`,
-`extra_hosts: ["host.docker.internal:host-gateway"]`); `web` (`ports: ["8080:8080"]`, `API_UPSTREAM: http://api:8000`,
-`SUPABASE_URL` set to the browser-side URL, `SUPABASE_PUBLISHABLE_KEY`, `depends_on: api: condition: service_healthy`
-because nginx resolves the upstream at start). Supabase stays on the host. `worker`, `reconciler` and `minio` appear
-as comments for P1 and P3.
+`compose.yaml` runs the API and web images against the host's Supabase, and the `images` CI job builds, lints and smoke-tests both.
 
-`ci.yml` job `images` (part of `ci-ok`): buildx; `docker/build-push-action@v6` per image with `push: false`,
-`load: true`, `cache-from` / `cache-to: type=gha`, `build-args: GIT_COMMIT=${{ github.sha }}`; `hadolint` on both
-Dockerfiles; smoke: `fp-api` with dummy Supabase env → `/api/health` 200 (no database needed), `fp-web` → `/healthz`
-and `/runtime-env.js` 200; size assertions (web under 50 MB, server under 200 MB). No Trivy step.
-
-Docs: `docs/DEPLOYMENT.md` "Local compose" (`docker compose up --build web api`, host Supabase, seeding through
-`docker compose run api node dist/scripts/seed.js`); README "Run it in containers"; CLAUDE.md §3 ports (compose on 8080) and §18 (compose as a backgrounded long-running process, probe `http://localhost:8080/healthz`);
-`docs/TESTING.md` CI row for `images`.
-
-Verify: `npm run db:start` and `npm run seed` on the host, `docker compose up --build web api`, then the README demo
-script at `http://localhost:8080` (browse, sign in, order, staff board); `docker compose ps` shows both services
-healthy.
+Now documented in: [docs/DEPLOYMENT.md "Local compose"](../docs/DEPLOYMENT.md#local-compose), [docs/TESTING.md "Continuous integration"](../docs/TESTING.md#continuous-integration)
 
 ### PR 11 — Lighthouse CI (P0.2, deferred until the compose stack exists)
 
 - [x] Merged
 
-`client/lighthouserc.json`: `formFactor: mobile`, 360×640, `throttling: { rttMs: 150, throughputKbps: 1638,
-cpuSlowdownMultiplier: 4 }`, `numberOfRuns: 3`; LCP ≤ 2500 ms and CLS ≤ 0.1 as **warn** for the first two weeks, TBT
-≤ 200 ms warn; URLs `/` and `/menu`. `.github/workflows/perf.yml`: PRs touching `client/**` plus nightly; not a
-required check; steps `db:start:ci` and seed, `docker compose up -d --build web api`, `npx @lhci/cli autorun`, upload
-the report as an artifact. Docs: `docs/PERF_BASELINE.md` gains a "CI numbers" section header (perf-auditor owns the
-content and re-baselines on Node 24); `docs/TESTING.md` row.
+`perf.yml` runs Lighthouse against the compose stack at the mobile budgets as an advisory check.
 
-Verify: the workflow is green with its warnings listed, and the report artifact opens.
+Now documented in: [docs/TESTING.md "Lighthouse"](../docs/TESTING.md#lighthouse-perfyml)
 
 ### PR 12 — Error classes, cause chains, redaction (P0.5)
 
 - [x] Merged
 
-| File                             | Change                                                                                                                                                                                                                                                                                                     |
-| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/utils/errors.ts`            | `ErrorCode` + `UPSTREAM_UNAVAILABLE`; `class IntegrationError extends Error { provider; operation; retryable; cause }` (ES2022 `cause`); drop `INVALID_CREDENTIALS`, which only the client synthesises                                                                                                     |
-| `src/middleware/errorHandler.ts` | `IntegrationError` → 503 `{ error: { code: 'UPSTREAM_UNAVAILABLE', message: 'The service is temporarily unavailable. Please try again in a moment.' } }` with `Retry-After: 5`; the error log line gains `route`, `status`, `code`, `userId`                                                               |
-| `src/utils/supabase.ts`          | a PostgREST error with an empty `code` and a transport message (`fetch failed`, `ECONNREFUSED`, `ETIMEDOUT`) becomes `IntegrationError('supabase', 'postgrest', true, { cause })`; confirm the exact shape by stopping Supabase and calling `/api/orders`                                                  |
-| `src/middleware/auth.ts`         | a Supabase Auth 5xx becomes `IntegrationError('supabase-auth', 'verify', true, { cause })`                                                                                                                                                                                                                 |
-| `src/utils/logger.ts`            | `serializers: { err: pino.stdSerializers.errWithCause }`; `REDACT_PATHS` gains `signature`, `checksum`, `secret`, `apiKey`, `api_key`, `key_secret`, `webhookSecret`, `webhook_secret`, `vpa`, `pickupCode`, `pickup_code`, `customerPhone`, `customer_phone`, `headers.authorization`, each also as `*.x` |
+`IntegrationError` with cause chains maps to 503 `UPSTREAM_UNAVAILABLE`, and the logger redacts the wider set of secret and personal keys.
 
-Not in this PR: `InvariantError` (P1.2, with its first thrower), 502 `PAYMENT_UNAVAILABLE` (P5), the client error
-reporter (P1.6), provider-specific header names (with the adapter in P5).
-
-Tests: `test/logging.safe.test.ts` covers every new key at the top level and nested, and `err.cause.message` in the
-output; `test/unit/errors.safe.test.ts` covers the mapping table with a fake `req` / `res`.
-
-Docs: `docs/LOGGING.md` ("Error classes", "Never logged"); `docs/API.md` error table (503 `UPSTREAM_UNAVAILABLE`);
-CLAUDE.md §10 errors bullet and §19 table row.
-
-Verify: `npm run db:stop`, then `curl -i localhost:8000/api/menu` answers the 503 envelope and the log shows one
-`error` line with `err.cause`.
+Now documented in: [docs/LOGGING.md "Error classes"](../docs/LOGGING.md#error-classes), [docs/LOGGING.md "Never logged"](../docs/LOGGING.md#never-logged), [docs/API.md "Errors"](../docs/API.md#errors)
 
 ### PR 13 — Config a: `site_settings` columns and the admin form (P0.4)
 
 - [x] Merged
 
-Migration `<ts>_site_settings_config.sql`: `max_lines_per_order integer not null default 30 check (… between 1 and
-100)`, `order_poll_ms` (4000), `orders_poll_ms` (8000), `staff_board_poll_ms` (4000), each
-`check (… between 2000 and 60000)`. No `session_idle_days` (deployment config, PR 14). Then `npm run db:types`;
-`toSiteSettingsDto`, `SiteSettingsDto` and the client `SiteSettings`; `updateSettingsSchema` bounds mirrored;
-`updateSettings` builds the update from defined fields; the seed reset covers every column. Client:
-`features/admin/settingsRules.ts` registry gains `min` and `kind: 'integer' | 'semver'` (`minClientVersion` from PR
-08 joins the form); `pages/Admin.tsx` renders from the registry; `Admin.test.tsx`, `settingsRules.test.ts` and
-`admin.test.ts` updated.
+The order-lines limit and the three polling intervals became `site_settings` columns, editable from the admin form, which renders from a registry.
 
-Docs: `docs/SCHEMA.md`; `docs/API.md` admin settings body; new `docs/CONFIGURATION.md` (the registry: key, tier,
-type, default, bounds, reader, editor) with its CLAUDE.md §6 row.
-
-Verify: the gate; `PATCH /api/admin/settings` with each new field in and out of bounds; the admin page at 390 px.
+Now documented in: [docs/CONFIGURATION.md "Site settings"](../docs/CONFIGURATION.md#site-settings)
 
 ### PR 14 — Config b: `GET /api/config`, `useConfig`, fallbacks and parity (P0.4)
 
 - [x] Merged
 
-Server: `env.ts` gains `SESSION_IDLE_DAYS` (1–90, default 7) with the comment "must equal
-`auth.sessions.inactivity_timeout` (168h) in `config.toml` and the hosted project's dashboard"; `schemas/limits.ts`
-exports the name, note, password and phone bounds the zod schemas already use; `services/config.service.ts`
-`getConfig()` **derives from the already-cached `getSettings()`**, so there is no second cache key and no second
-invalidation to forget; `controllers/config.controller.ts`; the route is registered before the client-version gate.
-`ConfigDto` (server `types/api.ts`, client `Config`):
+`GET /api/config` serves limits, polling and session settings, and the client reads them through `useConfig` with parity-tested fallbacks.
 
-```ts
-interface ConfigDto {
-  serverVersion: string;
-  minClientVersion: string;
-  features: Record<string, boolean>; // empty until P1.7
-  payment: { provider: string; publicKey: string | null } | null; // null until P5
-  limits: { maxLinesPerOrder: number };
-  polling: { orderMs: number; ordersMs: number; staffBoardMs: number };
-  session: { idleDays: number };
-}
-```
-
-Client: `services/config.ts` (`fetchConfig`, `auth: false`); `features/config/useConfig.ts` =
-`useResource(fetchConfig, { key: 'config', persist: true })` returning `data ?? fallbacks`;
-`client/src/config/fallbacks.json` (add `resolveJsonModule` to `client/tsconfig.json`) holds the `ConfigDto` defaults
-plus `validation: { nameMax, noteMax, password: { min, max }, phoneDigits: { min, max } }`;
-`features/auth/validation.ts` and `features/auth/sessionActivity.ts` import their constants from it (the one allowed
-client copy); `useOrder`, `useOrders` and `StaffDashboard` take their intervals from `useConfig().polling`, and
-`POLL_MS`, `pollMs` and `STAFF_POLL_MS` are deleted.
-
-Parity: `server/test/api/config.test.ts` (destructive: `resetDemoData()` first) reads
-`client/src/config/fallbacks.json` with `readFileSync` (a JSON import outside the server's `rootDir` fails typecheck)
-and expects `GET /api/config` minus `serverVersion` to equal it; `test/unit/limits-parity.safe.test.ts` compares
-`fallbacks.validation` with `schemas/limits.ts`.
-
-Docs: `docs/API.md` (`GET /config`; Caching: "served through the settings cache"); `docs/FRONTEND_STRUCTURE.md`
-(`services/config.ts`, `features/config/`); `docs/COMPONENTS.md` (`useConfig`); `docs/CONFIGURATION.md` rows;
-`docs/DEPLOYMENT.md` and `server/.env.example` (`SESSION_IDLE_DAYS`); CLAUDE.md §8 "config and rules come from the
-API, never mirrored; the one copy is `config/fallbacks.json`, parity-tested".
-
-Verify: the gate in both packages (the parity tests are the point); the menu page still polls at the configured
-intervals after `PATCH /api/admin/settings` changes `orderPollMs`.
+Now documented in: [docs/API.md "GET /config"](../docs/API.md#get-config), [docs/CONFIGURATION.md](../docs/CONFIGURATION.md)
 
 ### PR 15 — Config c: menu rules and the lines limit (P0.4)
 
 - [x] Merged
 
-`menu.service.ts` adds `rules: { maxQuantityPerItem, lowStockThreshold }` (server constants now; per store in P2.3;
-the client keeps its mirrors until then and only gains the type). `order.schema.ts` raises the zod sanity bound to
-`MAX_ITEM_LINES_HARD = 100`, and `createOrder` enforces `settings.max_lines_per_order` with a `VALIDATION_ERROR`
-("An order can have at most N items."); a 10 s stale limit through the settings cache is harmless and documented. Fix
-the stale "(20)" comment in `test/unit/schemas.safe.test.ts`.
+`GET /api/menu` carries the cart `rules`, and `createOrder` enforces the `max_lines_per_order` site setting.
 
-Tests: `orders.test.ts` (31 lines → 400 with the message), `menu.safe.test.ts` (`rules` present).
-
-Docs: `docs/API.md` (`rules`, the limits table); `docs/CONFIGURATION.md`.
+Now documented in: [docs/CONFIGURATION.md "Site settings"](../docs/CONFIGURATION.md#site-settings), [docs/API.md "Headers and limits"](../docs/API.md#headers-and-limits)
 
 ### PR 16 — Config d: fixtures, env-driven ports and TTL, policy (P0.4)
 
 - [x] Merged
 
-| File                                           | Change                                                                                                                                                                                             |
-| ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `server/scripts/seed-data.ts`                  | a typed fixture module (`STORE`, `MENU`, the demo accounts) imported by `seed.ts`; seeding behaviour byte-identical                                                                                |
-| `server/src/utils/env.ts`                      | `PUBLIC_READ_TTL_MS` (0–600000, default 10000); `TRUST_PROXY_HOPS` (default 0; compose sets 1)                                                                                                     |
-| `server/src/utils/cache.ts`, `src/app.ts`      | the TTL comes from env; `app.set('trust proxy', env.TRUST_PROXY_HOPS)`                                                                                                                             |
-| `client/vite.config.ts`, `client/package.json` | `server.port = Number(env.VITE_DEV_PORT ?? 5173)`; proxy target `env.VITE_API_PROXY_TARGET ?? 'http://localhost:8000'`; drop `--port 5173 --strictPort` from the scripts                           |
-| `start.sh`                                     | reads `PORT` and `SUPABASE_URL` from `server/.env` and `VITE_DEV_PORT` from `client/.env.development` for its probes and kills                                                                     |
-| `client/src/config/app.ts`                     | `APP_TITLE`, named once                                                                                                                                                                            |
-| `scripts/ci/check-durations.mjs`               | fails on `/\b\d+_000\b/` in `server/src/services/**`, `server/src/domain/**` and `client/src/features/**/*Rules.ts` (non-test files), printing `file:line`; root `check:durations`; `ci.yml` steps |
+Seed data became a typed fixture module, the dev ports, cache TTL and proxy hops came from env, and `check:durations` guards against hard-coded durations.
 
-No ESLint `no-magic-numbers` rule.
-
-Docs: both `.env.example` files (drop the "keep it at 8000" warning); `docs/DEPLOYMENT.md` env tables; README ports;
-CLAUDE.md §3 ports sentence and §11 no-hardcoding policy (the four tiers, "presentation constants stay", the CI grep);
-`docs/BACKEND_STRUCTURE.md` scripts; `docs/CONFIGURATION.md` env tier.
-
-Verify: the gate; `./start.sh` still finds and probes the right ports; `docker compose up` with `TRUST_PROXY_HOPS=1`
-logs the real client IP.
+Now documented in: [docs/CONFIGURATION.md "What stays in code"](../docs/CONFIGURATION.md#what-stays-in-code), [docs/DEPLOYMENT.md "Server environment variables"](../docs/DEPLOYMENT.md#server-environment-variables)
 
 ## A1 rows: resolved in P0, and deferred
 

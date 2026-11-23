@@ -15,6 +15,7 @@ import { payloadTooLarge } from './utils/errors';
 import { apiRouter } from './routes/index';
 import { env } from './utils/env';
 import { LOG_SERIALIZERS, logger } from './utils/logger';
+import { countRequests } from './utils/processMetrics';
 
 // A caller-supplied id is kept only if it is short and plain, so it cannot forge log content.
 const REQUEST_ID = /^[\w.-]{1,64}$/;
@@ -111,6 +112,8 @@ export function createApp(): Express {
   // slow, metered phones (perf-auditor, P3 close). The ETag is the uncompressed body's, so a poll's 304 is unchanged;
   // bodies under 1 KB (the threshold) go as they are.
   app.use('/api', compression({ threshold: 1024 }));
+  // Every API request, whatever its level in the access line: the production alarms' rate and p95 (utils/processMetrics).
+  app.use('/api', countRequests);
   app.use(
     pinoHttp({
       logger,

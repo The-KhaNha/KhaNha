@@ -4,6 +4,11 @@
 covers is listed in the [README](../README.md#docs). This page is the ownership map that `CLAUDE.md` §6 enforces:
 update the owning doc **in the same change**; a change that skips its doc is incomplete.
 
+A plan's pull-request section is the specification until the pull request merges. When it merges, its box is ticked
+and the section is collapsed to a sentence or two plus links to the docs that now own the result; anything learnt
+while building goes into the owning doc in the same change, never into an "As built" note in the plan. The plans for
+P3 and P8 are collapsed when those phases close.
+
 | You changed                                                                                         | Update                                                                                                                            |
 | --------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | an endpoint, request/response shape, error code or server rule                                      | `docs/API.md` (+ `ErrorCode` in `server/src/utils/errors.ts`, DTOs on both sides)                                                 |

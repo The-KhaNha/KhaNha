@@ -1,4 +1,4 @@
-// `pnpm run media:bucket [origin…]`: the local S3 bucket (RustFS in compose and CI) and its CORS rule for CLIENT_ORIGIN
+// `pnpm run media:bucket [origin…]`: the local S3 bucket (RustFS in compose and CI) and its CORS rule for every CLIENT_ORIGIN
 // plus any origins given (compose's web app: http://localhost:8080). On AWS
 // the bucket is Terraform's, so this refuses production.
 import { ensureMediaBucket } from '../src/integrations/media/s3';
@@ -13,7 +13,7 @@ if (env.APP_ENV === 'production' || !env.MEDIA_BUCKET || !env.MEDIA_S3_ENDPOINT)
 }
 const bucket = env.MEDIA_BUCKET;
 ensureMediaBucket({ bucket, region: env.AWS_REGION, endpoint: env.MEDIA_S3_ENDPOINT }, [
-  env.CLIENT_ORIGIN,
+  ...env.CLIENT_ORIGIN,
   ...process.argv.slice(2),
 ]).then(
   () => logger.info({ bucket }, 'Media bucket ready'),

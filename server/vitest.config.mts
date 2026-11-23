@@ -27,6 +27,8 @@ export default defineConfig({
       RATE_LIMIT_WRITE_MAX: process.env.RATE_LIMIT_WRITE_MAX ?? '0',
       RATE_LIMIT_REGISTER_MAX: process.env.RATE_LIMIT_REGISTER_MAX ?? '0',
       RATE_LIMIT_UPLOAD_MAX: process.env.RATE_LIMIT_UPLOAD_MAX ?? '0',
+      // Admin suites sign in with a password only; test/api/admin-mfa.test.ts loads its own app with MFA on.
+      ADMIN_MFA_REQUIRED: 'false',
       // Photos go to a throwaway folder, never the developer's own .media.
       MEDIA_STORAGE: 'local',
       MEDIA_LOCAL_DIR: join(tmpdir(), 'khanha-test-media'),

@@ -4,11 +4,17 @@ locals {
   name        = "khanha-production"
   environment = "production"
   domain      = "khanha.in" # D3
+  # The customer, staff and admin hosts, in that order (D3, PR 05b).
+  hosts = [local.domain, "staff.${local.domain}", "admin.${local.domain}"]
   # The release parameter the deploy role writes sits under this path (bootstrap/main.tf).
   parameter_path = "/khanha/${local.environment}"
   secret_name    = "khanha/${local.environment}/app"
   # Created by modules/media in PR 05; ends in the account ID because bucket names are global.
   media_bucket = "khanha-media-${local.environment}-${var.account_id}"
+  # The log groups' prefix and the custom metrics' namespace (modules/observability); host-metrics.sh derives the
+  # namespace from the environment the same way.
+  log_group_prefix  = "/khanha/${local.environment}"
+  metrics_namespace = "KhaNha/${local.environment}"
 }
 
 module "network" {
@@ -23,15 +29,16 @@ module "ecr" {
 }
 
 module "iam" {
-  source           = "../../modules/iam"
-  name             = "${local.name}-host"
-  account_id       = var.account_id
-  region           = var.region
-  repository_arns  = module.ecr.repository_arns
-  parameter_path   = local.parameter_path
-  secret_name      = local.secret_name
-  log_group_prefix = "/khanha/${local.environment}"
-  media_bucket     = local.media_bucket
+  source            = "../../modules/iam"
+  name              = "${local.name}-host"
+  account_id        = var.account_id
+  region            = var.region
+  repository_arns   = module.ecr.repository_arns
+  parameter_path    = local.parameter_path
+  secret_name       = local.secret_name
+  log_group_prefix  = local.log_group_prefix
+  metrics_namespace = local.metrics_namespace
+  media_bucket      = local.media_bucket
 }
 
 module "secrets" {
@@ -43,8 +50,12 @@ module "secrets" {
     # Empty until the production Supabase project exists (a one-line PR then); an empty setting creates nothing.
     SUPABASE_URL             = var.supabase_url
     SUPABASE_PUBLISHABLE_KEY = var.supabase_publishable_key
-    # PR 05b turns this into the three hosts' list.
-    CLIENT_ORIGIN = "https://${local.domain}"
+    # The three hosts (D3, PR 05b): each is its own origin with its own sign-in, so CORS allows each.
+    CLIENT_ORIGIN = join(",", [for host in local.hosts : "https://${host}"])
+    # The web image hands these to the client (runtime-env.js), which picks the section by host.
+    CUSTOMER_HOST = local.hosts[0]
+    STAFF_HOST    = local.hosts[1]
+    ADMIN_HOST    = local.hosts[2]
     # CloudFront, then the web container's nginx. Measured, not assumed, once CloudFront is in front (PR 05).
     TRUST_PROXY_HOPS = "2"
     LOG_LEVEL        = "info"
@@ -60,7 +71,7 @@ module "media" {
   bucket = local.media_bucket
   # The app's hosts (D3), plus CloudFront's own hostname for the dark period before domain_live.
   upload_origins = concat(
-    [for host in ["", "staff.", "admin."] : "https://${host}${local.domain}"],
+    [for host in local.hosts : "https://${host}"],
     ["https://${module.cdn.domain_name}"],
   )
 }
@@ -95,4 +106,21 @@ module "compute" {
   # The bootstrap's deploy role may run this document and no other.
   deploy_document_name = "khanha-deploy"
   host_dir             = "${path.module}/../../../host"
+}
+
+module "observability" {
+  source = "../../modules/observability"
+  providers = {
+    aws           = aws
+    aws.us_east_1 = aws.us_east_1
+  }
+  name             = local.name
+  account_id       = var.account_id
+  region           = var.region
+  log_group_prefix = local.log_group_prefix
+  namespace        = local.metrics_namespace
+  instance_id      = module.compute.instance_id
+  distribution_id  = module.cdn.distribution_id
+  domain_live      = var.domain_live
+  certificate_arn  = module.cdn.certificate_arn
 }

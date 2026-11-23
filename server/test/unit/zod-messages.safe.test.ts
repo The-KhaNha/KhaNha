@@ -80,6 +80,8 @@ describe('env.ts messages', () => {
     [{ SUPABASE_SECRET_KEY: undefined }, 'SUPABASE_SECRET_KEY is required'],
     [{ SUPABASE_SECRET_KEY: 'eyJlegacy' }, 'must be a new-format secret key (sb_secret_...)'],
     [{ CLIENT_ORIGIN: 'nope' }, 'CLIENT_ORIGIN must be a URL'],
+    [{ CLIENT_ORIGIN: 'https://a.example.com,nope' }, 'CLIENT_ORIGIN must be a URL'],
+    [{ CLIENT_ORIGIN: 'https://a.example.com, https://b.example.com/' }, 'must be origins'],
   ])('%j fails with its own message', (overrides, expected) => {
     const { status, out } = importEnv({ LOG_LEVEL: 'info', ...overrides });
     expect(status).not.toBe(0);
@@ -89,5 +91,12 @@ describe('env.ts messages', () => {
   it('coerces numeric strings and defaults when unset', () => {
     expect(importEnv({ PORT: '9001', PUBLIC_READ_TTL_MS: '0', LOG_LEVEL: 'info' }).status).toBe(0);
     expect(importEnv({ PORT: 'abc', LOG_LEVEL: 'info' }).status).not.toBe(0);
+    // The three hosts' list (P8 PR 05b), spaces after the commas allowed.
+    expect(
+      importEnv({
+        CLIENT_ORIGIN: 'https://a.example.com, https://b.example.com',
+        LOG_LEVEL: 'info',
+      }).status,
+    ).toBe(0);
   });
 });

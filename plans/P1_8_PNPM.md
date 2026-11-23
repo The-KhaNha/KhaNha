@@ -86,79 +86,26 @@ not count, and CLAUDE.md §6 wants docs in the same change). PR 02 holds strings
 
 ## The pull requests
 
+Merged pull requests are collapsed to a summary and links; their full specifications are in this file's history.
+
 ### PR 01 — The swap
 
 - [x] Merged (#43, 11 November 2026)
 
-| File                                                                     | Change                                                                                                                                                                                                                                                                                                                                                                                    |
-| ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `package.json`, `client/package.json`, `server/package.json`             | `packageManager`; `overrides` in pnpm's form; a script that calls `npm run` or `npx` inside itself calls pnpm                                                                                                                                                                                                                                                                             |
-| three `pnpm-workspace.yaml` (new), three `.npmrc` (deleted)              | `engineStrict`, the 7-day `minimumReleaseAge`, `overrides`, `allowBuilds` and `strictDepBuilds`, as in [the choices](#choices-that-hold-in-both-prs)                                                                                                                                                                                                                                      |
-| three `pnpm-lock.yaml` (new), three `package-lock.json` (deleted)        | made with `pnpm import`, then `pnpm install --frozen-lockfile` must pass unchanged                                                                                                                                                                                                                                                                                                        |
-| `.github/workflows/{ci,browsers,perf,security,release}.yml`              | `corepack enable` + `cache: pnpm`; installs, scripts and `npx` calls as in [the choices](#choices-that-hold-in-both-prs); the Playwright cache key hashes `client/pnpm-lock.yaml`; `security.yml` audits with `pnpm audit --audit-level moderate` and triggers on `**/pnpm-lock.yaml` and `**/pnpm-workspace.yaml`; the two stale "Supabase CLI download" comments say what is true today |
-| `.github/dependabot.yml`                                                 | unchanged (`npm` is Dependabot's ecosystem name for pnpm too); a comment says so                                                                                                                                                                                                                                                                                                          |
-| `client/Dockerfile`                                                      | build stage: copy `package.json`, `pnpm-lock.yaml` and `pnpm-workspace.yaml` (where `.npmrc` is copied today), `corepack enable`, `pnpm fetch`, `pnpm install --frozen-lockfile --offline`, `pnpm run build:container`                                                                                                                                                                    |
-| `server/Dockerfile`                                                      | `deps` and `prod-deps` do the same with `--ignore-scripts` (and `--prod` in `prod-deps`); the runtime stage is untouched and still has no package manager                                                                                                                                                                                                                                 |
-| `start.sh`, `build.sh`, `run.sh`, `server/scripts/db-push.sh`            | installs and script calls go through pnpm (`pnpm exec supabase` in `db-push.sh`)                                                                                                                                                                                                                                                                                                          |
-| `scripts/version/release.mjs`, `version.test.mjs`                        | the lockfile write goes (a `pnpm-lock.yaml` does not carry the package's own version), and so do its assertions; a new assertion: a release leaves the lockfile untouched                                                                                                                                                                                                                 |
-| `scripts/version/{lib,change,check}.mjs`                                 | comments and printed hints name pnpm; `change.mjs` accepts its arguments with or without a leading `--` (see Risks)                                                                                                                                                                                                                                                                       |
-| `.claude/hooks/major-change-gate.js`                                     | `PR_UNCOUNTED` matches `pnpm-lock.yaml` instead of `package-lock.json`; the fixtures and the reminder text follow                                                                                                                                                                                                                                                                         |
-| `.prettierignore`, `.coderabbit.yaml`, `.gitignore`, `client/.gitignore` | the lockfile name                                                                                                                                                                                                                                                                                                                                                                         |
-| `client/playwright.config.ts`                                            | `command: 'pnpm run dev'`                                                                                                                                                                                                                                                                                                                                                                 |
-| `scripts/ci/package-manager.test.mjs` (new)                              | the guard, below                                                                                                                                                                                                                                                                                                                                                                          |
+The three roots install with pnpm 12 instead of npm: pinned `packageManager`, per-root `pnpm-workspace.yaml` settings,
+`pnpm-lock.yaml` lockfiles, CI, Dockerfiles, scripts and the guard test all follow (#43).
 
-Markdown in the same PR (not counted): `README.md`, `CLAUDE.md`, `AGENTS.md`, `docs/*.md`, `.changes/README.md`,
-the PR template, `.claude/rules/*.md`, every agent and skill that names a command (the lockfile recipe in
-`merge-conflict-resolver` and `/resolve-conflicts` becomes "take the base's `pnpm-lock.yaml`, then `pnpm install`"),
-then `node scripts/codex/sync.mjs` so the generated `.codex/` and `.agents/` descriptions follow. The plans keep
-their history: `P0_FOUNDATIONS.md` and `P1_PLATFORM_CORE.md` are not rewritten; the roadmap's P1.8 section gets its
-tick and an "as built" note for the three places this plan differs from it: pnpm 12 rather than an unnamed version,
-settings in `pnpm-workspace.yaml` rather than `.npmrc`, and `pnpm run <script>` rather than `pnpm <script>`.
-
-**The guard** (`scripts/ci/package-manager.test.mjs`, in the root `test` script, so `ci.yml`'s `repo` job runs it):
-
-- the three `packageManager` values are equal and name pnpm;
-- every root has a `pnpm-lock.yaml` and no `package-lock.json`;
-- no workflow, Dockerfile, shell script or `package.json` script contains `npm ci`, `npm run`, `npm install`,
-  `npm test` or `npx`;
-- every root has its own `pnpm-workspace.yaml` with `engineStrict`, `minimumReleaseAge`, `allowBuilds` and
-  `strictDepBuilds`, and none of them has a `packages:` list;
-- no `.npmrc` in the repository carries a setting pnpm would ignore (anything but registry, auth, TLS or proxy).
-
-Seen failing first: run it on `dev` before the swap (every assertion fails), then on the branch.
-
-Verify:
-
-1. Fresh clone, `corepack enable`, `pnpm install --frozen-lockfile` in the three roots; no warning about ignored
-   build scripts, no lockfile change. Then prove each setting bites, on a scratch copy: a dependency with an
-   install script fails the install (`strictDepBuilds`), and a version published yesterday is not picked
-   (`minimumReleaseAge`).
-2. The gate in all three roots, and `pnpm run e2e:chromium` in `client/`. pnpm's `node_modules` is strict: a package
-   imported but not declared (it resolved through npm's hoisting) fails here, and the fix is to declare it.
-3. With Node 22 active, `pnpm install` is refused (engine-strict still bites).
-4. `./build.sh` then `./run.sh up`: both images build, `/healthz` and `/api/health` answer, and the image sizes stay
-   inside `ci.yml`'s budgets (web 50 MB, api 300 MB).
-5. `pnpm run release:dry` prints the same bump as `npm run release:dry` did on the same commit.
-6. `pnpm run change -- --server patch "x"` and `pnpm run change --server patch "x"` both write the same intent file
-   (then delete it).
-7. `ci-ok` green on the PR, including `images`, `repo` and `security.yml`'s audit.
+Now documented in: [README "Prerequisites"](../README.md#prerequisites),
+[TESTING "Continuous integration"](../docs/TESTING.md#continuous-integration),
+[DEPLOYMENT "Containers"](../docs/DEPLOYMENT.md#containers).
 
 ### PR 02 — The wording left in code, comments and examples
 
-- [ ] Merged
+- [x] Merged
 
-Strings only; no behaviour changes. `server/src/services/store.service.ts` (the "run the seed" message),
-`server/src/utils/env.ts`, `server/vitest.config.mts`, `server/test/setup/helpers.ts`, `server/scripts/seed.ts`,
-`server/scripts/seed-data.ts`, `client/scripts/make-icons.mjs`, `compose.yaml`, `server/.env.example`,
-`client/.env.example`, `client/.env.container`, `client/.env.development`, and (found by PR 01's review) the
-`execFileSync('npx', ['tsx', …])` calls in `server/test/setup/helpers.ts` and four `server/test/unit/*.safe.test.ts`,
-which become `pnpm exec tsx`. The guard from PR 01 gains one assertion: no file under `client/src`, `server/src`,
-`server/scripts`, `server/test` or `client/scripts` contains `npm run`, `npx` or a spawned `'npx'`.
+The npm wording left in code, comments, tests and example env files became pnpm's, and the PR 01 guard gained an assertion that no file under the app code, scripts, tests, compose or `.env` files contains an npm command or a spawned `npx` (#44).
 
-Tests: the suite that asserts the store-missing message, if one does, follows the new text.
-
-Verify: `grep -rn "npm run\|npx \|npm ci\|package-lock" --exclude-dir=node_modules --exclude-dir=plans --exclude-dir=adr .`
-returns only CHANGELOG history.
+Now documented in: [TESTING "Continuous integration"](../docs/TESTING.md#continuous-integration).
 
 ## Done when
 
@@ -216,35 +163,7 @@ shared store at work. Then tick P1.8 in the roadmap.
 
 ## As built
 
-PR 02, 11 November 2026: as planned, plus the review's addition (the test spawns now run `pnpm exec tsx` and
-`pnpm exec supabase`). The init migration's `npm run seed` comment stays: migrations are append-only once pushed.
-
-PR 01, 11 November 2026, with the defaults for D2–D4:
-
-- **pnpm 12.17.0**, not 12.18.0: 12.18.0 was 6 days old on the day, under the 7-day rule. Pinned with corepack's
-  `+sha512.<hash>` (from `corepack use pnpm@12.17.0`), so the pnpm that installs everything is pinned by content; the
-  guard requires the hash.
-- **`pnpm-workspace.yaml` counts as package source**, like `package.json`: a change to it needs a change intent
-  (`needsIntent` in `scripts/version/lib.mjs`) and is a major change (`.claude/hooks/major-change-gate.js`), because
-  `overrides` and `allowBuilds` change what is installed into the images.
-- **CI: a local composite action**, `.github/actions/setup-pnpm`, not `corepack enable` before `actions/setup-node`.
-  The runner's default Node carries an older corepack that cannot run pnpm 12 (it ships as a native binary; corepack
-  0.31 fails with `Cannot find module …/bin/pnpm.cjs`), so `corepack enable` has to run on the Node that setup-node
-  installs, and `cache: pnpm` needs pnpm to exist, which takes a second setup-node call (a tool-cache hit). The action
-  holds that order once for the eight jobs. Dependabot's `github-actions` entry covers its directory.
-- **Dockerfiles: no `pnpm fetch`.** `pnpm install --frozen-lockfile` straight after copying the three files, as `npm ci`
-  did. `pnpm fetch` saves a reinstall only when `package.json` changes without the lockfile (a release's version
-  bump), which is not worth a second step per stage.
-- **`server-static` installs without `--ignore-scripts`**: pnpm runs no dependency script anyway (`allowBuilds`), and
-  the flag's comment (skips the Supabase CLI download) was stale.
-- **One undeclared import**, found by the strict layout as expected: `server/src/types/http.ts` imports
-  `express-serve-static-core`. `@types/express-serve-static-core` is now a server devDependency, at the version
-  already locked (5.1.3).
-- **`--` before script arguments.** `parseArgs` in `scripts/version/lib.mjs` (shared by all three version scripts)
-  skips it, with a test. The docs drop it everywhere: `pnpm test -- <file>` hands vitest `run -- <file>`, which
-  silently runs the whole suite.
-- `minimumReleaseAge` is in minutes (10080). `pnpm audit --audit-level moderate` reads only the lockfile and exits 1
-  on a moderate advisory and 0 on a low one (checked on scratch projects), so `security.yml` installs nothing.
+Collapsed into the pull request sections above.
 
 ## Later: the workspace
 

@@ -23,14 +23,14 @@ they are the subdomain of the project URL (`server/scripts/db-push.sh`).
 ### Hosted environments
 
 Where the app runs outside a laptop, as decided for P8 ([plan](../plans/P8_INFRASTRUCTURE.md),
-[ADR-007](adr/007-pilot-on-ec2-compose.md), [ADR-011](adr/011-free-tiers.md)). Being built; nothing is hosted yet. How to bootstrap, plan and apply it: [infra/README.md](../infra/README.md).
+[ADR-007](adr/007-pilot-on-ec2-compose.md), [ADR-011](adr/011-free-tiers.md)). Production is live since 22 November 2026. How to bootstrap, plan and apply it: [infra/README.md](../infra/README.md).
 
 | What        | Decision                                                                                                                                                        |
 | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Hosted      | **production only**. Staging is the Supabase staging project with the app run locally against it (`./run.sh staging`); an AWS staging follows the first release |
 | Account     | one AWS account, the one holding the credits; every account-specific value is a variable, so the setup can move to another account                              |
 | Region      | `ap-south-1` (Mumbai), the Supabase projects' region                                                                                                            |
-| Domain      | not chosen yet; until it is, production answers on CloudFront's own hostname                                                                                    |
+| Domain      | `khanha.in`; three hosts, one build: the apex for customers, `staff.` for the board and `/manage`, `admin.` for `/admin` ([The three hosts](#the-three-hosts))  |
 | Size        | one EC2 `t4g.micro` (arm64, 1 GB, standard CPU credits) running `web`, `api` and `worker` with compose, behind CloudFront; no load balancer                     |
 | Budget      | about $11 a month planned (Mumbai prices), $35 a month at most, with an alert at 50%, 80% and 100%; paid from credits that expire on 18 February 2027           |
 | Who changes | Terraform applies and deploys are pipeline runs that wait for the user's approval; migrations and seeds stay the user's (above)                                 |
@@ -63,15 +63,17 @@ Read from `server/.env` (copy `server/.env.example`) or the host's environment. 
 | `SESSION_IDLE_DAYS`                                                                                                                                                                     | no              | `7`                                                          | integer 1–90                                                                                              | days a sign-in survives without use, served as `session.idleDays` by `GET /api/config`; must equal `auth.sessions.inactivity_timeout` in `supabase/config.toml` (hosted Supabase Free has none, ADR-011) ([CONFIGURATION.md](CONFIGURATION.md#deployment-settings))                                                                                                                                            |
 | `PORT`                                                                                                                                                                                  | no              | `8000`                                                       | positive integer                                                                                          | API port. `start.sh` reads it for its probes and passes it to the web app's dev proxy (`VITE_API_PROXY_TARGET`)                                                                                                                                                                                                                                                                                                |
 | `WORKER_HEALTH_PORT`                                                                                                                                                                    | no              | `8001`                                                       | positive integer                                                                                          | The worker process's `GET /health` port ([JOBS.md](JOBS.md#the-worker-process)); the API never listens on it. `start.sh` probes and frees it like `PORT`                                                                                                                                                                                                                                                       |
+| `PROCESS_METRICS_LOG_MS`                                                                                                                                                                | no              | `300000`                                                     | 10000–3600000                                                                                             | the period of the "Process metrics" line ([LOGGING.md](LOGGING.md#shipping-and-the-metrics-line)); the alarms' periods ([Alarms](#alarms-and-the-dashboard)) assume the default                                                                                                                                                                                                                                |
 | `PUBLIC_READ_TTL_MS`                                                                                                                                                                    | no              | `10000`                                                      | integer 0–600000                                                                                          | how long public reads (menu, store, site settings) stay in the per-process cache (`utils/cache.ts`); 0 turns it off. Another instance may serve an admin's change up to this late                                                                                                                                                                                                                              |
 | `TRUST_PROXY_HOPS`                                                                                                                                                                      | no              | `0`                                                          | integer 0–10                                                                                              | proxies in front of the API whose `X-Forwarded-For` Express trusts for `req.ip` (`app.set('trust proxy', …)`); compose sets 1 for its nginx. 0 means `req.ip` is the socket peer and cannot be spoofed. **Production: at least 1**, or the API and worker refuse to start                                                                                                                                      |
-| `CLIENT_ORIGIN`                                                                                                                                                                         | no              | `http://localhost:5173`                                      | a URL                                                                                                     | the one origin CORS allows. **Production: `https`**, or the API and worker refuse to start                                                                                                                                                                                                                                                                                                                     |
+| `CLIENT_ORIGIN`                                                                                                                                                                         | no              | `http://localhost:5173`                                      | a URL, or a comma-separated list of URLs                                                                  | the origins CORS allows. **Production: every entry `https`**, or the API and worker refuse to start; production lists its three hosts ([The three hosts](#the-three-hosts))                                                                                                                                                                                                                                    |
 | `RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_IP_MAX`, `RATE_LIMIT_WRITE_MAX`, `RATE_LIMIT_REGISTER_MAX`, `RATE_LIMIT_CLIENT_ERRORS_MAX`, `RATE_LIMIT_INVITE_ACCEPT_MAX`, `RATE_LIMIT_UPLOAD_MAX` | no              | `60000`, `600`, `30`, `10`, `30`, `10`, `20`                 | integers; window 1000–3600000, limits ≥ 0 (0 = off)                                                       | the API's rate limits per fixed window: per signed-in account (else per address) on all of `/api`, per signed-in user on writes, per address on `POST /auth/register` and on `POST /client-errors`, per signed-in user on `POST /me/invites/accept` and on starting a photo upload ([CONFIGURATION.md](CONFIGURATION.md#deployment-settings), [API.md](API.md#headers-and-limits)). Counted per process        |
 | `MEDIA_STORAGE`                                                                                                                                                                         | no              | `local` when `APP_ENV=local`, else `s3`                      | `s3` or `local`; `local` refused when `APP_ENV=production` (the API and worker exit; the seed still runs) | where uploaded photos live (P3.3, ADR-006): S3 behind CloudFront, or a folder for development, served at `/media/*` ([API.md](API.md#photo-uploads))                                                                                                                                                                                                                                                           |
 | `MEDIA_BUCKET`, `AWS_REGION`, `MEDIA_S3_ENDPOINT`, `MEDIA_UPLOAD_ORIGIN`                                                                                                                | for `s3`        | –, `ap-south-1`, –, –                                        | a bucket name, a region, URLs                                                                             | the `s3` store ([Media storage](#media-storage)): its bucket (unset: every media call is a 503 and the API still starts), its region, an S3-compatible server instead of AWS (RustFS; unset on AWS), and the browser's view of that server when it differs from the API's (compose). Credentials: the SDK's default chain (the instance role on AWS; `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` for RustFS) |
 | `MEDIA_LOCAL_DIR`                                                                                                                                                                       | no              | `.media`                                                     | a path                                                                                                    | the folder `local` photos are written to (gitignored)                                                                                                                                                                                                                                                                                                                                                          |
 | `PAYMENT_PROVIDER`                                                                                                                                                                      | no              | `none` when `APP_ENV=production`, else `fake`                | `none` or `fake`; `fake` refused when `APP_ENV=production` (the API and worker exit; the seed still runs) | which payment provider new checkouts use (P5.1, [PAYMENTS.md](PAYMENTS.md)). `none`: every checkout is 409 `PAYMENTS_NOT_ENABLED` and the rest of the API is unaffected. `fake`: a provider of our own that marks orders paid with no money, with its payment page at `/api/fake-gateway/*`. Production sets `none` or leaves it unset                                                                         |
 | `FAKE_GATEWAY_SECRET`                                                                                                                                                                   | no              | `local-fake-gateway-secret` when `APP_ENV=local`, else unset | a string of at least 16 characters                                                                        | signs the fake provider's webhooks (HMAC-SHA256). Unset outside local, the fake signs nothing and verifies no webhook. Set it on staging when checkouts there are paid through the fake; unused in production                                                                                                                                                                                                  |
+| `ADMIN_MFA_REQUIRED`                                                                                                                                                                    | no              | `true`                                                       | `true` or `false`                                                                                         | admins need an authenticator code (`aal2`) for any admin power ([PERMISSIONS.md](PERMISSIONS.md#admin-second-factor)). **Production: refused when `false`** ("a leaked admin password alone would change the whole site"). Set `false` in `server/.env` to skip it locally                                                                                                                                     |
 | `GIT_COMMIT`                                                                                                                                                                            | no              | `unknown`                                                    | non-empty string                                                                                          | the commit the build came from; reported by `GET /api/health`. Set by the image build (`--build-arg GIT_COMMIT`). **Production: required**, or the API and worker refuse to start                                                                                                                                                                                                                              |
 | `KEEP_ALIVE_TIMEOUT_MS`                                                                                                                                                                 | no              | `65000`                                                      | positive integer                                                                                          | idle keep-alive timeout; must exceed the load balancer's idle timeout (60 s on an ALB), or Node closes a connection the balancer is about to reuse and the request fails with a 502. `headersTimeout` is set 1 s above it                                                                                                                                                                                      |
 | `LOG_LEVEL`                                                                                                                                                                             | no              | `debug` on `local`, else `info`                              | `fatal`, `error`, `warn`, `info`, `debug`, `trace`, `silent`                                              | minimum log level (see [LOGGING.md](LOGGING.md#tuning-per-environment))                                                                                                                                                                                                                                                                                                                                        |
@@ -93,14 +95,15 @@ Other variables read outside `env.ts`:
 Vite loads `client/.env.<mode>`. The values are public (they ship in the JS bundle), so the per-mode files are
 committed. Never put a secret key (`sb_secret_…`) in any client file.
 
-| Variable                        | Required | Purpose                                                                                                                               |
-| ------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `VITE_SUPABASE_URL`             | yes      | the project the browser signs in to; same project as the API's `SUPABASE_URL`                                                         |
-| `VITE_SUPABASE_PUBLISHABLE_KEY` | yes      | that project's publishable key (`sb_publishable_…`); RLS keeps it out of every table                                                  |
-| `VITE_DEV_PORT`                 | no       | the dev server port (default 5173, `strictPort`); `start.sh` reads it                                                                 |
-| `VITE_API_PROXY_TARGET`         | no       | where the dev server proxies `/api` (default `http://localhost:8000`; `start.sh` sets it from `server/.env`'s `PORT` when unset)      |
-| `VITE_REQUEST_TIMEOUT_MS`       | no       | the client's request timeout in ms (default 15000)                                                                                    |
-| `VITE_LOG_LEVEL`                | no       | `debug`, `info`, `warn`, `error` or `silent`; unset: `debug` in dev, `warn` in builds; `debug`/`info` are no-ops in production builds |
+| Variable                                                   | Required | Purpose                                                                                                                               |
+| ---------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `VITE_SUPABASE_URL`                                        | yes      | the project the browser signs in to; same project as the API's `SUPABASE_URL`                                                         |
+| `VITE_SUPABASE_PUBLISHABLE_KEY`                            | yes      | that project's publishable key (`sb_publishable_…`); RLS keeps it out of every table                                                  |
+| `VITE_DEV_PORT`                                            | no       | the dev server port (default 5173, `strictPort`); `start.sh` reads it                                                                 |
+| `VITE_API_PROXY_TARGET`                                    | no       | where the dev server proxies `/api` (default `http://localhost:8000`; `start.sh` sets it from `server/.env`'s `PORT` when unset)      |
+| `VITE_REQUEST_TIMEOUT_MS`                                  | no       | the client's request timeout in ms (default 15000)                                                                                    |
+| `VITE_CUSTOMER_HOST`, `VITE_STAFF_HOST`, `VITE_ADMIN_HOST` | no       | the three hosts as `location.host` has them; unset (local, CI): one origin, sections by path ([The three hosts](#the-three-hosts))    |
+| `VITE_LOG_LEVEL`                                           | no       | `debug`, `info`, `warn`, `error` or `silent`; unset: `debug` in dev, `warn` in builds; `debug`/`info` are no-ops in production builds |
 
 Types: `client/src/vite-env.d.ts`. Template: `client/.env.example`.
 
@@ -158,7 +161,8 @@ has a thumbnail, so running it again never re-compresses (and degrades) an image
 ## Schema changes
 
 Schema changes are SQL files in `server/supabase/migrations/`, applied in order everywhere. Once a migration has been
-pushed, it is never edited: later changes go in a new file. The CLI records what it applied in each project's
+pushed, it is never edited: later changes go in a new file. That is why the init migration's comment still says
+`npm run seed`, though the command is `pnpm run seed` now. The CLI records what it applied in each project's
 `supabase_migrations` history table, so `db:push` only sends new files. Anything new must enable RLS and grant
 explicitly (see [PERMISSIONS.md](PERMISSIONS.md#database)).
 
@@ -429,6 +433,13 @@ with today's steps.
 4. **(user)** `pnpm run seed --production` for the first store, `pnpm run migrate:media --production`, and the
    accounts ([Production first-time setup](#production-first-time-setup), steps 4–7).
 
+### Keeping the free project awake
+
+A free Supabase project is paused after seven days without activity. `.github/workflows/keep-alive.yml` asks
+production's `/api/ready` every three days (it reads the database through the API), and can be run by hand from the
+Actions tab. A failed run means production was not ready; GitHub emails whoever last edited the schedule. Delete the
+workflow once production is on a paid plan or has daily traffic.
+
 ### Rolling back
 
 Run deploy-production with `ref` = the earlier release's tag (`server-v…` or `client-v…`) and approve it. Its images
@@ -442,6 +453,52 @@ While the repository variable `PRODUCTION_DARK` is `true` (before launch), deplo
 branch on `dev`: the same flow and approval, images tagged with `dev`'s package versions and that commit. It
 migrates too, since its code needs its schema; a migration is immutable once merged into `dev`, so the release that
 later carries it finds it applied. Any other commit not on `main` is refused. The launch checklist (P9.5) sets `PRODUCTION_DARK` to `false` for good.
+
+### Alarms and the dashboard
+
+`infra/terraform/modules/observability` (P8 PR 08), inside CloudWatch's free allowances (10 alarms, 10 custom
+metrics, 3 dashboards, 5 GB of logs a month): 9 alarms, 8 custom metrics in `KhaNha/production`, the dashboard
+`khanha-production`, and the log groups and saved queries in [LOGGING.md](LOGGING.md#shipping-and-the-metrics-line).
+Each alarm emails the `khanha-alerts` topic when it fires and again when it recovers. The bootstrap creates that topic
+in ap-south-1 and in us-east-1 (CloudFront's and ACM's metrics live there), so the address stays in the user's
+untracked `terraform.tfvars` ([infra/README.md](../infra/README.md#alarms)). No data is not a breach, except for
+the queue age: a worker that stops reporting for ten minutes fires it.
+
+| Alarm                  | Fires when                                                                      | Source                                            | First look                                                            |
+| ---------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------- | --------------------------------------------------------------------- |
+| `…-cloudfront-5xx`     | more than 5% of CloudFront's responses are 5xx over 5 minutes                   | CloudFront (us-east-1): sees the host or API down | the host status alarm; `docker compose ps` in a Session Manager shell |
+| `…-api-5xx-rate`       | more than 2% of API requests answer 5xx over 5 minutes                          | the API's "Process metrics" line                  | the `errors-by-code` query                                            |
+| `…-api-p95`            | the API's p95 is above 1 s for 10 minutes                                       | the API's "Process metrics" line                  | the CPU credit balance; Supabase's status; the `slowest-routes` query |
+| `…-dead-letter`        | a job is dead-lettered                                                          | the worker's "Job dead-lettered" line             | the `dead-letters` query, then [JOBS.md](JOBS.md#runbook)             |
+| `…-queue-age`          | a queued message is older than 5 minutes, or the worker has not reported for 10 | the worker's "Process metrics" line               | the worker container; [JOBS.md](JOBS.md#runbook)                      |
+| `…-host-status`        | the host fails its status check for 2 minutes                                   | EC2                                               | auto-recovery acts on a failed system check; else replace the host    |
+| `…-host-memory`        | the host's used memory is above 85% for 10 minutes                              | `infra/host/host-metrics.sh`, every 5 minutes     | `rssMb` in each process's "Process metrics" line; `docker stats`      |
+| `…-cpu-credits`        | fewer than 30 CPU credits are left for 15 minutes                               | EC2                                               | standard credits throttle at 0: find the busy process, or `t4g.small` |
+| `…-certificate-expiry` | the domain's certificate expires within 21 days                                 | ACM (us-east-1)                                   | ACM's renewal status and the validation records in the zone           |
+
+**Targets** (what the roadmap calls SLOs, measured by the alarms above): fewer than 2% of API requests answer 5xx,
+and the API's p95 stays under 1 s, each over any 5-minute window. They are targets for a dark, single-host
+production, not promises; P9 revisits them with real traffic.
+
+**Seen firing (Closing P8):** stop `api` from a Session Manager shell (`sudo docker stop khanha-api-1`), open the
+site so CloudFront sees 502s, wait for the `cloudfront-5xx` email, then
+`sudo docker start khanha-api-1 && sudo docker restart khanha-web-1` (nginx resolves the API once, at its start) and
+wait for the recovery email. By container name, not `docker compose`: the compose file needs
+the release's tags in the environment, which only `apply-release.sh` sets.
+
+## Admin second factor
+
+Admins sign in with a password and a TOTP code ([PERMISSIONS.md](PERMISSIONS.md#admin-second-factor)).
+
+- **Dashboard step (a user step, per hosted project):** confirm TOTP is on in the production and staging dashboards under
+  Authentication → Multi-factor (on by default). Locally `supabase/config.toml` has `[auth.mfa.totp]` `enroll_enabled = true`, `verify_enabled = true`.
+- **First sign-in:** `/admin` shows a QR code and key; scan it with an authenticator app and enter the code. Do it
+  right after the release that ships this: the first factor is trusted on first use
+  ([PERMISSIONS.md](PERMISSIONS.md#admin-second-factor)).
+- **Lost device:** delete the admin's factor in the dashboard (Authentication → Users → the user → MFA factors), or locally
+  `delete from auth.mfa_factors where user_id = '…';`. The next `/admin` visit enrols again.
+- **Local development:** the seeded admin is asked to set up an authenticator. `ADMIN_MFA_REQUIRED=false` in `server/.env`
+  skips it (the API refuses that setting in production).
 
 ## Hosted session timeout
 
@@ -491,21 +548,40 @@ docker build -t fp-web --build-arg GIT_COMMIT=$(git rev-parse --short HEAD) clie
 
 ### Web image runtime environment
 
-| Variable                   | Required | Purpose                                                                                                                                                                                      |
-| -------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `API_UPSTREAM`             | yes      | where `/api/` is proxied, e.g. `http://api:8000`; **no trailing slash** (nginx would strip `/api`)                                                                                           |
-| `SUPABASE_URL`             | yes      | the project the browser signs in to (browser-side URL); also the CSP's `connect-src`                                                                                                         |
-| `SUPABASE_PUBLISHABLE_KEY` | yes      | that project's publishable key                                                                                                                                                               |
-| `MEDIA_UPSTREAM`           | yes      | where `/media/` is proxied with its path kept: the API (local storage) or the bucket server, e.g. `http://media:9000` for the bucket named `media`; on AWS CloudFront answers `/media` first |
-| `MEDIA_UPLOAD_ORIGIN`      | no       | the bucket origin the browser posts uploads to; added to the CSP's `connect-src` (`img-src` stays `'self'`)                                                                                  |
-| `LOG_LEVEL`                | no       | the browser console level (as `VITE_LOG_LEVEL`)                                                                                                                                              |
-| `REQUEST_TIMEOUT_MS`       | no       | the client's request timeout (default 15000)                                                                                                                                                 |
+| Variable                                    | Required | Purpose                                                                                                                                                                                      |
+| ------------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `API_UPSTREAM`                              | yes      | where `/api/` is proxied, e.g. `http://api:8000`; **no trailing slash** (nginx would strip `/api`)                                                                                           |
+| `SUPABASE_URL`                              | yes      | the project the browser signs in to (browser-side URL); also the CSP's `connect-src`                                                                                                         |
+| `SUPABASE_PUBLISHABLE_KEY`                  | yes      | that project's publishable key                                                                                                                                                               |
+| `MEDIA_UPSTREAM`                            | yes      | where `/media/` is proxied with its path kept: the API (local storage) or the bucket server, e.g. `http://media:9000` for the bucket named `media`; on AWS CloudFront answers `/media` first |
+| `MEDIA_UPLOAD_ORIGIN`                       | no       | the bucket origin the browser posts uploads to; added to the CSP's `connect-src` (`img-src` stays `'self'`)                                                                                  |
+| `LOG_LEVEL`                                 | no       | the browser console level (as `VITE_LOG_LEVEL`)                                                                                                                                              |
+| `REQUEST_TIMEOUT_MS`                        | no       | the client's request timeout (default 15000)                                                                                                                                                 |
+| `CUSTOMER_HOST`, `STAFF_HOST`, `ADMIN_HOST` | no       | the three hosts (as `VITE_CUSTOMER_HOST` …); production's come from Parameter Store, set by Terraform                                                                                        |
 
 `runtime-env.sh` refuses to start when a required value is empty or any value contains a quote, backslash or `<`. It
 writes `window.__RUNTIME_ENV__ = {…}` to `/tmp/runtime-env/runtime-env.js` (uid 101 cannot write the html
 directory); nginx serves it at `/runtime-env.js`, shadowing the empty `client/public/runtime-env.js` that
 development uses. `index.html` loads it as a classic script before the app, and `lib/runtimeEnv.ts` reads each value
 as runtime first, then the build's `VITE_` value.
+
+### The three hosts
+
+Production serves one build on three hosts (P8 PR 05b): `khanha.in` for customers, `staff.khanha.in` for the order
+board, `/manage` and `/join`, and `admin.khanha.in` for `/admin`. Each host is its own browser origin, so **each
+keeps its own sign-in**: a member who also orders signs in on both, and the admin session is never readable from the
+other two. `lib/hosts.ts` picks the section from `location.host`:
+
+- a path of another section moves to its host with its query and fragment (old links, bookmarks and invite links
+  still land); `/` on `staff.` opens `/staff`, on `admin.` `/admin`; `/login`, `/register` and `/profile` work on
+  every host;
+- after signing in, a person lands in this host's section, not on another host they have not signed in to;
+- links between sections (the profile's "Staff dashboard", "Admin dashboard") are full URLs to the other host.
+
+Terraform sets `CLIENT_ORIGIN` to the three `https` origins and `CUSTOMER_HOST`, `STAFF_HOST` and `ADMIN_HOST` to the
+names, which the web image writes into `/runtime-env.js`; the media bucket's CORS allows the same three. With the
+host settings unset (local, CI, the staging build) every section stays on one origin with paths. Supabase Auth's
+redirect URLs must list the three hosts (a user step in the dashboard).
 
 ### Web image headers
 

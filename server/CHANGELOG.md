@@ -2,6 +2,17 @@
 
 All notable changes to the API server (`server/package.json`). Written by `npm run release` from `.changes/`.
 
+## 0.5.0 — 2026-11-23
+
+- A payment gateway port and a fake provider for local, CI and staging
+- Photo uploads to the bucket are tagged as originals, so an original that is never processed expires after a day.
+- db:push:production targets the production Supabase project, now that it exists.
+- Production's three hosts: the API allows a list of client origins, and the client sends each section to its own host (the apex for customers, staff. for the board and manage, admin. for admin)
+- Platform admins can create a restaurant (brand with its template) and invite its owner by link: list, create, invite and revoke under /api/admin/brands
+- An invited owner accepts at /join/owner and becomes the restaurant's owner, landing in /manage; platform admins cannot accept owner invites
+- Admin tools need a second factor: an admin signs in, sets up an authenticator app once, and enters its code; without it every admin route answers MFA_REQUIRED
+- Production logs, metrics and alarms: each container ships to CloudWatch, the API and the worker log a five-minute Process metrics line (requests, 5xx, p95, queue depth and age) that nine alarms read, and job log lines carry their request id
+
 ## 0.4.0 — 2026-11-22
 
 - A payment gateway port and a fake provider for local, CI and staging

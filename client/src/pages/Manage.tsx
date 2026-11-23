@@ -99,6 +99,11 @@ export function ManagePage() {
       {(brands.data ?? []).map((brand) => (
         <section key={brand.id} aria-label={brand.name}>
           <h2 className="mb-2 font-bold">{brand.name}</h2>
+          {brand.stores.length === 0 && (
+            <p className="mb-3 text-sm text-muted">
+              No branches yet. Set up the menu in the brand template, then open your first branch.
+            </p>
+          )}
           <ul className="space-y-3">
             {rows
               .filter((r) => r.id === brand.template?.id || brand.stores.some((s) => s.id === r.id))

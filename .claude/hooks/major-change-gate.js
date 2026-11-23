@@ -133,11 +133,22 @@ function unverifiedChanges() {
 /** The base a branch's PR merges into (.claude/rules/workflow.md §21): origin/main for hotfix/*, the phase
  *  branch for a phase PR (feat/p1-05-… → origin/feat/P1), else origin/dev. null for branches whose PR is not sized:
  *  dev, main, release/* and a phase branch itself (each bundles work already reviewed in its own PRs). */
-function prBase(branch) {
+function refExists(ref) {
+  try {
+    git('rev-parse', '--verify', '--quiet', ref);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** A phase without its own branch (P5, P8) sends its PRs straight into origin/dev, so a missing phase ref falls
+ *  back to it. `exists` is injectable for the self-test. */
+function prBase(branch, exists = refExists) {
   if (['dev', 'main', 'HEAD'].includes(branch) || branch.startsWith('release/')) return null;
   if (/^feat\/P\d+$/.test(branch)) return null;
   const phase = /^feat\/p(\d+)-/i.exec(branch);
-  if (phase) return `origin/feat/P${phase[1]}`;
+  if (phase && exists(`origin/feat/P${phase[1]}`)) return `origin/feat/P${phase[1]}`;
   return branch.startsWith('hotfix/') ? 'origin/main' : 'origin/dev';
 }
 
@@ -229,8 +240,10 @@ function selfTest() {
   assert.equal(prSize([...uncounted, c('server/test/api/orders.test.ts', 1001)]).over, true, 'tests count');
   assert.equal(prBase('feat/store-hours'), 'origin/dev');
   assert.equal(prBase('hotfix/stock-race'), 'origin/main');
-  assert.equal(prBase('feat/p1-05-transitions-emit-events'), 'origin/feat/P1', 'a phase PR is sized against its phase');
-  assert.equal(prBase('feat/P12-07-x'), 'origin/feat/P12');
+  const present = () => true;
+  assert.equal(prBase('feat/p1-05-transitions-emit-events', present), 'origin/feat/P1', 'a phase PR is sized against its phase');
+  assert.equal(prBase('feat/P12-07-x', present), 'origin/feat/P12');
+  assert.equal(prBase('feat/p8-07-deploy', () => false), 'origin/dev', 'no phase branch: sized against dev');
   assert.equal(prBase('feat/P1'), null, 'the phase branch bundles PRs already reviewed one by one');
   for (const exempt of ['dev', 'main', 'HEAD', 'release/2026-10-24']) assert.equal(prBase(exempt), null, exempt);
   testMarkSurvivesCommit();
@@ -293,6 +306,9 @@ function testMarkSurvivesCommit() {
     const sized = JSON.parse(run('--status')).pr;
     assert.equal(sized.over, true, 'untracked files count toward the PR size');
     // A release branch bundles PRs already reviewed one by one: it gets no size (.claude/rules/workflow.md "PR size").
+    // A phase-style name with no phase branch on the remote (P5, P8 go straight into dev) is sized against origin/dev.
+    g('checkout', '-q', '-b', 'feat/p8-07-deploy');
+    assert.equal(JSON.parse(run('--status')).pr?.over, true, 'no phase branch: sized against origin/dev');
     g('checkout', '-q', '-b', 'release/2026-09-30');
     assert.equal(JSON.parse(run('--status')).pr, null, 'release/* branches are exempt from the PR size');
   } finally {

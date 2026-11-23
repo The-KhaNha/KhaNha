@@ -3505,6 +3505,9 @@ expenditure.
 R14: onboard restaurants, view app analytics and usage load, and change site settings such as wait times. It grows
 today's `/admin` settings page into a console, lazy per section.
 
+The first slice, "an admin creates a restaurant and invites its owner" plus admin MFA, is planned in
+[P7_4A_ONBOARDING.md](P7_4A_ONBOARDING.md) (phase branch `feat/P7`).
+
 | Section        | Does                                                                                                                                                                                                                                                                                                                          |
 | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Overview       | GMV, orders, active customers, checkout conversion (checkouts started → paid), refund rate, SLA breach rate, ETA accuracy, and a per-store table                                                                                                                                                                              |
@@ -4174,6 +4177,7 @@ This is a checklist to take to professionals, not legal advice.
   - "a store's tablet is offline";
   - payment-provider outages;
   - how to pause every store at once (an admin action).
+- [ ] The `audit_log` retention purge (13 months, [JOBS.md](../docs/JOBS.md)) ships with an index on `audit_log (occurred_at)`; the table has none today.
 - [ ] Support: an on-call rota for the pilot hours, a contact channel, and a status message banner (a site setting).
 - [ ] Pilot scope: 1–2 stores behind `real_payments`, invite-only by campus group, for 2–4 weeks.
 - [ ] Success metrics:

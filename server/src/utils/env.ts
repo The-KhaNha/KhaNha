@@ -46,6 +46,8 @@ const envSchema = z
     PORT: z.coerce.number().int().positive().default(8000),
     /** The worker process's GET /health (src/worker.ts); the API never listens on it. */
     WORKER_HEALTH_PORT: z.coerce.number().int().positive().default(8001),
+    /** The "Process metrics" line's period (utils/processMetrics.ts); CloudWatch's alarms read one line per period. */
+    PROCESS_METRICS_LOG_MS: z.coerce.number().int().min(10_000).max(3_600_000).default(300_000),
     /** How long public reads (menu, store, site settings) stay in the per-process cache. 0 turns it off. */
     PUBLIC_READ_TTL_MS: z.coerce.number().int().min(0).max(600_000).default(10_000),
     // Proxies in front of the API whose X-Forwarded-For Express should trust (compose's nginx: 1). 0 trusts none, so
@@ -87,10 +89,37 @@ const envSchema = z
       .string()
       .min(16, 'FAKE_GATEWAY_SECRET must be at least 16 characters.')
       .optional(),
+    /**
+     * The origins CORS allows, comma-separated (P8 PR 05b): production's three hosts each keep their own sign-in, so
+     * each is its own origin. One URL is a list of one.
+     */
     CLIENT_ORIGIN: z
       .string()
-      .url('CLIENT_ORIGIN must be a URL such as http://localhost:5173.')
-      .default('http://localhost:5173'),
+      .default('http://localhost:5173')
+      .transform((v) => v.split(',').map((o) => o.trim()))
+      .pipe(
+        z
+          .array(
+            z
+              .url(
+                'CLIENT_ORIGIN must be a URL such as http://localhost:5173, or a comma-separated list.',
+              )
+              // cors() compares the browser's Origin exactly, so a path or a trailing slash would never match. (A
+              // value that is no URL at all is reported by .url() above.)
+              .refine((o) => !URL.canParse(o) || new URL(o).origin === o, {
+                message: 'CLIENT_ORIGIN entries must be origins: no path and no trailing slash.',
+              }),
+          )
+          .min(1),
+      ),
+    /**
+     * Whether an admin's powers need a second factor (P7.4a PR 04): an ADMIN whose access token is not `aal2` (no TOTP
+     * code this sign-in) acts as a customer, and admin routes answer 403 MFA_REQUIRED. Refused off in production.
+     */
+    ADMIN_MFA_REQUIRED: z
+      .enum(['true', 'false'], 'ADMIN_MFA_REQUIRED must be true or false.')
+      .default('true')
+      .transform((v) => v === 'true'),
     /** The commit this build came from (image build arg); reported by GET /api/health. */
     GIT_COMMIT: z.string().min(1).default('unknown'),
     // Must exceed the load balancer's idle timeout (60 s on an ALB), or Node closes a kept-alive connection the
@@ -157,12 +186,13 @@ export function productionProblems(
     | 'TRUST_PROXY_HOPS'
     | 'MEDIA_STORAGE'
     | 'PAYMENT_PROVIDER'
+    | 'ADMIN_MFA_REQUIRED'
   >,
 ): string[] {
   if (e.APP_ENV !== 'production') return [];
   const problems: string[] = [];
-  if (!e.CLIENT_ORIGIN.startsWith('https://'))
-    problems.push('CLIENT_ORIGIN must be https in production (the CloudFront origin).');
+  if (!e.CLIENT_ORIGIN.every((o) => o.startsWith('https://')))
+    problems.push('CLIENT_ORIGIN must be https in production (every CloudFront host).');
   if (e.GIT_COMMIT === 'unknown')
     problems.push(
       'GIT_COMMIT must be set in production (the image build arg), or /api/health cannot name the release.',
@@ -173,6 +203,10 @@ export function productionProblems(
     );
   if (e.MEDIA_STORAGE === 'local')
     problems.push('MEDIA_STORAGE=local is for development: production stores photos in S3.');
+  if (!e.ADMIN_MFA_REQUIRED)
+    problems.push(
+      'ADMIN_MFA_REQUIRED=false lets a leaked admin password alone change the whole site: production needs it on.',
+    );
   if (e.PAYMENT_PROVIDER === 'fake')
     problems.push(
       'PAYMENT_PROVIDER=fake marks orders paid with no money: production uses a real provider or none.',

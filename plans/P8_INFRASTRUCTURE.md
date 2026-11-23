@@ -434,7 +434,12 @@ asserts `/api/*` uses CachingDisabled and the domain stays detached until `domai
 
 ### PR 05b — Three hosts: the apex, `staff.` and `admin.` (P8.3)
 
-- [ ] Merged
+- [x] Merged
+
+As built: the client reads three host settings, not two (`CUSTOMER_HOST` too, so `staff.` and `admin.` can send a
+customer path back to the apex), from `/runtime-env.js` like the Supabase values, so one image serves every
+environment; each is `location.host` (a port allowed, which the e2e uses). The media bucket's CORS already listed
+the three hosts (PR 05). `/join` belongs to `staff.`; `/login`, `/register` and `/profile` work on every host.
 
 One distribution and **one client build** serve all three hosts (D3); the hostname picks the section. Each host is
 its own browser origin, so **each keeps its own Supabase sign-in** (the user, 18 November 2026): a member who also
@@ -479,7 +484,7 @@ Intent: `--server patch`.
 
 ### PR 07 — Deploy to production from a release (P8.5)
 
-- [ ] Merged
+- [x] Merged
 
 `.github/workflows/deploy-production.yml`, on the `client-v*` and `server-v*` tags `release.yml` creates on `main`
 (the two tags of one release point at the same commit, so they share a `concurrency` group keyed by that commit,
@@ -544,6 +549,14 @@ rollback skips; nothing is reverted, fix forward; docs/DEPLOYMENT.md "Applying m
 - [ ] Merged
 
 Built to stay inside CloudWatch's free allowances.
+
+**As built (two changes from the text below).** (1) The API's request count, 5xx count and p95 come from its
+"Process metrics" line, counted in the process for every request, not from metric filters on the access line: a
+successful read's access line is `debug`, below production's `info`, so filters on it would have seen almost none of
+the traffic. (2) The SNS topics and the email subscription are in the bootstrap, not production's root, so the
+address stays in the user's untracked `terraform.tfvars` (production's plans are public); the root names their ARNs,
+so its plans never depend on the bootstrap having been applied.
+The job lines also gained `requestId`, so one query follows a request into the worker.
 
 - `compose.prod.yml`: the `awslogs` driver, one log group per service, kept 30 days.
 - `modules/observability`: the log groups; metric filters on the access line (requests, 5xx, duration) and on the

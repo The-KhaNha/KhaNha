@@ -176,7 +176,7 @@ relationships.
 ## 21. Branches, PR size, versions and releases
 
 **Branches.** Feature branches → PR into `dev` (`ci-ok` green before merging, enforced by the `ci-ok required`
-ruleset on `main`, `dev` and each `feat/P<n>`, ADR-011; `dev` deploys staging) → a release PR into `main`
+ruleset on `main`, `dev` and each `feat/P<n>`, ADR-011; `dev` will deploy staging once the AWS staging exists, `plans/P8_INFRASTRUCTURE.md` "Later: staging on AWS"; today it deploys nothing) → a release PR into `main`
 (production, merged by the user) → a back-merge PR into `dev`. Hotfixes branch off `main` as `hotfix/*`, carry their
 own intent, get their own release run and are back-merged the same way. Migrations are immutable once merged into
 `dev`. Agents that compare against "the base" use the PR's base branch: `origin/dev` for features, `origin/main` for
@@ -199,12 +199,24 @@ reviewed in its own PRs.
 
 - When a branch reaches either limit, or its theme is done: finish and verify the change in hand (the §13 gate,
   `/post-change` for a major change), commit, push, open the PR into the base, and tell the user it is ready.
-- Then **stop**: start no other work, and do not poll CI or the PR. The user says when it is merged (or what to fix);
-  only then branch fresh off the updated base for the next step.
-- **Exception, P2 and P3** (the user, 11 and 12 November 2026; P2 plan D7, P3 plan "How the team works P3"): the
-  agent merges each PR into its phase branch (`feat/P2`, `feat/P3`) itself once `ci-ok` is green and CodeRabbit is
-  clear, then goes on to the next PR. The phase PR into `dev` is still the user's.
+- Then follow "Who merges" below; when the row says the user merges, stop: start no other work and do not poll CI or
+  the PR, the user says when it is merged or what to fix, and only then branch fresh off the updated base.
 - `.claude/hooks/major-change-gate.js` reminds once per branch when it passes the limit (`--status` prints the size).
+
+**Who merges.** One table decides it for every phase (the user, 21 November 2026; it replaces the per-phase
+permissions given for P1, P2, P3, P5, P6 and P8). Change a row to change the rule. "Clear" means `ci-ok` is green and
+CodeRabbit's threads are resolved or answered; when its review did not run, the wait in "CodeRabbit budget" comes
+first.
+
+| PR | Who merges | Notes |
+| --- | --- | --- |
+| A phase plan's work PR into its phase branch `feat/P<n>`, or into `dev` when the phase has no phase branch | the agent, once clear | with `--delete-branch`, then the next PR without stopping |
+| A money PR: it moves money or decides a refund (ledger, checkout, confirm, webhooks, refunds, cancellation, settlement, reconciliation, a provider adapter, payouts), or the plan's Merge column says "user" | the user | the agent opens it, reports and stops; when unsure whether it is a money PR, it is |
+| A back-merge PR (`main` into `dev`) | the agent, once `ci-ok` is green | the agent opens it too while the release App is not set up |
+| A phase branch into `dev` | the user | the agent opens it and stops |
+| Any other PR into `dev` (not part of a phase plan) | the user | the agent opens it, reports and stops |
+| Anything into `main` (a release PR, a hotfix) | the user | always; the agent may run `release.yml` and open the release PR, and never tags |
+| A PR that changes this table | the user | |
 
 **CodeRabbit budget.** The repository is public, so CodeRabbit reviews it on the free open-source plan: **1–10 PR
 reviews an hour per PR author, rising with the repository's stars** (about 1 an hour while it has few), 25 chat
@@ -213,6 +225,10 @@ messages an hour, 100–300 files a review, all in rolling windows ([plans](http
 draws on the same allowance. A review is spent by opening a PR or marking a draft ready, by each `@coderabbitai review`
 or `full review`, and by reopening a PR. `.coderabbit.yaml` turns off the review of later pushes and skips release and
 back-merge PRs, so a push costs nothing.
+
+- A `no-release` PR that changes only docs, plans or a one-line setting may carry `[skip review]` in its title, so the
+  hour's single review is kept for a source PR (`.coderabbit.yaml` `ignore_title_keywords`). Never on a PR that touches
+  source, a migration, a workflow, a hook or anything `.coderabbit.yaml` excludes from auto-approval.
 
 **CodeRabbit approval.** `.coderabbit.yaml` also rates each PR's merge risk (`merge_risk_instructions`) and approves
 it when its threads are resolved, its checks pass and the risk is `low` or below. A PR that touches a migration, a

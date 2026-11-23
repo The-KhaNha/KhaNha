@@ -24,6 +24,19 @@ describe('resolveRuntimeEnv', () => {
       supabasePublishableKey: 'sb_publishable_build',
       logLevel: 'warn',
       requestTimeoutMs: 15_000,
+      hosts: { customer: undefined, staff: undefined, admin: undefined },
+    });
+  });
+
+  it('reads the three host names, runtime first', () => {
+    const env = resolveRuntimeEnv(
+      { STAFF_HOST: 'staff.khanha.in', ADMIN_HOST: '' },
+      { ...build, STAFF_HOST: 'staff.build', ADMIN_HOST: 'admin.build', CUSTOMER_HOST: 'build' },
+    );
+    expect(env.hosts).toEqual({
+      customer: 'build',
+      staff: 'staff.khanha.in',
+      admin: 'admin.build',
     });
   });
 

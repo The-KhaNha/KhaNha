@@ -8,14 +8,15 @@ import { isUuid } from '../utils/ids';
 import { toInviteDto, toMemberDto } from '../utils/serializers';
 import { raisedByDatabase, supabaseAdmin } from '../utils/supabase';
 
-const DAY_MS = 24 * 60 * 60 * 1000;
+export const DAY_MS = 24 * 60 * 60 * 1000;
 const INVITE_SELECT = 'id, role, email, expires_at, created_at';
 
 /** Only the hash is stored: a leaked table cannot be turned back into a link that works. */
-const hashToken = (token: string): string => createHash('sha256').update(token).digest('hex');
+export const hashToken = (token: string): string =>
+  createHash('sha256').update(token).digest('hex');
 
 /** The headers audit_row_change reads who and which request from, on every write to an audited table. */
-const audited = <T extends { setHeader(name: string, value: string): T }>(
+export const audited = <T extends { setHeader(name: string, value: string): T }>(
   query: T,
   ctx: RequestContext,
 ): T =>
@@ -218,4 +219,37 @@ export async function acceptInvite(
     .single()
     .throwOnError();
   return { id: membership.id, role: membership.role, store };
+}
+
+/**
+ * Accepts an owner invite (P7.4a) for the signed-in account: its token, and the account's email must be the one
+ * invited. Every refusal is the same 404 (accept_brand_invite), an ADMIN's included. The account owns the brand from
+ * its next request on (requireAuth reads owned brands each time).
+ */
+export async function acceptOwnerInvite(
+  token: string,
+  userId: string,
+  ctx: RequestContext,
+): Promise<{ id: string; name: string; slug: string }> {
+  const { data: profile } = await supabaseAdmin
+    .from('profiles')
+    .select('email')
+    .eq('id', userId)
+    .single()
+    .throwOnError();
+  try {
+    const { data: brand } = await supabaseAdmin
+      .rpc('accept_brand_invite', {
+        p_token_hash: hashToken(token),
+        p_user_id: userId,
+        p_email: profile.email,
+        p_actor: ctx.actor,
+        p_request_id: ctx.requestId,
+      })
+      .throwOnError();
+    return { id: brand.id, name: brand.name, slug: brand.slug };
+  } catch (err) {
+    if (raisedByDatabase(err, 'NOT_FOUND')) throw notFound('That invite is not valid any more.');
+    throw err;
+  }
 }
