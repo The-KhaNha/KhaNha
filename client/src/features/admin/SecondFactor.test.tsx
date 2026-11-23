@@ -1,5 +1,6 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { StrictMode } from 'react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mfa = vi.hoisted(() => ({
   listFactors: vi.fn(),
@@ -16,6 +17,7 @@ const verifiedFactor = { id: 'f1', factor_type: 'totp', status: 'verified' };
 beforeEach(() => {
   vi.resetAllMocks();
 });
+afterEach(() => vi.useRealTimers());
 
 const typeCode = (code: string) => {
   fireEvent.change(screen.getByLabelText('6-digit code'), { target: { value: code } });
@@ -91,7 +93,10 @@ describe('SecondFactor', () => {
     expect(screen.getByText('ABCDEF234567')).toBeInTheDocument();
     expect(mfa.unenroll).toHaveBeenCalledWith({ factorId: 'old' });
     expect(mfa.unenroll).not.toHaveBeenCalledWith({ factorId: 'other-tab' });
-    expect(mfa.enroll).toHaveBeenCalledWith({ factorType: 'totp' });
+    expect(mfa.enroll).toHaveBeenCalledWith({
+      factorType: 'totp',
+      friendlyName: expect.stringMatching(/^admin-totp-\d+$/),
+    });
   });
 
   it('accepts a code pasted with a space, and tells a dropped connection from a wrong code', async () => {
@@ -117,5 +122,44 @@ describe('SecondFactor', () => {
     render(<SecondFactor onVerified={vi.fn()} />);
     fireEvent.click(await screen.findByRole('button', { name: /try again|retry/i }));
     expect(await screen.findByRole('heading', { name: 'Enter your code' })).toBeInTheDocument();
+  });
+
+  it('under StrictMode the replayed effect still receives the setup result, with one enrolment', async () => {
+    mfa.listFactors.mockResolvedValue({ data: { all: [], totp: [] }, error: null });
+    mfa.enroll.mockResolvedValue({
+      data: { id: 'new', totp: { qr_code: 'data:image/svg+xml;utf-8,<svg/>', secret: 'KEY' } },
+      error: null,
+    });
+    render(
+      <StrictMode>
+        <SecondFactor onVerified={vi.fn()} />
+      </StrictMode>,
+    );
+    expect(
+      await screen.findByRole('heading', { name: 'Set up your authenticator app' }),
+    ).toBeInTheDocument();
+    expect(mfa.enroll).toHaveBeenCalledTimes(1);
+  });
+
+  it('a setup request that never answers times out into the retry state', async () => {
+    vi.useFakeTimers();
+    mfa.listFactors.mockReturnValue(new Promise(() => {}));
+    render(<SecondFactor onVerified={vi.fn()} />);
+    await act(() => vi.advanceTimersByTimeAsync(30 * 1000));
+    expect(screen.getByRole('button', { name: /try again|retry/i })).toBeInTheDocument();
+  });
+
+  it('a verify request that never answers times out, frees the button and says so', async () => {
+    mfa.listFactors.mockResolvedValue({
+      data: { all: [verifiedFactor], totp: [verifiedFactor] },
+      error: null,
+    });
+    mfa.challengeAndVerify.mockReturnValue(new Promise(() => {}));
+    render(<SecondFactor onVerified={vi.fn()} />);
+    await screen.findByRole('heading', { name: 'Enter your code' });
+    vi.useFakeTimers();
+    typeCode('123456');
+    await act(() => vi.advanceTimersByTimeAsync(30 * 1000));
+    expect(screen.getByText(/couldn't check the code/)).toBeInTheDocument();
   });
 });

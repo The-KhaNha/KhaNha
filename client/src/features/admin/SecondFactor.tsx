@@ -5,9 +5,22 @@ import { ErrorState } from '../../components/ErrorState';
 import { Input } from '../../components/Input';
 import { Skeleton } from '../../components/Skeleton';
 import { getSupabase } from '../../lib/supabase';
+import { REQUEST_TIMEOUT_MS } from '../../services/api';
 
 /** How old an unfinished enrolment must be before a new visit drops it (presentation constant). */
 const HALF_DONE_STALE_MS = 10 * 60 * 1000;
+
+/**
+ * Rejects when `work` has not settled within the API's own limit (REQUEST_TIMEOUT_MS, a deployment setting), so a
+ * hung request cannot leave the screen loading or busy forever.
+ */
+function withTimeout<T>(work: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error('MFA request timed out')), REQUEST_TIMEOUT_MS);
+  });
+  return Promise.race([work, timeout]).finally(() => clearTimeout(timer));
+}
 
 /** Enrolling: the factor to verify, with what an authenticator app needs to add it. */
 type Step =
@@ -29,42 +42,50 @@ function verifyMessage(error: { status?: number; code?: string; name?: string })
   return "That code didn't work. Check the app and try the new one.";
 }
 
+/** Finds the admin's factor, or enrols one. */
+async function startSetup(): Promise<Step> {
+  const mfa = (await getSupabase()).auth.mfa;
+  const { data, error: listError } = await mfa.listFactors();
+  if (listError) throw listError;
+  const verified = data.totp.find((f) => f.status === 'verified');
+  if (verified) return { kind: 'code', factorId: verified.id } as const;
+  // An enrolment left half done (the page closed before its first code) is dropped, but only an old one: a
+  // fresh one may be the QR code another tab is showing right now.
+  const stale = Date.now() - HALF_DONE_STALE_MS;
+  for (const f of data.all.filter(
+    (f) => f.factor_type === 'totp' && f.status !== 'verified' && Date.parse(f.created_at) < stale,
+  ))
+    await mfa.unenroll({ factorId: f.id });
+  // Supabase refuses a factor whose name matches an existing one (empty names match), so a fresh unverified
+  // factor from a moment ago would block this enrolment: each gets its own name.
+  const { data: enrolled, error: enrollError } = await mfa.enroll({
+    factorType: 'totp',
+    friendlyName: `admin-totp-${Date.now()}`,
+  });
+  if (enrollError) throw enrollError;
+  return {
+    kind: 'enroll',
+    factorId: enrolled.id,
+    qr: enrolled.totp.qr_code,
+    secret: enrolled.totp.secret,
+  } as const;
+}
+
 export function SecondFactor({ onVerified }: { onVerified: () => void }) {
   const [step, setStep] = useState<Step>({ kind: 'loading' });
   const [attempt, setAttempt] = useState(0);
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
-  // One setup per attempt: StrictMode's second effect run must not enrol a second factor beside the first.
-  const startedFor = useRef(-1);
+  // One setup per attempt: StrictMode's second effect run must not enrol a second factor beside the first, but it
+  // still subscribes to the first run's result (the first run's cleanup has already unsubscribed itself).
+  const setup = useRef<{ attempt: number; result: Promise<Step> } | undefined>(undefined);
 
   useEffect(() => {
-    if (startedFor.current === attempt) return;
-    startedFor.current = attempt;
+    if (setup.current?.attempt !== attempt)
+      setup.current = { attempt, result: withTimeout(startSetup()) };
     let live = true;
-    (async () => {
-      const mfa = (await getSupabase()).auth.mfa;
-      const { data, error: listError } = await mfa.listFactors();
-      if (listError) throw listError;
-      const verified = data.totp.find((f) => f.status === 'verified');
-      if (verified) return { kind: 'code', factorId: verified.id } as const;
-      // An enrolment left half done (the page closed before its first code) is dropped, but only an old one: a
-      // fresh one may be the QR code another tab is showing right now.
-      const stale = Date.now() - HALF_DONE_STALE_MS;
-      for (const f of data.all.filter(
-        (f) =>
-          f.factor_type === 'totp' && f.status !== 'verified' && Date.parse(f.created_at) < stale,
-      ))
-        await mfa.unenroll({ factorId: f.id });
-      const { data: enrolled, error: enrollError } = await mfa.enroll({ factorType: 'totp' });
-      if (enrollError) throw enrollError;
-      return {
-        kind: 'enroll',
-        factorId: enrolled.id,
-        qr: enrolled.totp.qr_code,
-        secret: enrolled.totp.secret,
-      } as const;
-    })().then(
+    setup.current.result.then(
       (next) => live && setStep(next),
       () => live && setStep({ kind: 'failed' }),
     );
@@ -81,9 +102,12 @@ export function SecondFactor({ onVerified }: { onVerified: () => void }) {
     if (!/^\d{6}$/.test(digits)) return setError('Enter the 6-digit code from the app.');
     setBusy(true);
     setError(undefined);
-    const { error: verifyError } = await (
-      await getSupabase()
-    ).auth.mfa.challengeAndVerify({ factorId: step.factorId, code: digits });
+    // A timeout reads like a dropped connection (no status), so verifyMessage says so.
+    const { error: verifyError } = await withTimeout(
+      getSupabase().then((supabase) =>
+        supabase.auth.mfa.challengeAndVerify({ factorId: step.factorId, code: digits }),
+      ),
+    ).catch((e: unknown) => ({ error: e instanceof Error ? e : new Error('MFA request failed') }));
     setBusy(false);
     if (verifyError) return setError(verifyMessage(verifyError));
     onVerified();
