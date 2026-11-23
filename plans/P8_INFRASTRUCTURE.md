@@ -436,6 +436,11 @@ asserts `/api/*` uses CachingDisabled and the domain stays detached until `domai
 
 - [ ] Merged
 
+As built: the client reads three host settings, not two (`CUSTOMER_HOST` too, so `staff.` and `admin.` can send a
+customer path back to the apex), from `/runtime-env.js` like the Supabase values, so one image serves every
+environment; each is `location.host` (a port allowed, which the e2e uses). The media bucket's CORS already listed
+the three hosts (PR 05). `/join` belongs to `staff.`; `/login`, `/register` and `/profile` work on every host.
+
 One distribution and **one client build** serve all three hosts (D3); the hostname picks the section. Each host is
 its own browser origin, so **each keeps its own Supabase sign-in** (the user, 18 November 2026): a member who also
 orders signs in on `khanha.in` and on `staff.khanha.in`, and the admin session is never readable from the other two.

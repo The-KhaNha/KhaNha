@@ -4,7 +4,7 @@ import { productionProblems } from '../../src/utils/env';
 
 const safe = {
   APP_ENV: 'production' as const,
-  CLIENT_ORIGIN: 'https://app.example.com',
+  CLIENT_ORIGIN: ['https://app.example.com', 'https://staff.example.com'],
   GIT_COMMIT: 'abc1234',
   TRUST_PROXY_HOPS: 2,
   MEDIA_STORAGE: 's3' as const,
@@ -18,7 +18,14 @@ describe('productionProblems', () => {
   });
 
   it('refuses a plain-http CLIENT_ORIGIN', () => {
-    expect(productionProblems({ ...safe, CLIENT_ORIGIN: 'http://app.example.com' })).toEqual([
+    expect(productionProblems({ ...safe, CLIENT_ORIGIN: ['http://app.example.com'] })).toEqual([
+      expect.stringContaining('CLIENT_ORIGIN'),
+    ]);
+  });
+
+  it('refuses a list where one host is plain http', () => {
+    const origins = ['https://app.example.com', 'http://staff.example.com'];
+    expect(productionProblems({ ...safe, CLIENT_ORIGIN: origins })).toEqual([
       expect.stringContaining('CLIENT_ORIGIN'),
     ]);
   });
@@ -55,7 +62,7 @@ describe('productionProblems', () => {
 
   it('leaves staging and local alone (a local stack against staging uses localhost)', () => {
     const loose = {
-      CLIENT_ORIGIN: 'http://localhost:5173',
+      CLIENT_ORIGIN: ['http://localhost:5173'],
       GIT_COMMIT: 'unknown',
       TRUST_PROXY_HOPS: 0,
       MEDIA_STORAGE: 'local' as const,

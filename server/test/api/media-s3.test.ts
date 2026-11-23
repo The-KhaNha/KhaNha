@@ -64,7 +64,7 @@ describe('the S3 store, through the API', () => {
   });
   beforeAll(async () => {
     if (!run) return;
-    await ensureMediaBucket(config, [env.CLIENT_ORIGIN]);
+    await ensureMediaBucket(config, env.CLIENT_ORIGIN);
     const { data: brand } = await supabaseAdmin
       .from('brands')
       .insert({ name: 'Media S3', slug: `media-s3-${tag}`, status: 'ACTIVE' })
