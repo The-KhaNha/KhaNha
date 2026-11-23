@@ -87,10 +87,29 @@ const envSchema = z
       .string()
       .min(16, 'FAKE_GATEWAY_SECRET must be at least 16 characters.')
       .optional(),
+    /**
+     * The origins CORS allows, comma-separated (P8 PR 05b): production's three hosts each keep their own sign-in, so
+     * each is its own origin. One URL is a list of one.
+     */
     CLIENT_ORIGIN: z
       .string()
-      .url('CLIENT_ORIGIN must be a URL such as http://localhost:5173.')
-      .default('http://localhost:5173'),
+      .default('http://localhost:5173')
+      .transform((v) => v.split(',').map((o) => o.trim()))
+      .pipe(
+        z
+          .array(
+            z
+              .url(
+                'CLIENT_ORIGIN must be a URL such as http://localhost:5173, or a comma-separated list.',
+              )
+              // cors() compares the browser's Origin exactly, so a path or a trailing slash would never match. (A
+              // value that is no URL at all is reported by .url() above.)
+              .refine((o) => !URL.canParse(o) || new URL(o).origin === o, {
+                message: 'CLIENT_ORIGIN entries must be origins: no path and no trailing slash.',
+              }),
+          )
+          .min(1),
+      ),
     /**
      * Whether an admin's powers need a second factor (P7.4a PR 04): an ADMIN whose access token is not `aal2` (no TOTP
      * code this sign-in) acts as a customer, and admin routes answer 403 MFA_REQUIRED. Refused off in production.
@@ -170,8 +189,8 @@ export function productionProblems(
 ): string[] {
   if (e.APP_ENV !== 'production') return [];
   const problems: string[] = [];
-  if (!e.CLIENT_ORIGIN.startsWith('https://'))
-    problems.push('CLIENT_ORIGIN must be https in production (the CloudFront origin).');
+  if (!e.CLIENT_ORIGIN.every((o) => o.startsWith('https://')))
+    problems.push('CLIENT_ORIGIN must be https in production (every CloudFront host).');
   if (e.GIT_COMMIT === 'unknown')
     problems.push(
       'GIT_COMMIT must be set in production (the image build arg), or /api/health cannot name the release.',

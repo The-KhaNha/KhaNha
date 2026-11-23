@@ -14,6 +14,10 @@ interface ImportMetaEnv {
   readonly VITE_LOG_LEVEL?: string;
   /** Request timeout in ms for services/api.ts. Unset: 15000. */
   readonly VITE_REQUEST_TIMEOUT_MS?: string;
+  /** The customer, staff and admin hosts, with a port if any (lib/hosts.ts). Unset: one origin, sections by path. */
+  readonly VITE_CUSTOMER_HOST?: string;
+  readonly VITE_STAFF_HOST?: string;
+  readonly VITE_ADMIN_HOST?: string;
 }
 
 interface Window {

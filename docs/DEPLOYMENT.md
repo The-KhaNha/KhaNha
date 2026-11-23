@@ -23,14 +23,14 @@ they are the subdomain of the project URL (`server/scripts/db-push.sh`).
 ### Hosted environments
 
 Where the app runs outside a laptop, as decided for P8 ([plan](../plans/P8_INFRASTRUCTURE.md),
-[ADR-007](adr/007-pilot-on-ec2-compose.md), [ADR-011](adr/011-free-tiers.md)). Being built; nothing is hosted yet. How to bootstrap, plan and apply it: [infra/README.md](../infra/README.md).
+[ADR-007](adr/007-pilot-on-ec2-compose.md), [ADR-011](adr/011-free-tiers.md)). Production is live since 22 November 2026. How to bootstrap, plan and apply it: [infra/README.md](../infra/README.md).
 
 | What        | Decision                                                                                                                                                        |
 | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Hosted      | **production only**. Staging is the Supabase staging project with the app run locally against it (`./run.sh staging`); an AWS staging follows the first release |
 | Account     | one AWS account, the one holding the credits; every account-specific value is a variable, so the setup can move to another account                              |
 | Region      | `ap-south-1` (Mumbai), the Supabase projects' region                                                                                                            |
-| Domain      | not chosen yet; until it is, production answers on CloudFront's own hostname                                                                                    |
+| Domain      | `khanha.in`; three hosts, one build: the apex for customers, `staff.` for the board and `/manage`, `admin.` for `/admin` ([The three hosts](#the-three-hosts))  |
 | Size        | one EC2 `t4g.micro` (arm64, 1 GB, standard CPU credits) running `web`, `api` and `worker` with compose, behind CloudFront; no load balancer                     |
 | Budget      | about $11 a month planned (Mumbai prices), $35 a month at most, with an alert at 50%, 80% and 100%; paid from credits that expire on 18 February 2027           |
 | Who changes | Terraform applies and deploys are pipeline runs that wait for the user's approval; migrations and seeds stay the user's (above)                                 |
@@ -65,7 +65,7 @@ Read from `server/.env` (copy `server/.env.example`) or the host's environment. 
 | `WORKER_HEALTH_PORT`                                                                                                                                                                    | no              | `8001`                                                       | positive integer                                                                                          | The worker process's `GET /health` port ([JOBS.md](JOBS.md#the-worker-process)); the API never listens on it. `start.sh` probes and frees it like `PORT`                                                                                                                                                                                                                                                       |
 | `PUBLIC_READ_TTL_MS`                                                                                                                                                                    | no              | `10000`                                                      | integer 0–600000                                                                                          | how long public reads (menu, store, site settings) stay in the per-process cache (`utils/cache.ts`); 0 turns it off. Another instance may serve an admin's change up to this late                                                                                                                                                                                                                              |
 | `TRUST_PROXY_HOPS`                                                                                                                                                                      | no              | `0`                                                          | integer 0–10                                                                                              | proxies in front of the API whose `X-Forwarded-For` Express trusts for `req.ip` (`app.set('trust proxy', …)`); compose sets 1 for its nginx. 0 means `req.ip` is the socket peer and cannot be spoofed. **Production: at least 1**, or the API and worker refuse to start                                                                                                                                      |
-| `CLIENT_ORIGIN`                                                                                                                                                                         | no              | `http://localhost:5173`                                      | a URL                                                                                                     | the one origin CORS allows. **Production: `https`**, or the API and worker refuse to start                                                                                                                                                                                                                                                                                                                     |
+| `CLIENT_ORIGIN`                                                                                                                                                                         | no              | `http://localhost:5173`                                      | a URL, or a comma-separated list of URLs                                                                  | the origins CORS allows. **Production: every entry `https`**, or the API and worker refuse to start; production lists its three hosts ([The three hosts](#the-three-hosts))                                                                                                                                                                                                                                    |
 | `RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_IP_MAX`, `RATE_LIMIT_WRITE_MAX`, `RATE_LIMIT_REGISTER_MAX`, `RATE_LIMIT_CLIENT_ERRORS_MAX`, `RATE_LIMIT_INVITE_ACCEPT_MAX`, `RATE_LIMIT_UPLOAD_MAX` | no              | `60000`, `600`, `30`, `10`, `30`, `10`, `20`                 | integers; window 1000–3600000, limits ≥ 0 (0 = off)                                                       | the API's rate limits per fixed window: per signed-in account (else per address) on all of `/api`, per signed-in user on writes, per address on `POST /auth/register` and on `POST /client-errors`, per signed-in user on `POST /me/invites/accept` and on starting a photo upload ([CONFIGURATION.md](CONFIGURATION.md#deployment-settings), [API.md](API.md#headers-and-limits)). Counted per process        |
 | `MEDIA_STORAGE`                                                                                                                                                                         | no              | `local` when `APP_ENV=local`, else `s3`                      | `s3` or `local`; `local` refused when `APP_ENV=production` (the API and worker exit; the seed still runs) | where uploaded photos live (P3.3, ADR-006): S3 behind CloudFront, or a folder for development, served at `/media/*` ([API.md](API.md#photo-uploads))                                                                                                                                                                                                                                                           |
 | `MEDIA_BUCKET`, `AWS_REGION`, `MEDIA_S3_ENDPOINT`, `MEDIA_UPLOAD_ORIGIN`                                                                                                                | for `s3`        | –, `ap-south-1`, –, –                                        | a bucket name, a region, URLs                                                                             | the `s3` store ([Media storage](#media-storage)): its bucket (unset: every media call is a 503 and the API still starts), its region, an S3-compatible server instead of AWS (RustFS; unset on AWS), and the browser's view of that server when it differs from the API's (compose). Credentials: the SDK's default chain (the instance role on AWS; `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` for RustFS) |
@@ -94,14 +94,15 @@ Other variables read outside `env.ts`:
 Vite loads `client/.env.<mode>`. The values are public (they ship in the JS bundle), so the per-mode files are
 committed. Never put a secret key (`sb_secret_…`) in any client file.
 
-| Variable                        | Required | Purpose                                                                                                                               |
-| ------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `VITE_SUPABASE_URL`             | yes      | the project the browser signs in to; same project as the API's `SUPABASE_URL`                                                         |
-| `VITE_SUPABASE_PUBLISHABLE_KEY` | yes      | that project's publishable key (`sb_publishable_…`); RLS keeps it out of every table                                                  |
-| `VITE_DEV_PORT`                 | no       | the dev server port (default 5173, `strictPort`); `start.sh` reads it                                                                 |
-| `VITE_API_PROXY_TARGET`         | no       | where the dev server proxies `/api` (default `http://localhost:8000`; `start.sh` sets it from `server/.env`'s `PORT` when unset)      |
-| `VITE_REQUEST_TIMEOUT_MS`       | no       | the client's request timeout in ms (default 15000)                                                                                    |
-| `VITE_LOG_LEVEL`                | no       | `debug`, `info`, `warn`, `error` or `silent`; unset: `debug` in dev, `warn` in builds; `debug`/`info` are no-ops in production builds |
+| Variable                                                   | Required | Purpose                                                                                                                               |
+| ---------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `VITE_SUPABASE_URL`                                        | yes      | the project the browser signs in to; same project as the API's `SUPABASE_URL`                                                         |
+| `VITE_SUPABASE_PUBLISHABLE_KEY`                            | yes      | that project's publishable key (`sb_publishable_…`); RLS keeps it out of every table                                                  |
+| `VITE_DEV_PORT`                                            | no       | the dev server port (default 5173, `strictPort`); `start.sh` reads it                                                                 |
+| `VITE_API_PROXY_TARGET`                                    | no       | where the dev server proxies `/api` (default `http://localhost:8000`; `start.sh` sets it from `server/.env`'s `PORT` when unset)      |
+| `VITE_REQUEST_TIMEOUT_MS`                                  | no       | the client's request timeout in ms (default 15000)                                                                                    |
+| `VITE_CUSTOMER_HOST`, `VITE_STAFF_HOST`, `VITE_ADMIN_HOST` | no       | the three hosts as `location.host` has them; unset (local, CI): one origin, sections by path ([The three hosts](#the-three-hosts))    |
+| `VITE_LOG_LEVEL`                                           | no       | `debug`, `info`, `warn`, `error` or `silent`; unset: `debug` in dev, `warn` in builds; `debug`/`info` are no-ops in production builds |
 
 Types: `client/src/vite-env.d.ts`. Template: `client/.env.example`.
 
@@ -514,21 +515,40 @@ docker build -t fp-web --build-arg GIT_COMMIT=$(git rev-parse --short HEAD) clie
 
 ### Web image runtime environment
 
-| Variable                   | Required | Purpose                                                                                                                                                                                      |
-| -------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `API_UPSTREAM`             | yes      | where `/api/` is proxied, e.g. `http://api:8000`; **no trailing slash** (nginx would strip `/api`)                                                                                           |
-| `SUPABASE_URL`             | yes      | the project the browser signs in to (browser-side URL); also the CSP's `connect-src`                                                                                                         |
-| `SUPABASE_PUBLISHABLE_KEY` | yes      | that project's publishable key                                                                                                                                                               |
-| `MEDIA_UPSTREAM`           | yes      | where `/media/` is proxied with its path kept: the API (local storage) or the bucket server, e.g. `http://media:9000` for the bucket named `media`; on AWS CloudFront answers `/media` first |
-| `MEDIA_UPLOAD_ORIGIN`      | no       | the bucket origin the browser posts uploads to; added to the CSP's `connect-src` (`img-src` stays `'self'`)                                                                                  |
-| `LOG_LEVEL`                | no       | the browser console level (as `VITE_LOG_LEVEL`)                                                                                                                                              |
-| `REQUEST_TIMEOUT_MS`       | no       | the client's request timeout (default 15000)                                                                                                                                                 |
+| Variable                                    | Required | Purpose                                                                                                                                                                                      |
+| ------------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `API_UPSTREAM`                              | yes      | where `/api/` is proxied, e.g. `http://api:8000`; **no trailing slash** (nginx would strip `/api`)                                                                                           |
+| `SUPABASE_URL`                              | yes      | the project the browser signs in to (browser-side URL); also the CSP's `connect-src`                                                                                                         |
+| `SUPABASE_PUBLISHABLE_KEY`                  | yes      | that project's publishable key                                                                                                                                                               |
+| `MEDIA_UPSTREAM`                            | yes      | where `/media/` is proxied with its path kept: the API (local storage) or the bucket server, e.g. `http://media:9000` for the bucket named `media`; on AWS CloudFront answers `/media` first |
+| `MEDIA_UPLOAD_ORIGIN`                       | no       | the bucket origin the browser posts uploads to; added to the CSP's `connect-src` (`img-src` stays `'self'`)                                                                                  |
+| `LOG_LEVEL`                                 | no       | the browser console level (as `VITE_LOG_LEVEL`)                                                                                                                                              |
+| `REQUEST_TIMEOUT_MS`                        | no       | the client's request timeout (default 15000)                                                                                                                                                 |
+| `CUSTOMER_HOST`, `STAFF_HOST`, `ADMIN_HOST` | no       | the three hosts (as `VITE_CUSTOMER_HOST` …); production's come from Parameter Store, set by Terraform                                                                                        |
 
 `runtime-env.sh` refuses to start when a required value is empty or any value contains a quote, backslash or `<`. It
 writes `window.__RUNTIME_ENV__ = {…}` to `/tmp/runtime-env/runtime-env.js` (uid 101 cannot write the html
 directory); nginx serves it at `/runtime-env.js`, shadowing the empty `client/public/runtime-env.js` that
 development uses. `index.html` loads it as a classic script before the app, and `lib/runtimeEnv.ts` reads each value
 as runtime first, then the build's `VITE_` value.
+
+### The three hosts
+
+Production serves one build on three hosts (P8 PR 05b): `khanha.in` for customers, `staff.khanha.in` for the order
+board, `/manage` and `/join`, and `admin.khanha.in` for `/admin`. Each host is its own browser origin, so **each
+keeps its own sign-in**: a member who also orders signs in on both, and the admin session is never readable from the
+other two. `lib/hosts.ts` picks the section from `location.host`:
+
+- a path of another section moves to its host with its query and fragment (old links, bookmarks and invite links
+  still land); `/` on `staff.` opens `/staff`, on `admin.` `/admin`; `/login`, `/register` and `/profile` work on
+  every host;
+- after signing in, a person lands in this host's section, not on another host they have not signed in to;
+- links between sections (the profile's "Staff dashboard", "Admin dashboard") are full URLs to the other host.
+
+Terraform sets `CLIENT_ORIGIN` to the three `https` origins and `CUSTOMER_HOST`, `STAFF_HOST` and `ADMIN_HOST` to the
+names, which the web image writes into `/runtime-env.js`; the media bucket's CORS allows the same three. With the
+host settings unset (local, CI, the staging build) every section stays on one origin with paths. Supabase Auth's
+redirect URLs must list the three hosts (a user step in the dashboard).
 
 ### Web image headers
 
