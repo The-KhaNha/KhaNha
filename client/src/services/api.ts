@@ -133,7 +133,14 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
       signal: controller.signal,
       keepalive,
     });
-    const text = await response.text();
+    // A body that dies mid-read on an error status still has its status: read it as empty so the 401/426 handlers
+    // run. On a 2xx it is unreachable. Our timeout and the caller's abort are rethrown by the check below.
+    let text = '';
+    try {
+      text = await response.text();
+    } catch (readErr) {
+      if (response.ok) throw readErr;
+    }
     if (controller.signal.aborted) throw controller.signal.reason;
     payload = parseBody(text, response.ok);
   } catch (err) {

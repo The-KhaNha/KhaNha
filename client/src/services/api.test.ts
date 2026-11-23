@@ -177,6 +177,54 @@ describe('426 CLIENT_OUTDATED', () => {
   });
 });
 
+describe('a body that errors mid-read', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    clearSession.mockClear();
+  });
+  const broken = (status: number) =>
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            new ReadableStream({
+              start(c) {
+                c.error(new Error('reset'));
+              },
+            }),
+            { status },
+          ),
+      ),
+    );
+
+  it('a 426 still marks the build outdated and keeps its status', async () => {
+    const { useVersionStore } = await import('../features/version/versionStore');
+    useVersionStore.setState({ outdated: false });
+    broken(426);
+    await expect(request('/menu')).rejects.toSatisfy(
+      (err) => err instanceof ApiError && err.status === 426,
+    );
+    expect(useVersionStore.getState().outdated).toBe(true);
+  });
+
+  it('a 401 sent with a token still signs the caller out', async () => {
+    getSupabase.mockResolvedValueOnce({
+      auth: { getSession: async () => ({ data: { session: { access_token: 't' } } }) },
+    } as never);
+    broken(401);
+    await expect(request('/orders')).rejects.toMatchObject({ status: 401 });
+    expect(clearSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('a 2xx whose body errors is unreachable', async () => {
+    broken(200);
+    await expect(request('/menu')).rejects.toSatisfy(
+      (err) => err instanceof ApiError && err.isUnreachable && err.status === 0,
+    );
+  });
+});
+
 describe('supabase-js loading', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
