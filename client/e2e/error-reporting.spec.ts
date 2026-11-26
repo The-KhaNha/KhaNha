@@ -1,10 +1,15 @@
 import { expect, test } from '@playwright/test';
 import fallbacks from '../src/config/fallbacks.json' with { type: 'json' };
 
+// The reporter flushes its queue 250ms after the first error (lib/errorReporter.ts). The fake clock runs past that
+// instead of the test sleeping: a send that should have happened is due by then, so an empty list proves it is held.
+const REPORTER_DEBOUNCE_MS = 250;
+
 test('a failed page chunk shows the connection fallback without sending a crash report', async ({
   page,
 }) => {
   const sends: string[] = [];
+  await page.clock.install();
   await page.route('**/api/config', (route) =>
     route.fulfill({ json: { ...fallbacks, serverVersion: '0.0.0' } }),
   );
@@ -16,7 +21,7 @@ test('a failed page chunk shows the connection fallback without sending a crash 
   await page.goto('/login');
   await expect(page.getByText("This page didn't load")).toBeVisible();
   await expect(page.getByRole('button', { name: 'Try Again' })).toBeVisible();
-  await page.waitForTimeout(400);
+  await page.clock.runFor(REPORTER_DEBOUNCE_MS * 2);
   expect(sends).toEqual([]);
 });
 
@@ -26,6 +31,7 @@ test('a delayed zero-percent config keeps startup errors off the network', async
     releaseConfig = resolve;
   });
   const sends: string[] = [];
+  await page.clock.install();
   await page.route('**/api/config', async (route) => {
     await held;
     await route.fulfill({
@@ -43,10 +49,10 @@ test('a delayed zero-percent config keeps startup errors off the network', async
       window.dispatchEvent(new ErrorEvent('error', { message: 'startup bug' })),
     );
     // Past the reporter's debounce: a fallback 100% sample would already have sent this.
-    await page.waitForTimeout(400);
+    await page.clock.runFor(REPORTER_DEBOUNCE_MS * 2);
     expect(sends).toEqual([]);
     releaseConfig();
-    await page.waitForTimeout(400);
+    await page.clock.runFor(REPORTER_DEBOUNCE_MS * 2);
     expect(sends).toEqual([]);
   } finally {
     releaseConfig();

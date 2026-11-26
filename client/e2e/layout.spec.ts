@@ -454,19 +454,25 @@ for (const status of ['PLACED', 'READY', 'COLLECTED'] as const) {
     await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
     await page.goto('/orders/o1');
     await expect(page.locator('main section').first()).toBeVisible();
-    await page.waitForTimeout(1500);
-    const lcp = await page.evaluate(
-      () =>
-        new Promise<{ inHero: boolean; tag: string }>((resolve) => {
-          new PerformanceObserver((list) => {
-            const entries = list.getEntries() as unknown as { element: Element | null }[];
-            const last = entries.at(-1)?.element ?? null;
-            const hero = document.querySelector('main section');
-            resolve({ inHero: !!last && !!hero?.contains(last), tag: last?.tagName ?? 'none' });
-          }).observe({ type: 'largest-contentful-paint', buffered: true });
-        }),
-    );
-    expect(lcp.inHero, `largest paint was a ${lcp.tag} outside the hero`).toBe(true);
+    // The header's title is the first candidate and the hero's paint is reported a few frames later (~100 ms), so
+    // poll the newest candidate. A hero inside a fade is never reported here (nothing repaints it), and the poll fails.
+    const largest = () =>
+      page.evaluate(
+        () =>
+          new Promise<string>((resolve) => {
+            setTimeout(() => resolve('none'), 500);
+            new PerformanceObserver((list, observer) => {
+              observer.disconnect();
+              const entries = list.getEntries() as unknown as { element: Element | null }[];
+              const last = entries.at(-1)?.element ?? null;
+              const hero = document.querySelector('main section');
+              resolve(last && hero?.contains(last) ? 'hero' : (last?.tagName ?? 'none'));
+            }).observe({ type: 'largest-contentful-paint', buffered: true });
+          }),
+      );
+    await expect
+      .poll(largest, { message: 'the largest paint is in the hero', timeout: 1_500 })
+      .toBe('hero');
   });
 }
 
@@ -507,7 +513,10 @@ for (const { path, role, width } of [
     });
     await page.goto(path);
     await page.waitForLoadState('networkidle');
-    await page.waitForTimeout(300);
+    // Two frames after the network is quiet: a shift entry is queued with the frame that moved something.
+    await page.evaluate(
+      () => new Promise((frame) => requestAnimationFrame(() => requestAnimationFrame(frame))),
+    );
     const { cls, shifts } = await page.evaluate(() => {
       const w = window as unknown as { __shifts: string[]; __cls: number };
       return { cls: w.__cls, shifts: w.__shifts };

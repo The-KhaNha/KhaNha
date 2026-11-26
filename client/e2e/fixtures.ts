@@ -104,17 +104,26 @@ export const managed = (s: Store, over: Partial<ManagedStore> = {}): ManagedStor
   ...over,
 });
 
+const hoursAnswer = {
+  timezone: 'Asia/Kolkata',
+  hours: [{ dayOfWeek: 1, opensAt: '09:00', closesAt: '17:00' }],
+  exceptions: [],
+};
+
+/** The error envelope the API sends, so a spec that hits a refusal reads what the real client would. */
+export const apiError = (code: string, message: string) => ({ error: { code, message } });
+
 export async function mockApi(page: Page): Promise<void> {
   await page.route('**/api/**', (route) => {
     const path = new URL(route.request().url()).pathname;
     const json = (body: unknown, status = 200) =>
       route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
-    if (path === '/api/config') return json(config);
-    if (path === '/api/stores') return json({ stores: [summary(store)] });
-    if (path === '/api/stores/cafe') return json({ store });
-    if (path === '/api/stores/cafe/menu') return json(menu);
-    if (path === '/api/stores/s1/stock')
-      return json({
+    const reads: Record<string, unknown> = {
+      '/api/config': config,
+      '/api/stores': { stores: [summary(store)] },
+      '/api/stores/cafe': { store },
+      '/api/stores/cafe/menu': menu,
+      '/api/stores/s1/stock': {
         items: items.map((i, n) => ({
           ...i,
           stockQuantity: [12, 3][n] ?? null,
@@ -122,9 +131,8 @@ export async function mockApi(page: Page): Promise<void> {
           archivedAt: null,
         })),
         lowStockThreshold: 5,
-      });
-    if (path === '/api/stores/s1/settings')
-      return json({
+      },
+      '/api/stores/s1/settings': {
         settings: {
           maxQuantityPerItem: 10,
           lowStockThreshold: 5,
@@ -132,21 +140,26 @@ export async function mockApi(page: Page): Promise<void> {
           lastOrderMinutesBeforeClose: 0,
           staffCanEditStock: true,
         },
-      });
-    // The menu editor's list (every item, with its own switch).
-    if (path === '/api/stores/s1/menu-items')
-      return json({ items: items.map((i) => ({ ...i, isEnabled: true, archivedAt: null })) });
-    if (path === '/api/stores/s1/modifier-groups') return json({ groups: [], itemGroupIds: {} });
-    // The manage screen reads its own store and hours at any status (GET /manage, /manage/hours).
-    if (path === '/api/stores/s1/manage')
-      return json({ store: managed(store), brand: store.brand, missing: [] });
-    if (path === '/api/stores/s1/hours' || path === '/api/stores/s1/manage/hours')
-      return json({
-        timezone: 'Asia/Kolkata',
-        hours: [{ dayOfWeek: 1, opensAt: '09:00', closesAt: '17:00' }],
-        exceptions: [],
-      });
-    return json({ error: { code: 'NOT_FOUND', message: `No route matches ${path}.` } }, 404);
+      },
+      // The menu editor's list (every item, with its own switch).
+      '/api/stores/s1/menu-items': {
+        items: items.map((i) => ({ ...i, isEnabled: true, archivedAt: null })),
+      },
+      '/api/stores/s1/modifier-groups': { groups: [], itemGroupIds: {} },
+      // The manage screen reads its own store and hours at any status (GET /manage, /manage/hours).
+      '/api/stores/s1/manage': { store: managed(store), brand: store.brand, missing: [] },
+      '/api/stores/s1/hours': hoursAnswer,
+      '/api/stores/s1/manage/hours': hoursAnswer,
+    };
+    if (!(path in reads)) return json(apiError('NOT_FOUND', `No route matches ${path}.`), 404);
+    // Every default answer is a read: a write reaching it means a spec forgot to mock its own route, and a 200 here
+    // would let the spec pass on a request nobody answered.
+    if (route.request().method() !== 'GET')
+      return json(
+        apiError('METHOD_NOT_ALLOWED', `${route.request().method()} ${path} is not mocked.`),
+        405,
+      );
+    return json(reads[path]);
   });
 }
 
@@ -217,6 +230,26 @@ export async function mockSupabaseToken(page: Page, user: User): Promise<string[
   return posts;
 }
 
+const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
+
+/** True for the body of POST /orders as the client builds it: lines of { menuItemId, quantity } and an idempotencyKey. */
+export function isOrderInput(body: unknown): boolean {
+  return (
+    isRecord(body) &&
+    typeof body.idempotencyKey === 'string' &&
+    body.idempotencyKey !== '' &&
+    Array.isArray(body.items) &&
+    body.items.length > 0 &&
+    body.items.every(
+      (line) =>
+        isRecord(line) && typeof line.menuItemId === 'string' && Number.isInteger(line.quantity),
+    )
+  );
+}
+
+const isStatusInput = (body: unknown): body is { status: OrderStatus } =>
+  isRecord(body) && typeof body.status === 'string';
+
 /**
  * Signs the page in as `role` without a backend: the persisted auth store, a supabase-js session that is not near
  * expiry (so it makes no network call; the key's `127` is the host in the tracked client/.env.development) and a
@@ -269,13 +302,33 @@ export async function signIn(
     ],
   };
   await page.route('**/api/auth/me', (route) => route.fulfill({ json: { user } }));
-  await page.route(/\/api\/(stores\/s1\/)?orders/, (route) =>
-    route.fulfill({
-      json: /\/orders$/.test(new URL(route.request().url()).pathname)
-        ? { orders: [order] }
-        : { order },
-    }),
-  );
+  await page.route(/\/api\/(stores\/s1\/)?orders/, (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    const method = request.method();
+    if (method === 'GET')
+      return route.fulfill({ json: /\/orders$/.test(path) ? { orders: [order] } : { order } });
+    const body: unknown = request.postDataJSON();
+    if (method === 'POST' && path === '/api/orders')
+      // What the real server validates first: a body the client never builds is a 400, not a placed order.
+      return isOrderInput(body)
+        ? route.fulfill({ status: 201, json: { order } })
+        : route.fulfill({
+            status: 400,
+            json: apiError('VALIDATION_ERROR', 'The order body is not what the client sends.'),
+          });
+    if (method === 'PATCH' && /\/status$/.test(path))
+      return isStatusInput(body)
+        ? route.fulfill({ json: { order: { ...order, status: body.status } } })
+        : route.fulfill({
+            status: 400,
+            json: apiError('VALIDATION_ERROR', 'A status change sends { status }.'),
+          });
+    return route.fulfill({
+      status: 405,
+      json: apiError('METHOD_NOT_ALLOWED', `${method} ${path} is not mocked.`),
+    });
+  });
   await page.addInitScript((user) => {
     const expiresAt = Math.floor(Date.now() / 1000) + 3600;
     localStorage.setItem('fp_auth', JSON.stringify({ state: { user, token: 'e2e' }, version: 0 }));
