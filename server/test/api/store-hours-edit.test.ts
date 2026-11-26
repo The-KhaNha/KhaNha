@@ -10,6 +10,7 @@ import {
   testAuthMatrix,
   testStoreIsolation,
   type TestUser,
+  expectError,
 } from '../setup/helpers';
 
 const tag = randomUUID().slice(0, 8);
@@ -72,7 +73,8 @@ testAuthMatrix('PUT /api/stores/:storeId/hours', (http) =>
 );
 testStoreIsolation(
   'PUT /api/stores/:storeId/hours',
-  (http, id) => http.put(`/api/stores/${id}/hours`).send({ hours: [] }),
+  // A real week: the isolation stores are live, and a live store may not clear its hours.
+  (http, id) => http.put(`/api/stores/${id}/hours`).send({ hours: everyDay('09:00', '17:00') }),
   undefined,
   'MANAGER',
 );
@@ -99,7 +101,7 @@ testStoreIsolation(
 
 describe('opening hours editing', () => {
   it('staff lack hours.edit → 403', async () => {
-    expect((await put([], staff)).status).toBe(403);
+    expectError(await put([], staff), 403, 'FORBIDDEN');
   });
 
   it('saves the week, flips openState on the next read, and audits one row naming the actor', async () => {
@@ -197,12 +199,36 @@ describe('opening hours editing', () => {
       })),
     ],
   ])('%s → 400', async (_label, hours) => {
-    expect((await put(hours)).status).toBe(400);
+    expectError(await put(hours), 400, 'VALIDATION_ERROR');
   });
 
-  it('an empty week clears the hours', async () => {
-    expect((await put([])).status).toBe(200);
-    expect((await week()).hours).toEqual([]);
+  // Decided 2026-11-23: a store with no hours reads open around the clock, so a published one may not clear them.
+  it('a live store cannot clear its week: 409 STORE_NOT_READY, the week and the audit trail unchanged', async () => {
+    expect((await put(everyDay('08:00', '20:00'))).status).toBe(200);
+    const before = await week();
+    const rows = (await audit()).length;
+    const res = await put([]);
+    expectError(res, 409, 'STORE_NOT_READY');
+    expect(res.body.error.details).toEqual({ kind: 'storeNotReady', missing: ['hours'] });
+    expect((await week()).hours).toEqual(before.hours);
+    expect(await audit()).toHaveLength(rows);
+  });
+
+  it('a draft store may clear its week', async () => {
+    const setStatus = (status: 'DRAFT' | 'ACTIVE') =>
+      supabaseAdmin.from('stores').update({ status }).eq('id', storeId).throwOnError();
+    await setStatus('DRAFT');
+    try {
+      expect((await put([])).status).toBe(200);
+      const { data } = await supabaseAdmin
+        .from('store_hours')
+        .select('day_of_week')
+        .eq('store_id', storeId)
+        .throwOnError();
+      expect(data).toEqual([]);
+    } finally {
+      await setStatus('ACTIVE');
+    }
   });
 
   describe('exceptions', () => {
@@ -238,10 +264,11 @@ describe('opening hours editing', () => {
 
     it('an unknown id or a malformed one is 404', async () => {
       for (const id of [randomUUID(), 'nope'])
-        expect(
-          (await api().delete(`/api/stores/${storeId}/schedule-exceptions/${id}`).set(as(manager)))
-            .status,
-        ).toBe(404);
+        expectError(
+          await api().delete(`/api/stores/${storeId}/schedule-exceptions/${id}`).set(as(manager)),
+          404,
+          'NOT_FOUND',
+        );
     });
 
     it.each([
@@ -274,7 +301,7 @@ describe('opening hours editing', () => {
           })),
         )
         .throwOnError();
-      expect((await post(closed)).status).toBe(400);
+      expectError(await post(closed), 400, 'VALIDATION_ERROR');
     });
   });
 });

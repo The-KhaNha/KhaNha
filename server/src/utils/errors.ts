@@ -321,14 +321,14 @@ export const mfaRequired = (): AppError =>
 export const brandHasOwner = (): AppError =>
   new AppError(409, 'BRAND_HAS_OWNER', 'That restaurant already has an owner.');
 
-/** A publish refused because the store is not ready; `missing` says what to add. */
-export const storeNotReady = (missing: string[]): AppError =>
-  new AppError(
-    409,
-    'STORE_NOT_READY',
-    'Add an address, weekly hours and at least one available item before publishing.',
-    { kind: 'storeNotReady', missing },
-  );
+/**
+ * A publish refused because the store is not ready, or a change that would make a published store unready (an
+ * empty week); `missing` says what it needs.
+ */
+export const storeNotReady = (
+  missing: string[],
+  message = 'Add an address, weekly hours and at least one available item before publishing.',
+): AppError => new AppError(409, 'STORE_NOT_READY', message, { kind: 'storeNotReady', missing });
 
 /** A photo upload refused: a type, size or content the API does not take, or a step out of order. */
 export const uploadInvalid = (message: string, reason: UploadInvalidDetails['reason']): AppError =>

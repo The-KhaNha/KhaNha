@@ -3,7 +3,7 @@ import { HOURS_LIMITS } from '../schemas/limits';
 import type { RequestContext } from '../types/auth';
 import type { ScheduleExceptionDto } from '../types/api';
 import { invalidate } from '../utils/cache';
-import { notFound, validationError } from '../utils/errors';
+import { notFound, storeNotReady, validationError } from '../utils/errors';
 import { isUuid } from '../utils/ids';
 import { raisedByDatabase, supabaseAdmin } from '../utils/supabase';
 import { invalidateMenus } from './menu.service';
@@ -34,6 +34,11 @@ export async function setStoreHours(
   } catch (err) {
     if (raisedByDatabase(err, 'VALIDATION_ERROR'))
       throw validationError('Opening times on a day cannot overlap.', 'hours');
+    if (raisedByDatabase(err, 'STORE_NOT_READY'))
+      throw storeNotReady(
+        ['hours'],
+        'A live store needs its weekly hours. Unpublish it or pause it instead of clearing them.',
+      );
     throw err;
   }
   invalidateHours(storeId);
