@@ -16,6 +16,7 @@ import {
   testAuthMatrix,
   testStoreIsolation,
   type TestUser,
+  expectError,
 } from '../setup/helpers';
 
 const tag = randomUUID().slice(0, 8);
@@ -128,14 +129,26 @@ describe('starting an upload', () => {
     ['an empty photo', { contentType: 'image/png', byteSize: 0 }],
     ['one over 8 MB', { contentType: 'image/png', byteSize: 8 * 1024 * 1024 + 1 }],
     ['an extra field', { contentType: 'image/png', byteSize: 10, key: '../../etc/passwd' }],
+    ['a fractional size', { contentType: 'image/png', byteSize: 1.5 }],
+    ['a size sent as a string', { contentType: 'image/png', byteSize: '10' }],
   ])('%s is 400 and makes no row', async (_label, body) => {
+    const rows = async () =>
+      (
+        await supabaseAdmin
+          .from('media_uploads')
+          .select('id', { count: 'exact', head: true })
+          .eq('store_id', storeId)
+          .throwOnError()
+      ).count;
+    const before = await rows();
     const res = await start(body);
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    expect(await rows()).toBe(before);
   });
 
   it('staff may not upload (403)', async () => {
-    expect((await start({ contentType: 'image/png', byteSize: 10 }, staff)).status).toBe(403);
+    expectError(await start({ contentType: 'image/png', byteSize: 10 }, staff), 403, 'FORBIDDEN');
   });
 });
 
@@ -290,8 +303,8 @@ describe('an upload, start to finish', () => {
   });
 
   it('an unknown or malformed upload id is 404', async () => {
-    expect((await complete(randomUUID())).status).toBe(404);
-    expect((await api().get(`${base()}/not-a-uuid`).set(auth(manager))).status).toBe(404);
+    expectError(await complete(randomUUID()), 404, 'NOT_FOUND');
+    expectError(await api().get(`${base()}/not-a-uuid`).set(auth(manager)), 404, 'NOT_FOUND');
   });
 });
 
@@ -300,10 +313,12 @@ describe('S3 mode', () => {
     const { uploadId } = (await start({ contentType: 'image/png', byteSize: 10 })).body;
     env.MEDIA_STORAGE = 's3';
     try {
-      expect((await put(uploadId, png(10))).status).toBe(404);
-      expect((await api().get(`/media/stores/${storeId}/uploads/${uploadId}.png`)).status).toBe(
-        404,
-      );
+      expectError(await put(uploadId, png(10)), 404, 'NOT_FOUND');
+      // /media is unmounted in S3 mode, so the catch-all's answer is the expected one.
+      expect(await api().get(`/media/stores/${storeId}/uploads/${uploadId}.png`)).toMatchObject({
+        status: 404,
+        body: { error: { message: expect.stringMatching(/^No route matches/) } },
+      });
       // Presigning needs no round trip, so this holds whether or not the bucket is running.
       const res = await start({ contentType: 'image/png', byteSize: 10 });
       expect(res.status).toBe(201);

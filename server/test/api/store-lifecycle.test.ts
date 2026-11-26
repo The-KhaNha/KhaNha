@@ -12,6 +12,7 @@ import {
   testAuthMatrix,
   testStoreIsolation,
   type TestUser,
+  expectError,
 } from '../setup/helpers';
 
 const tag = randomUUID().slice(0, 8);
@@ -150,7 +151,7 @@ describe('POST /api/brands/:brandId/stores', () => {
     expect(names).toEqual(['Tea', 'Toast']);
     expect(await statusOf(branchId)).toBe('DRAFT');
     // A draft is nobody's to see but its own people.
-    expect((await api().get(`/api/stores/${branchId}`)).status).toBe(404);
+    expectError(await api().get(`/api/stores/${branchId}`), 404, 'NOT_FOUND');
   });
 
   it('makes the slug from the name when none is sent', async () => {
@@ -174,14 +175,14 @@ describe('POST /api/brands/:brandId/stores', () => {
   ])('%s → 404, and nothing is made', async (_who, who) => {
     const slug = `lifecycle-refused-${tag}`;
     const res = await create(who(), { name: 'Refused', slug });
-    expect(res.status).toBe(404);
+    expectError(res, 404, 'NOT_FOUND');
     const { data } = await supabaseAdmin.from('stores').select('id').eq('slug', slug);
     expect(data).toEqual([]);
   });
 
   it('an unknown or malformed brand id → 404', async () => {
-    expect((await create(owner, { name: 'X branch' }, randomUUID())).status).toBe(404);
-    expect((await create(owner, { name: 'X branch' }, 'not-a-uuid')).status).toBe(404);
+    expectError(await create(owner, { name: 'X branch' }, randomUUID()), 404, 'NOT_FOUND');
+    expectError(await create(owner, { name: 'X branch' }, 'not-a-uuid'), 404, 'NOT_FOUND');
   });
 
   it('a taken slug → 409 SLUG_TAKEN, and leaves nothing behind', async () => {
@@ -267,7 +268,7 @@ describe('PATCH /api/stores/:storeId/profile', () => {
 
   it("the owner edits the template's profile, which new branches copy; a manager cannot reach it", async () => {
     expect((await profile(owner, { tagline: 'From the template' }, templateId)).status).toBe(200);
-    expect((await profile(manager, { tagline: 'x' }, templateId)).status).toBe(404);
+    expectError(await profile(manager, { tagline: 'x' }, templateId), 404, 'NOT_FOUND');
   });
 
   it('a bad phone keeps its own message', async () => {
@@ -276,7 +277,7 @@ describe('PATCH /api/stores/:storeId/profile', () => {
   });
 
   it('staff → 403', async () => {
-    expect((await profile(branchStaff, { tagline: 'x' })).status).toBe(403);
+    expectError(await profile(branchStaff, { tagline: 'x' }), 403, 'FORBIDDEN');
   });
 
   it('the CHECK constraints hold the bounds the schema enforces', async () => {
@@ -329,9 +330,9 @@ describe('publish and unpublish', () => {
   });
 
   it('a manager or an admin → 403; a template → 404', async () => {
-    expect((await publish(branchManager)).status).toBe(403);
-    expect((await publish(admin, sourceId)).status).toBe(403);
-    expect((await publish(owner, templateId)).status).toBe(404);
+    expectError(await publish(branchManager), 403, 'FORBIDDEN');
+    expectError(await publish(admin, sourceId), 403, 'FORBIDDEN');
+    expectError(await publish(owner, templateId), 404, 'NOT_FOUND');
   });
 
   it('publish lists the store at once, with one store.changed; a repeat leaves none', async () => {
@@ -380,7 +381,7 @@ describe('publish and unpublish', () => {
       .post('/api/orders')
       .set(auth(customer))
       .send({ storeId: branchId, items: [{ menuItemId: itemId, quantity: 1 }] });
-    expect(refused.status).toBe(404);
+    expectError(refused, 404, 'NOT_FOUND');
 
     for (const status of ['PREPARING', 'READY', 'COLLECTED']) {
       const moved = await api()
@@ -412,15 +413,15 @@ describe('the manage screen reads (any status)', () => {
     });
     expect(res.body.missing).toEqual(expect.any(Array));
     // The public route never serves it.
-    expect((await api().get(`/api/stores/${branchId}`)).status).toBe(404);
+    expectError(await api().get(`/api/stores/${branchId}`), 404, 'NOT_FOUND');
   });
 
   it('the owner reads the template; staff → 403; a customer → 404', async () => {
     const template = await manageOf(owner, templateId);
     expect(template.status).toBe(200);
     expect(template.body.store.isTemplate).toBe(true);
-    expect((await manageOf(branchStaff)).status).toBe(403);
-    expect((await manageOf(customer)).status).toBe(404);
+    expectError(await manageOf(branchStaff), 403, 'FORBIDDEN');
+    expectError(await manageOf(customer), 404, 'NOT_FOUND');
   });
 
   it("a DRAFT branch's hours reach its manager; the template has none to edit (404)", async () => {
@@ -429,9 +430,9 @@ describe('the manage screen reads (any status)', () => {
     expect(res.status).toBe(200);
     expect(res.body.hours).toHaveLength(7);
     expect(res.body.timezone).toEqual(expect.any(String));
-    expect((await api().get(`/api/stores/${branchId}/hours`)).status).toBe(404);
+    expectError(await api().get(`/api/stores/${branchId}/hours`), 404, 'NOT_FOUND');
     const template = await api().get(`/api/stores/${templateId}/manage/hours`).set(auth(owner));
-    expect(template.status).toBe(404);
+    expectError(template, 404, 'NOT_FOUND');
   });
 });
 
@@ -480,14 +481,14 @@ describe.each([
 ])('%s — store isolation', (route, call) => {
   it('anonymous → 401', async () => {
     const path = `/api/stores/${branchId}/${route}`;
-    expect((await api().post(path).send({})).status).toBe(401);
+    expectError(await api().post(path).send({}), 401, 'UNAUTHORIZED');
   });
   it.each([
     ['a customer', () => customer],
     ["the other brand's owner", () => otherOwner],
   ])('%s → 404 (a draft store is not theirs to see)', async (_who, who) => {
     const res = await call(who());
-    expect(res.status).toBe(404);
+    expectError(res, 404, 'NOT_FOUND');
     expect(res.body.error.code).toBe('NOT_FOUND');
   });
   it("the store's own staff → 403", async () => {

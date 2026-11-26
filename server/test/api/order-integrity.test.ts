@@ -13,6 +13,7 @@ import {
   oldestStoreId,
   resetDemoData,
   type TestUser,
+  expectError,
 } from '../setup/helpers';
 import { resolveTestTarget } from '../setup/target';
 
@@ -336,7 +337,7 @@ describe('expectedUnitPrice edge matrix (which refusal wins, bounds, replay)', (
 
   it('1 (the lower bound) validates: refused as stale, never as a validation error', async () => {
     const res = await place([{ menuItemId: item.id, quantity: 1, expectedUnitPrice: 1 }]);
-    expect(res.status).toBe(409);
+    expectError(res, 409, 'PRICE_CHANGED');
   });
 
   it('a matching line next to a stale one → 409 naming the stale item, nothing placed', async () => {

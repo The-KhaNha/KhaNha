@@ -1,4 +1,3 @@
-// Shared fixture for the orders-*.test.ts files (destructive, local Supabase only): a reset demo store, two customers, a staff member and the request helpers.
 import { afterAll, beforeAll } from 'vitest';
 import { paiseToRupees } from '../../src/utils/money';
 import { supabaseAdmin } from '../../src/utils/supabase';

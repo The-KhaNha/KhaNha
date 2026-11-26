@@ -19,7 +19,7 @@ describe('security headers', () => {
 
   it('are on a 404 and on an error response too', async () => {
     const missing = await api().get('/api/nope');
-    expect(missing.status).toBe(404);
+    expect(missing).toMatchObject({ status: 404 });
     expect(missing.headers).toMatchObject(EXPECTED);
 
     const denied = await api().get('/api/orders');

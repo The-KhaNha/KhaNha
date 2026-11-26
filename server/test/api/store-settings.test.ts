@@ -12,6 +12,7 @@ import {
   localSql,
   testStoreIsolation,
   type TestUser,
+  expectError,
 } from '../setup/helpers';
 
 const tag = randomUUID().slice(0, 8);
@@ -100,7 +101,11 @@ describe('GET and PATCH /api/stores/:storeId/settings', () => {
   });
 
   it('staff cannot read or edit them (403), a manager can', async () => {
-    expect((await api().get(`/api/stores/${store.a}/settings`).set(auth(staff))).status).toBe(403);
+    expectError(
+      await api().get(`/api/stores/${store.a}/settings`).set(auth(staff)),
+      403,
+      'FORBIDDEN',
+    );
     expect((await patch(store.a, { lowStockThreshold: 3 }, staff)).status).toBe(403);
     const res = await patch(store.a, { lowStockThreshold: 3 });
     expect(res.status).toBe(200);
@@ -110,7 +115,7 @@ describe('GET and PATCH /api/stores/:storeId/settings', () => {
 
   it.each(Object.entries(STORE_SETTING_BOUNDS))('%s is held to its bounds', async (key, bounds) => {
     for (const bad of [bounds.min - 1, bounds.max + 1, 2.5, '3'])
-      expect((await patch(store.a, { [key]: bad })).status).toBe(400);
+      expectError(await patch(store.a, { [key]: bad }), 400, 'VALIDATION_ERROR');
     expect((await patch(store.a, { [key]: bounds.max })).status).toBe(200);
     expect((await patch(store.a, { [key]: bounds.min })).status).toBe(200);
     // The database enforces the same numbers.
@@ -131,7 +136,7 @@ describe('GET and PATCH /api/stores/:storeId/settings', () => {
   });
 
   it('refuses an empty body', async () => {
-    expect((await patch(store.a, {})).status).toBe(400);
+    expectError(await patch(store.a, {}), 400, 'VALIDATION_ERROR');
   });
 
   it('is audited as store_settings.changed with the actor', async () => {

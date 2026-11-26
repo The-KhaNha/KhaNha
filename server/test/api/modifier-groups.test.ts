@@ -13,6 +13,7 @@ import {
   deleteTestStores,
   testStoreIsolation,
   type TestUser,
+  expectError,
 } from '../setup/helpers';
 
 const tag = randomUUID().slice(0, 8);
@@ -198,11 +199,11 @@ describe('the bounds', () => {
 
   it('a group of the same id twice on an item is 400', async () => {
     const id = randomUUID();
-    expect((await setGroups([id, id])).status).toBe(400);
+    expectError(await setGroups([id, id]), 400, 'VALIDATION_ERROR');
   });
 
   it('staff may not edit (403)', async () => {
-    expect((await create(size, staff)).status).toBe(403);
+    expectError(await create(size, staff), 403, 'FORBIDDEN');
   });
 });
 
@@ -322,10 +323,12 @@ describe('a group', () => {
       ...size,
       options: [{ ...size.options[0], id: foreign.id }],
     });
-    expect(res.status).toBe(404);
-    expect((await patch(other, size)).status).toBe(404);
-    expect((await api().patch(`${base()}/not-a-uuid`).set(auth(manager)).send(size)).status).toBe(
+    expectError(res, 404, 'NOT_FOUND');
+    expectError(await patch(other, size), 404, 'NOT_FOUND');
+    expectError(
+      await api().patch(`${base()}/not-a-uuid`).set(auth(manager)).send(size),
       404,
+      'NOT_FOUND',
     );
   });
 
@@ -363,10 +366,10 @@ describe('a group', () => {
   it("another store's group cannot be attached, nor another store's item set (404)", async () => {
     const other = await makeGroup(otherStoreId);
     const res = await setGroups([groupId, other]);
-    expect(res.status).toBe(404);
+    expectError(res, 404, 'NOT_FOUND');
     expect((await loadItemModifiers(storeId, [itemId])).groupIds.get(itemId)).toEqual([groupId]);
     const otherItem = await makeItem(otherStoreId);
-    expect((await setGroups([], otherItem)).status).toBe(404);
+    expectError(await setGroups([], otherItem), 404, 'NOT_FOUND');
   });
 
   it('archived, leaves the menu and old orders, and a repeat is 204 with no event', async () => {
@@ -382,8 +385,8 @@ describe('a group', () => {
     expect(again.status).toBe(204);
     expect(await events(requestIdOf(again))).toEqual([]);
     // An archived group can no longer be edited or attached.
-    expect((await patch(groupId, size)).status).toBe(404);
-    expect((await setGroups([groupId])).status).toBe(404);
+    expectError(await patch(groupId, size), 404, 'NOT_FOUND');
+    expectError(await setGroups([groupId]), 404, 'NOT_FOUND');
   });
 
   it(`a store has at most ${MODIFIER_LIMITS.groupsPerStore} live groups`, async () => {

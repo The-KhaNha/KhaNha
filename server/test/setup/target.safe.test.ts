@@ -11,12 +11,31 @@ describe('resolveTestTarget', () => {
     expect(resolveTestTarget({ ...local, SUPABASE_URL: 'http://localhost:54321' })).toBe('local');
   });
 
-  it('refuses local when env points elsewhere', () => {
-    expect(() => resolveTestTarget({ ...local, APP_ENV: 'staging' })).toThrow();
-    expect(() =>
-      resolveTestTarget({ ...local, SUPABASE_URL: 'https://abc.supabase.co' }),
-    ).toThrow();
-    expect(() => resolveTestTarget({ ...local, SUPABASE_URL: 'not a url' })).toThrow();
+  it.each([
+    ['APP_ENV is not local', { ...local, APP_ENV: 'staging' }, /needs APP_ENV=local/],
+    [
+      'SUPABASE_URL is a hosted project',
+      { ...local, SUPABASE_URL: 'https://abc.supabase.co' },
+      /SUPABASE_URL must be local/,
+    ],
+    [
+      'SUPABASE_URL is not a URL',
+      { ...local, SUPABASE_URL: 'not a url' },
+      /SUPABASE_URL must be local/,
+    ],
+    // The host must be exactly local, not merely start with it.
+    [
+      'SUPABASE_URL is a lookalike host',
+      { ...local, SUPABASE_URL: 'http://127.0.0.1.evil.test:54321' },
+      /SUPABASE_URL must be local/,
+    ],
+    [
+      'SUPABASE_URL puts localhost in the user part',
+      { ...local, SUPABASE_URL: 'http://localhost@evil.test' },
+      /SUPABASE_URL must be local/,
+    ],
+  ])('refuses local when %s', (_label, env, message) => {
+    expect(() => resolveTestTarget(env)).toThrow(message);
   });
 
   it('refuses staging without the explicit opt-in', () => {
@@ -50,6 +69,10 @@ describe('resolveTestTarget', () => {
     expect(() =>
       resolveTestTarget({ ...staging, SUPABASE_URL: 'https://some-other-project.supabase.co' }),
     ).toThrow(/SUPABASE_URL/);
+    // The staging host as a prefix of another host is not the staging host.
+    expect(() =>
+      resolveTestTarget({ ...staging, SUPABASE_URL: `https://${STAGING_HOST}.evil.test` }),
+    ).toThrow(/SUPABASE_URL/);
     // A prod-looking host must not slip through opt-in staging mode either.
     expect(() =>
       resolveTestTarget({ ...staging, SUPABASE_URL: 'https://production-project.supabase.co' }),
@@ -57,9 +80,10 @@ describe('resolveTestTarget', () => {
   });
 
   it('never runs against production', () => {
-    expect(() => resolveTestTarget({ ...local, TEST_TARGET: 'production' })).toThrow();
+    const never = /never run against TEST_TARGET=production/;
+    expect(() => resolveTestTarget({ ...local, TEST_TARGET: 'production' })).toThrow(never);
     expect(() =>
       resolveTestTarget({ ...local, TEST_TARGET: 'production', ALLOW_STAGING_TESTS: '1' }),
-    ).toThrow();
+    ).toThrow(never);
   });
 });

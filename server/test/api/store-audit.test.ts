@@ -12,6 +12,7 @@ import {
   deleteTestStores,
   testStoreIsolation,
   type TestUser,
+  expectError,
 } from '../setup/helpers';
 
 const tag = randomUUID().slice(0, 8);
@@ -87,7 +88,7 @@ describe('GET /api/stores/:storeId/audit', () => {
       expect(res.status).toBe(200);
       expect(res.headers['cache-control']).toBe('no-store');
     }
-    expect((await read(staff, store.x)).status).toBe(403);
+    expectError(await read(staff, store.x), 403, 'FORBIDDEN');
   });
 
   it("returns only the store's rows", async () => {
@@ -124,6 +125,6 @@ describe('GET /api/stores/:storeId/audit', () => {
   });
 
   it('refuses a malformed query with 400', async () => {
-    expect((await read(manager, store.x, { limit: 0 })).status).toBe(400);
+    expectError(await read(manager, store.x, { limit: 0 }), 400, 'VALIDATION_ERROR');
   });
 });

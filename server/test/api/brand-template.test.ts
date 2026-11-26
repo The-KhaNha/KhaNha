@@ -10,6 +10,7 @@ import {
   createTestUser,
   deleteTestStores,
   type TestUser,
+  expectError,
 } from '../setup/helpers';
 
 const tag = randomUUID().slice(0, 8);
@@ -276,15 +277,15 @@ describe('the template', () => {
       .single();
     const list = await api().get('/api/stores');
     expect(list.body.stores.map((store: { id: string }) => store.id)).not.toContain(templateId);
-    expect((await api().get(`/api/stores/${template?.slug}`)).status).toBe(404);
-    expect((await api().get(`/api/stores/${templateId}/menu`)).status).toBe(404);
+    expectError(await api().get(`/api/stores/${template?.slug}`), 404, 'NOT_FOUND');
+    expectError(await api().get(`/api/stores/${templateId}/menu`), 404, 'NOT_FOUND');
 
     const [item] = await itemsOf(templateId);
     const res = await api()
       .post('/api/orders')
       .set(auth(customer))
       .send({ storeId: templateId, items: [{ menuItemId: item?.id, quantity: 1 }] });
-    expect(res.status).toBe(404);
+    expectError(res, 404, 'NOT_FOUND');
   });
 });
 
@@ -298,19 +299,29 @@ describe('who reaches the template through a store route', () => {
 
   it('not its owner for a kitchen or team route: a template has neither', async () => {
     for (const path of ['orders', 'members']) {
-      expect((await api().get(`/api/stores/${templateId}/${path}`).set(auth(owner))).status).toBe(
+      expectError(
+        await api().get(`/api/stores/${templateId}/${path}`).set(auth(owner)),
         404,
+        'NOT_FOUND',
       );
     }
   });
 
   it('nobody else: a manager of a branch and a platform admin get 404', async () => {
-    expect((await api().get(`/api/stores/${templateId}/settings`).set(auth(manager))).status).toBe(
+    expectError(
+      await api().get(`/api/stores/${templateId}/settings`).set(auth(manager)),
       404,
+      'NOT_FOUND',
     );
-    expect((await api().get(`/api/stores/${templateId}/audit`).set(auth(admin))).status).toBe(404);
-    expect((await api().get(`/api/stores/${templateId}/members`).set(auth(admin))).status).toBe(
+    expectError(
+      await api().get(`/api/stores/${templateId}/audit`).set(auth(admin)),
       404,
+      'NOT_FOUND',
+    );
+    expectError(
+      await api().get(`/api/stores/${templateId}/members`).set(auth(admin)),
+      404,
+      'NOT_FOUND',
     );
   });
 });

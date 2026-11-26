@@ -17,34 +17,34 @@ describe('priceLine: the shared case table', () => {
   });
 });
 
-// Groups of 1–4 available options each, with whole-rupee deltas and a valid min/max.
+// Groups of 1–4 options, most available, with whole-rupee deltas and a valid min/max.
 const groupArb = (index: number) =>
   fc
     .record({
-      deltas: fc.array(
-        fc.integer({ min: -50, max: 50 }).map((r) => r * 100),
-        {
-          minLength: 1,
-          maxLength: 4,
-        },
+      options: fc.array(
+        fc.record({
+          delta: fc.integer({ min: -50, max: 50 }).map((r) => r * 100),
+          isAvailable: fc.integer({ min: 0, max: 5 }).map((n) => n > 0),
+        }),
+        { minLength: 1, maxLength: 4 },
       ),
       max: fc.integer({ min: 1, max: 4 }),
       min: fc.integer({ min: 0, max: 4 }),
       defaultAt: fc.option(fc.nat(3), { nil: undefined }),
     })
-    .map(({ deltas, max, min, defaultAt }): PricingGroup => {
-      const maxSelect = Math.min(max, deltas.length);
+    .map(({ options, max, min, defaultAt }): PricingGroup => {
+      const maxSelect = Math.min(max, options.length);
       return {
         id: `g${index}`,
         name: `Group ${index}`,
         minSelect: Math.min(min, maxSelect),
         maxSelect,
-        options: deltas.map((priceDeltaPaise, i) => ({
+        options: options.map((o, i) => ({
           id: `g${index}-o${i}`,
           name: `Option ${i}`,
-          priceDeltaPaise,
+          priceDeltaPaise: o.delta,
           isDefault: i === defaultAt,
-          isAvailable: true,
+          isAvailable: o.isAvailable,
         })),
       };
     });
@@ -57,63 +57,114 @@ const menuArb = fc
       base: fc.integer({ min: 0, max: 1000 }).map((r) => r * 100),
       // A pick per group: how many of its options, from the front.
       picks: fc.tuple(...groups.map((g) => fc.integer({ min: 0, max: g.options.length }))),
+      // A line may also repeat an option or name one that is not on the item (another item's, a made-up id).
+      extra: fc.constantFrom('none', 'none', 'duplicate', 'foreign'),
     }),
   );
 
+interface Menu {
+  groups: PricingGroup[];
+  base: number;
+  picks: number[];
+  extra: string;
+}
+const chosenOf = ({ groups, picks, extra }: Menu): string[] => {
+  const ids = groups.flatMap((g, i) => g.options.slice(0, picks[i]).map((o) => o.id));
+  if (extra === 'duplicate' && ids[0]) ids.push(ids[0]);
+  if (extra === 'foreign') ids.push('another-items-option');
+  return ids;
+};
+
+type Expected = { ok: true; total: number } | { ok: false; code: string };
+
+/**
+ * What the pricing rules say, written out from the documented rules in domain/pricing.ts rather than by calling it:
+ * the outcome and the price, computed from the generated groups and the chosen ids.
+ */
+function reference(m: Menu, chosenIds: string[]): Expected {
+  const options = new Map(m.groups.flatMap((g) => g.options.map((o) => [o.id, o] as const)));
+  if (new Set(chosenIds).size !== chosenIds.length) return { ok: false, code: 'MODIFIER_INVALID' };
+  for (const id of chosenIds) {
+    const o = options.get(id);
+    if (!o || !o.isAvailable) return { ok: false, code: 'MODIFIER_INVALID' };
+  }
+  let total = m.base;
+  for (const g of m.groups) {
+    let picked = g.options.filter((o) => chosenIds.includes(o.id));
+    // A required group left empty takes its available defaults, at most max.
+    if (picked.length === 0 && g.minSelect > 0)
+      picked = g.options.filter((o) => o.isDefault && o.isAvailable).slice(0, g.maxSelect);
+    if (picked.length > g.maxSelect) return { ok: false, code: 'MODIFIER_INVALID' };
+    if (picked.length < g.minSelect) return { ok: false, code: 'MODIFIER_REQUIRED' };
+    total += picked.reduce((sum, o) => sum + o.priceDeltaPaise, 0);
+  }
+  return total < 0 ? { ok: false, code: 'MODIFIER_INVALID' } : { ok: true, total };
+}
+
 describe('priceLine: properties', () => {
-  it('an accepted line costs the item plus exactly the applied deltas, and never less than zero', () => {
+  it('a line costs the item plus the deltas of the options it chose, and is refused exactly when the rules say', () => {
     fc.assert(
-      fc.property(menuArb, ({ groups, base, picks }) => {
-        const chosen = groups.flatMap((g, i) => g.options.slice(0, picks[i]).map((o) => o.id));
-        const got = priceLine(base, groups, chosen, true);
-        if (!got.ok) return;
-        const sum = got.applied.reduce((s, m) => s + m.priceDeltaPaise, 0);
-        expect(got.unitPricePaise).toBe(base + sum);
-        expect(got.unitPricePaise).toBeGreaterThanOrEqual(0);
+      fc.property(menuArb, (m) => {
+        const got = priceLine(m.base, m.groups, chosenOf(m), true);
+        const want = reference(m, chosenOf(m));
+        if (want.ok) expect(got).toMatchObject({ ok: true, unitPricePaise: want.total });
+        else expect(got).toMatchObject({ ok: false, code: want.code });
+      }),
+      { numRuns: 500 },
+    );
+  });
+
+  it('an unavailable, repeated or foreign option is always refused as MODIFIER_INVALID', () => {
+    fc.assert(
+      fc.property(menuArb, (m) => {
+        const bad = [
+          ...m.groups.flatMap((g) => g.options.filter((o) => !o.isAvailable).map((o) => o.id)),
+          'another-items-option',
+        ];
+        for (const id of bad)
+          expect(priceLine(m.base, m.groups, [id], true)).toMatchObject({
+            ok: false,
+            code: 'MODIFIER_INVALID',
+          });
+        const [first] = m.groups.flatMap((g) => g.options.filter((o) => o.isAvailable));
+        if (first)
+          expect(priceLine(m.base, m.groups, [first.id, first.id], true)).toMatchObject({
+            ok: false,
+            code: 'MODIFIER_INVALID',
+          });
       }),
     );
   });
 
   it('every accepted line keeps each group within min and max; every chosen option is applied', () => {
     fc.assert(
-      fc.property(menuArb, ({ groups, base, picks }) => {
-        const chosen = groups.flatMap((g, i) => g.options.slice(0, picks[i]).map((o) => o.id));
-        const got = priceLine(base, groups, chosen, true);
+      fc.property(menuArb, (m) => {
+        const chosen = chosenOf(m);
+        const got = priceLine(m.base, m.groups, chosen, true);
         if (!got.ok) return;
-        for (const g of groups) {
-          const n = got.applied.filter((m) => m.groupName === g.name).length;
+        for (const g of m.groups) {
+          const n = got.applied.filter((a) => a.groupName === g.name).length;
           expect(n).toBeGreaterThanOrEqual(g.minSelect);
           expect(n).toBeLessThanOrEqual(g.maxSelect);
         }
-        for (const id of chosen) expect(got.applied.some((m) => m.optionId === id)).toBe(true);
+        for (const id of chosen) expect(got.applied.some((a) => a.optionId === id)).toBe(true);
       }),
     );
   });
 
-  it('a group chosen within its bounds is never refused for its count', () => {
+  it('with the flag off, a line without options is the item price and one that names an option is refused', () => {
     fc.assert(
-      fc.property(menuArb, ({ groups, base, picks }) => {
-        const inBounds = groups.every((g, i) => {
-          const n = picks[i] ?? 0;
-          const defaults = g.options.filter((o) => o.isDefault).length;
-          return (n >= g.minSelect || (n === 0 && defaults >= g.minSelect)) && n <= g.maxSelect;
-        });
-        const chosen = groups.flatMap((g, i) => g.options.slice(0, picks[i]).map((o) => o.id));
-        const got = priceLine(base, groups, chosen, true);
-        if (inBounds && !got.ok) expect(got.code).toBe('MODIFIER_INVALID'); // only a negative price
-        if (inBounds && !got.ok) expect(got.groupName).toBeUndefined();
-      }),
-    );
-  });
-
-  it('with the flag off, any line without options is the item price', () => {
-    fc.assert(
-      fc.property(menuArb, ({ groups, base }) => {
-        expect(priceLine(base, groups, [], false)).toEqual({
+      fc.property(menuArb, (m) => {
+        expect(priceLine(m.base, m.groups, [], false)).toEqual({
           ok: true,
-          unitPricePaise: base,
-          basePricePaise: base,
+          unitPricePaise: m.base,
+          basePricePaise: m.base,
           applied: [],
+        });
+        expect(priceLine(m.base, m.groups, chosenOf({ ...m, extra: 'foreign' }), false)).toEqual({
+          ok: false,
+          code: 'MODIFIER_INVALID',
+          groupName: undefined,
         });
       }),
     );

@@ -51,7 +51,7 @@ describe('AppError factories', () => {
 
   it('notFound is 404 NOT_FOUND with a default message', () => {
     const err = notFound();
-    expect(err.status).toBe(404);
+    expect(err).toMatchObject({ status: 404 });
     expect(err.code).toBe('NOT_FOUND');
     expect(err.message).toBe('We could not find what you were looking for.');
   });

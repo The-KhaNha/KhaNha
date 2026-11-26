@@ -153,6 +153,7 @@ describe('the S3 store, through the API', () => {
     const { uploadId, upload } = await start(bytes.length);
     expect(await postForm(upload, bytes)).toBe(204);
     const anonymous = await fetch(`${upload.url}/stores/${storeId}/uploads/${uploadId}.png`);
+    // The bucket's own answer (S3 XML), not the API's error envelope: its status is all there is to check.
     expect(anonymous.status).toBe(403);
   });
 

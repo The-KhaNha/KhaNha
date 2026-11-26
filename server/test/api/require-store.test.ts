@@ -16,6 +16,7 @@ import {
   createTestUser,
   deleteTestUser,
   type TestUser,
+  expectError,
 } from '../setup/helpers';
 
 const CAPABILITIES: Capability[] = ['orders.view', 'store.pause', 'team.manageManagers'];
@@ -105,23 +106,23 @@ describe('requireStore', () => {
   });
 
   it('a member without the capability is 403', async () => {
-    const res = await as(staffA, storeIds.a, 'team.manageManagers').expect(403);
-    expect(res.body.error.code).toBe('FORBIDDEN');
+    expectError(await as(staffA, storeIds.a, 'team.manageManagers'), 403, 'FORBIDDEN');
   });
 
   it('a member of another store of the same brand is 403 at this one', async () => {
-    await as(managerB, storeIds.a, 'orders.view').expect(403);
-    await as(staffA, storeIds.b, 'orders.view').expect(403);
+    expectError(await as(managerB, storeIds.a, 'orders.view'), 403, 'FORBIDDEN');
+    expectError(await as(staffA, storeIds.b, 'orders.view'), 403, 'FORBIDDEN');
   });
 
+  // 403, not 404: an ACTIVE store is public, so its existence is no secret (only a DRAFT store hides behind 404, below).
   it('a customer is 403 at an active store and anonymous is 401', async () => {
-    await as(customer, storeIds.a, 'orders.view').expect(403);
-    await as(undefined, storeIds.a, 'orders.view').expect(401);
+    expectError(await as(customer, storeIds.a, 'orders.view'), 403, 'FORBIDDEN');
+    expectError(await as(undefined, storeIds.a, 'orders.view'), 401, 'UNAUTHORIZED');
   });
 
   it('a DRAFT store is 404 to a stranger and to a member elsewhere, and open to its owner', async () => {
-    await as(customer, storeIds.d, 'orders.view').expect(404);
-    await as(staffA, storeIds.d, 'orders.view').expect(404);
+    expectError(await as(customer, storeIds.d, 'orders.view'), 404, 'NOT_FOUND');
+    expectError(await as(staffA, storeIds.d, 'orders.view'), 404, 'NOT_FOUND');
     const res = await as(ownerD, storeIds.d, 'team.manageManagers').expect(200);
     expect(res.body.access).toBe('OWNER');
   });
@@ -129,12 +130,12 @@ describe('requireStore', () => {
   it('ADMIN may pause any store, including a DRAFT one, but may not view its orders', async () => {
     expect((await as(admin, storeIds.a, 'store.pause').expect(200)).body.access).toBe('ADMIN');
     await as(admin, storeIds.d, 'store.pause').expect(200);
-    await as(admin, storeIds.a, 'orders.view').expect(403);
+    expectError(await as(admin, storeIds.a, 'orders.view'), 403, 'FORBIDDEN');
   });
 
   it('an unknown store id and a malformed one are 404', async () => {
-    await as(staffA, randomUUID(), 'orders.view').expect(404);
-    await as(staffA, 'not-a-uuid', 'orders.view').expect(404);
+    expectError(await as(staffA, randomUUID(), 'orders.view'), 404, 'NOT_FOUND');
+    expectError(await as(staffA, 'not-a-uuid', 'orders.view'), 404, 'NOT_FOUND');
   });
 
   it('a deleted membership stops working on the next request', async () => {
@@ -142,6 +143,6 @@ describe('requireStore', () => {
     users.push(leaver);
     await as(leaver, storeIds.a, 'orders.view').expect(200);
     await supabaseAdmin.from('store_memberships').delete().eq('user_id', leaver.id).throwOnError();
-    await as(leaver, storeIds.a, 'orders.view').expect(403);
+    expectError(await as(leaver, storeIds.a, 'orders.view'), 403, 'FORBIDDEN');
   });
 });

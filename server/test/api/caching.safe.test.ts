@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { api } from '../setup/api';
-import { menuPath } from '../setup/helpers';
+import { menuPath, expectError } from '../setup/helpers';
 
 describe('HTTP caching', () => {
   it('marks API responses for revalidation and varies on the account', async () => {
@@ -38,7 +38,7 @@ describe('HTTP caching', () => {
       .post('/api/orders')
       .set('Content-Type', 'application/json')
       .send('{bad');
-    expect(res.status).toBe(400);
+    expectError(res, 400, 'VALIDATION_ERROR');
     expect(res.headers['cache-control']).toBe('no-cache');
     expect(res.headers.vary).toMatch(/Authorization/);
   });

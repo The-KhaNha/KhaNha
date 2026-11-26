@@ -7,7 +7,7 @@ import { getSchedule, getSchedules } from '../../src/services/schedule.service';
 import { invalidate } from '../../src/utils/cache';
 import { supabaseAdmin } from '../../src/utils/supabase';
 import { api } from '../setup/api';
-import { createTestUser, deleteTestStores, type TestUser } from '../setup/helpers';
+import { createTestUser, deleteTestStores, type TestUser, expectError } from '../setup/helpers';
 
 const tag = randomUUID().slice(0, 8);
 const store = { open: '', ended: '', week: '', bulk: '' };
@@ -141,7 +141,7 @@ describe('GET /api/stores/:storeRef/hours', () => {
   it('answers an empty week for a store with no hours, and 404 for an unknown store', async () => {
     const res = await api().get(`/api/stores/${slug('open')}/hours`);
     expect(res.body).toEqual({ timezone: 'UTC', hours: [], exceptions: [] });
-    expect((await api().get('/api/stores/no-such-store-here/hours')).status).toBe(404);
+    expectError(await api().get('/api/stores/no-such-store-here/hours'), 404, 'NOT_FOUND');
   });
 });
 
