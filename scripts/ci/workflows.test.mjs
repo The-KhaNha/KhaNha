@@ -226,3 +226,12 @@ test('deploy-production keeps its rules', () => {
   ))
     assert.doesNotMatch(readFileSync(new URL(file, dir), 'utf8'), secret, file);
 });
+
+// create-github-app-token v3 deprecates `app-id` for `client-id` (the RELEASE_APP_ID secret holds the Client ID); a
+// deprecated input stops working on the action's next major, mid-release.
+test('no workflow passes the deprecated app-id to create-github-app-token', () => {
+  const hits = readdirSync(dir)
+    .filter((f) => /\.ya?ml$/.test(f))
+    .filter((f) => /^\s*app-id:/m.test(readFileSync(new URL(f, dir), 'utf8')));
+  assert.deepEqual(hits, [], 'use client-id:');
+});
