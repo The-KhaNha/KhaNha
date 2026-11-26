@@ -78,6 +78,37 @@ test('a changed literal or nullability fails', { skip }, () => {
   assert.equal(found.length, 2);
 });
 
+test('an array on one side and a scalar on the other fails', { skip }, () => {
+  const found = diff(
+    `export interface XDto { v: string[] }`,
+    `export interface X { v: string }`,
+    new Set(),
+  );
+  assert.ok(found.some((p) => p.startsWith('XDto.v ') && p.includes('server [], client string')));
+});
+
+test('a recursive dictionary terminates', { skip }, () => {
+  const tree = `export interface TreeDto { [key: string]: TreeDto }`;
+  assert.deepEqual(diff(tree, `export interface Tree { [key: string]: Tree }`, new Set()), []);
+});
+
+test('an index signature still compares its explicit properties', { skip }, () => {
+  const found = diff(
+    `export interface XDto { [key: string]: string; id: string }`,
+    `export type X = Record<string, string>`,
+    new Set(),
+  );
+  assert.ok(found.some((p) => p.includes('XDto.id?') && p.includes('only on the server')));
+  assert.deepEqual(
+    diff(
+      `export interface XDto { by: Record<string, string> }`,
+      `export interface X { by: Record<string, string> }`,
+      new Set(),
+    ),
+    [],
+  );
+});
+
 test(
   'a server type with no client copy fails unless listed, and a listed one with a copy fails',
   { skip },

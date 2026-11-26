@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { can, type Capability, type StoreAccess } from '../../src/domain/permissions';
+import { MEDIA_FILE_ROUTE } from '../../src/routes/store.routes';
 import { invalidate } from '../../src/utils/cache';
 import { supabaseAdmin } from '../../src/utils/supabase';
 import { api } from '../setup/api';
@@ -53,6 +54,7 @@ const EXPECTED: Record<string, Capability> = {
   'POST /:storeId/publish': 'store.publish',
   'POST /:storeId/unpublish': 'store.publish',
   'POST /:storeId/media/uploads': 'menu.edit',
+  'PUT /:storeId/media/uploads/:uploadId/file': 'menu.edit',
   'POST /:storeId/media/uploads/:uploadId/complete': 'menu.edit',
   'GET /:storeId/media/uploads/:uploadId': 'menu.edit',
 };
@@ -66,10 +68,13 @@ interface Route {
 function storeRoutes(): Route[] {
   const source = readFileSync(join(__dirname, '../../src/routes/store.routes.ts'), 'utf8');
   return [
-    ...source.matchAll(/storesRouter\.(get|post|patch|put|delete)\(\s*'([^']+)',([^;]*?)\);/gs),
-  ].map(([, method, path, rest]) => ({
+    ...source.matchAll(
+      /storesRouter\.(get|post|patch|put|delete)\(\s*(?:'([^']+)'|(MEDIA_FILE_ROUTE)),([^;]*?)\);/gs,
+    ),
+  ].map(([, method, path, constant, rest]) => ({
     method: method as Route['method'],
-    path: path ?? '',
+    // The upload route is registered by constant (app.ts matches the same one); read its value, not a copy.
+    path: constant ? MEDIA_FILE_ROUTE : (path ?? ''),
     capability: rest?.match(/requireStore\('([^']+)'\)/)?.[1],
   }));
 }
@@ -167,6 +172,10 @@ async function outcome(route: Route, who: Standing) {
   if (res.status === 403) return res.body.error?.code === 'FORBIDDEN' ? 'FORBIDDEN' : 'bad 403';
   // The store gate's own 404, not the app's "No route matches": that one would mean the route is gone.
   if (res.status === 404 && res.body.error?.message === 'Store not found.') return 'NOT_FOUND';
+  // Past the gate, validation and resource answers (400, 404, 413, 415, 2xx) are fine; these two are not.
+  if (res.status === 404 && String(res.body.error?.message).startsWith('No route matches'))
+    return 'catch-all 404';
+  if (res.status === 429) return '429';
   return 'THROUGH';
 }
 

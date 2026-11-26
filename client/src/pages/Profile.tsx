@@ -14,7 +14,7 @@ import { Button, ButtonLink } from '../components/Button';
 import { Card } from '../components/Card';
 import { ConfirmSheet } from '../components/ConfirmSheet';
 import { EmptyState } from '../components/EmptyState';
-import { selectUser, useAuthStore } from '../features/auth/authStore';
+import { currentSessionEpoch, selectUser, useAuthStore } from '../features/auth/authStore';
 import { ApiError } from '../services/api';
 import { leaveStore } from '../services/manage';
 import type { User } from '../types/api';
@@ -30,6 +30,8 @@ export function ProfilePage() {
   const user = useAuthStore(selectUser);
   const logout = useAuthStore((s) => s.logout);
   const navigate = useNavigate();
+  // Lives here, not in YourStores: a refusal's re-read can leave no stores, and the message must outlive the list.
+  const [leaveError, setLeaveError] = useState<string | null>(null);
 
   if (!user) {
     return (
@@ -93,7 +95,9 @@ export function ProfilePage() {
         </dl>
       </Card>
 
-      {user.memberships.length > 0 && <YourStores memberships={user.memberships} />}
+      {(user.memberships.length > 0 || leaveError) && (
+        <YourStores memberships={user.memberships} error={leaveError} onError={setLeaveError} />
+      )}
 
       <Card padding="none" className="overflow-hidden">
         <ProfileRow
@@ -141,23 +145,32 @@ export function ProfilePage() {
 type Membership = User['memberships'][number];
 
 /** The stores this account works at, each with a way to leave it (the owner's brands are not memberships). */
-function YourStores({ memberships }: { memberships: Membership[] }) {
+function YourStores({
+  memberships,
+  error,
+  onError,
+}: {
+  memberships: Membership[];
+  error: string | null;
+  onError: (message: string | null) => void;
+}) {
   const removeMembership = useAuthStore((s) => s.removeMembership);
   const hydrate = useAuthStore((s) => s.hydrate);
   const [leaving, setLeaving] = useState<Membership | null>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   async function confirm() {
     const store = leaving;
     if (!store) return;
     setBusy(true);
-    setError(null);
+    onError(null);
+    // A sign-out or another sign-in while the request is out must not drop this store from the new account.
+    const epoch = currentSessionEpoch();
     try {
       await leaveStore(store.storeId);
-      removeMembership(store.storeId);
+      removeMembership(store.storeId, epoch);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Something went wrong.');
+      onError(err instanceof ApiError ? err.message : 'Something went wrong.');
       // A lost reply may have left the store anyway, or a manager removed this account already: read it again so
       // the list shows what the server holds instead of a store every Leave refuses.
       void hydrate();

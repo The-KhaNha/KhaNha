@@ -52,6 +52,16 @@ test('a delayed zero-percent config keeps startup errors off the network', async
     await page.clock.runFor(REPORTER_DEBOUNCE_MS * 2);
     expect(sends).toEqual([]);
     releaseConfig();
+    // useResource persists the config in the same tick it hands it to React, so this shows the client received it.
+    // A response wait would not: it can resolve before the client has read the body.
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const key = Object.keys(localStorage).find((k) => k.endsWith(':config'));
+          return key ? JSON.parse(localStorage.getItem(key) ?? '{}').clientErrors : null;
+        }),
+      )
+      .toEqual({ samplePercent: 0 });
     await page.clock.runFor(REPORTER_DEBOUNCE_MS * 2);
     expect(sends).toEqual([]);
   } finally {

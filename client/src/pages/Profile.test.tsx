@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { User } from '../types/api';
@@ -11,6 +11,13 @@ const { leaveStore } = vi.hoisted(() => ({
   leaveStore: vi.fn<(storeId: string) => Promise<void>>(),
 }));
 vi.mock('../services/manage', () => ({ leaveStore }));
+// The sign-out the store starts needs no supabase-js here.
+vi.mock('../services/auth', () => ({
+  fetchMe: vi.fn(),
+  signIn: vi.fn(),
+  signOut: vi.fn(async () => {}),
+  register: vi.fn(),
+}));
 const { ApiError } = await import('../services/api');
 const { useAuthStore } = await import('../features/auth/authStore');
 const { ProfilePage } = await import('./Profile');
@@ -166,5 +173,47 @@ describe('your stores', () => {
     expect(useAuthStore.getState().user?.memberships).toEqual([cafe]);
     // The account is read again, so a store already left (or already removed) drops out of the list.
     expect(hydrate).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the refusal visible when the re-read leaves no stores', async () => {
+    leaveStore.mockRejectedValueOnce(
+      new ApiError(403, 'FORBIDDEN', 'You cannot do that at this store.'),
+    );
+    // A manager already removed this account: the re-read returns no memberships.
+    hydrate.mockImplementationOnce(() => {
+      useAuthStore.setState({ user: user({ role: 'STAFF', memberships: [] }) });
+      return Promise.resolve();
+    });
+    useAuthStore.setState({ user: user({ role: 'STAFF', memberships: [cafe] }) });
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: 'Leave Cafe' }));
+    fireEvent.click(
+      within(screen.getByRole('dialog', { name: 'Leave Cafe?' })).getByRole('button', {
+        name: 'Leave',
+      }),
+    );
+    await waitFor(() => expect(screen.queryByText('Cafe')).not.toBeInTheDocument());
+    expect(screen.getByRole('alert')).toHaveTextContent('You cannot do that at this store.');
+  });
+
+  it('a leave that returns after the account changed leaves the new account alone', async () => {
+    let finish: () => void = () => {};
+    leaveStore.mockReturnValueOnce(new Promise<void>((resolve) => (finish = resolve)));
+    useAuthStore.setState({ user: user({ role: 'STAFF', memberships: [cafe] }) });
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: 'Leave Cafe' }));
+    fireEvent.click(
+      within(screen.getByRole('dialog', { name: 'Leave Cafe?' })).getByRole('button', {
+        name: 'Leave',
+      }),
+    );
+    // Sign out (the real one, so the session ends) and sign in as another account with the same store.
+    useAuthStore.setState({ logout: useAuthStore.getInitialState().logout });
+    act(() => useAuthStore.getState().logout());
+    act(() => useAuthStore.setState({ user: user({ id: 'u2', memberships: [cafe] }) }));
+    finish();
+    await waitFor(() => expect(leaveStore).toHaveBeenCalledOnce());
+    await act(async () => {});
+    expect(useAuthStore.getState().user?.memberships).toEqual([cafe]);
   });
 });

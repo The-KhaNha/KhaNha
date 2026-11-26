@@ -42,7 +42,7 @@ vi.mock('../../services/api', () => ({
 }));
 
 // A visibilitychange listener is registered once, as a side effect of importing this module.
-const { useAuthStore } = await import('./authStore');
+const { useAuthStore, currentSessionEpoch } = await import('./authStore');
 
 beforeEach(() => {
   fetchMe.mockReset();
@@ -213,6 +213,23 @@ describe('authStore.removeMembership', () => {
       session.current = null;
       localStorage.clear();
     }
+  });
+
+  it('drops the store when the session that started the leave is still current', () => {
+    useAuthStore.setState({ user: { ...me, memberships: [cafe, deli] }, token: 'tok' });
+    const epoch = currentSessionEpoch();
+    useAuthStore.getState().removeMembership('s1', epoch);
+    expect(useAuthStore.getState().user?.memberships).toEqual([deli]);
+  });
+
+  it('leaves another account alone when the session that started the leave has ended', () => {
+    useAuthStore.setState({ user: { ...me, memberships: [cafe, deli] }, token: 'tok' });
+    const epoch = currentSessionEpoch();
+    // The first account signs out and a second one, with a membership at the same store, signs in.
+    useAuthStore.getState().logout();
+    useAuthStore.setState({ user: { ...me, id: 'u2', memberships: [cafe] }, token: 'tok2' });
+    useAuthStore.getState().removeMembership('s1', epoch);
+    expect(useAuthStore.getState().user?.memberships).toEqual([cafe]);
   });
 
   it('does nothing when nobody is signed in', () => {

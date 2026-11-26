@@ -580,7 +580,7 @@ describe('cart invariants over random action sequences', () => {
   });
 });
 
-/** How many times subscribers were told while `act` ran: a no-op must stay silent (and so must not rewrite fp_cart). */
+/** How many times subscribers were told while `act` ran: a no-op must stay silent. Silence says nothing about storage: see storageUntouched. */
 function notifications(act: () => void): number {
   let count = 0;
   const unsubscribe = useCartStore.subscribe(() => {
@@ -589,6 +589,17 @@ function notifications(act: () => void): number {
   act();
   unsubscribe();
   return count;
+}
+
+/**
+ * Whether `act`, a no-op here, left fp_cart alone. Another tab just stored a newer cart; persist writes after every
+ * `set` (even `set(state => state)`, which notifies nobody), so a no-op that still calls `set` overwrites it with this tab's older lines.
+ */
+function storageUntouched(act: () => void): boolean {
+  const newer = JSON.stringify({ state: { storeId: 's1', lines: [] }, version: 3 });
+  localStorage.setItem('fp_cart', newer);
+  act();
+  return localStorage.getItem('fp_cart') === newer;
 }
 
 describe('no-op actions leave the store untouched', () => {
@@ -606,6 +617,9 @@ describe('no-op actions leave the store untouched', () => {
     expect(notifications(() => setLimits({ maxQuantityPerItem: CAP, lowStockThreshold: 5 }))).toBe(
       0,
     );
+    expect(
+      storageUntouched(() => setLimits({ maxQuantityPerItem: CAP, lowStockThreshold: 5 })),
+    ).toBe(true);
     expect(notifications(() => setLimits({ maxQuantityPerItem: 4, lowStockThreshold: 5 }))).toBe(1);
     expect(notifications(() => setLimits({ maxQuantityPerItem: 4, lowStockThreshold: 2 }))).toBe(1);
     expect(useCartStore.getState().limits).toEqual({ maxQuantityPerItem: 4, lowStockThreshold: 2 });
@@ -624,6 +638,11 @@ describe('no-op actions leave the store untouched', () => {
       ),
     ).toBe(0);
     expect(selectLines(useCartStore.getState())).toEqual([]);
+    expect(
+      storageUntouched(() =>
+        useCartStore.getState().add(menuItem({ id: 'gone', isAvailable: false }), 1, cafe),
+      ),
+    ).toBe(true);
   });
 
   it('add leaves other items’ lines, and lines already at the seen stock, as they were', () => {
@@ -643,6 +662,7 @@ describe('no-op actions leave the store untouched', () => {
     useCartStore.getState().add(menuItem({ id: 'a', stockQuantity: 3 }), 3, cafe);
     useCartStore.getState().add(menuItem({ id: 'b' }), 1, cafe);
     expect(notifications(() => useCartStore.getState().increment('a'))).toBe(0);
+    expect(storageUntouched(() => useCartStore.getState().increment('a'))).toBe(true);
     useCartStore.getState().increment('b');
     expect(selectLines(useCartStore.getState()).map((l) => [l.lineKey, l.quantity])).toEqual([
       ['a', 3],
@@ -666,6 +686,7 @@ describe('no-op actions leave the store untouched', () => {
     useCartStore.getState().add(menuItem({ id: 'a', stockQuantity: 2 }), 2, cafe);
     useCartStore.getState().add(menuItem({ id: 'b' }), 4, cafe);
     expect(notifications(() => useCartStore.getState().fix('a'))).toBe(0);
+    expect(storageUntouched(() => useCartStore.getState().fix('a'))).toBe(true);
     useCartStore.getState().setAvailability('b', 1);
     useCartStore.getState().fix('b');
     expect(selectLines(useCartStore.getState()).map((l) => [l.lineKey, l.quantity])).toEqual([
@@ -678,6 +699,8 @@ describe('no-op actions leave the store untouched', () => {
     useCartStore.getState().add(menuItem({ id: 'a', stockQuantity: 4 }), 1, cafe);
     expect(notifications(() => useCartStore.getState().setAvailability('a', 4))).toBe(0);
     expect(notifications(() => useCartStore.getState().setAvailability('zzz', 1))).toBe(0);
+    expect(storageUntouched(() => useCartStore.getState().setAvailability('a', 4))).toBe(true);
+    expect(storageUntouched(() => useCartStore.getState().setAvailability('zzz', 1))).toBe(true);
     useCartStore.getState().add(menuItem({ id: 'b' }), 1, cafe);
     useCartStore.getState().setAvailability('a', 1);
     expect(selectLines(useCartStore.getState()).map((l) => l.maxQuantity)).toEqual([1, null]);
@@ -731,6 +754,7 @@ describe('no-op actions leave the store untouched', () => {
     };
     expect(notifications(() => useCartStore.getState().syncPrices(items, groups))).toBe(0);
     expect(notifications(() => useCartStore.getState().syncPrices(items))).toBe(0);
+    expect(storageUntouched(() => useCartStore.getState().syncPrices(items, groups))).toBe(true);
     expect(selectLines(useCartStore.getState()).map((l) => l.unitPrice)).toEqual([120, 120]);
   });
 

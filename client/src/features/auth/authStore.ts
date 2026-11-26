@@ -32,8 +32,11 @@ interface AuthState {
   addMembership: (membership: User['memberships'][number]) => void;
   /** Records a brand the account now owns (an accepted owner invite), for the same reason. */
   addOwnedBrand: (brand: User['ownedBrands'][number]) => void;
-  /** Drops a membership the API just ended (the account left the store), so the guards stop offering it. */
-  removeMembership: (storeId: string) => void;
+  /**
+   * Drops a membership the API just ended (the account left the store), so the guards stop offering it. Pass the
+   * `currentSessionEpoch()` read before the request: if that session has ended since, nothing is removed.
+   */
+  removeMembership: (storeId: string, epoch?: number) => void;
 }
 
 let hydrating: Promise<void> | null = null;
@@ -47,6 +50,11 @@ let grantsVersion = 0;
  * profile read that began under an older one belongs to a session that is gone and must not be written back.
  */
 let sessionEpoch = 0;
+
+/** The session a request starts under; hand it back to an action that must not outlive that session. */
+export function currentSessionEpoch(): number {
+  return sessionEpoch;
+}
 
 /** warn, the lowest level production builds keep: a "why was I signed out?" report then has a trace. */
 function logIdleExpiry(lastActive: number | null): void {
@@ -112,9 +120,10 @@ export const useAuthStore = create<AuthState>()(
         set({ user: { ...user, ownedBrands: [...others, brand] } });
       },
 
-      removeMembership(storeId) {
+      removeMembership(storeId, epoch) {
         const user = get().user;
-        if (!user) return;
+        // The leave began under another session: this user's store is not the one the request left.
+        if (!user || (epoch !== undefined && epoch !== sessionEpoch)) return;
         grantsVersion += 1;
         set({
           user: { ...user, memberships: user.memberships.filter((m) => m.storeId !== storeId) },

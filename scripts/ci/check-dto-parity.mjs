@@ -85,20 +85,24 @@ export function compareDtos(
         .forEach((t) => flatten(checker.getTypeArguments(t)[0], `${path}[]`, out, seen));
       return;
     }
-    if (checker.isArrayType(type))
+    if (checker.isArrayType(type)) {
+      // The container is recorded too, so an array on one side and a scalar on the other differ.
+      out[path] = '[]';
       return flatten(checker.getTypeArguments(type)[0], `${path}[]`, out, seen);
-    const index = checker.getIndexInfoOfType(type, ts.IndexKind.String);
-    if (index) {
-      out[path] = 'map';
-      return flatten(index.type, `${path}[*]`, out, seen);
     }
+    const index = checker.getIndexInfoOfType(type, ts.IndexKind.String);
     const props = type.getProperties();
-    if (props.length === 0 || (type.flags & ts.TypeFlags.Object) === 0) {
+    if (!index && (props.length === 0 || (type.flags & ts.TypeFlags.Object) === 0)) {
       out[path] = checker.typeToString(type);
       return;
     }
+    // Checked before the index signature too, so a dictionary of itself terminates.
     if (seen.has(type)) return void (out[path] = '<recursive>');
     const inner = new Set(seen).add(type);
+    if (index) {
+      out[path] = 'map';
+      flatten(index.type, `${path}[*]`, out, inner);
+    }
     for (const prop of props) {
       const isOptional = (prop.flags & ts.SymbolFlags.Optional) !== 0;
       const own = `${path}.${prop.name}`;
