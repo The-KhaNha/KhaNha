@@ -32,12 +32,14 @@ interface AuthState {
   addMembership: (membership: User['memberships'][number]) => void;
   /** Records a brand the account now owns (an accepted owner invite), for the same reason. */
   addOwnedBrand: (brand: User['ownedBrands'][number]) => void;
+  /** Drops a membership the API just ended (the account left the store), so the guards stop offering it. */
+  removeMembership: (storeId: string) => void;
 }
 
 let hydrating: Promise<void> | null = null;
 /**
- * Bumped by every grant the API just made (an accepted invite). A profile read that started before one is older
- * than it, so hydrate reads again instead of letting the late answer drop the new store or brand.
+ * Bumped by every grant or leave the API just made (an accepted invite, a store left). A profile read that started
+ * before one is older than it, so hydrate reads again instead of letting the late answer undo the change.
  */
 let grantsVersion = 0;
 /**
@@ -108,6 +110,15 @@ export const useAuthStore = create<AuthState>()(
         const others = (user.ownedBrands ?? []).filter((b) => b.id !== brand.id);
         grantsVersion += 1;
         set({ user: { ...user, ownedBrands: [...others, brand] } });
+      },
+
+      removeMembership(storeId) {
+        const user = get().user;
+        if (!user) return;
+        grantsVersion += 1;
+        set({
+          user: { ...user, memberships: user.memberships.filter((m) => m.storeId !== storeId) },
+        });
       },
 
       hydrate() {

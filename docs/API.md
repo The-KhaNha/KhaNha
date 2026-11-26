@@ -101,6 +101,7 @@ The API has no sign-in or sign-out route. The browser signs in and out with supa
 | POST   | `/stores/:storeId/invites`                            | user + `team.manageStaff`                | body: [`createInviteSchema`](#post-storesstoreidinvites)                   | 201 `{ invite: InviteDto, token: string }`                     |
 | DELETE | `/stores/:storeId/invites/:inviteId`                  | user + `team.manageStaff`                | path: `inviteId`                                                           | 204, no body                                                   |
 | DELETE | `/stores/:storeId/members/:membershipId`              | user + `team.manageStaff`                | path: `membershipId`                                                       | 204, no body                                                   |
+| DELETE | `/stores/:storeId/membership`                         | user + `team.leave`                      | none                                                                       | 204, no body                                                   |
 | POST   | `/me/invites/accept`                                  | user                                     | body: [`acceptInviteSchema`](#post-meinvitesaccept)                        | 200 `{ membership: { id, role, store: { id, slug, name } } }`  |
 | POST   | `/me/brand-invites/accept`                            | user                                     | body: [`acceptInviteSchema`](#post-mebrand-invitesaccept)                  | 200 `{ brand: { id, name, slug } }`                            |
 | GET    | `/admin/settings`                                     | user + ADMIN                             | none                                                                       | 200 `{ settings: SiteSettingsDto }`                            |
@@ -774,6 +775,15 @@ not exist, belongs to another store or has an id that is not a UUID is 404. Revo
 Code: `requireAuth` → `requireStore('team.manageStaff')` → `writeLimiter` → `team.controller.removeMember` →
 `team.service.removeMember`. Answers 204. A membership of another store, an unknown one or an id that is not a UUID is 404. Removing a `MANAGER` needs `team.manageManagers`, except that a manager may remove themselves. The person's access
 ends on their next request, because `requireAuth` reads memberships on every request.
+
+### DELETE /stores/:storeId/membership
+
+Code: `requireAuth` → `requireStore('team.leave')` → `writeLimiter` → `team.controller.leaveStore` →
+`team.service.leaveStore`. A STAFF or MANAGER member leaves the store: it deletes the caller's own membership there
+and nothing else (their memberships at other stores stay), with an audit row naming them. Answers 204. The brand's
+owner has no membership to leave, so they, an admin and a customer get 403 (`FORBIDDEN`), as does a second leave; a
+store the caller may not see is 404. Access ends on the next request. The client's "Your stores" list on `/profile`
+calls it.
 
 ### POST /me/invites/accept
 

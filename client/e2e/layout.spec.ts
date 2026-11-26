@@ -180,6 +180,21 @@ const LAYOUT_ROUTES: {
   { path: '/register' },
   { path: '/orders', role: 'CUSTOMER' },
   { path: '/profile', role: 'CUSTOMER' },
+  // "Your stores", with a name long enough to wrap beside its Leave button.
+  {
+    path: '/profile',
+    role: 'STAFF',
+    account: {
+      memberships: [
+        {
+          storeId: store.id,
+          storeSlug: store.slug,
+          storeName: 'The Campus Cafe at the North Gate Library Annexe',
+          role: 'STAFF',
+        },
+      ],
+    },
+  },
   { path: '/orders/o1/success', role: 'CUSTOMER' },
   // The order page's hero changes its whole layout with the status.
   ...(['PLACED', 'PREPARING', 'READY', 'COLLECTED', 'CANCELLED'] as const).map((status) => ({

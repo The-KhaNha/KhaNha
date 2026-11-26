@@ -127,6 +127,14 @@ storesRouter.delete(
   writeLimiter,
   team.removeMember,
 );
+// A STAFF or MANAGER member leaves the store: their own membership, no id to pass.
+storesRouter.delete(
+  '/:storeId/membership',
+  requireAuth,
+  requireStore('team.leave'),
+  writeLimiter,
+  team.leaveStore,
+);
 // Pause and resume (P2.5): staff, managers, the owner, and an admin as support.
 storesRouter.post(
   '/:storeId/pause',

@@ -190,6 +190,37 @@ describe('authStore.addMembership', () => {
     expect(useAuthStore.getState().user).toBeNull();
   });
 });
+describe('authStore.removeMembership', () => {
+  const cafe = { storeId: 's1', storeSlug: 'cafe', storeName: 'Cafe', role: 'STAFF' as const };
+  const deli = { storeId: 's2', storeSlug: 'deli', storeName: 'Deli', role: 'MANAGER' as const };
+
+  it('a profile read that started before the store was left reads again, so the store stays gone', async () => {
+    session.current = { access_token: 'tok' };
+    markActive();
+    useAuthStore.setState({ user: { ...me, memberships: [cafe, deli] }, token: 'tok' });
+    // The first answer was read on the server before the leave: it still has the store. The leave lands meanwhile.
+    fetchMe
+      .mockImplementationOnce(async () => {
+        useAuthStore.getState().removeMembership('s1');
+        return { user: { ...me, memberships: [cafe, deli] } };
+      })
+      .mockResolvedValueOnce({ user: { ...me, memberships: [deli] } });
+    try {
+      await useAuthStore.getState().hydrate();
+      expect(useAuthStore.getState().user?.memberships).toEqual([deli]);
+      expect(fetchMe).toHaveBeenCalledTimes(2);
+    } finally {
+      session.current = null;
+      localStorage.clear();
+    }
+  });
+
+  it('does nothing when nobody is signed in', () => {
+    useAuthStore.setState({ user: null, token: null });
+    useAuthStore.getState().removeMembership('s1');
+    expect(useAuthStore.getState().user).toBeNull();
+  });
+});
 
 describe('authStore.hydrate: sign-out while the profile read is out', () => {
   it('does not write the late profile back after clearSession', async () => {

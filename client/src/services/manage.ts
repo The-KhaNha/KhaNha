@@ -32,6 +32,10 @@ export const removeMember = (storeId: string, membershipId: string) =>
     method: 'DELETE',
   });
 
+/** The signed-in member leaves the store: their own membership, so no id to pass. */
+export const leaveStore = (storeId: string) =>
+  request<void>(base(storeId, '/membership'), { method: 'DELETE' });
+
 export const acceptInvite = async (token: string) =>
   (
     await request<{

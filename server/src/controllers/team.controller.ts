@@ -55,6 +55,14 @@ export const removeMember: RequestHandler = async (req, res) => {
   res.status(204).end();
 };
 
+/** DELETE /api/stores/:storeId/membership, after requireStore('team.leave'): the caller's own membership goes. */
+export const leaveStore: RequestHandler = async (req, res) => {
+  const storeId = currentStore(req).id;
+  await team.leaveStore(storeId, currentUser(req).id, requestContext(req));
+  req.log.info({ storeId }, 'Store left');
+  res.status(204).end();
+};
+
 /** POST /api/me/invites/accept, after requireAuth. */
 export const acceptInvite: BodyHandler<AcceptInviteInput> = async (req, res) => {
   const membership = await team.acceptInvite(

@@ -19,6 +19,7 @@ const EXPECTED: Record<Capability, Record<StoreAccess, boolean>> = {
   'store.publish': { STAFF: false, MANAGER: false, OWNER: true, ADMIN: false },
   'team.manageStaff': { STAFF: false, MANAGER: true, OWNER: true, ADMIN: false },
   'team.manageManagers': { STAFF: false, MANAGER: false, OWNER: true, ADMIN: false },
+  'team.leave': { STAFF: true, MANAGER: true, OWNER: false, ADMIN: false },
   'audit.store': { STAFF: false, MANAGER: true, OWNER: true, ADMIN: true },
   // STAFF while the store lets staff edit stock (the default); the cell with the setting off is tested below.
   'stock.update': { STAFF: true, MANAGER: true, OWNER: true, ADMIN: false },

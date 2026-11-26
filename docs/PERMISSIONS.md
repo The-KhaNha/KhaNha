@@ -83,6 +83,7 @@ it has (so a visible store answers 403), else none. An ADMIN who is also a STAFF
 | `store.publish`       |       |         | yes   |       |
 | `team.manageStaff`    |       | yes     | yes   |       |
 | `team.manageManagers` |       |         | yes   |       |
+| `team.leave`          | yes   | yes     |       |       |
 | `audit.store`         |       | yes     | yes   | yes   |
 | `stock.update`        | yes¹  | yes     | yes   |       |
 
@@ -116,9 +117,9 @@ it has (so a visible store answers 403), else none. An ADMIN who is also a STAFF
 
 ## Team invites and removals
 
-Code: `server/src/controllers/team.controller.ts`, `server/src/services/team.service.ts`. Every team route is behind
-`requireStore('team.manageStaff')` (MANAGER, OWNER; STAFF and a site ADMIN get 403). The routes are in
-[API.md](API.md#get-storesstoreidmembers).
+Code: `server/src/controllers/team.controller.ts`, `server/src/services/team.service.ts`. Every team route but
+leaving is behind `requireStore('team.manageStaff')` (MANAGER, OWNER; STAFF and a site ADMIN get 403). The routes are
+in [API.md](API.md#get-storesstoreidmembers).
 
 - **Inviting or revoking an invite for a `STAFF`** needs only `team.manageStaff`. For a **`MANAGER`** it also needs
   `team.manageManagers` (OWNER), else 403.
@@ -127,6 +128,8 @@ Code: `server/src/controllers/team.controller.ts`, `server/src/services/team.ser
 - `team.controller.managesManagers` re-checks `accessFor(user, store, 'team.manageManagers')` instead of reusing
   `req.storeAccess`, so a caller with two standings at the store (the brand's owner who is also a member) is judged by the one that holds the capability.
 - The brand's owner has no membership, so no route can remove them. Removal takes effect on the person's next request.
+- **Leaving** (`DELETE /api/stores/:storeId/membership`) needs `team.leave` (STAFF, MANAGER): any member may leave on
+  their own, from "Your stores" on `/profile`, and it deletes only the caller's own membership.
 - Accepting (`POST /api/me/invites/accept`) needs only a signed-in account whose email is the invite's, plus the
   token. Every refusal is 404 ([API.md](API.md#post-meinvitesaccept)); the role comes from the invite, never from the
   request.
@@ -197,6 +200,7 @@ public.stores s on s.id = m.store_id where s.brand_id = '…';`) and delete the 
 | `POST /api/stores/:storeId/invites`                                                        | 401                                     | 403 unless a MANAGER or OWNER standing there                 | `team.manageStaff` there (MANAGER, OWNER), else 403  | 403 unless a MANAGER/OWNER standing there                    | same + `writeLimiter`; a `MANAGER` invite also needs `team.manageManagers`                                                                                                         |
 | `DELETE /api/stores/:storeId/invites/:inviteId`                                            | 401                                     | 403 unless a MANAGER or OWNER standing there                 | `team.manageStaff` there (MANAGER, OWNER), else 403  | 403 unless a MANAGER/OWNER standing there                    | same; a `MANAGER` invite also needs `team.manageManagers`                                                                                                                          |
 | `DELETE /api/stores/:storeId/members/:membershipId`                                        | 401                                     | 403 unless a MANAGER or OWNER standing there                 | `team.manageStaff` there (MANAGER, OWNER), else 403  | 403 unless a MANAGER/OWNER standing there                    | same; a `MANAGER` member needs `team.manageManagers`, or is the caller                                                                                                             |
+| `DELETE /api/stores/:storeId/membership`                                                   | 401                                     | 403 (404 if not visible)                                     | `team.leave` (STAFF, MANAGER): leaves                | 403 unless a member there (404 if not visible)               | `requireAuth` + `requireStore('team.leave')` + `writeLimiter`; deletes only the caller's own membership                                                                            |
 | `POST /api/me/invites/accept`                                                              | 401                                     | yes, with the invite's token and email                       | yes, with the invite's token and email               | yes, with the invite's token and email                       | `requireAuth` + `inviteAcceptLimiter`; every refusal 404                                                                                                                           |
 | `POST /api/me/brand-invites/accept`                                                        | 401                                     | yes, with the invite's token and email                       | yes, with the invite's token and email               | 404 for a fresh invite (an ADMIN never becomes an owner, D6) | `requireAuth` + `inviteAcceptLimiter`; every refusal 404                                                                                                                           |
 | `GET /api/admin/audit`                                                                     | 401                                     | 403                                                          | 403                                                  | yes                                                          | `requireAuth` + `requireAdmin`                                                                                                                                                     |

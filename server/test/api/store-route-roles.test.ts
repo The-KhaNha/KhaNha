@@ -30,6 +30,7 @@ const EXPECTED: Record<string, Capability> = {
   'POST /:storeId/invites': 'team.manageStaff',
   'DELETE /:storeId/invites/:inviteId': 'team.manageStaff',
   'DELETE /:storeId/members/:membershipId': 'team.manageStaff',
+  'DELETE /:storeId/membership': 'team.leave',
   'POST /:storeId/pause': 'store.pause',
   'POST /:storeId/resume': 'store.pause',
   'GET /:storeId/menu-items': 'menu.edit',
@@ -150,6 +151,16 @@ async function outcome(route: Route, who: Standing) {
   const res = await send(route, who);
   // Unpublishing really happens for the owner; put the store back so the next standings see what this run expects.
   if (route.path.endsWith('/unpublish') && res.status === 200) await setStoreStatus(storeStatus);
+  // Leaving really happens too: give the member their place back for the routes after this one.
+  if (
+    route.path.endsWith('/membership') &&
+    res.status === 204 &&
+    (who === 'STAFF' || who === 'MANAGER')
+  )
+    await supabaseAdmin
+      .from('store_memberships')
+      .insert({ store_id: storeId, user_id: users[who].id, role: who })
+      .throwOnError();
   if (res.status >= 500) return `5xx ${res.status}`;
   if (res.status === 401)
     return res.body.error?.code === 'UNAUTHORIZED' ? 'UNAUTHORIZED' : 'bad 401';

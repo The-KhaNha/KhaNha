@@ -74,7 +74,9 @@ beforeAll(async () => {
   users.push(owner, manager, staff, admin);
 }, 60_000);
 
-afterAll(() => deleteTestStores([storeId], [brandId], users));
+// Stores a test makes beside the main one, removed with it.
+const extraStores: string[] = [];
+afterAll(() => deleteTestStores([storeId, ...extraStores], [brandId], users));
 
 const sampleId = randomUUID();
 testAuthMatrix('GET /api/stores/:storeId/members', (http) =>
@@ -88,6 +90,9 @@ testAuthMatrix('DELETE /api/stores/:storeId/invites/:inviteId', (http) =>
 );
 testAuthMatrix('DELETE /api/stores/:storeId/members/:membershipId', (http) =>
   http.delete(`/api/stores/${sampleId}/members/${sampleId}`),
+);
+testAuthMatrix('DELETE /api/stores/:storeId/membership', (http) =>
+  http.delete(`/api/stores/${sampleId}/membership`),
 );
 testAuthMatrix('POST /api/me/invites/accept', (http) =>
   http.post('/api/me/invites/accept').send({ token: 'x' }),
@@ -318,6 +323,74 @@ describe('revoking and removing', () => {
     expect((await remove(leaver, leaver)).status).toBe(204);
     expect((await remove(other, owner)).status).toBe(204);
     expect(await membershipOf(other)).toEqual([]);
+  });
+});
+
+describe('DELETE /api/stores/:storeId/membership (leaving)', () => {
+  const leave = (user: TestUser) =>
+    api().delete(`/api/stores/${storeId}/membership`).set(auth(user));
+
+  it('staff leave: 204, the board closes on the next request, and the audit row names them', async () => {
+    const leaving = await createStoreMember(storeId, 'STAFF');
+    users.push(leaving);
+    const board = () => api().get(`/api/stores/${storeId}/orders`).set(auth(leaving));
+    expect((await board()).status).toBe(200);
+    const [membership] = await membershipOf(leaving);
+    expect((await leave(leaving)).status).toBe(204);
+    expect(await membershipOf(leaving)).toEqual([]);
+    expectError(await board(), 403, 'FORBIDDEN');
+    const { data: audit } = await supabaseAdmin
+      .from('audit_log')
+      .select('actor_id, action')
+      .eq('entity_type', 'membership')
+      .eq('entity_id', membership?.id ?? '')
+      .throwOnError();
+    expect(audit).toEqual(
+      expect.arrayContaining([expect.objectContaining({ actor_id: leaving.id })]),
+    );
+  });
+
+  it('a manager leaves this store only: their membership at another store and the rest of the team stay', async () => {
+    const leaving = await createStoreMember(storeId, 'MANAGER');
+    users.push(leaving);
+    const { data: other } = await supabaseAdmin
+      .from('stores')
+      .insert({
+        name: 'Team branch',
+        slug: `team-branch-${tag}`,
+        brand_id: brandId,
+        status: 'ACTIVE',
+        tagline: 'Test',
+        description: 'A second store for team.test.ts',
+      })
+      .select('id')
+      .single()
+      .throwOnError();
+    extraStores.push(other.id);
+    await supabaseAdmin
+      .from('store_memberships')
+      .insert({ user_id: leaving.id, store_id: other.id, role: 'MANAGER' })
+      .throwOnError();
+    expect((await leave(leaving)).status).toBe(204);
+    expect(await membershipOf(leaving)).toEqual([]);
+    const { data: kept } = await supabaseAdmin
+      .from('store_memberships')
+      .select('store_id')
+      .eq('user_id', leaving.id)
+      .throwOnError();
+    expect(kept).toEqual([{ store_id: other.id }]);
+    expect(await membershipOf(staff)).toHaveLength(1);
+    expect(await membershipOf(manager)).toHaveLength(1);
+  });
+
+  it('the owner, an admin and a customer have no membership to leave (403); leaving twice is 403', async () => {
+    const customer = await fresh();
+    for (const user of [owner, admin, customer]) expectError(await leave(user), 403, 'FORBIDDEN');
+    const leaving = await createStoreMember(storeId, 'STAFF');
+    users.push(leaving);
+    expect((await leave(leaving)).status).toBe(204);
+    expectError(await leave(leaving), 403, 'FORBIDDEN');
+    expect(await membershipOf(staff)).toHaveLength(1);
   });
 });
 
