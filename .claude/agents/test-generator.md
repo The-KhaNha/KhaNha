@@ -92,7 +92,7 @@ to `docs/TESTING.md`.
 4. **Read the code under test end to end**: the route, its zod schema, the controller, the service, and the SQL function
    in `server/supabase/migrations/`. Take the cases from the code and from the matrix below, never from guesses.
 5. **Write the tests.** Unit tests come first because they are cheap; the endpoint matrix comes next.
-6. **Run each file as you write it** (`cd server && pnpm test test/api/orders.test.ts`), then run the full suite.
+6. **Run each file as you write it** (`cd server && pnpm test test/api/orders-place.test.ts`), then run the full suite.
 7. **Triage every failure.** If the test itself is wrong (a bad fixture or a wrong assumption about the seed), fix the test.
    If the source is wrong, keep the assertion exactly as written and report a CONFIRM blocker with the file:line, the
    assertion, and the expected and actual values.
@@ -198,10 +198,10 @@ Baseline failures (pre-existing): <none | list>
 ### Tests written
 | File | Kind | Cases | Result |
 |---|---|---|---|
-| server/test/api/orders.test.ts | destructive | 58 | 57 pass, 1 fail |
+| server/test/api/orders-status.test.ts | destructive | 58 | 57 pass, 1 fail |
 
 ### Blockers (real bugs; tests left failing)
-- `server/test/api/orders.test.ts:212`: "second cancel does not restore stock twice". expected stock 5, received 6.
+- `server/test/api/orders-status.test.ts:212`: "second cancel does not restore stock twice". expected stock 5, received 6.
   Source: `server/supabase/migrations/…sql:270`.
 
 ### DTO agreement
