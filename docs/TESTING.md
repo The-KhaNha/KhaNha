@@ -125,6 +125,33 @@ therefore takes a file lock (`<tmpdir>/food-pickup-server-tests.lock`) before an
 a second concurrent `pnpm test` waits (up to 5 minutes) instead of corrupting the first run's data. A lock left behind
 by a crashed run is detected (its pid is gone) and cleared automatically.
 
+## The order state machine
+
+`server/test/api/order-fsm.test.ts` (local only, two stores of its own) tests the order lifecycle and stock as a state
+machine. The states, transitions, guards and invariants are the server's `ALLOWED_TRANSITIONS`
+(`order.service.ts`), `place_order` and `update_order_status`; `client/src/features/orders/orderStatus.test.ts`
+holds the staff board's buttons to its own copy of that table, and "the table is the service's" holds
+`ALLOWED_TRANSITIONS` to the suite's `NEXT`. Nothing compares the client copy with the server, so a change to the table
+must update `ALLOWED_TRANSITIONS`, `NEXT` and the client copy together by hand.
+
+- **Every transition and refusal:** all 25 status pairs, each with its side effects: a change moves the status and
+  leaves one `domain_events` row (`order.<to>`, `{ from, to, orderNumber }`) and one `audit_log` row for its request
+  id; a repeat (200) or a refusal (409 `INVALID_STATUS_TRANSITION`) leaves none; only a real cancellation gives stock
+  back (READY → CANCELLED and COLLECTED → CANCELLED must not).
+- **Races and edges:** two cancels at once restock once with one event; a cancel gives back what each line reserved
+  (a tracked line its quantity, an untracked one nothing, an item untracked since then nothing); cancels racing a
+  placement of the same items never answer 500 (`RACE_ROUNDS=200` soaks it); an admin may neither move nor read an
+  order; a replayed key answers its order after a cancel, a refusal or a pause.
+- **Inside the database** (`order-locks.test.ts`, and the money check in `order-fsm.test.ts`): `domain_events.occurred_at` and `audit_log.occurred_at` default to `clock_timestamp()`, and
+  a cancel locks its items in id order before the restock, as `place_order` does (a 40P01 deadlock otherwise); a SQL
+  check over every stored order: total = Σ lines, line = unit × qty, unit = base + Σ its modifier deltas.
+- **The model:** a fast-check model run (`fc.commands` + `fc.asyncModelRun`): random sequences of place, place races,
+  moves, happy-path advances, cancels, move races, key replays, forbidden actors and manual stock adjustments, each
+  checked against an in-memory model and then every invariant read back from the database (stock conservation:
+  start + manual moves − what live orders hold = now; exactly the model's orders; money; one event per real change,
+  chained `from → to`; one audit row per change). 25 runs by default (~5 s); `FC_RUNS=200` soaks it; a failure prints
+  its shrunk command list and `FC_SEED` / `FC_PATH` to replay it.
+
 ## Edge-case matrix for every endpoint
 
 Each endpoint suite covers the rows that apply to it:
