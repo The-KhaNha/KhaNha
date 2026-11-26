@@ -152,6 +152,12 @@ must update `ALLOWED_TRANSITIONS`, `NEXT` and the client copy together by hand.
   chained `from → to`; one audit row per change). 25 runs by default (~5 s); `FC_RUNS=200` soaks it; a failure prints
   its shrunk command list and `FC_SEED` / `FC_PATH` to replay it.
 
+`server/test/api/store-route-roles.test.ts` is the same idea for permissions: every route under `/:storeId` in
+`store.routes.ts` (read from the source, so a new route without a row fails) checks the capability a literal table
+expects, and each is called by the owner, a manager, staff, an admin, a customer and anonymous: 401, 403
+`FORBIDDEN` or through as `can()` says, never a 5xx; at a SUSPENDED store its people keep their powers and a
+customer gets 404. `can()`'s own cells are `test/unit/permissions.safe.test.ts`.
+
 ## Edge-case matrix for every endpoint
 
 Each endpoint suite covers the rows that apply to it:
