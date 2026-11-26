@@ -4,6 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp, JSON_BODY_LIMIT_BYTES } from '../../src/app';
 import { api } from '../setup/api';
+import { expectError } from '../setup/helpers';
 
 describe('JSON body limit', () => {
   it('a declared length over the limit -> 413 PAYLOAD_TOO_LARGE with Connection: close, before auth runs', async () => {
@@ -19,7 +20,7 @@ describe('JSON body limit', () => {
   it('a body just under the limit reaches the route (here: 401, no token)', async () => {
     const body = JSON.stringify({ note: 'x'.repeat(JSON_BODY_LIMIT_BYTES - 100) });
     const res = await api().post('/api/orders').set('Content-Type', 'application/json').send(body);
-    expect(res.status).toBe(401);
+    expectError(res, 401, 'UNAUTHORIZED');
   });
 });
 
@@ -57,7 +58,7 @@ function upload(
 ): Promise<Outcome> {
   return new Promise((resolve) => {
     const outcome: Outcome = { body: '' };
-    const startedAt = Date.now();
+    const startedAt = performance.now();
     let sent = 0;
     const req = request({
       host: '127.0.0.1',
@@ -70,7 +71,7 @@ function upload(
     req.on('response', (res) => {
       outcome.status = res.statusCode;
       outcome.sentAtAnswer = sent;
-      outcome.answeredAfterMs = Date.now() - startedAt;
+      outcome.answeredAfterMs = performance.now() - startedAt;
       res.setEncoding('utf8');
       res.on('data', (part: string) => (outcome.body += part));
     });
@@ -110,6 +111,7 @@ describe('an oversized upload', () => {
   it('that stalls is answered after the drain time limit, not at once and not never', async () => {
     const outcome = await upload(OVER, { sendBytes: 16 * 1024 });
     expect(outcome.status).toBe(413);
+    expect(JSON.parse(outcome.body)).toMatchObject({ error: { code: 'PAYLOAD_TOO_LARGE' } });
     expect(outcome.answeredAfterMs).toBeGreaterThanOrEqual(1500);
     expect(outcome.answeredAfterMs).toBeLessThan(5000);
   });

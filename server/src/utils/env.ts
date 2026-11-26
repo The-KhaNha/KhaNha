@@ -152,21 +152,31 @@ const envSchema = z
 
 type Env = z.infer<typeof envSchema>;
 
-function loadEnv(): Env {
+export type EnvParse = { ok: true; env: Env } | { ok: false; problems: string };
+
+/** The whole parse, from a plain object: what loadEnv reads from process.env and what tests feed directly. */
+export function parseEnv(source: Record<string, string | undefined>): EnvParse {
   // A blank value (`RATE_LIMIT_IP_MAX=` in .env or a host's settings) means unset. Coerced as is it would be 0, which
   // silently turns a rate limit or the read cache off instead of falling back to its default.
   const set = Object.fromEntries(
-    Object.entries(process.env).filter(([, value]) => value?.trim() !== ''),
+    Object.entries(source).filter(([, value]) => value?.trim() !== ''),
   );
   const result = envSchema.safeParse(set);
-  if (result.success) return result.data;
+  if (result.success) return { ok: true, env: result.data };
+  return {
+    ok: false,
+    problems: result.error.issues
+      .map((issue) => `  - ${issue.path.join('.')}: ${issue.message}`)
+      .join('\n'),
+  };
+}
 
-  const problems = result.error.issues
-    .map((issue) => `  - ${issue.path.join('.')}: ${issue.message}`)
-    .join('\n');
+function loadEnv(): Env {
+  const parsed = parseEnv(process.env);
+  if (parsed.ok) return parsed.env;
   // The logger is configured from this env, so it cannot report that the env is broken.
   process.stderr.write(
-    `Invalid environment configuration. Check server/.env (see .env.example):\n${problems}\n`,
+    `Invalid environment configuration. Check server/.env (see .env.example):\n${parsed.problems}\n`,
   );
   process.exit(1);
 }

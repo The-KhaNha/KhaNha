@@ -2,7 +2,7 @@ import express from 'express';
 import { pino, type Logger } from 'pino';
 import { pinoHttp } from 'pino-http';
 import request from 'supertest';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { accessLevel } from '../../src/app';
 import { errorHandler } from '../../src/middleware/errorHandler';
 import { createRateLimiter, type RateLimitOptions } from '../../src/middleware/rateLimit';
@@ -31,6 +31,10 @@ function capturingLogger() {
   const log = pino({ level: 'debug' }, { write: (line: string) => lines.push(JSON.parse(line)) });
   return { log, lines };
 }
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe('createRateLimiter', () => {
   it('answers 429 RATE_LIMITED in the envelope, with Retry-After and RateLimit headers, past the limit', async () => {
@@ -79,10 +83,12 @@ describe('createRateLimiter', () => {
   });
 
   it('Retry-After is the time left in the window, not the whole window', async () => {
+    // Only Date is faked: supertest's sockets need the real timers.
+    vi.useFakeTimers({ toFake: ['Date'] });
     const http = app({ name: 'test', windowMs: 2_000, limit: 1, keyBy: 'user' });
     expect((await http.post('/write').set('X-Test-User', 'a')).status).toBe(200);
     expect((await http.post('/write').set('X-Test-User', 'a')).headers['retry-after']).toBe('2');
-    await new Promise((resolve) => setTimeout(resolve, 1_100));
+    vi.setSystemTime(Date.now() + 1_100); // not slept: the limiter reads Date.now()
     const later = await http.post('/write').set('X-Test-User', 'a');
     expect(later.status).toBe(429);
     expect(later.headers['retry-after']).toBe('1');

@@ -26,14 +26,28 @@ describe('readinessHandler', () => {
     expect(res.body).toEqual({ ready: false });
   });
 
-  it('gives the probe a signal that aborts after about a second', async () => {
+  it('gives the probe a signal that aborts after about a second, and answers 503 once it has', async () => {
     let signal: AbortSignal | undefined;
-    await request(
-      appWith(async (s) => {
-        signal = s;
-      }),
+    // Monotonic: the wall clock can step backwards mid-test (WSL and NTP do), which once made this "elapsed" negative.
+    const startedAt = performance.now();
+    // A probe that hangs like a dead connection and settles only when its signal aborts.
+    const res = await request(
+      appWith(
+        (s) =>
+          new Promise((_, reject) => {
+            signal = s;
+            s.addEventListener('abort', () => reject(s.reason));
+          }),
+      ),
     ).get('/ready');
+    const elapsed = performance.now() - startedAt;
     expect(signal).toBeInstanceOf(AbortSignal);
-    expect(signal?.aborted).toBe(false);
+    // A timeout, not some other abort: the 503 came from the probe's own deadline.
+    expect(signal?.reason).toMatchObject({ name: 'TimeoutError' });
+    expect(res.status).toBe(503);
+    expect(res.body).toEqual({ ready: false });
+    expect(elapsed).toBeGreaterThanOrEqual(900);
+    // Generous: a loaded CI runner may be slow, but a probe that never times out would hang to the test timeout.
+    expect(elapsed).toBeLessThan(5000);
   });
 });

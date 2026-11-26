@@ -1,7 +1,7 @@
 // Destructive: creates a throwaway queue and writes dead letters (local only).
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { supabaseAdmin } from '../../src/utils/supabase';
-import { localSql } from '../setup/helpers';
+import { localExec, localSql } from '../setup/helpers';
 
 const Q = 'q_test_wrappers';
 
@@ -25,6 +25,21 @@ async function read(pollSeconds = 0) {
   return data;
 }
 
+/**
+ * A read that expects a message: pgmq shows one once its vt is at or before clock_timestamp(), and a wall clock that
+ * steps backwards (WSL corrects its clock by a second or more) can hide a message sent a moment ago. Waits for it.
+ */
+function readVisible(pollSeconds = 0) {
+  return vi.waitFor(
+    async () => {
+      const messages = await read(pollSeconds);
+      if (messages.length === 0) throw new Error('no message visible yet');
+      return messages;
+    },
+    { timeout: 5000, interval: 100 },
+  );
+}
+
 async function depth(): Promise<number> {
   const { data } = await supabaseAdmin.rpc('queue_metrics', { p_queue: Q }).single().throwOnError();
   return data.queue_length;
@@ -34,7 +49,7 @@ describe('queue wrappers', () => {
   // 0 takes pgmq.read, 1 pgmq.read_with_poll, which with 0 would never read anything.
   it.each([0, 1])('a %i s poll reads a waiting message and hides it', async (poll) => {
     send({ poll });
-    const messages = await read(poll);
+    const messages = await readVisible(poll);
     expect(messages).toEqual([
       {
         msg_id: expect.any(Number),
@@ -53,11 +68,11 @@ describe('queue wrappers', () => {
 
   it('a retry brings a message back with one more read; a dead letter records it and empties the queue', async () => {
     send({ job: 'retry' });
-    const first = (await read())[0]!;
+    const first = (await readVisible())[0]!;
     await supabaseAdmin
       .rpc('queue_retry', { p_queue: Q, p_msg_id: first.msg_id, p_delay_seconds: 0 })
       .throwOnError();
-    const second = (await read())[0]!;
+    const second = (await readVisible())[0]!;
     expect(second).toMatchObject({ msg_id: first.msg_id, read_ct: 2 });
     expect(await depth()).toBe(1);
 
@@ -90,7 +105,7 @@ describe('queue wrappers', () => {
 
   it('does not dead-letter a message another reader already handled and deleted', async () => {
     send({ job: 'raced' });
-    const msg = (await read())[0]!;
+    const msg = (await readVisible())[0]!;
     await supabaseAdmin.rpc('queue_delete', { p_queue: Q, p_msg_id: msg.msg_id }).throwOnError();
     const args = { p_queue: Q, p_msg_id: msg.msg_id, p_message: msg.message, p_attempts: 1 };
     const { data: recorded } = await supabaseAdmin
@@ -120,7 +135,7 @@ describe('queue wrappers', () => {
       .throwOnError();
     expect(again).toBe(false);
 
-    const rest = (await read())[0]!; // the third, still visible
+    const rest = (await readVisible())[0]!; // the third, still visible
     for (const id of [data[1]!.msg_id, rest.msg_id]) {
       await supabaseAdmin.rpc('queue_delete', { p_queue: Q, p_msg_id: id }).throwOnError();
     }
@@ -129,14 +144,16 @@ describe('queue wrappers', () => {
 
   it('queue_metrics reports the oldest message age', async () => {
     send({ job: 'age' });
-    await new Promise((r) => setTimeout(r, 2100));
+    // Back-dated, not slept: the age is computed from enqueued_at.
+    // Back-dated well past the bound, so a wall clock that steps back a second or two still reads it as old.
+    localExec(`update pgmq.q_${Q} set enqueued_at = now() - interval '30 seconds'`);
     const { data } = await supabaseAdmin
       .rpc('queue_metrics', { p_queue: Q })
       .single()
       .throwOnError();
     expect(data.queue_length).toBe(1);
-    expect(data.oldest_msg_age_sec).toBeGreaterThanOrEqual(2);
-    const msg = (await read())[0]!;
+    expect(data.oldest_msg_age_sec).toBeGreaterThanOrEqual(20);
+    const msg = (await readVisible())[0]!;
     await supabaseAdmin.rpc('queue_delete', { p_queue: Q, p_msg_id: msg.msg_id }).throwOnError();
   });
 });

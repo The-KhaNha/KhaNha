@@ -138,9 +138,10 @@ describe('the media handler', () => {
 
     const stop = new AbortController();
     const running = runQueue(mediaHandler, { signal: stop.signal, log, pollSeconds: 1 });
-    const deadline = Date.now() + 15_000;
-    while ((await row(uploadId)).status !== 'PROCESSED' && Date.now() < deadline)
-      await new Promise((r) => setTimeout(r, 100));
+    await vi.waitFor(async () => expect((await row(uploadId)).status).toBe('PROCESSED'), {
+      timeout: 15_000,
+      interval: 100,
+    });
     stop.abort();
     await running;
 
