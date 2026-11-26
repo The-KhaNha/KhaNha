@@ -50,7 +50,7 @@ beforeAll(async () => {
 afterAll(async () => {
   vi.unstubAllGlobals();
   vi.resetModules();
-  // Orders reference profiles without ON DELETE CASCADE: clear them before the account (as orders.test.ts does).
+  // Orders reference profiles without ON DELETE CASCADE: clear them before the account (as test/setup/orders.ts does).
   if (resolveTestTarget() !== 'local') return;
   await supabaseAdmin.rpc('reset_demo_orders').throwOnError();
   await deleteTestUser(customer);

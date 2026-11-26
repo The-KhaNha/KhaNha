@@ -39,7 +39,7 @@ beforeAll(async () => {
 }, 30_000);
 
 afterAll(async () => {
-  // Orders reference profiles, so they go before the users (orders.test.ts explains the order and the guard).
+  // Orders reference profiles, so they go before the users (test/setup/orders.ts explains the order and the guard).
   if (resolveTestTarget() !== 'local') return;
   await supabaseAdmin.rpc('reset_demo_orders').throwOnError();
   await Promise.all([customer, staff].map((user) => deleteTestUser(user)));
