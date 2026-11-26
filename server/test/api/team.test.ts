@@ -9,6 +9,7 @@ import {
   createStoreMember,
   createTestUser,
   deleteTestStores,
+  expectError,
   testAuthMatrix,
   testStoreIsolation,
   type TestUser,
@@ -252,8 +253,8 @@ describe('revoking and removing', () => {
     expect((await revoke(managerInvite.body.invite.id, manager)).status).toBe(403);
     expect((await revoke(staffInvite.body.invite.id, manager)).status).toBe(204);
     expect((await revoke(staffInvite.body.invite.id, manager)).status).toBe(204);
-    expect((await revoke(randomUUID(), manager)).status).toBe(404);
-    expect((await revoke('not-a-uuid', manager)).status).toBe(404);
+    expectError(await revoke(randomUUID(), manager), 404, 'NOT_FOUND');
+    expectError(await revoke('not-a-uuid', manager), 404, 'NOT_FOUND');
     // Accepted (here behind the API's back, as a racing accept would): 404, never a revoked accepted invite.
     const used = await invite({ email: `rv-u-${tag}@example.test`, role: 'STAFF' });
     await supabaseAdmin
@@ -261,8 +262,27 @@ describe('revoking and removing', () => {
       .update({ accepted_at: new Date().toISOString() })
       .eq('id', used.body.invite.id)
       .throwOnError();
-    expect((await revoke(used.body.invite.id, manager)).status).toBe(404);
-    expect((await accept(staffInvite.body.token, await fresh())).status).toBe(404);
+    expectError(await revoke(used.body.invite.id, manager), 404, 'NOT_FOUND');
+  });
+
+  // The invited account itself: any other account is refused by the email check, which would hide a revoke that
+  // did nothing. The unrevoked twin of this flow is 'joins the invited account once' below.
+  it('the invited account cannot accept a revoked invite: 404, no membership, no event', async () => {
+    const invited = await fresh();
+    const { body } = await invite({ email: invited.email, role: 'STAFF' });
+    const revoked = await api()
+      .delete(`/api/stores/${storeId}/invites/${body.invite.id}`)
+      .set(auth(manager));
+    expect(revoked.status).toBe(204);
+    const res = await accept(body.token, invited);
+    expectError(res, 404, 'NOT_FOUND');
+    expect(await membershipOf(invited)).toEqual([]);
+    const { count } = await supabaseAdmin
+      .from('domain_events')
+      .select('id', { count: 'exact', head: true })
+      .eq('aggregate_id', body.invite.id)
+      .throwOnError();
+    expect(count).toBe(0);
   });
 
   it('removal takes effect on the next request, and is audited with the actor', async () => {
@@ -326,17 +346,28 @@ describe('POST /api/me/invites/accept', () => {
     expect((await api().get(`/api/stores/${storeId}/orders`).set(auth(joiner))).status).toBe(200);
   });
 
+  // Kept on purpose (decided 2026-11-23): an admin may be invited and join a store's team like anyone; an admin who
+  // works a store keeps both standings (domain/permissions.ts accessFor). Owner invites refuse admins (P7.4a D6).
+  it('an admin invited as staff joins as staff', async () => {
+    const invitedAdmin = await createTestUser('ADMIN');
+    users.push(invitedAdmin);
+    const { body, status } = await invite({ email: invitedAdmin.email, role: 'STAFF' }, manager);
+    expect(status).toBe(201);
+    const res = await accept(body.token, invitedAdmin);
+    expect(res.status).toBe(200);
+    expect(await membershipOf(invitedAdmin)).toEqual([expect.objectContaining({ role: 'STAFF' })]);
+  });
+
   it('another account, even with the token, gets 404 and the invite stays open', async () => {
     const invited = await fresh();
     const intruder = await fresh();
     const { body } = await invite({ email: invited.email, role: 'STAFF' });
     const res = await accept(body.token, intruder);
-    expect(res.status).toBe(404);
-    expect(res.body.error.code).toBe('NOT_FOUND');
+    expectError(res, 404, 'NOT_FOUND');
     expect(await membershipOf(intruder)).toEqual([]);
     expect((await accept(body.token, invited)).status).toBe(200);
     // Used: not even the intruder's second try, nor anyone else, gets it.
-    expect((await accept(body.token, intruder)).status).toBe(404);
+    expectError(await accept(body.token, intruder), 404, 'NOT_FOUND');
   });
 
   it('an expired, unknown or malformed token → 404 / 400', async () => {
@@ -350,8 +381,8 @@ describe('POST /api/me/invites/accept', () => {
       })
       .eq('id', body.invite.id)
       .throwOnError();
-    expect((await accept(body.token, joiner)).status).toBe(404);
-    expect((await accept('x'.repeat(43), joiner)).status).toBe(404);
+    expectError(await accept(body.token, joiner), 404, 'NOT_FOUND');
+    expectError(await accept('x'.repeat(43), joiner), 404, 'NOT_FOUND');
     expect((await accept('x'.repeat(101), joiner)).status).toBe(400);
     expect((await accept('', joiner)).status).toBe(400);
   });
@@ -363,7 +394,7 @@ describe('POST /api/me/invites/accept', () => {
       .from('store_memberships')
       .insert({ store_id: storeId, user_id: joiner.id, role: 'STAFF' })
       .throwOnError();
-    expect((await accept(body.token, joiner)).status).toBe(404);
+    expectError(await accept(body.token, joiner), 404, 'NOT_FOUND');
     expect(await membershipOf(joiner)).toEqual([expect.objectContaining({ role: 'STAFF' })]);
     const { body: team } = await members();
     expect(team.invites).toEqual(
