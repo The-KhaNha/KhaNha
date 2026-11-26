@@ -34,7 +34,7 @@ import { getStore } from './store.service';
 import { getStoreSettings } from './storeSettings.service';
 
 /** The single source of truth for which status changes staff may make. */
-const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
+export const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   PLACED: ['PREPARING', 'CANCELLED'],
   PREPARING: ['READY', 'CANCELLED'],
   READY: ['COLLECTED'],
