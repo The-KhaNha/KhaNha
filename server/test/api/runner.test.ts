@@ -165,7 +165,7 @@ describe('runQueue', () => {
     expect(at('Job handled')[0]).toHaveProperty('durationMs');
   });
 
-  it('reports progress through onActive after each read, and goes quiet while every slot is busy', async () => {
+  it('reports progress through onActive, and reads again as soon as a full slot frees, not after the poll', async () => {
     const { log } = capture();
     const calls: number[] = [];
     let jobStart = 0;
@@ -183,15 +183,14 @@ describe('runQueue', () => {
     await waitFor(() => calls.length >= 1); // an empty read returned
     send(event(10));
     await waitFor(() => jobStart > 0);
-    // Held well inside one 1 s poll: any read while the slot is busy would show up here.
-    await new Promise((r) => setTimeout(r, 400));
     release();
-    // A freed slot is read at once, not after the 1 s poll: the wait is shorter than the poll.
-    await waitFor(() => calls.some((t) => jobEnd > 0 && t >= jobEnd), 900);
+    await waitFor(() => calls.some((t) => jobEnd > 0 && t >= jobEnd));
     await runner.stop();
 
-    // With its one slot busy the loop does not read, so it is quiet: the health check allows a visibility timeout.
-    expect(calls.filter((t) => t > jobStart && t < jobEnd)).toEqual([]);
+    // Woken by the handler finishing: the read lands within milliseconds. A loop that waited out the 1 s poll instead
+    // would read about a second after the slot filled. (No read while every slot is busy: the concurrency test below.)
+    const next = calls.find((t) => t >= jobEnd) ?? Infinity;
+    expect(next - jobEnd).toBeLessThan(500);
   });
 
   it('never waits in the database: every read returns at once, and an empty queue is read about once per poll', async () => {

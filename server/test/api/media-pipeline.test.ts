@@ -138,12 +138,16 @@ describe('the media handler', () => {
 
     const stop = new AbortController();
     const running = runQueue(mediaHandler, { signal: stop.signal, log, pollSeconds: 1 });
-    await vi.waitFor(async () => expect((await row(uploadId)).status).toBe('PROCESSED'), {
-      timeout: 15_000,
-      interval: 100,
-    });
-    stop.abort();
-    await running;
+    try {
+      await vi.waitFor(async () => expect((await row(uploadId)).status).toBe('PROCESSED'), {
+        timeout: 15_000,
+        interval: 100,
+      });
+    } finally {
+      // Stop the consumer even when the wait times out, so it cannot keep polling into later tests.
+      stop.abort();
+      await running;
+    }
 
     const done = await row(uploadId);
     expect(done.status).toBe('PROCESSED');
