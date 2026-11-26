@@ -17,7 +17,9 @@ describe('GET /api/health', () => {
 
   it('returns the error envelope for an unknown route', async () => {
     const res = await api().get('/api/nope');
-    expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: { code: 'NOT_FOUND', message: expect.any(String) } });
+    expect(res).toMatchObject({ status: 404 });
+    expect(res.body).toEqual({
+      error: { code: 'NOT_FOUND', message: 'No route matches GET /api/nope.' },
+    });
   });
 });

@@ -56,6 +56,11 @@ describe('registerSchema', () => {
     if (result.success) expect(result.data.email).toBe('ann@example.test');
   });
 
+  it('trims before counting: a name with surrounding whitespace at the 60-char boundary passes', () => {
+    const name = `  ${'a'.repeat(60)}  `;
+    expect(registerSchema.safeParse({ ...base, name }).success).toBe(true);
+  });
+
   it('trims the name and treats a blank phone as not provided', () => {
     const result = registerSchema.safeParse({ ...base, name: '  Ann  ', phone: '   ' });
     expect(result.success).toBe(true);
@@ -74,6 +79,8 @@ describe('phoneField (shared by register and orders)', () => {
     ['16 digits (too long)', '9876543210123456', false],
     ['letters', 'abcdefghij', false],
     ['leading + with 10 digits', '+9198765432', true],
+    ['10 digits (min)', '9876543210', true],
+    ['15 digits (max)', '987654321012345', true],
   ])('%s', (_label, value, ok) => {
     expect(phoneField.safeParse(value).success).toBe(ok as boolean);
   });

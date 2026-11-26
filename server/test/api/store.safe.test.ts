@@ -21,6 +21,12 @@ describe('removed single-store routes', () => {
       [method](path)
       .set('Authorization', `Bearer ${customer.token}`)
       .set('X-Client-Version', '9.0.0');
-    expect(res.status).toBe(404);
+    // The catch-all's own message: these routes must stay unmounted, not merely refuse something.
+    expect(res).toMatchObject({
+      status: 404,
+      body: {
+        error: { code: 'NOT_FOUND', message: `No route matches ${method.toUpperCase()} ${path}.` },
+      },
+    });
   });
 });

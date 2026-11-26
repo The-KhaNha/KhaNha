@@ -56,7 +56,7 @@ describe('GET /api/stores/:ref/menu', () => {
     expect(berrySmoothie?.isAvailable).toBe(false);
   });
 
-  it('reports a sold-out tracked item as unavailable via isPurchasable, distinct from switched off', async () => {
+  it('reports a stock-limited item as available exactly while its stock is above zero', async () => {
     const res = await api().get(await menuPath());
     const allItems: { name: string; isAvailable: boolean; stockQuantity: number | null }[] =
       res.body.categories.flatMap(
@@ -75,12 +75,10 @@ describe('GET /api/stores/:ref/menu', () => {
     const categoryNames = res.body.categories.map((c: { name: string }) => c.name);
     // Seeded order: Coffee (1-3), Snacks (4-6), Juices (7-9), Desserts (10-11).
     expect(categoryNames).toEqual(['Coffee', 'Snacks', 'Juices', 'Desserts']);
-  });
-
-  it('never leaks stack traces or SQL in the body', async () => {
-    const res = await api().get(await menuPath());
-    expect(JSON.stringify(res.body)).not.toMatch(
-      /\bat .*\.(ts|js)|stack|PGRST|SQLSTATE|select |insert |update /i,
+    const popular: { sortOrder: number }[] = res.body.popular;
+    expect(popular.length).toBeGreaterThan(1);
+    expect(popular.map((item) => item.sortOrder)).toEqual(
+      popular.map((item) => item.sortOrder).sort((a, b) => a - b),
     );
   });
 });

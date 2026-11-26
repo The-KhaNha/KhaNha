@@ -1,4 +1,3 @@
-// Order idempotency and last-unit race API tests (destructive, local Supabase only).
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { invalidate } from '../../src/utils/cache';
@@ -11,6 +10,7 @@ import {
   useOrdersFixture,
   type MenuItemRow,
 } from '../setup/orders';
+import { expectError } from '../setup/helpers';
 
 useOrdersFixture();
 
@@ -149,13 +149,13 @@ describe('idempotencyKey', () => {
     const first = await placeOrder(customer1, { idempotencyKey: key, note: 'Less spicy' });
     expect(first.status).toBe(201);
     const note = await placeOrder(customer1, { idempotencyKey: key, note: 'Extra spicy' });
-    expect(note.status).toBe(409);
+    expectError(note, 409, 'IDEMPOTENCY_KEY_REUSED');
     const name = await placeOrder(customer1, {
       idempotencyKey: key,
       note: 'Less spicy',
       customerName: 'Someone Else',
     });
-    expect(name.status).toBe(409);
+    expectError(name, 409, 'IDEMPOTENCY_KEY_REUSED');
     const same = await placeOrder(customer1, { idempotencyKey: key, note: 'Less spicy' });
     expect(same.status).toBe(201);
     expect(same.body.order.id).toBe(first.body.order.id);

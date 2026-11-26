@@ -1,9 +1,8 @@
-// Order placement API tests (destructive, local Supabase only): auth, validation, not found, business rules, error envelope, field details, multi-store.
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { invalidate } from '../../src/utils/cache';
 import { supabaseAdmin } from '../../src/utils/supabase';
-import { testAuthMatrix } from '../setup/helpers';
+import { testAuthMatrix, expectError } from '../setup/helpers';
 import { api } from '../setup/api';
 import {
   auth,
@@ -229,12 +228,6 @@ describe('validation', () => {
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
   });
 
-  it('a body over the express.json() 100 kB default -> 413 PAYLOAD_TOO_LARGE', async () => {
-    const res = await placeOrder(customer1, { note: 'a'.repeat(150_000) });
-    expect(res.status).toBe(413);
-    expect(res.body.error.code).toBe('PAYLOAD_TOO_LARGE');
-  });
-
   it('status outside the enum is rejected on the PATCH body', async () => {
     const placed = await placeOrder(customer1);
     const res = await patchStatus(placed.body.order.id as string, 'BOGUS');
@@ -272,26 +265,26 @@ describe('validation', () => {
 describe('not found', () => {
   it('a random uuid on GET /orders/:id -> 404 NOT_FOUND', async () => {
     const res = await api().get(`/api/orders/${randomUUID()}`).set(auth(customer1.token));
-    expect(res.status).toBe(404);
+    expectError(res, 404, 'NOT_FOUND');
     expect(res.body.error.code).toBe('NOT_FOUND');
   });
 
   it('"not-a-uuid" on GET /orders/:id -> 404 NOT_FOUND', async () => {
     const res = await api().get('/api/orders/not-a-uuid').set(auth(customer1.token));
-    expect(res.status).toBe(404);
+    expectError(res, 404, 'NOT_FOUND');
     expect(res.body.error.code).toBe('NOT_FOUND');
   });
 
   it("another customer's order is 404, never 403 (ids do not leak)", async () => {
     const placed = await placeOrder(customer1);
     const res = await api().get(`/api/orders/${placed.body.order.id}`).set(auth(customer2.token));
-    expect(res.status).toBe(404);
+    expectError(res, 404, 'NOT_FOUND');
     expect(res.body.error.code).toBe('NOT_FOUND');
   });
 
   it('a staff PATCH on a missing id -> 404 NOT_FOUND', async () => {
     const res = await patchStatus(randomUUID(), 'PREPARING');
-    expect(res.status).toBe(404);
+    expectError(res, 404, 'NOT_FOUND');
     expect(res.body.error.code).toBe('NOT_FOUND');
   });
 

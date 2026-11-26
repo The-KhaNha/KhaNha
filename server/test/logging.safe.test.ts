@@ -88,6 +88,44 @@ describe('logger redaction: payment and pickup keys', () => {
   });
 });
 
+const SECRET = 'sentinel-value-must-not-be-logged';
+
+/** `a.b["c-d"]` -> ['a', 'b', 'c-d'], with a `*` standing for one made-up key. */
+const segmentsOf = (path: string): string[] =>
+  [...path.matchAll(/\["([^"]+)"\]|([^.[\]]+)/g)].map((m) =>
+    (m[1] ?? m[2] ?? '').replace('*', 'wild'),
+  );
+
+const objectAt = (segments: string[]): Record<string, unknown> =>
+  segments.reduceRight<Record<string, unknown>>(
+    (inner, key, i) => (i === segments.length - 1 ? { [key]: SECRET } : { [key]: inner }),
+    {},
+  );
+
+describe('logger redaction: every path in REDACT_PATHS', () => {
+  // Built from the exported list, so a path added later is covered without touching this test.
+  const cases = REDACT_PATHS.flatMap((path) => {
+    const wildcard = path.startsWith('*.');
+    return [
+      [path, segmentsOf(path)],
+      // A `*.x` path covers one level down; its top-level `x` must be listed too, or the bare key leaks.
+      ...(wildcard ? [[path.slice(2), segmentsOf(path.slice(2))]] : []),
+    ] as [string, string[]][];
+  });
+
+  it.each(cases)('blanks %s', (_path, segments) => {
+    const { lines, log } = capture();
+    log.info(objectAt(segments), 'hello');
+    expect(JSON.stringify(lines[0])).not.toContain(SECRET);
+    expect(JSON.stringify(lines[0])).toContain('[Redacted]');
+  });
+
+  it('lists each wildcard path next to its top-level key', () => {
+    for (const path of REDACT_PATHS.filter((p) => p.startsWith('*.')))
+      expect(REDACT_PATHS, path).toContain(path.slice(2));
+  });
+});
+
 describe('logger error serializer', () => {
   it('keeps the cause chain', () => {
     const { lines, log } = capture();

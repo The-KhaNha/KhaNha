@@ -2,7 +2,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { invalidate } from '../../src/utils/cache';
 import { supabaseAdmin } from '../../src/utils/supabase';
-import { resetDemoData } from '../setup/helpers';
+import { resetDemoData, expectError } from '../setup/helpers';
 import { api } from '../setup/api';
 
 beforeAll(async () => {
@@ -27,8 +27,12 @@ describe('client version gate', () => {
   });
 
   it('treats a missing or malformed header as the legacy 0.1.0 client', async () => {
-    expect((await api().get('/api/stores')).status).toBe(426);
-    expect((await api().get('/api/stores').set('X-Client-Version', 'nope')).status).toBe(426);
+    expectError(await api().get('/api/stores'), 426, 'CLIENT_OUTDATED');
+    expectError(
+      await api().get('/api/stores').set('X-Client-Version', 'nope'),
+      426,
+      'CLIENT_OUTDATED',
+    );
   });
 
   it('serves a client at or above the minimum, prerelease included', async () => {
@@ -45,6 +49,6 @@ describe('client version gate', () => {
 
   it('gates before authentication, so an old tab gets 426 rather than 401', async () => {
     const res = await api().get('/api/orders').set('X-Client-Version', '0.1.0');
-    expect(res.status).toBe(426);
+    expectError(res, 426, 'CLIENT_OUTDATED');
   });
 });

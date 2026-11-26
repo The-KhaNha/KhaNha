@@ -15,6 +15,7 @@ import {
   testAuthMatrix,
   testStoreIsolation,
   type TestUser,
+  expectError,
 } from '../setup/helpers';
 
 const tag = randomUUID().slice(0, 8);
@@ -199,8 +200,8 @@ describe('who changes stock', () => {
     const refused = await patchStock({ set: 1 }, staff);
     expect(refused.status).toBe(403);
     expect(refused.body.error.code).toBe('FORBIDDEN');
-    expect((await movementsOf(staff)).status).toBe(403);
-    expect((await api().get(`/api/stores/${storeId}/stock`).set(auth(staff))).status).toBe(403);
+    expectError(await movementsOf(staff), 403, 'FORBIDDEN');
+    expectError(await api().get(`/api/stores/${storeId}/stock`).set(auth(staff)), 403, 'FORBIDDEN');
     expect(await stockNow()).toBe(10);
     // Managers and the owner are not affected by the setting.
     expect((await patchStock({ set: 8 }, manager)).status).toBe(200);
@@ -226,13 +227,13 @@ describe('who changes stock', () => {
       .patch(`/api/stores/${storeId}/settings`)
       .set(auth(staff))
       .send({ staffCanEditStock: true });
-    expect(res.status).toBe(403);
+    expectError(res, 403, 'FORBIDDEN');
   });
 
   it('a brand template has no stock (404)', async () => {
     const templateItem = await makeItem(templateId, 'Template item');
     const res = await patchStock({ set: 1 }, owner, templateItem, templateId);
-    expect(res.status).toBe(404);
+    expectError(res, 404, 'NOT_FOUND');
   });
 });
 
@@ -261,7 +262,7 @@ describe('the bounds', () => {
   it('an item id that is not a UUID, an unknown one or an archived one is 404', async () => {
     for (const id of ['nope', randomUUID(), archivedId]) {
       const res = await patchStock({ set: 1 }, manager, id);
-      expect(res.status).toBe(404);
+      expectError(res, 404, 'NOT_FOUND');
     }
   });
 
@@ -269,7 +270,7 @@ describe('the bounds', () => {
     ['not a UUID', '?itemId=nope'],
     ['an unknown filter', '?store=x'],
   ])('the movements list refuses %s (400)', async (_label, query) => {
-    expect((await movementsOf(manager, query)).status).toBe(400);
+    expectError(await movementsOf(manager, query), 400, 'VALIDATION_ERROR');
   });
 });
 

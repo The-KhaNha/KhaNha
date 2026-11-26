@@ -39,7 +39,7 @@ describe('GET /api/config', () => {
     expect(res.body.minClientVersion).toBe('9.0.0');
   });
 
-  it('follows an admin change at once through the settings cache', async () => {
+  it('serves the new value once the settings cache is invalidated', async () => {
     await supabaseAdmin
       .from('site_settings')
       .update({ order_poll_ms: 6000, min_client_version: '0.0.0' })

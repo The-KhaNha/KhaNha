@@ -5,7 +5,7 @@ import type { MenuResponse, StoreDto, StoreSummaryDto } from '../../src/types/ap
 import { invalidate } from '../../src/utils/cache';
 import { supabaseAdmin } from '../../src/utils/supabase';
 import { api } from '../setup/api';
-import { oldestStoreId } from '../setup/helpers';
+import { oldestStoreId, expectError } from '../setup/helpers';
 
 const tag = randomUUID().slice(0, 8);
 const areaA = `area-a-${tag}`;
@@ -125,20 +125,19 @@ describe('GET /api/stores/:storeRef', () => {
     ['a DRAFT store by slug', slug('draft')],
   ])('%s → 404 NOT_FOUND', async (_label, ref) => {
     const res = await api().get(`/api/stores/${ref}`);
-    expect(res.status).toBe(404);
+    expectError(res, 404, 'NOT_FOUND');
     expect(res.body.error.code).toBe('NOT_FOUND');
   });
 
   it('a DRAFT store by id → 404, and its menu too', async () => {
-    expect((await api().get(`/api/stores/${ids.draft}`)).status).toBe(404);
-    expect((await api().get(`/api/stores/${ids.draft}/menu`)).status).toBe(404);
+    expectError(await api().get(`/api/stores/${ids.draft}`), 404, 'NOT_FOUND');
+    expectError(await api().get(`/api/stores/${ids.draft}/menu`), 404, 'NOT_FOUND');
   });
 
   it('a ref that cannot be a slug (too long, upper case, punctuation) → the same 404', async () => {
     for (const ref of ['x'.repeat(81), 'Campus-Cafe', 'a_b', '-a']) {
       const res = await api().get(`/api/stores/${ref}`);
-      expect(res.status, ref).toBe(404);
-      expect(res.body.error.code).toBe('NOT_FOUND');
+      expectError(res, 404, 'NOT_FOUND');
     }
   });
 

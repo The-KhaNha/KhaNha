@@ -2,7 +2,7 @@ import { once } from 'node:events';
 import type { Server } from 'node:http';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { createTestUser, deleteTestUser, type TestUser } from '../setup/helpers';
+import { createTestUser, deleteTestUser, type TestUser, expectError } from '../setup/helpers';
 
 // The suites run with the limits off (vitest.config.mts). This file loads its own copy of the app with a small
 // per-address limit, to check where the limiter sits in the pipeline, not how it counts (rate-limit.safe.test.ts).
@@ -59,13 +59,13 @@ describe('the flood limit counts a signed-in caller on their own', () => {
   it('two accounts behind one address each get the full budget', async () => {
     for (let i = 0; i < IP_MAX; i += 1)
       expect((await from('198.51.100.2', alice.token)).status).toBe(200);
-    expect((await from('198.51.100.2', alice.token)).status).toBe(429);
+    expectError(await from('198.51.100.2', alice.token), 429, 'RATE_LIMITED');
     expect((await from('198.51.100.2', bob.token)).status).toBe(200);
   });
 
   it('anonymous requests and forged tokens share the address budget', async () => {
     for (let i = 0; i < IP_MAX - 1; i += 1) expect((await from('198.51.100.3')).status).toBe(200);
     expect((await from('198.51.100.3', 'not-a-real-token')).status).toBe(200);
-    expect((await from('198.51.100.3', 'another-forged-token')).status).toBe(429);
+    expectError(await from('198.51.100.3', 'another-forged-token'), 429, 'RATE_LIMITED');
   });
 });

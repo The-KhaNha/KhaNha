@@ -9,6 +9,7 @@ import {
   resetDemoData,
   testAuthMatrix,
   type TestUser,
+  expectError,
 } from '../setup/helpers';
 import { api } from '../setup/api';
 
@@ -53,7 +54,7 @@ describe('admin settings: role', () => {
       .patch('/api/admin/settings')
       .set(bearer(who()))
       .send({ customerOrderHistoryLimit: 5 });
-    expect(patch.status).toBe(403);
+    expectError(patch, 403, 'FORBIDDEN');
   });
 
   it('an admin has no staff powers', async () => {
@@ -61,7 +62,7 @@ describe('admin settings: role', () => {
       .patch(`/api/stores/${await oldestStoreId()}/orders/${crypto.randomUUID()}/status`)
       .set(bearer(admin))
       .send({ status: 'PREPARING' });
-    expect(res.status).toBe(403); // sees the store, holds no capability there
+    expectError(res, 403, 'FORBIDDEN'); // sees the store, holds no capability there
   });
 });
 
@@ -187,14 +188,32 @@ describe('admin settings: configuration fields', () => {
 });
 
 describe('admin settings: minimum client version', () => {
-  it('accepts a plain semver version and returns it', async () => {
-    const res = await api()
-      .patch('/api/admin/settings')
-      .set(bearer(admin))
-      .set('X-Client-Version', '9.9.9')
-      .send({ minClientVersion: '0.0.0' });
-    expect(res.status).toBe(200);
-    expect(res.body.settings.minClientVersion).toBe('0.0.0');
+  it('accepts a plain semver version, returns it and stores it', async () => {
+    // 0.0.0 is the seeded default, so it would pass even if the field were ignored. The 9.9.9 header keeps this
+    // client above the minimum it sets, so the restore below is not gated with a 426.
+    const patch = (minClientVersion: string) =>
+      api()
+        .patch('/api/admin/settings')
+        .set(bearer(admin))
+        .set('X-Client-Version', '9.9.9')
+        .send({ minClientVersion });
+    const stored = async () =>
+      (
+        await supabaseAdmin
+          .from('site_settings')
+          .select('min_client_version')
+          .single()
+          .throwOnError()
+      ).data.min_client_version;
+    try {
+      const res = await patch('1.2.3');
+      expect(res.status).toBe(200);
+      expect(res.body.settings.minClientVersion).toBe('1.2.3');
+      expect(await stored()).toBe('1.2.3');
+    } finally {
+      await patch('0.0.0');
+    }
+    expect(await stored()).toBe('0.0.0');
   });
 });
 

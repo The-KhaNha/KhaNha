@@ -4,6 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { pino } from 'pino';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { expectError } from '../setup/helpers';
 import type * as LoggerModule from '../../src/utils/logger';
 import type * as SettingsModule from '../../src/services/settings.service';
 
@@ -164,7 +165,7 @@ describe('POST /api/client-errors', () => {
       .post('/api/auth/register')
       .set('X-Client-Version', '1.0.0')
       .send({});
-    expect(gated.status).toBe(426);
+    expectError(gated, 426, 'CLIENT_OUTDATED');
     expect((await post({ reports: [report()] }, '1.0.0')).status).toBe(204);
   });
 

@@ -14,6 +14,7 @@ import {
   oldestStoreId,
   testStoreIsolation,
   type TestUser,
+  expectError,
 } from '../setup/helpers';
 
 const tag = randomUUID().slice(0, 8);
@@ -112,7 +113,7 @@ describe('GET /api/stores/:storeId/orders', () => {
     expect(readyIds).toContain(ready);
     expect(readyIds).not.toContain(placed);
     const bad = await api().get(`/api/stores/${store.x}/orders?status=LOST`).set(auth(staffX));
-    expect(bad.status).toBe(400);
+    expectError(bad, 400, 'VALIDATION_ERROR');
   });
 
   it("carries the store's live slug on each order", async () => {
@@ -162,7 +163,7 @@ describe('PATCH /api/stores/:storeId/orders/:orderId/status', () => {
       .patch(`/api/stores/${store.x}/orders/${atY}/status`)
       .set(auth(staffBoth))
       .send({ status: 'PREPARING' });
-    expect(res.status).toBe(404);
+    expectError(res, 404, 'NOT_FOUND');
     expect(res.body.error.code).toBe('NOT_FOUND');
   });
 
@@ -197,12 +198,12 @@ describe('an order of a store the caller does not work at', () => {
   it("another store's order is 404 on GET /api/orders/:id and 403 on the store status route", async () => {
     const elsewhere = await insertOrder(store.y);
     const read = await api().get(`/api/orders/${elsewhere}`).set(auth(legacyStaff));
-    expect(read.status).toBe(404);
+    expectError(read, 404, 'NOT_FOUND');
     const move = await api()
       .patch(`/api/stores/${store.y}/orders/${elsewhere}/status`)
       .set(auth(legacyStaff))
       .send({ status: 'PREPARING' });
-    expect(move.status).toBe(403);
+    expectError(move, 403, 'FORBIDDEN');
     const { data } = await supabaseAdmin
       .from('orders')
       .select('status')
@@ -219,7 +220,7 @@ describe('an order of a store the caller does not work at', () => {
       expect(res.status).toBe(200);
     }
     const stranger = await api().get(`/api/orders/${id}`).set(auth(legacyStaff));
-    expect(stranger.status).toBe(404);
+    expectError(stranger, 404, 'NOT_FOUND');
   });
 });
 
@@ -263,7 +264,7 @@ describe('POST /api/orders with a storeId', () => {
     ['an unknown store', () => randomUUID()],
   ])('%s → 404', async (_label, storeId) => {
     const res = await place(storeId());
-    expect(res.status).toBe(404);
+    expectError(res, 404, 'NOT_FOUND');
     expect(res.body.error.code).toBe('NOT_FOUND');
   });
 
@@ -306,7 +307,7 @@ describe('POST /api/orders with a storeId', () => {
         .send({ storeId, items: lines });
       const key = await reuse(storeId);
       for (const res of [many, key]) {
-        expect(res.status).toBe(404);
+        expectError(res, 404, 'NOT_FOUND');
         expect(res.body.error.code).toBe('NOT_FOUND');
       }
       return [many.status, many.body, key.status, key.body];

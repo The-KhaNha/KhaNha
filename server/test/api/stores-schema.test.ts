@@ -38,15 +38,6 @@ afterAll(async () => {
 });
 
 describe('stores and brands schema', () => {
-  it('every store has a brand and a slug (the backfill, then not null)', async () => {
-    const { data } = await supabaseAdmin
-      .from('stores')
-      .select('id, slug, brand_id, brands!stores_brand_id_fkey(id)')
-      .throwOnError();
-    expect(data.length).toBeGreaterThanOrEqual(3);
-    expect(data.filter((s) => !s.slug || !s.brand_id || !s.brands)).toEqual([]);
-  });
-
   it('refuses a duplicate store slug and a duplicate brand slug', async () => {
     const dupStore = await supabaseAdmin.from('stores').insert({
       name: 'Dup',

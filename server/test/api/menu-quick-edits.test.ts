@@ -14,6 +14,7 @@ import {
   testAuthMatrix,
   testStoreIsolation,
   type TestUser,
+  expectError,
 } from '../setup/helpers';
 
 const tag = randomUUID().slice(0, 8);
@@ -174,8 +175,8 @@ testStoreIsolation(
 
 describe('who makes quick edits', () => {
   it('staff may not (403)', async () => {
-    expect((await bulk({ category: 'Drinks', isAvailable: false }, staff)).status).toBe(403);
-    expect((await reorder(await liveOrder(), staff)).status).toBe(403);
+    expectError(await bulk({ category: 'Drinks', isAvailable: false }, staff), 403, 'FORBIDDEN');
+    expectError(await reorder(await liveOrder(), staff), 403, 'FORBIDDEN');
   });
 
   it("the brand's owner reorders and switches the template's menu", async () => {
@@ -265,7 +266,7 @@ describe('switching many items at once', () => {
 
   it('a category with no live items is 404 (a typo never looks like success)', async () => {
     const res = await bulk({ category: 'juices', isAvailable: false });
-    expect(res.status).toBe(404);
+    expectError(res, 404, 'NOT_FOUND');
     expect(res.body.error.code).toBe('NOT_FOUND');
   });
 
@@ -277,7 +278,7 @@ describe('switching many items at once', () => {
     await setAll(true);
     const before = (await menuEvents()).length;
     const res = await bulk({ itemIds: [item.Coffee, extra()], isAvailable: false });
-    expect(res.status).toBe(404);
+    expectError(res, 404, 'NOT_FOUND');
     expect(res.body.error.code).toBe('NOT_FOUND');
     expect((await rows()).find((row) => row.id === item.Coffee)?.is_available).toBe(true);
     expect((await rows(otherStoreId))[0]?.is_available).toBe(true);
@@ -343,7 +344,7 @@ describe('reordering the menu', () => {
   ])('a list with %s is refused whole (404), nothing changes', async (_label, extra) => {
     const live = await liveOrder();
     const res = await reorder([...[...live].reverse(), extra()]);
-    expect(res.status).toBe(404);
+    expectError(res, 404, 'NOT_FOUND');
     expect(await liveOrder()).toEqual(live);
   });
 

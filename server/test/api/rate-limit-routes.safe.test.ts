@@ -3,7 +3,13 @@ import type { Server } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { createTestUser, deleteTestUser, oldestStoreId, type TestUser } from '../setup/helpers';
+import {
+  createTestUser,
+  deleteTestUser,
+  oldestStoreId,
+  type TestUser,
+  expectError,
+} from '../setup/helpers';
 
 // Loads its own copy of the app with small write and register limits, to check which routes carry which limiter
 // (rate-limit.safe.test.ts checks how counting works). Every request below is refused by validation or lookup, so
@@ -60,7 +66,7 @@ describe('POST /api/auth/register limiter', () => {
   it('counts refused attempts too, and answers 429 past the limit', async () => {
     for (let i = 0; i < REGISTER_MAX; i += 1) {
       const res = await request(server).post('/api/auth/register').send({});
-      expect(res.status).toBe(400);
+      expectError(res, 400, 'VALIDATION_ERROR');
     }
     expectRateLimited(await request(server).post('/api/auth/register').send({}));
   });
@@ -77,7 +83,7 @@ describe('write limiter is per signed-in account', () => {
         .post('/api/orders')
         .set('Authorization', bearer(customer))
         .send({});
-      expect(res.status).toBe(400);
+      expectError(res, 400, 'VALIDATION_ERROR');
     }
     expectRateLimited(
       await request(server).post('/api/orders').set('Authorization', bearer(customer)).send({}),
@@ -86,7 +92,7 @@ describe('write limiter is per signed-in account', () => {
       .post('/api/orders')
       .set('Authorization', bearer(staffTwo))
       .send({});
-    expect(other.status).toBe(400);
+    expectError(other, 400, 'VALIDATION_ERROR');
   });
 
   it('PATCH /api/stores/:storeId/orders/:id/status: staff past the limit get 429; a non-member is refused 403 before counting', async () => {
@@ -96,10 +102,10 @@ describe('write limiter is per signed-in account', () => {
         .patch(`/api/stores/${storeId}/orders/${randomUUID()}/status`)
         .set('Authorization', bearer(u))
         .send({ status: 'PREPARING' });
-    for (let i = 0; i < WRITE_MAX; i += 1) expect((await patch(staff)).status).toBe(404);
+    for (let i = 0; i < WRITE_MAX; i += 1) expectError(await patch(staff), 404, 'NOT_FOUND');
     expectRateLimited(await patch(staff));
     // customer's own bucket was spent on POST /orders above, so a 403 here proves requireStore runs first
-    expect((await patch(customer)).status).toBe(403);
+    expectError(await patch(customer), 403, 'FORBIDDEN');
   });
 
   it('reads are not counted by the write limiter', async () => {

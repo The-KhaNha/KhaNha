@@ -13,6 +13,7 @@ import {
   deleteTestStores,
   testAuthMatrix,
   type TestUser,
+  expectError,
 } from '../setup/helpers';
 
 const tag = randomUUID().slice(0, 8);
@@ -119,14 +120,14 @@ describe('who may push', () => {
   ])('%s gets 404 and nothing changes', async (_label, who) => {
     const before = await copyOf(northId, chai);
     const res = await push({ itemIds: [chai], storeIds: [northId], fields: ['price'] }, who());
-    expect(res.status).toBe(404);
+    expectError(res, 404, 'NOT_FOUND');
     expect(await copyOf(northId, chai)).toEqual(before);
   });
 
   it('an unknown or malformed brand is 404', async () => {
     const body = { itemIds: [chai], storeIds: [northId], fields: ['price'] };
-    expect((await push(body, owner, randomUUID())).status).toBe(404);
-    expect((await push(body, owner, 'not-a-uuid')).status).toBe(404);
+    expectError(await push(body, owner, randomUUID()), 404, 'NOT_FOUND');
+    expectError(await push(body, owner, 'not-a-uuid'), 404, 'NOT_FOUND');
   });
 });
 
@@ -305,7 +306,7 @@ describe('a push', () => {
   ])('%s refuses the whole push (404) and changes nothing', async (_label, body) => {
     const before = await copyOf(northId, chai);
     const res = await push({ ...(await body()), fields: ['price'] });
-    expect(res.status).toBe(404);
+    expectError(res, 404, 'NOT_FOUND');
     expect(await copyOf(northId, chai)).toEqual(before);
   });
 
@@ -317,7 +318,7 @@ describe('a push', () => {
       .eq('id', archived)
       .throwOnError();
     const res = await push({ itemIds: [archived], storeIds: [northId], fields: ['price'] });
-    expect(res.status).toBe(404);
+    expectError(res, 404, 'NOT_FOUND');
     expect(await copyOf(northId, archived)).toEqual([]);
   });
 
@@ -364,7 +365,7 @@ describe('a push', () => {
     try {
       const before = await copyOf(northId, chai);
       const res = await push({ itemIds: [chai], storeIds: [northId, southId], fields: ['price'] });
-      expect(res.status).toBe(404);
+      expectError(res, 404, 'NOT_FOUND');
       expect(await copyOf(northId, chai)).toEqual(before);
     } finally {
       await supabaseAdmin

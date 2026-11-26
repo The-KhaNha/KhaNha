@@ -15,6 +15,7 @@ import {
   testAuthMatrix,
   testStoreIsolation,
   type TestUser,
+  expectError,
 } from '../setup/helpers';
 
 const tag = randomUUID().slice(0, 8);
@@ -158,10 +159,10 @@ testStoreIsolation(
 
 describe('who edits a menu', () => {
   it('staff may not (403), a manager may', async () => {
-    expect((await api().get(base()).set(auth(staff))).status).toBe(403);
-    expect((await create(valid, staff)).status).toBe(403);
-    expect((await patch(seeded, { price: 11 }, staff)).status).toBe(403);
-    expect((await archive(seeded, staff)).status).toBe(403);
+    expectError(await api().get(base()).set(auth(staff)), 403, 'FORBIDDEN');
+    expectError(await create(valid, staff), 403, 'FORBIDDEN');
+    expectError(await patch(seeded, { price: 11 }, staff), 403, 'FORBIDDEN');
+    expectError(await archive(seeded, staff), 403, 'FORBIDDEN');
     expect((await api().get(base()).set(auth(manager))).status).toBe(200);
   });
 
@@ -169,14 +170,14 @@ describe('who edits a menu', () => {
     const res = await api().get(base(templateId)).set(auth(owner));
     expect(res.status).toBe(200);
     expect(res.body.items.map((item: { name: string }) => item.name)).toEqual(['Iso item']);
-    expect((await api().get(base(templateId)).set(auth(manager))).status).toBe(404);
+    expectError(await api().get(base(templateId)).set(auth(manager)), 404, 'NOT_FOUND');
   });
 
   it('an unknown or malformed item id is 404', async () => {
-    expect((await patch(randomUUID(), { price: 10 })).status).toBe(404);
-    expect((await patch('not-a-uuid', { price: 10 })).status).toBe(404);
-    expect((await archive(randomUUID())).status).toBe(404);
-    expect((await archive('not-a-uuid')).status).toBe(404);
+    expectError(await patch(randomUUID(), { price: 10 }), 404, 'NOT_FOUND');
+    expectError(await patch('not-a-uuid', { price: 10 }), 404, 'NOT_FOUND');
+    expectError(await archive(randomUUID()), 404, 'NOT_FOUND');
+    expectError(await archive('not-a-uuid'), 404, 'NOT_FOUND');
   });
 });
 
@@ -206,11 +207,11 @@ describe('the bounds', () => {
   it('refuses a create without a name, price or category, and an empty edit', async () => {
     for (const key of ['name', 'price', 'category'] as const) {
       const { [key]: _dropped, ...rest } = valid;
-      expect((await create(rest)).status).toBe(400);
+      expectError(await create(rest), 400, 'VALIDATION_ERROR');
     }
-    expect((await patch(seeded, {})).status).toBe(400);
+    expectError(await patch(seeded, {}), 400, 'VALIDATION_ERROR');
     // Stock is the stock function's, with its trail (PR 04), never a plain edit.
-    expect((await patch(seeded, { stockQuantity: 3 })).status).toBe(400);
+    expectError(await patch(seeded, { stockQuantity: 3 }), 400, 'VALIDATION_ERROR');
   });
 
   it('takes each bound itself', async () => {
@@ -252,7 +253,6 @@ describe('creating, editing and archiving an item', () => {
 
   it('creates an item last in its category, with no photo, and shows it on the menu at once', async () => {
     const before = await publicItems(); // warms the cache: the create must drop it
-    expect(before.map((item) => item.id)).not.toContain(undefined);
     const res = await create({ ...valid, category: 'Test', diet: 'VEG', stockQuantity: 5 });
     expect(res.status).toBe(201);
     chai = res.body.item.id;
@@ -279,6 +279,8 @@ describe('creating, editing and archiving an item', () => {
     const sortOf = (id: string) => rows.find((row) => row.id === id)?.sort_order ?? -1;
     expect(sortOf(chai)).toBeGreaterThan(sortOf(seeded));
     expect(rows.find((row) => row.id === chai)?.price_paise).toBe(3000);
+    // The warmed copy cannot have held the new item, so this fails if the create left the cache in place.
+    expect(before.map((item) => item.id)).not.toContain(chai);
     expect((await publicItems()).map((item) => item.id)).toContain(chai);
 
     // A new category goes after every item on the menu.
@@ -411,7 +413,7 @@ describe('creating, editing and archiving an item', () => {
     const events = (await eventsFor(chai)).length;
     expect((await archive(chai)).status).toBe(204);
     expect(await eventsFor(chai)).toHaveLength(events);
-    expect((await patch(chai, { isAvailable: true })).status).toBe(404);
+    expectError(await patch(chai, { isAvailable: true }), 404, 'NOT_FOUND');
   });
 
   it('the database keeps an archived item switched off, so place_order refuses it too', async () => {

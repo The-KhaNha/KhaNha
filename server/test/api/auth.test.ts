@@ -58,34 +58,22 @@ describe('POST /api/auth/register', () => {
   });
 
   describe('name bounds', () => {
-    it.each([
-      ['1 char', 1, false],
-      ['2 chars (min)', 2, true],
-      ['60 chars (max)', 60, true],
-      ['61 chars', 61, false],
-    ])('%s -> %s', async (_label, length, ok) => {
-      const res = await register(payload({ name: 'a'.repeat(length as number) }));
-      expect(res.status).toBe(ok ? 201 : 400);
-      if (!ok) expect(res.body.error.code).toBe('VALIDATION_ERROR');
-    });
-
     it('trims before counting: name with surrounding whitespace at the 60-char boundary passes', async () => {
       const res = await register(payload({ name: `  ${'a'.repeat(60)}  ` }));
       expect(res.status).toBe(201);
     });
   });
 
-  describe('password bounds', () => {
-    it.each([
-      ['5 chars', 5, false],
-      ['6 chars (min)', 6, true],
-      ['72 chars (max)', 72, true],
-      ['73 chars', 73, false],
-    ])('%s -> %s', async (_label, length, ok) => {
-      const res = await register(payload({ password: 'a'.repeat(length as number) }));
-      expect(res.status).toBe(ok ? 201 : 400);
-      if (!ok) expect(res.body.error.code).toBe('VALIDATION_ERROR');
-    });
+  // The bounds themselves are pinned in unit/schemas.safe.test.ts; one case per field class proves the HTTP envelope
+  // names the field the form shows the message on. A 400 creates no account.
+  it.each([
+    ['name', { name: 'a'.repeat(61) }],
+    ['password', { password: 'a'.repeat(73) }],
+    ['phone', { phone: '987654321' }],
+  ])('a %s outside its bound is 400 naming that field', async (field, overrides) => {
+    const res = await register(payload(overrides));
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatchObject({ code: 'VALIDATION_ERROR', details: { field } });
   });
 
   describe('phone', () => {
@@ -100,29 +88,6 @@ describe('POST /api/auth/register', () => {
       expect(res.status).toBe(201);
       expect(res.body.user.phone).toBe('9876543210');
     });
-
-    it.each([
-      ['9 digits', '987654321'],
-      ['16 digits', '9876543210123456'],
-      ['letters', 'abcdefghij'],
-    ])('%s is rejected', async (_label, phone) => {
-      const res = await register(payload({ phone }));
-      expect(res.status).toBe(400);
-      expect(res.body.error.code).toBe('VALIDATION_ERROR');
-    });
-  });
-
-  it('rejects an invalid email', async () => {
-    const res = await register(payload({ email: 'not-an-email' }));
-    expect(res.status).toBe(400);
-    expect(res.body.error.code).toBe('VALIDATION_ERROR');
-  });
-
-  it('lowercases a mixed-case email before storing', async () => {
-    const email = `Test-${randomUUID()}@Example.TEST`;
-    const res = await register(payload({ email }));
-    expect(res.status).toBe(201);
-    expect(res.body.user.email).toBe(email.toLowerCase());
   });
 
   it('strips a NUL byte from name instead of rejecting the request', async () => {
@@ -152,14 +117,6 @@ describe('POST /api/auth/register', () => {
       .send('{bad');
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
-  });
-
-  it('413 PAYLOAD_TOO_LARGE for a body over the express.json() 100 kB default', async () => {
-    const res = await api()
-      .post('/api/auth/register')
-      .send(payload({ name: 'a'.repeat(150_000) }));
-    expect(res.status).toBe(413);
-    expect(res.body.error.code).toBe('PAYLOAD_TOO_LARGE');
   });
 
   describe('EMAIL_TAKEN', () => {

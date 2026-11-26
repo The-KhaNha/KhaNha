@@ -10,7 +10,7 @@ import { env } from '../../src/utils/env';
 import { AppError, IntegrationError } from '../../src/utils/errors';
 import { supabaseAdmin } from '../../src/utils/supabase';
 import { api } from '../setup/api';
-import { localSql } from '../setup/helpers';
+import { localSql, expectError } from '../setup/helpers';
 import { gatewayContract } from '../unit/payments-port.contract';
 
 gatewayContract(() => gatewayFor('fake'), {
@@ -88,16 +88,25 @@ describe('the fake payment page', () => {
   });
 
   it('is 404 for an unknown id and 400 for a bad outcome', async () => {
-    await api().get(`/api/fake-gateway/${randomUUID()}`).expect(404);
-    await api().post(`/api/fake-gateway/${randomUUID()}/pay`).expect(404);
+    expectError(await api().get(`/api/fake-gateway/${randomUUID()}`), 404, 'NOT_FOUND');
+    expectError(await api().post(`/api/fake-gateway/${randomUUID()}/pay`), 404, 'NOT_FOUND');
     const { gatewayOrderId } = await fakeOrder();
-    await api().post(`/api/fake-gateway/${gatewayOrderId}/refund`).expect(400);
+    expectError(
+      await api().post(`/api/fake-gateway/${gatewayOrderId}/refund`),
+      400,
+      'VALIDATION_ERROR',
+    );
   });
 
   it('does not exist unless the provider is the fake (production never is)', async () => {
     const { session } = await fakeOrder();
     env.PAYMENT_PROVIDER = 'none';
-    await api().get(session.url).expect(404);
+    // The route is not mounted at all, so here the catch-all 404 is the expected answer (expectError would refuse it).
+    const res = await api().get(session.url);
+    expect(res).toMatchObject({
+      status: 404,
+      body: { error: { code: 'NOT_FOUND', message: expect.stringMatching(/^No route matches/) } },
+    });
   });
 });
 
@@ -239,12 +248,15 @@ describe('fake gateway retention', () => {
         "select schedule, command from cron.job where jobname = 'purge-fake-gateway-orders'",
       ),
     ).toEqual([{ schedule: '47 21 * * *', command: 'select public.purge_fake_gateway_orders()' }]);
+    const exists = () =>
+      localSql(`select 1 from public.fake_gateway_orders where id = '${gatewayOrderId}'`);
+    // Six days on, the row is inside the week and must survive: a purge-everything function fails here.
+    localSql("select public.purge_fake_gateway_orders(now() + interval '6 days') as n");
+    expect(exists()).toHaveLength(1);
     const [purged] = localSql<{ n: number }>(
       "select public.purge_fake_gateway_orders(now() + interval '8 days') as n",
     );
     expect(purged?.n).toBeGreaterThan(0);
-    expect(
-      localSql(`select 1 from public.fake_gateway_orders where id = '${gatewayOrderId}'`),
-    ).toHaveLength(0);
+    expect(exists()).toHaveLength(0);
   });
 });
