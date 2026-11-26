@@ -4,7 +4,13 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { isEnabled } from '../../src/services/flags.service';
 import type { FeatureFlagDto } from '../../src/types/api';
 import { supabaseAdmin } from '../../src/utils/supabase';
-import { createTestUser, deleteTestUser, testAuthMatrix, type TestUser } from '../setup/helpers';
+import {
+  createTestUser,
+  deleteTestUser,
+  testAuthMatrix,
+  type TestUser,
+  expectError,
+} from '../setup/helpers';
 import { api } from '../setup/api';
 
 const STORE_TWICE = randomUUID();
@@ -142,7 +148,7 @@ describe('PATCH /api/admin/flags/:key', () => {
 
   it('an unknown key is 404', async () => {
     const res = await flip(newKey(), admin, { enabled: true });
-    expect(res.status).toBe(404);
+    expectError(res, 404, 'NOT_FOUND');
     expect(res.body.error.code).toBe('NOT_FOUND');
   });
 
@@ -160,8 +166,8 @@ describe('PATCH /api/admin/flags/:key', () => {
     ['a repeated role', { rules: { roles: ['STAFF', 'STAFF'] } }],
     ['more roles than exist', { rules: { roles: ['STAFF', 'ADMIN', 'CUSTOMER', 'STAFF'] } }],
   ])('400 VALIDATION_ERROR for %s', async (_label, body) => {
-    const key = await insertFlag();
-    const res = await flip(key, admin, body);
+    // No flag exists under this key: validation answers before the lookup does.
+    const res = await flip(newKey(), admin, body);
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
   });
@@ -170,8 +176,8 @@ describe('PATCH /api/admin/flags/:key', () => {
     ['a customer', () => customer],
     ['a staff member', () => staff],
   ])('403 FORBIDDEN for %s', async (_label, who) => {
-    const key = await insertFlag();
-    const res = await flip(key, who(), { enabled: true });
+    // No flag exists under this key: the role check answers before the lookup does.
+    const res = await flip(newKey(), who(), { enabled: true });
     expect(res.status).toBe(403);
     expect(res.body.error.code).toBe('FORBIDDEN');
   });

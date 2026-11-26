@@ -84,11 +84,13 @@ export interface RunOptions {
    * a loop that stops calling it is stuck, or has every slot busy for longer than a job may run.
    */
   onActive?: () => void;
+  /** Bound on one queue_read call. A test passes a short one to exercise a stalled read; production keeps the default. */
+  readTimeoutMs?: number;
 }
 
 /** Consumes one queue until `signal` aborts (docs/JOBS.md "Handlers and the runner"). */
 export async function runQueue<T>(handler: JobHandler<T>, options: RunOptions): Promise<void> {
-  const { signal, log, onActive = () => {} } = options;
+  const { signal, log, onActive = () => {}, readTimeoutMs = READ_TIMEOUT_SECONDS * 1000 } = options;
   // At least 1: a loop that never waited would spin against the database.
   const pollSeconds = Math.max(1, options.pollSeconds ?? POLL_SECONDS);
   const inFlight = new Set<Promise<void>>();
@@ -101,7 +103,7 @@ export async function runQueue<T>(handler: JobHandler<T>, options: RunOptions): 
     }
     let rows: Row[];
     try {
-      rows = await read(handler, handler.concurrency - inFlight.size);
+      rows = await read(handler, handler.concurrency - inFlight.size, readTimeoutMs);
     } catch (err) {
       onActive();
       // A read that timed out as the worker stops is not an outage worth reporting.
@@ -131,7 +133,7 @@ export async function runQueue<T>(handler: JobHandler<T>, options: RunOptions): 
 
 type Row = Awaited<ReturnType<typeof read>>[number];
 
-async function read(handler: JobHandler<unknown>, qty: number) {
+async function read(handler: JobHandler<unknown>, qty: number, timeoutMs: number) {
   const { data } = await supabaseAdmin
     .rpc('queue_read', {
       p_queue: handler.queue,
@@ -142,7 +144,7 @@ async function read(handler: JobHandler<unknown>, qty: number) {
     })
     // Not the stop signal: a read cancelled here may still take a message in the database, hidden for its whole
     // visibility timeout with nobody to handle it. Stopping waits for the read instead (milliseconds).
-    .abortSignal(AbortSignal.timeout(READ_TIMEOUT_SECONDS * 1000))
+    .abortSignal(AbortSignal.timeout(timeoutMs))
     .throwOnError();
   return data;
 }

@@ -227,6 +227,31 @@ export function foreignJwt(): string {
 }
 
 /**
+ * Asserts a failed API response: the status, the stable error envelope and its code, and no leaked internals.
+ * A bare status check is not enough: the catch-all 404 (`notFoundHandler`) answers `NOT_FOUND` for a deleted or
+ * renamed route, so a 404 must also prove the route was reached and refused the resource ("No route matches" is
+ * the catch-all's message).
+ */
+export function expectError(
+  res: { status: number; body: unknown },
+  status: number,
+  code: string,
+): void {
+  expect(res.status).toBe(status);
+  const { details, ...rest } = (res.body as { error?: Record<string, unknown> }).error ?? {};
+  expect({ error: rest }).toEqual({ error: { code, message: expect.any(String) } });
+  if (details !== undefined) expect(typeof details).toBe('object');
+  const text = JSON.stringify(res.body);
+  expect(text).not.toMatch(
+    /\bat .+:\d+:\d+|node_modules|\bselect\b.+\bfrom\b|syntax error|PGRST|stack/i,
+  );
+  if (status === 404)
+    expect((res.body as { error: { message: string } }).error.message).not.toMatch(
+      /^No route matches/,
+    );
+}
+
+/**
  * The shared 401 `UNAUTHORIZED` matrix (check 1) for one protected route: no header, a malformed
  * scheme, a well-formed-but-unsigned JWT, and a valid token whose user was deleted.
  */
@@ -370,14 +395,13 @@ export function testStoreIsolation(
     it("store A's staff on store B's route → 403", async () => {
       expect((await call(staffA, 'b', 'b')).status).toBe(403);
     });
-    it.runIf(resource !== undefined)(
-      "store A's staff reaching B's resource through A's route → 404",
-      async () => {
+    // Registered only when there is a resource to cross: a runIf left a permanently skipped placeholder per route.
+    if (resource !== undefined)
+      it("store A's staff reaching B's resource through A's route → 404", async () => {
         const res = await call(staffA, 'a', 'b');
         expect(res.status).toBe(404);
         expect(res.body.error.code).toBe('NOT_FOUND');
-      },
-    );
+      });
     it("store A's staff on A's own route get through", async () => {
       expect((await call(staffA, 'a', 'a')).status).toBeLessThan(300);
     });

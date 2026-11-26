@@ -1,7 +1,7 @@
 // Destructive (local only): places and moves orders, and consumes q_notifications with an in-process runner.
 import { randomUUID } from 'node:crypto';
 import { pino } from 'pino';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { notifyHandler } from '../../src/jobs/notify';
 import { runQueue } from '../../src/jobs/runner';
 import { supabaseAdmin } from '../../src/utils/supabase';
@@ -117,11 +117,13 @@ describe('order transitions emit their events', () => {
     const log = pino({ level: 'info' }, { write: (line: string) => lines.push(JSON.parse(line)) });
     const stop = new AbortController();
     const done = runQueue(notifyHandler, { signal: stop.signal, log, pollSeconds: 1 });
-    const deadline = Date.now() + 10_000;
-    while (!lines.some((l) => l.msg === 'Order event' && l.orderId === order.id)) {
-      if (Date.now() > deadline) throw new Error('the worker never logged the order event');
-      await new Promise((r) => setTimeout(r, 50));
-    }
+    await vi.waitFor(
+      () => {
+        if (!lines.some((l) => l.msg === 'Order event' && l.orderId === order.id))
+          throw new Error('the worker never logged the order event');
+      },
+      { timeout: 10_000, interval: 50 },
+    );
     stop.abort();
     await done;
     expect(lines.find((l) => l.orderId === order.id)).toMatchObject({

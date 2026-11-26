@@ -88,12 +88,13 @@ function start(
   };
 }
 
-async function waitFor(check: () => boolean | Promise<boolean>, timeoutMs = 8000): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (!(await check())) {
-    if (Date.now() > deadline) throw new Error('waitFor timed out');
-    await new Promise((r) => setTimeout(r, 50));
-  }
+function waitFor(check: () => boolean | Promise<boolean>, timeout = 8000): Promise<void> {
+  return vi.waitFor(
+    async () => {
+      if (!(await check())) throw new Error('condition not met yet');
+    },
+    { timeout, interval: 50 },
+  );
 }
 
 async function depth(): Promise<number> {
@@ -164,53 +165,62 @@ describe('runQueue', () => {
     expect(at('Job handled')[0]).toHaveProperty('durationMs');
   });
 
-  it('reports progress through onActive after each read, and goes quiet while every slot is busy', async () => {
+  it('reports progress through onActive, and reads again as soon as a full slot frees, not after the poll', async () => {
     const { log } = capture();
     const calls: number[] = [];
     let jobStart = 0;
     let jobEnd = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
     const runner = start(
       handler(async () => {
-        jobStart = Date.now();
-        await new Promise((r) => setTimeout(r, 1500));
-        jobEnd = Date.now();
+        jobStart = performance.now();
+        await gate;
+        jobEnd = performance.now();
       }),
-      { log, onActive: () => calls.push(Date.now()) },
+      { log, onActive: () => calls.push(performance.now()) },
     );
     await waitFor(() => calls.length >= 1); // an empty read returned
     send(event(10));
+    await waitFor(() => jobStart > 0);
+    release();
     await waitFor(() => calls.some((t) => jobEnd > 0 && t >= jobEnd));
     await runner.stop();
 
-    // With its one slot busy the loop does not read, so it is quiet: the health check allows a visibility timeout.
-    expect(calls.filter((t) => t > jobStart && t < jobEnd)).toEqual([]);
-    // A freed slot is read at once, not after the 1 s poll.
-    expect((calls.find((t) => t >= jobEnd) ?? Infinity) - jobEnd).toBeLessThan(500);
+    // Woken by the handler finishing: the read lands within milliseconds. A loop that waited out the 1 s poll instead
+    // would read about a second after the slot filled. (No read while every slot is busy: the concurrency test below.)
+    const next = calls.find((t) => t >= jobEnd) ?? Infinity;
+    expect(next - jobEnd).toBeLessThan(500);
   });
 
   it('never waits in the database: every read returns at once, and an empty queue is read about once per poll', async () => {
     const { log } = capture();
     const real = supabaseAdmin.rpc.bind(supabaseAdmin);
     const reads: { at: number; poll: unknown }[] = [];
+    const ref: { runner?: ReturnType<typeof start> } = {};
     vi.spyOn(supabaseAdmin, 'rpc').mockImplementation(((
       fn: string,
       args: Record<string, unknown>,
     ) => {
-      if (fn === 'queue_read') reads.push({ at: Date.now(), poll: args.p_poll_seconds });
+      if (fn === 'queue_read') {
+        reads.push({ at: performance.now(), poll: args.p_poll_seconds });
+        // The third read stops the runner: enough to see the cadence without sleeping for it.
+        if (reads.length === 3) ref.runner?.controller.abort();
+      }
       return real(fn as 'queue_read', args as never);
     }) as unknown as typeof supabaseAdmin.rpc);
     const runner = start(
       handler(async () => {}),
       { log },
     );
-    await new Promise((r) => setTimeout(r, 2500));
+    ref.runner = runner;
+    await waitFor(() => reads.length === 3);
     await runner.stop();
 
     // A long-poll holds a pooled connection per queue for its whole wait (docs/JOBS.md "Capacity").
     expect(reads.map((r) => r.poll)).toEqual(reads.map(() => 0));
     // Idle: one read, then one per 1 s poll; never a spin.
-    expect(reads.length).toBeGreaterThanOrEqual(2);
-    expect(reads.length).toBeLessThanOrEqual(4);
+    expect(reads).toHaveLength(3);
     const gaps = reads.slice(1).map((r, i) => r.at - (reads[i]?.at ?? 0));
     expect(Math.min(...gaps)).toBeGreaterThanOrEqual(900);
   });
@@ -218,20 +228,68 @@ describe('runQueue', () => {
   it('retries a RetryableError after its backoff, and it succeeds on attempt 2', async () => {
     const { log, at } = capture();
     const attempts: number[] = [];
+    const startedAt: number[] = [];
     send(event(2));
+    // A 3 s delay (random 0.5 leaves it unscaled), far above the 1 s poll: a retry queued with no delay would run
+    // on the next poll and fail the gap check below.
     const runner = start(
-      handler(async (m) => {
-        attempts.push(m.attempt);
-        if (m.attempt === 1) throw new RetryableError('provider timed out');
-      }),
+      handler(
+        async (m) => {
+          attempts.push(m.attempt);
+          startedAt.push(performance.now());
+          if (m.attempt === 1) throw new RetryableError('provider timed out');
+        },
+        { backoff: { baseSec: 3, maxSec: 3 } },
+      ),
       { log },
     );
     await waitFor(async () => attempts.length === 2 && (await depth()) === 0);
     await runner.stop();
 
     expect(attempts).toEqual([1, 2]);
+    expect(startedAt[1]! - startedAt[0]!).toBeGreaterThanOrEqual(2500);
     expect(at('Job failed, retrying')).toEqual([
-      expect.objectContaining({ level: 40, attempt: 1, retryInSec: 1 }),
+      expect.objectContaining({ level: 40, attempt: 1, retryInSec: 3 }),
+    ]);
+    expect(await failures()).toEqual([]);
+  });
+
+  it('leaves the message for its visibility timeout when the outcome cannot be recorded, and tries it again', async () => {
+    const { log, at } = capture();
+    const real = supabaseAdmin.rpc.bind(supabaseAdmin);
+    let deletesFailed = 0;
+    // The first queue_delete fails like a dropped connection: the job ran, but its outcome never reached the database.
+    vi.spyOn(supabaseAdmin, 'rpc').mockImplementation(((fn: string, args: object) => {
+      if (fn !== 'queue_delete' || deletesFailed > 0)
+        return real(fn as 'queue_read', args as never);
+      deletesFailed += 1;
+      const failing = {
+        abortSignal: () => failing,
+        throwOnError: () => Promise.reject(new Error('connection reset')),
+      };
+      return failing;
+    }) as unknown as typeof supabaseAdmin.rpc);
+    const attempts: number[] = [];
+    send(event(6));
+    const runner = start(
+      handler(
+        async (m) => {
+          attempts.push(m.attempt);
+        },
+        { visibilityTimeoutSec: 1 },
+      ),
+      { log },
+    );
+    await waitFor(async () => attempts.length === 2 && (await depth()) === 0);
+    await runner.stop();
+
+    expect(attempts).toEqual([1, 2]);
+    expect(at('Job outcome not recorded')).toEqual([
+      expect.objectContaining({
+        level: 40,
+        attempt: 1,
+        err: expect.objectContaining({ message: 'connection reset' }),
+      }),
     ]);
     expect(await failures()).toEqual([]);
   });
@@ -328,6 +386,8 @@ describe('runQueue', () => {
     const { log } = capture();
     let started = false;
     let finished = false;
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
     send(event(6));
     // concurrency 2: the loop is back in its idle wait, not waiting on this handler, when the abort comes; the abort ends
     // that wait at once, so a runner that did not wait for the handler would resolve first.
@@ -335,7 +395,7 @@ describe('runQueue', () => {
       handler(
         async () => {
           started = true;
-          await new Promise((r) => setTimeout(r, 1500));
+          await gate;
           finished = true;
         },
         { concurrency: 2 },
@@ -343,7 +403,10 @@ describe('runQueue', () => {
       { log },
     );
     await waitFor(() => started);
-    await runner.stop();
+    const stopped = runner.stop();
+    // Released after the abort has ended the idle wait: the runner must still be holding for the handler.
+    setTimeout(release, 200);
+    await stopped;
     expect(finished).toBe(true);
     expect(await depth()).toBe(0);
   });
@@ -435,6 +498,16 @@ describe('runQueue', () => {
     let handled = 0;
     let open!: () => void;
     const gate = new Promise<void>((r) => (open = r));
+    // A read asks for exactly the free slots, and none happens while every slot is busy: deterministic, no waiting.
+    const real = supabaseAdmin.rpc.bind(supabaseAdmin);
+    const reads: { running: number; qty: unknown }[] = [];
+    vi.spyOn(supabaseAdmin, 'rpc').mockImplementation(((
+      fn: string,
+      args: Record<string, unknown>,
+    ) => {
+      if (fn === 'queue_read') reads.push({ running, qty: args.p_qty });
+      return real(fn as 'queue_read', args as never);
+    }) as unknown as typeof supabaseAdmin.rpc);
     send(event(11));
     send(event(12));
     const runner = start(
@@ -451,12 +524,10 @@ describe('runQueue', () => {
       { log },
     );
     // Concurrency 2 reaches 2 at once; concurrency 1 must stay at 1 while the gate is shut.
-    if (c.concurrency === 2) await waitFor(() => running === 2);
-    else {
-      await waitFor(() => running === 1);
-      await new Promise((r) => setTimeout(r, 1500));
-    }
+    await waitFor(() => running === c.expectedMax);
     expect(max).toBe(c.expectedMax);
+    expect(reads[0]).toEqual({ running: 0, qty: c.concurrency });
+    expect(reads.every((r) => r.running < c.concurrency)).toBe(true);
     open();
     await waitFor(() => handled === 2);
     await runner.stop();
@@ -468,12 +539,10 @@ describe('runQueue', () => {
     const stalled = stallReads(1);
     const runner = start(
       handler(async () => {}),
-      { log },
+      { log, readTimeoutMs: 200 },
     );
     await waitFor(() => stalled.length === 1);
-    const stoppedAt = Date.now();
-    await runner.stop();
-    expect(Date.now() - stoppedAt).toBeLessThan(6500); // the 5 s read timeout
+    await runner.stop(); // resolves only once the read's own timeout has ended it
     expect(stalled[0]?.aborted).toBe(true); // ended by its own timeout, not the stop
     expect(at('Queue read failed')).toHaveLength(0);
   });
@@ -487,9 +556,9 @@ describe('runQueue', () => {
       handler(async (m) => {
         handled.push(m.attempt);
       }),
-      { log },
+      { log, readTimeoutMs: 200 },
     );
-    await waitFor(() => handled.length === 1, 12_000); // the 5 s read timeout, then a 1 s back-off
+    await waitFor(() => handled.length === 1); // the read timeout, then a 1 s back-off
     await runner.stop();
     expect(stalled[0]?.aborted).toBe(true);
     expect(at('Queue read failed')).toEqual([

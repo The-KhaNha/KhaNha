@@ -503,7 +503,7 @@ read(key), write(key, bytes, contentType), remove(key), publicPath(key) }`; `loc
 
 Tests: `test/api/media-uploads.test.ts` (matrices; a wrong type, a size over the limit, a declared size that does
 not match the bytes, an upload of another store → refused; a second `complete` is 200 and emits nothing; the local
-file route is 404 when `MEDIA_STORAGE=s3`); `test/unit/env-media.safe.test.ts` (`local` in production refuses to
+file route is 404 when `MEDIA_STORAGE=s3`); `test/unit/env.safe.test.ts` ("resolveMediaStorage") (`local` in production refuses to
 start).
 
 Docs: `docs/API.md`, `docs/SCHEMA.md`, `docs/DEPLOYMENT.md` and `server/.env.example` (the variables),

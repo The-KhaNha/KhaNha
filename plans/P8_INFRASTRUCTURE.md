@@ -479,7 +479,7 @@ The rule lives in `env.ts` but is called by `server.ts` and `worker.ts` only, no
 --production` imports `env.ts` from a laptop with `APP_ENV=production`, a `localhost` origin and no commit, and must
 keep working.
 
-Tests: `test/unit/env-production.safe.test.ts`, one case per refusal, each seen failing without its rule.
+Tests: `test/unit/env.safe.test.ts` ("productionProblems"), one case per refusal, each seen failing without its rule.
 Intent: `--server patch`.
 
 ### PR 07 — Deploy to production from a release (P8.5)

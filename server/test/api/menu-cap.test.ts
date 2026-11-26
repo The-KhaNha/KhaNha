@@ -45,14 +45,14 @@ afterAll(async () => {
 
 describe('GET /api/stores/:ref/menu with a menu larger than the cap', () => {
   it(`returns at most ${MENU_ITEMS_MAX} items, the lowest sort orders first, and still answers fast`, async () => {
-    const started = Date.now();
+    const started = performance.now();
     const res = await api().get(await menuPath());
     expect(res.status).toBe(200);
     const items = (res.body.categories as { items: unknown[] }[]).flatMap((c) => c.items);
     expect(items.length).toBe(MENU_ITEMS_MAX);
     // The seeded menu (low sort orders) is never pushed out by the overflow.
     expect(res.body.categories[0].name).not.toBe(CATEGORY);
-    expect(Date.now() - started).toBeLessThan(5_000);
+    expect(performance.now() - started).toBeLessThan(5_000);
   });
 });
 
@@ -144,7 +144,7 @@ describe('GET /api/stores/:ref/menu when the cap bites', () => {
   });
 });
 
-describe('the demo reset with a menu larger than one response', () => {
+describe('resetDemoData (the test helper) with a menu larger than one response', () => {
   it('leaves exactly the seeded menu, however many other items the store has', async () => {
     resetDemoData();
     const { count: extra } = await supabaseAdmin
