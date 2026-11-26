@@ -496,6 +496,10 @@ async function checkInvariants(m: Model): Promise<void> {
   for (const mo of m.orders) {
     const row = orders.find((o) => o.id === mo.id);
     expect(row?.status).toBe(mo.status);
+    // The stored lines are the cart that was sent: none missing, substituted or extra (covers untracked items too).
+    expect((row?.order_items ?? []).map((l) => `${l.menu_item_id}:${l.quantity}`).sort()).toEqual(
+      mo.body.items.map((i) => `${i.menuItemId}:${i.quantity}`).sort(),
+    );
     for (const line of row?.order_items ?? []) {
       expect(line.unit_price_paise).toBe(
         line.menu_item_id === item.T ? PRICE_PAISE.T : PRICE_PAISE.U,

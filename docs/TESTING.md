@@ -130,8 +130,9 @@ by a crashed run is detected (its pid is gone) and cleared automatically.
 `server/test/api/order-fsm.test.ts` (local only, two stores of its own) tests the order lifecycle and stock as a state
 machine. The states, transitions, guards and invariants are the server's `ALLOWED_TRANSITIONS`
 (`order.service.ts`), `place_order` and `update_order_status`; `client/src/features/orders/orderStatus.test.ts`
-holds the staff board's buttons to the same table, and "the table is the service's" holds `ALLOWED_TRANSITIONS` to it, so
-neither side can drift alone.
+holds the staff board's buttons to its own copy of that table, and "the table is the service's" holds
+`ALLOWED_TRANSITIONS` to the suite's `NEXT`. Nothing compares the client copy with the server, so a change to the table
+must update `ALLOWED_TRANSITIONS`, `NEXT` and the client copy together by hand.
 
 - **Every transition and refusal:** all 25 status pairs, each with its side effects: a change moves the status and
   leaves one `domain_events` row (`order.<to>`, `{ from, to, orderNumber }`) and one `audit_log` row for its request
