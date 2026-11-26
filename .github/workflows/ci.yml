@@ -45,6 +45,9 @@ jobs:
               - '.node-version'
               - 'scripts/ci/check-bundle.mjs'
               - 'scripts/ci/check-dist-secrets.mjs'
+              - 'scripts/ci/check-dto-parity*'
+              # The response types are compared with the client's copies.
+              - 'server/src/types/api.ts'
               - '.github/actions/setup-pnpm/**'
               - '.github/workflows/ci.yml'
             server:
@@ -84,6 +87,9 @@ jobs:
       - run: pnpm run build:staging
       - run: node ../scripts/ci/check-bundle.mjs .
       - run: node ../scripts/ci/check-dist-secrets.mjs .
+      # Needs this job's node_modules (the TypeScript compiler); the repo job skips its test file.
+      - run: node ../scripts/ci/check-dto-parity.mjs
+      - run: node --test ../scripts/ci/check-dto-parity.test.mjs
       # The e2e specs (client/e2e/*.spec.ts) on Chromium at 360×640, every /api call mocked: layout at 200% text,
       # 44px tap targets, the add-to-cart path. WebKit runs weekly in browsers.yml (ADR-011 minutes).
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

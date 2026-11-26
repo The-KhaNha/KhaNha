@@ -17,7 +17,8 @@
     "check:bundle": "node scripts/ci/check-bundle.mjs client",
     "check:dist-secrets": "node scripts/ci/check-dist-secrets.mjs client",
     "check:migrations": "node scripts/ci/check-migrations.mjs --base origin/dev",
-    "check:durations": "node scripts/ci/check-durations.mjs"
+    "check:durations": "node scripts/ci/check-durations.mjs",
+    "check:dto-parity": "node scripts/ci/check-dto-parity.mjs"
   },
   "devDependencies": {
     "prettier": "^3.9.9"
