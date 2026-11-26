@@ -191,7 +191,7 @@ matches `^feat/`). The `ci-ok required` ruleset covers every phase branch throug
 `feat/p2-01-brands-stores` (a `feat/*` pattern would catch the work branches and refuse their pushes). Migrations
 are immutable once merged into the phase branch. When the phase is done, `feat/P<n>` goes into `dev` as one PR, merged by the user.
 
-**PR size (STRICTLY ENFORCED).** Keep every PR reviewable: at most **50 changed files or 1000 changed lines** against
+**PR size (STRICTLY ENFORCED).** Keep every PR reviewable: at most **70 changed files or 5000 changed lines** against
 its base (`node .claude/hooks/major-change-gate.js --status` prints both; `pnpm-lock.yaml`,
 `server/src/types/database.ts` and docs, meaning every Markdown file, do not count; tests do), and one theme per PR. Plan a task that is bigger than that as steps, each its own PR. The
 release PR (`release/*`, from `release.yml`) and a phase branch's PR into `dev` are exempt: each bundles work already

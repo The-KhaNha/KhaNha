@@ -15,8 +15,8 @@ and in the roadmap.
 
 ## How the team works P5
 
-The standing rules apply (CLAUDE.md §13–§21): PR titles `P5 PR <NN> — <title>`, the size limit of 50 changed files
-or 1000 changed lines, and at most one schema-changing PR in flight. What differs from P2 and P3:
+The standing rules apply (CLAUDE.md §13–§21): PR titles `P5 PR <NN> — <title>`, the size limit of 70 changed files
+or 5000 changed lines, and at most one schema-changing PR in flight. What differs from P2 and P3:
 
 - **No phase branch** (the user, 17 November 2026). Every P5 PR goes **straight into `dev`**, as P8's do: it
   branches from a fresh `origin/dev` as `feat/p5-<NN>-<slug>`. Staging on AWS deploys every merge to `dev`

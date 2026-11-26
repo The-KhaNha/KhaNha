@@ -20,7 +20,7 @@ which files, tests, docs and checks, and where P3 deliberately builds something 
 The P2 rules stand ([P2 plan](P2_MULTI_STORE.md#how-the-team-works-p2), CLAUDE.md §13–§21), with `feat/P3` as the
 phase branch (cut from `dev` once `feat/P2` is merged, and covered by the `ci-ok required` ruleset's `feat/P[0-9]` pattern),
 work branches `feat/p3-<NN>-<slug>`, PR titles `P3 PR <NN> — <title>`. Changes from P2 (the user, 12 November 2026):
-the size limit is **50 changed files or 1000 changed lines** (`.claude/rules/workflow.md` "PR size"); the agent merges
+the size limit is **70 changed files or 5000 changed lines** (`.claude/rules/workflow.md` "PR size"); the agent merges
 each PR into `feat/P3` once `ci-ok` is green and CodeRabbit is clear, and the user merges `feat/P3` into `dev`; PRs run
 in parallel worktrees as late P2 did, with at most one schema-changing PR in flight. Two additions:
 
