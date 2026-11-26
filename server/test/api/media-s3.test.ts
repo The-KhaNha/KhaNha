@@ -20,7 +20,7 @@ import { env } from '../../src/utils/env';
 import { IntegrationError } from '../../src/utils/errors';
 import { supabaseAdmin } from '../../src/utils/supabase';
 import { api } from '../setup/api';
-import { createStoreMember, deleteTestStores, type TestUser, expectError } from '../setup/helpers';
+import { createStoreMember, deleteTestStores, type TestUser } from '../setup/helpers';
 
 const config: S3MediaConfig = {
   bucket: env.MEDIA_BUCKET ?? 'khanha-test',
@@ -153,7 +153,8 @@ describe('the S3 store, through the API', () => {
     const { uploadId, upload } = await start(bytes.length);
     expect(await postForm(upload, bytes)).toBe(204);
     const anonymous = await fetch(`${upload.url}/stores/${storeId}/uploads/${uploadId}.png`);
-    expectError(anonymous, 403, 'FORBIDDEN');
+    // The bucket's own answer (S3 XML), not the API's error envelope: its status is all there is to check.
+    expect(anonymous.status).toBe(403);
   });
 
   it('the upload URL is the browser’s view of the bucket when that differs from the API’s', async () => {
