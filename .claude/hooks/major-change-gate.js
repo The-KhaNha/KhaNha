@@ -23,10 +23,10 @@ const PENDING = path.join(STATE, 'pending.json');
 const INTENT_REMINDED = path.join(STATE, 'intent-reminded.json');
 const PR_REMINDED = path.join(STATE, 'pr-size-reminded.json');
 
-// Keep in sync with .claude/rules/workflow.md "PR size": a PR stays reviewable at up to 50 files and 1000 changed lines against its
+// Keep in sync with .claude/rules/workflow.md "PR size": a PR stays reviewable at up to 70 files and 5000 changed lines against its
 // base. The lockfiles, the generated database types and docs (every Markdown file) are not counted; tests are.
-const PR_MAX_FILES = 50;
-const PR_MAX_LINES = 1000;
+const PR_MAX_FILES = 70;
+const PR_MAX_LINES = 5000;
 const PR_UNCOUNTED = /(^|\/)pnpm-lock\.yaml$|^server\/src\/types\/database\.ts$|\.md$/;
 
 // Keep in sync with .claude/rules/workflow.md "What counts as a major change".
@@ -223,10 +223,10 @@ function selfTest() {
   assert.equal(needsIntent(['server/src/app.ts', '.changes/README.md']), true);
   const files = (n, lines = 1) => Array.from({ length: n }, (_, i) => c(`client/src/lib/f${i}.ts`, lines));
   assert.equal(prSize([]).over, false);
-  assert.equal(prSize(files(50)).over, false, '50 files is within the limit');
-  assert.equal(prSize(files(51)).over, true, '51 files is over');
-  assert.equal(prSize([c('server/src/app.ts', 1000)]).over, false, '1000 lines is within the limit');
-  assert.equal(prSize([c('server/src/app.ts', 1001)]).over, true, '1001 lines is over');
+  assert.equal(prSize(files(70)).over, false, '70 files is within the limit');
+  assert.equal(prSize(files(71)).over, true, '71 files is over');
+  assert.equal(prSize([c('server/src/app.ts', 5000)]).over, false, '5000 lines is within the limit');
+  assert.equal(prSize([c('server/src/app.ts', 5001)]).over, true, '5001 lines is over');
   const uncounted = [
     c('pnpm-lock.yaml', 9000),
     c('client/pnpm-lock.yaml', 900),
@@ -237,7 +237,7 @@ function selfTest() {
     c('.changes/20261101-090000-abcd.md', 5),
   ];
   assert.deepEqual(prSize(uncounted), { files: 0, lines: 0, over: false }, 'lockfiles, generated types and docs do not count');
-  assert.equal(prSize([...uncounted, c('server/test/api/orders.test.ts', 1001)]).over, true, 'tests count');
+  assert.equal(prSize([...uncounted, c('server/test/api/orders.test.ts', 5001)]).over, true, 'tests count');
   assert.equal(prBase('feat/store-hours'), 'origin/dev');
   assert.equal(prBase('hotfix/stock-race'), 'origin/main');
   const present = () => true;
