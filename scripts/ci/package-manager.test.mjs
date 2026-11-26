@@ -21,6 +21,26 @@ test('one pnpm version, pinned in every root', () => {
   assert.deepEqual(pins, [pins[0], pins[0], pins[0]]);
 });
 
+// The images install with `corepack enable`, which a newer Node may not ship (Node 26 dropped corepack: #190/#191).
+// A Node major moves on purpose, everywhere at once, so Dependabot must not propose one for the images.
+test('every Dockerfile uses the .nvmrc Node major, and Dependabot ignores Node majors for them', () => {
+  const major = read('.nvmrc').trim().split('.')[0];
+  for (const file of ['client/Dockerfile', 'server/Dockerfile']) {
+    const froms = [...read(file).matchAll(/^FROM node:(\d+)/gm)].map((m) => m[1]);
+    assert.ok(froms.length > 0, `${file} has a FROM node:<major>`);
+    assert.deepEqual(
+      froms,
+      froms.map(() => major),
+      file,
+    );
+  }
+  const docker = read('.github/dependabot.yml').split('- package-ecosystem: docker')[1] ?? '';
+  assert.match(
+    docker,
+    /ignore:\s*\n\s*- dependency-name: node\s*\n\s*update-types: \[version-update:semver-major\]/,
+  );
+});
+
 test('every root has a pnpm lockfile and no npm one', () => {
   for (const r of ROOTS) {
     assert.ok(existsSync(join(ROOT, r, 'pnpm-lock.yaml')), `${r}/pnpm-lock.yaml`);

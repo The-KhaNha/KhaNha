@@ -35,10 +35,15 @@ updates:
     groups:
       actions:
         patterns: ['*']
-  # Finds nothing until the Dockerfiles land (P0 PR 09).
   - package-ecosystem: docker
     directories: [/client, /server]
     schedule: { interval: weekly }
+    # The project pins a Node major (.nvmrc, engineStrict): moving to the next is a deliberate change across .nvmrc,
+    # engines, CI and both Dockerfiles, not a base-image bump (Node 26 images dropped corepack, so `corepack enable`
+    # broke both builds in #190/#191).
+    ignore:
+      - dependency-name: node
+        update-types: [version-update:semver-major]
     # A version must be a week old before it is proposed (a hijacked release is usually caught by then); security
     # updates are not delayed.
     cooldown: { default-days: 7 }
