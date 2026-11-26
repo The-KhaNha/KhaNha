@@ -546,7 +546,7 @@ rollback skips; nothing is reverted, fix forward; docs/DEPLOYMENT.md "Applying m
 
 ### PR 08 — Logs, metrics, alarms (P8.7)
 
-- [ ] Merged
+- [x] Merged
 
 Built to stay inside CloudWatch's free allowances.
 
