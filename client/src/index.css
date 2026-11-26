@@ -117,6 +117,8 @@
   --color-brand-deep: #b72e0e;
   --color-on-gold: #1b1410;
   --color-overlay: #1b1410;
+  /* A QR code's light modules and quiet zone: scanners need dark on light, so this stays white in dark mode too. */
+  --color-qr-quiet: #ffffff;
 
   /* Keyboard focus ring: solid, at least 3:1 against bg and surface (WCAG 2.2 focus appearance). */
   --color-focus: var(--color-brand-600);

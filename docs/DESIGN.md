@@ -44,6 +44,7 @@ exist so a fill never doubles as text:
 | `brand-deep` | `#b72e0e` | `#b72e0e` | a pressed or hovered paprika fill, the hero gradient's end    |
 | `on-gold`    | `#1b1410` | `#1b1410` | text on a gold fill (the Popular badge, the cart count)       |
 | `overlay`    | `#1b1410` | `#000000` | the sheet backdrop                                            |
+| `qr-quiet`   | `#ffffff` | `#ffffff` | a QR code's light modules and quiet zone (admin MFA)          |
 
 `client/src/lib/palette.test.ts` reads both palettes from `index.css` and fails if any text pairing drops below
 4.5:1 or the focus ring or a meaningful icon below 3:1; add a new pairing there when a component introduces one.

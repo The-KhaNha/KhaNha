@@ -93,6 +93,14 @@ describe('design tokens', () => {
       .map(({ line, n }) => `${n}: ${line.trim()}`);
     expect(stray, 'use var(--color-*), a --shadow-* token or color-mix() on one').toEqual([]);
   });
+
+  // A QR code scans only as dark modules on a light quiet zone; the admin MFA QR on bg-surface was unscannable in dark.
+  it('the QR fill is white and no colour scheme redefines it', () => {
+    const css = readFileSync(`${process.cwd()}/src/index.css`, 'utf8');
+    expect([...css.matchAll(/--color-qr-quiet:\s*([^;]+);/g)].map((m) => m[1])).toEqual([
+      '#ffffff',
+    ]);
+  });
 });
 
 /**

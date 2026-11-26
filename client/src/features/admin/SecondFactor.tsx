@@ -1,3 +1,4 @@
+import { Check, Copy } from 'lucide-react';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
@@ -77,6 +78,16 @@ export function SecondFactor({ onVerified }: { onVerified: () => void }) {
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  async function copySecret(secret: string) {
+    try {
+      await navigator.clipboard.writeText(secret);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+    }
+  }
   // One setup per attempt: StrictMode's second effect run must not enrol a second factor beside the first, but it
   // still subscribes to the first run's result (the first run's cleanup has already unsubscribed itself).
   const setup = useRef<{ attempt: number; result: Promise<Step> } | undefined>(undefined);
@@ -156,17 +167,26 @@ export function SecondFactor({ onVerified }: { onVerified: () => void }) {
             Admin tools need a second step. Scan this code with an authenticator app (Google
             Authenticator, 1Password, Authy), then enter the 6-digit code it shows.
           </p>
+          {/* Supabase's QR has no background of its own: it needs a light fill and a quiet zone to scan. */}
           <img
             src={step.qr}
             alt="QR code to add this account to an authenticator app"
-            width={176}
-            height={176}
-            className="mx-auto rounded-card bg-surface p-2"
+            width={240}
+            height={240}
+            className="mx-auto block h-auto max-w-full rounded-card bg-qr-quiet p-6"
           />
-          <p className="wrap-anywhere">
-            Can't scan? Enter this key instead:{' '}
-            <span className="font-mono font-semibold text-ink">{step.secret}</span>
+          <p>Can't scan? Enter this key instead:</p>
+          <p className="wrap-anywhere font-mono text-base font-semibold text-ink">
+            {step.secret.match(/.{1,4}/g)?.join(' ')}
           </p>
+          <Button variant="secondary" onClick={() => void copySecret(step.secret)}>
+            {copied ? (
+              <Check className="h-4 w-4" aria-hidden />
+            ) : (
+              <Copy className="h-4 w-4" aria-hidden />
+            )}
+            <span aria-live="polite">{copied ? 'Copied' : 'Copy key'}</span>
+          </Button>
         </div>
       ) : (
         <p className="mt-2 text-sm text-muted">
