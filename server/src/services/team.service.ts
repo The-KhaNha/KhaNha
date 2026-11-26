@@ -177,6 +177,18 @@ export async function removeMember(
   ).throwOnError();
 }
 
+/** The caller leaves the store. requireStore('team.leave') admitted only a STAFF or MANAGER member of it. */
+export async function leaveStore(
+  storeId: string,
+  userId: string,
+  ctx: RequestContext,
+): Promise<void> {
+  await audited(
+    supabaseAdmin.from('store_memberships').delete().eq('store_id', storeId).eq('user_id', userId),
+    ctx,
+  ).throwOnError();
+}
+
 const acceptRpc = (token: string, userId: string, email: string, ctx: RequestContext) =>
   supabaseAdmin.rpc('accept_store_invite', {
     p_token_hash: hashToken(token),

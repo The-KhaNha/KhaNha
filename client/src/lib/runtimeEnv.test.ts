@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+// @vitest-environment node
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { resolveRuntimeEnv } from './runtimeEnv';
 
 const build = {
@@ -53,5 +54,32 @@ describe('resolveRuntimeEnv', () => {
   it('ignores a timeout that is not a positive whole number', () => {
     expect(resolveRuntimeEnv({ REQUEST_TIMEOUT_MS: 'soon' }, {}).requestTimeoutMs).toBe(15_000);
     expect(resolveRuntimeEnv({ REQUEST_TIMEOUT_MS: '-5' }, {}).requestTimeoutMs).toBe(15_000);
+    expect(resolveRuntimeEnv({ REQUEST_TIMEOUT_MS: '0' }, {}).requestTimeoutMs).toBe(15_000);
+    expect(resolveRuntimeEnv({ REQUEST_TIMEOUT_MS: '2.5' }, {}).requestTimeoutMs).toBe(15_000);
+  });
+});
+
+describe('runtimeEnv (the module-level value)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  it('reads window.__RUNTIME_ENV__ when there is a window', async () => {
+    vi.stubGlobal('window', { __RUNTIME_ENV__: { LOG_LEVEL: 'debug' } });
+    vi.resetModules();
+    expect((await import('./runtimeEnv')).runtimeEnv.logLevel).toBe('debug');
+  });
+
+  it('loads without a window and takes the build values', async () => {
+    vi.stubEnv('VITE_LOG_LEVEL', 'error');
+    vi.stubEnv('VITE_REQUEST_TIMEOUT_MS', '9000');
+    vi.stubEnv('VITE_STAFF_HOST', 'staff.build');
+    vi.resetModules();
+    const { runtimeEnv } = await import('./runtimeEnv');
+    expect(runtimeEnv.logLevel).toBe('error');
+    expect(runtimeEnv.requestTimeoutMs).toBe(9000);
+    expect(runtimeEnv.hosts.staff).toBe('staff.build');
   });
 });

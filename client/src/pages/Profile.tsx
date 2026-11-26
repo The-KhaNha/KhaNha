@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   ChevronRight,
@@ -12,8 +12,12 @@ import {
 } from 'lucide-react';
 import { Button, ButtonLink } from '../components/Button';
 import { Card } from '../components/Card';
+import { ConfirmSheet } from '../components/ConfirmSheet';
 import { EmptyState } from '../components/EmptyState';
-import { selectUser, useAuthStore } from '../features/auth/authStore';
+import { currentSessionEpoch, selectUser, useAuthStore } from '../features/auth/authStore';
+import { ApiError } from '../services/api';
+import { leaveStore } from '../services/manage';
+import type { User } from '../types/api';
 import { worksAStore } from '../features/auth/roles';
 import { APP_COMMIT, APP_VERSION } from '../lib/appVersion';
 import { cn } from '../lib/cn';
@@ -26,6 +30,8 @@ export function ProfilePage() {
   const user = useAuthStore(selectUser);
   const logout = useAuthStore((s) => s.logout);
   const navigate = useNavigate();
+  // Lives here, not in YourStores: a refusal's re-read can leave no stores, and the message must outlive the list.
+  const [leaveError, setLeaveError] = useState<string | null>(null);
 
   if (!user) {
     return (
@@ -89,6 +95,10 @@ export function ProfilePage() {
         </dl>
       </Card>
 
+      {(user.memberships.length > 0 || leaveError) && (
+        <YourStores memberships={user.memberships} error={leaveError} onError={setLeaveError} />
+      )}
+
       <Card padding="none" className="overflow-hidden">
         <ProfileRow
           to="/orders"
@@ -129,6 +139,88 @@ export function ProfilePage() {
         {APP_TITLE} v{APP_VERSION} ({APP_COMMIT.slice(0, 7)})
       </p>
     </div>
+  );
+}
+
+type Membership = User['memberships'][number];
+
+/** The stores this account works at, each with a way to leave it (the owner's brands are not memberships). */
+function YourStores({
+  memberships,
+  error,
+  onError,
+}: {
+  memberships: Membership[];
+  error: string | null;
+  onError: (message: string | null) => void;
+}) {
+  const removeMembership = useAuthStore((s) => s.removeMembership);
+  const hydrate = useAuthStore((s) => s.hydrate);
+  const [leaving, setLeaving] = useState<Membership | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function confirm() {
+    const store = leaving;
+    if (!store) return;
+    setBusy(true);
+    onError(null);
+    // A sign-out or another sign-in while the request is out must not drop this store from the new account.
+    const epoch = currentSessionEpoch();
+    try {
+      await leaveStore(store.storeId);
+      removeMembership(store.storeId, epoch);
+    } catch (err) {
+      onError(err instanceof ApiError ? err.message : 'Something went wrong.');
+      // A lost reply may have left the store anyway, or a manager removed this account already: read it again so
+      // the list shows what the server holds instead of a store every Leave refuses.
+      void hydrate();
+    } finally {
+      setBusy(false);
+      // Back may have closed this sheet and another one opened meanwhile: close only this one.
+      setLeaving((open) => (open === store ? null : open));
+    }
+  }
+
+  return (
+    <Card as="section" padding="lg" aria-labelledby="your-stores">
+      <h2 id="your-stores" className="text-lg font-extrabold">
+        Your stores
+      </h2>
+      <ul className="mt-2 divide-y divide-line/70">
+        {memberships.map((m) => (
+          <li key={m.storeId} className="flex items-center justify-between gap-3 py-2">
+            <div className="min-w-0">
+              <p className="wrap-anywhere font-semibold">{m.storeName}</p>
+              <p className="text-caption text-muted">
+                {m.role === 'MANAGER' ? 'Manager' : 'Staff'}
+              </p>
+            </div>
+            <Button
+              variant="ghost-danger"
+              aria-label={`Leave ${m.storeName}`}
+              onClick={() => setLeaving(m)}
+            >
+              Leave
+            </Button>
+          </li>
+        ))}
+      </ul>
+      {error && (
+        <p role="alert" className="mt-2 text-sm font-semibold text-brand-700">
+          {error}
+        </p>
+      )}
+      {leaving && (
+        <ConfirmSheet
+          title={`Leave ${leaving.storeName}?`}
+          text="You lose its orders and tools at once. A manager can invite you back."
+          confirmLabel="Leave"
+          busy={busy}
+          onConfirm={confirm}
+          onCancel={() => setLeaving(null)}
+        />
+      )}
+    </Card>
   );
 }
 

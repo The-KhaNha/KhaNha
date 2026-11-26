@@ -50,6 +50,51 @@ describe('safeJSONStorage', () => {
     expect(storage).toBeUndefined();
   });
 
+  describe('each failing operation is swallowed and reported once per key', () => {
+    function broken(): Storage {
+      const fail = () => {
+        throw new TypeError('boom');
+      };
+      return { getItem: fail, setItem: fail, removeItem: fail } as unknown as Storage;
+    }
+
+    it.each([
+      ['read', (s: ReturnType<typeof safeJSONStorage>, k: string) => s?.getItem(k)],
+      ['write', (s: ReturnType<typeof safeJSONStorage>, k: string) => s?.setItem(k, { state: 1 })],
+      ['remove', (s: ReturnType<typeof safeJSONStorage>, k: string) => s?.removeItem(k)],
+    ])('%s', (operation, run) => {
+      const debug = vi.spyOn(logger, 'debug');
+      const storage = safeJSONStorage(broken);
+      const key = `broken_${operation}`;
+      expect(() => run(storage, key)).not.toThrow();
+      expect(() => run(storage, key)).not.toThrow();
+      expect(debug).toHaveBeenCalledTimes(1);
+      expect(debug).toHaveBeenCalledWith('Store storage unavailable', {
+        key,
+        operation,
+        error: 'TypeError',
+      });
+    });
+
+    it('a read failure returns null, and a thrown non-error is reported as Unknown', () => {
+      const debug = vi.spyOn(logger, 'debug');
+      const storage = safeJSONStorage(
+        () =>
+          ({
+            getItem: () => {
+              throw 'nope';
+            },
+          }) as unknown as Storage,
+      );
+      expect(storage?.getItem('unknown_kind')).toBeNull();
+      expect(debug).toHaveBeenCalledWith('Store storage unavailable', {
+        key: 'unknown_kind',
+        operation: 'read',
+        error: 'Unknown',
+      });
+    });
+  });
+
   // The class of bug, not the one store: a new persisted store on zustand's default storage would crash on a full
   // quota again.
   it('every zustand persist store uses it', () => {

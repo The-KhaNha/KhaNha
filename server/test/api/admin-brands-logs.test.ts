@@ -8,7 +8,7 @@ import request from 'supertest';
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import type * as LoggerModule from '../../src/utils/logger';
 import { supabaseAdmin } from '../../src/utils/supabase';
-import { createTestUser, deleteTestStores, type TestUser } from '../setup/helpers';
+import { createTestUser, deleteTestStores, expectError, type TestUser } from '../setup/helpers';
 
 const lines: Record<string, unknown>[] = [];
 let server: Server;
@@ -90,7 +90,7 @@ it('create, invite and revoke (twice) leave no token and no invitee email in any
     .post('/api/me/brand-invites/accept')
     .set(auth)
     .send({ token: guess });
-  expect(refused.status).toBe(404);
+  expectError(refused, 404, 'NOT_FOUND');
 
   await vi.waitFor(() =>
     expect(lines.filter((line) => typeof line.msg === 'string').map((l) => l.msg)).toEqual(

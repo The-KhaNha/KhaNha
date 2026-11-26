@@ -20,6 +20,8 @@ const MATRIX = {
   'store.publish': ['OWNER'],
   'team.manageStaff': ['MANAGER', 'OWNER'],
   'team.manageManagers': ['OWNER'],
+  // A member may leave on their own; the owner owns the brand and has no membership to leave.
+  'team.leave': ['STAFF', 'MANAGER'],
   'audit.store': ['MANAGER', 'OWNER', 'ADMIN'],
   // STAFF only while the store lets staff edit stock (stores.staff_can_edit_stock): see can().
   'stock.update': ['STAFF', 'MANAGER', 'OWNER'],

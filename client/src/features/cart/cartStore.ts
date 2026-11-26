@@ -184,6 +184,20 @@ function staleOptions(
   return item && groups ? optionsUnorderable(item, groups, line.options) : line.optionsStale;
 }
 
+/**
+ * `set` that skips an update returning the same state. persist writes after every `set`, even `set(state => state)`,
+ * so a stale tab's no-op action would write its old lines over another tab's newer `fp_cart`.
+ */
+function setIfChanged(
+  set: (next: CartState | Partial<CartState>) => void,
+  get: () => CartState,
+  update: (state: CartState) => CartState | Partial<CartState>,
+): void {
+  const state = get();
+  const next = update(state);
+  if (next !== state) set(next);
+}
+
 export const useCartStore = create<CartState>()(
   persist(
     (set, get) => ({
@@ -195,7 +209,7 @@ export const useCartStore = create<CartState>()(
 
       setLimits(rules) {
         const limits = rules ?? DEFAULT_LIMITS;
-        set((state) =>
+        setIfChanged(set, get, (state) =>
           state.limits.maxQuantityPerItem === limits.maxQuantityPerItem &&
           state.limits.lowStockThreshold === limits.lowStockThreshold
             ? state
@@ -204,7 +218,7 @@ export const useCartStore = create<CartState>()(
       },
 
       add(item, quantity = 1, store, options = []) {
-        set((state) => {
+        setIfChanged(set, get, (state) => {
           if (state.lines.length > 0 && state.storeId !== store.id) return state;
           const maxQuantity = availableQuantity(item);
           const lineKey = lineKeyOf(
@@ -255,7 +269,7 @@ export const useCartStore = create<CartState>()(
       },
 
       increment(lineKey) {
-        set((state) =>
+        setIfChanged(set, get, (state) =>
           withLines(
             state,
             updateLine(state.lines, lineKey, (l) =>
@@ -284,7 +298,7 @@ export const useCartStore = create<CartState>()(
       },
 
       fix(lineKey) {
-        set((state) =>
+        setIfChanged(set, get, (state) =>
           withLines(
             state,
             updateLine(state.lines, lineKey, (l) => {
@@ -298,7 +312,7 @@ export const useCartStore = create<CartState>()(
       },
 
       setAvailability(menuItemId, available) {
-        set((state) => {
+        setIfChanged(set, get, (state) => {
           let changed = false;
           const lines = state.lines.map((l) => {
             if (l.menuItemId !== menuItemId || l.maxQuantity === available) return l;
@@ -309,8 +323,7 @@ export const useCartStore = create<CartState>()(
         });
       },
 
-      // persist writes after every `set`, even a no-op one: a stale tab must not write its old lines over another
-      // tab's newer ones, so `set` is called only when a line changed.
+      // Calls `set` only when a line changed, for the reason on setIfChanged.
       syncAvailability(items, groups) {
         const state = get();
         const byId = new Map(items.map((item) => [item.id, item]));
@@ -343,7 +356,7 @@ export const useCartStore = create<CartState>()(
       },
 
       syncPrices(items, groups = {}) {
-        set((state) => {
+        setIfChanged(set, get, (state) => {
           const byId = new Map(items.map((item) => [item.id, item]));
           const deltas = new Map(
             Object.values(groups).flatMap((g) =>

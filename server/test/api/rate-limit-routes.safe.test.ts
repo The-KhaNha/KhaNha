@@ -154,8 +154,8 @@ describe('invite accept limiter', () => {
         .set('Authorization', bearer(user))
         .send({ token: 'x'.repeat(43) });
     try {
-      expect((await acceptAt('/api/me/invites/accept')).status).toBe(404);
-      expect((await acceptAt('/api/me/brand-invites/accept')).status).toBe(404);
+      expectError(await acceptAt('/api/me/invites/accept'), 404, 'NOT_FOUND');
+      expectError(await acceptAt('/api/me/brand-invites/accept'), 404, 'NOT_FOUND');
       expectRateLimited(await acceptAt('/api/me/brand-invites/accept'));
       expectRateLimited(await acceptAt('/api/me/invites/accept'));
     } finally {

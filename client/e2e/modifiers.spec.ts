@@ -140,8 +140,8 @@ test('a customer orders the item with Extra cheese, and Pay sends the option', a
 });
 
 test('the kitchen ticket names the options at full size', async ({ page }) => {
-  await signIn(page, 'STAFF');
   await mockApi(page);
+  await signIn(page, 'STAFF');
   const now = new Date().toISOString();
   const order: Order = {
     id: 'o9',

@@ -32,12 +32,17 @@ interface AuthState {
   addMembership: (membership: User['memberships'][number]) => void;
   /** Records a brand the account now owns (an accepted owner invite), for the same reason. */
   addOwnedBrand: (brand: User['ownedBrands'][number]) => void;
+  /**
+   * Drops a membership the API just ended (the account left the store), so the guards stop offering it. Pass the
+   * `currentSessionEpoch()` read before the request: if that session has ended since, nothing is removed.
+   */
+  removeMembership: (storeId: string, epoch?: number) => void;
 }
 
 let hydrating: Promise<void> | null = null;
 /**
- * Bumped by every grant the API just made (an accepted invite). A profile read that started before one is older
- * than it, so hydrate reads again instead of letting the late answer drop the new store or brand.
+ * Bumped by every grant or leave the API just made (an accepted invite, a store left). A profile read that started
+ * before one is older than it, so hydrate reads again instead of letting the late answer undo the change.
  */
 let grantsVersion = 0;
 /**
@@ -45,6 +50,11 @@ let grantsVersion = 0;
  * profile read that began under an older one belongs to a session that is gone and must not be written back.
  */
 let sessionEpoch = 0;
+
+/** The session a request starts under; hand it back to an action that must not outlive that session. */
+export function currentSessionEpoch(): number {
+  return sessionEpoch;
+}
 
 /** warn, the lowest level production builds keep: a "why was I signed out?" report then has a trace. */
 function logIdleExpiry(lastActive: number | null): void {
@@ -108,6 +118,16 @@ export const useAuthStore = create<AuthState>()(
         const others = (user.ownedBrands ?? []).filter((b) => b.id !== brand.id);
         grantsVersion += 1;
         set({ user: { ...user, ownedBrands: [...others, brand] } });
+      },
+
+      removeMembership(storeId, epoch) {
+        const user = get().user;
+        // The leave began under another session: this user's store is not the one the request left.
+        if (!user || (epoch !== undefined && epoch !== sessionEpoch)) return;
+        grantsVersion += 1;
+        set({
+          user: { ...user, memberships: user.memberships.filter((m) => m.storeId !== storeId) },
+        });
       },
 
       hydrate() {

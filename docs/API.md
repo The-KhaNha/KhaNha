@@ -101,6 +101,7 @@ The API has no sign-in or sign-out route. The browser signs in and out with supa
 | POST   | `/stores/:storeId/invites`                            | user + `team.manageStaff`                | body: [`createInviteSchema`](#post-storesstoreidinvites)                   | 201 `{ invite: InviteDto, token: string }`                     |
 | DELETE | `/stores/:storeId/invites/:inviteId`                  | user + `team.manageStaff`                | path: `inviteId`                                                           | 204, no body                                                   |
 | DELETE | `/stores/:storeId/members/:membershipId`              | user + `team.manageStaff`                | path: `membershipId`                                                       | 204, no body                                                   |
+| DELETE | `/stores/:storeId/membership`                         | user + `team.leave`                      | none                                                                       | 204, no body                                                   |
 | POST   | `/me/invites/accept`                                  | user                                     | body: [`acceptInviteSchema`](#post-meinvitesaccept)                        | 200 `{ membership: { id, role, store: { id, slug, name } } }`  |
 | POST   | `/me/brand-invites/accept`                            | user                                     | body: [`acceptInviteSchema`](#post-mebrand-invitesaccept)                  | 200 `{ brand: { id, name, slug } }`                            |
 | GET    | `/admin/settings`                                     | user + ADMIN                             | none                                                                       | 200 `{ settings: SiteSettingsDto }`                            |
@@ -614,7 +615,7 @@ Code: `requireAuth` → `requireStore('hours.edit')` → `writeLimiter` → `val
 Body `{ hours: [{ dayOfWeek, opensAt, closesAt }] }`: the whole week (`[]` clears it), `HH:MM` times, ISO weekdays, at most 6
 intervals a day, `opensAt` different from `closesAt`; a `closesAt` before `opensAt` runs past midnight. Intervals that
 overlap (an overnight one over the next morning, Sunday night over Monday included) are 400 `VALIDATION_ERROR` and the
-old week stays. Answers the saved schedule. A repeat of the saved week is 200 and leaves no audit row and no event; a real
+old week stays. A published (`ACTIVE`) store cannot clear its week: `[]` there is 409 `STORE_NOT_READY` with `details: { kind: 'storeNotReady', missing: ['hours'] }` and the week stays (a store with no hours reads open around the clock; unpublish or pause it instead, or add an exception for a day). Answers the saved schedule. A repeat of the saved week is 200 and leaves no audit row and no event; a real
 change writes one `store_hours.changed` audit row (`changes.week` = `[old week, new week]`), emits `store.hours_changed`
 and drops `store_hours:<id>`, `stores:list`, `store:<id>`, `store` and the store's menus, so `openState` is right on the
 next read.
@@ -774,6 +775,15 @@ not exist, belongs to another store or has an id that is not a UUID is 404. Revo
 Code: `requireAuth` → `requireStore('team.manageStaff')` → `writeLimiter` → `team.controller.removeMember` →
 `team.service.removeMember`. Answers 204. A membership of another store, an unknown one or an id that is not a UUID is 404. Removing a `MANAGER` needs `team.manageManagers`, except that a manager may remove themselves. The person's access
 ends on their next request, because `requireAuth` reads memberships on every request.
+
+### DELETE /stores/:storeId/membership
+
+Code: `requireAuth` → `requireStore('team.leave')` → `writeLimiter` → `team.controller.leaveStore` →
+`team.service.leaveStore`. A STAFF or MANAGER member leaves the store: it deletes the caller's own membership there
+and nothing else (their memberships at other stores stay), with an audit row naming them. Answers 204. The brand's
+owner has no membership to leave, so they, an admin and a customer get 403 (`FORBIDDEN`), as does a second leave; a
+store the caller may not see is 404. Access ends on the next request. The client's "Your stores" list on `/profile`
+calls it.
 
 ### POST /me/invites/accept
 
@@ -1280,7 +1290,7 @@ shape carries a `kind`, and the client narrows on it.
 | 409    | `SLUG_TAKEN`                | `POST /brands/:brandId/stores`: another store already uses the slug (given, or made from the name); `POST /admin/brands`: another brand does; `details: { field: 'slug' }`                                                                                                                                                                                                                                                         |
 | 409    | `BRAND_HAS_OWNER`           | `POST /admin/brands/:brandId/invites`: the brand has an owner already (an invite never replaces one)                                                                                                                                                                                                                                                                                                                               |
 | 409    | `MENU_FULL`                 | `POST /stores/:storeId/menu-items`, `POST /brands/:brandId/stores` (a template past the cap) and `POST /brands/:brandId/template/push` (a branch the new copies would pass it): the store already has `MENU_ITEMS_MAX` (500) live items; nothing is created (a push is refused whole); `details: { kind: 'menuFull', max }`                                                                                                        |
-| 409    | `STORE_NOT_READY`           | `POST /stores/:storeId/publish`: no address, no weekly hours or no orderable item; `details: { kind: 'storeNotReady', missing }`                                                                                                                                                                                                                                                                                                   |
+| 409    | `STORE_NOT_READY`           | `POST /stores/:storeId/publish`: no address, no weekly hours or no orderable item; `PUT /stores/:storeId/hours` with `[]` at a published store (`missing: ['hours']`); `details: { kind: 'storeNotReady', missing }`                                                                                                                                                                                                               |
 | 400    | `UPLOAD_INVALID`            | a photo upload refused: the bytes are not the declared type, size or format, the upload is not finished, or it is already done; `details: { kind: 'uploadInvalid', reason }`                                                                                                                                                                                                                                                       |
 | 409    | `INVALID_STATUS_TRANSITION` | `PATCH /orders/:id/status` (from `update_order_status`); `POST /stores/:storeId/publish` and `/unpublish` on a `SUSPENDED` or `ARCHIVED` store (from `set_store_status`)                                                                                                                                                                                                                                                           |
 | 409    | `IDEMPOTENCY_KEY_REUSED`    | `POST /orders`: the `idempotencyKey` already placed an order that differs from this request. "Your earlier order #<n> already went through. Pay again to order what is in your cart now." with `details: { orderId, orderNumber }` (`ReplayedOrderDetails`)                                                                                                                                                                        |
