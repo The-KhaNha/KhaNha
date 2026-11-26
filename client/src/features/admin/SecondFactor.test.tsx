@@ -91,7 +91,14 @@ describe('SecondFactor', () => {
       'src',
       'data:image/svg+xml;utf-8,<svg/>',
     );
-    expect(screen.getByText('ABCDEF234567')).toBeInTheDocument();
+    // Scanners need dark modules on light: the fill must be the one token dark mode never flips (not bg-surface).
+    expect(screen.getByRole('img', { name: /QR code/ })).toHaveClass('bg-qr-quiet');
+    expect(screen.getByText('ABCD EF23 4567')).toBeInTheDocument();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Copy key' }));
+    expect(await screen.findByRole('button', { name: 'Copied' })).toBeInTheDocument();
+    expect(writeText).toHaveBeenCalledWith('ABCDEF234567');
     expect(mfa.unenroll).toHaveBeenCalledWith({ factorId: 'old' });
     expect(mfa.unenroll).not.toHaveBeenCalledWith({ factorId: 'other-tab' });
     expect(mfa.enroll).toHaveBeenCalledWith({
