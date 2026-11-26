@@ -158,6 +158,23 @@ expects, and each is called by the owner, a manager, staff, an admin, a customer
 `FORBIDDEN` or through as `can()` says, never a 5xx; at a SUSPENDED store its people keep their powers and a
 customer gets 404. `can()`'s own cells are `test/unit/permissions.safe.test.ts`.
 
+## Mutation testing
+
+A test that would pass with the code under test broken is no test. To check a module's tests, run
+[Stryker](https://stryker-mutator.io) on it from a scratch folder, so nothing is added to the repo:
+
+```bash
+cd "$(mktemp -d)" && npm init -y >/dev/null
+npm i @stryker-mutator/core @stryker-mutator/vitest-runner vitest@<client's version> typescript@<client's version>
+cd -  # back to client/
+<scratch>/node_modules/.bin/stryker run <config.json>  # testRunner vitest, coverageAnalysis perTest, mutate: [files]
+```
+
+Every surviving mutant is a missing assertion or an equivalent mutant (say why). The audit of 2026-11-23 took the
+client's `*Rules.ts`, `cartStore` and `lib/` logic to 83% overall, and every file it touched to at least 90%. A test
+that reads a file outside `client/` (the `errorReporter` parity check) cannot run in Stryker's sandbox; leave its
+module out of `mutate`.
+
 ## Edge-case matrix for every endpoint
 
 Each endpoint suite covers the rows that apply to it:

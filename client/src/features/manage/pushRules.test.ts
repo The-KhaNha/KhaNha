@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ManagedMenuItem } from '../../types/api';
-import { pushPreview } from './pushRules';
+import { PUSH_FIELDS, pushPreview } from './pushRules';
 
 const item = (over: Partial<ManagedMenuItem> = {}) =>
   ({
@@ -43,5 +43,38 @@ describe('pushPreview', () => {
         'description',
       ]),
     ).toEqual(['Description at North: (blank) → (blank)']);
+  });
+
+  it('lists the fields a manager can push, in order', () => {
+    expect(PUSH_FIELDS).toEqual([
+      { key: 'price', label: 'Price' },
+      { key: 'name', label: 'Name' },
+      { key: 'description', label: 'Description' },
+      { key: 'category', label: 'Category' },
+      { key: 'diet', label: 'Veg / non-veg' },
+      { key: 'photo', label: 'Photo' },
+    ]);
+  });
+
+  it('says nothing about a photo that already matches, even when it is chosen', () => {
+    expect(pushPreview(item(), 'North', item(), ['photo'])).toEqual([]);
+  });
+
+  it('names a category change', () => {
+    expect(pushPreview(item(), 'North', item({ category: 'Cold' }), ['category'])).toEqual([
+      'Category at North: Cold → Hot',
+    ]);
+  });
+
+  it.each([
+    ['VEG', 'NON_VEG', 'Veg / non-veg at North: Non-veg → Veg'],
+    ['VEG', 'EGG', 'Veg / non-veg at North: Egg → Veg'],
+    ['NON_VEG', 'VEG', 'Veg / non-veg at North: Veg → Non-veg'],
+    ['VEG', null, 'Veg / non-veg at North: not marked → Veg'],
+    [null, 'VEG', 'Veg / non-veg at North: Veg → not marked'],
+  ] as const)('diet: template %s over copy %s', (template, copyDiet, line) => {
+    expect(
+      pushPreview(item({ diet: template }), 'North', item({ diet: copyDiet }), ['diet']),
+    ).toEqual([line]);
   });
 });
