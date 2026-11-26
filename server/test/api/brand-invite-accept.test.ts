@@ -9,6 +9,7 @@ import {
   createTestUser,
   deleteTestStores,
   testAuthMatrix,
+  expectError,
   type TestUser,
 } from '../setup/helpers';
 
@@ -159,7 +160,7 @@ describe('accepting an owner invite', () => {
 describe('every refusal is the same 404, and the brand keeps no owner', () => {
   const expectRefused = async (token: string, user: TestUser, brandId: string) => {
     const res = await accept(token, user);
-    expect(res.status).toBe(404);
+    expectError(res, 404, 'NOT_FOUND');
     expect(res.body.error).toEqual({
       code: 'NOT_FOUND',
       message: 'That invite is not valid any more.',
@@ -205,7 +206,7 @@ describe('every refusal is the same 404, and the brand keeps no owner', () => {
     const owner = await createBrandOwner(brandId);
     users.push(owner);
     const res = await accept(token, user);
-    expect(res.status).toBe(404);
+    expectError(res, 404, 'NOT_FOUND');
     expect(await ownerOf(brandId)).toBe(owner.id);
   });
 
@@ -216,7 +217,7 @@ describe('every refusal is the same 404, and the brand keeps no owner', () => {
     // Same email cannot be a second account; the accepted invite refuses anyone but its accepter.
     const other = await fresh();
     const res = await accept(token, other);
-    expect(res.status).toBe(404);
+    expectError(res, 404, 'NOT_FOUND');
     expect(await ownerOf(brandId)).toBe(owner.id);
   });
 

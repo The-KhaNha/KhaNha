@@ -33,6 +33,31 @@ const forbidTables = (file) => [
     })),
 ];
 
+// A test that checks only a 404 status (or a supertest `.expect(4xx)`, which checks nothing else) still passes when the
+// route under test is deleted or renamed: the catch-all (middleware/errorHandler.ts notFoundHandler) answers 404 too.
+const WEAK_ERROR_STATUS = [
+  {
+    selector:
+      "CallExpression[callee.property.name=/^(toBe|toEqual|toStrictEqual)$/][arguments.0.type='Literal'][arguments.0.value=404]",
+    message:
+      'A bare 404 check also passes for a missing route (the catch-all answers 404). Use expectError(res, 404, code) from test/setup/helpers.ts.',
+  },
+  {
+    selector:
+      "CallExpression[callee.property.name='expect'][arguments.0.type='Literal'][arguments.0.value>=400]",
+    message:
+      'Supertest `.expect(4xx)` checks only the status, so a deleted route still passes. Use expectError(res, status, code) from test/setup/helpers.ts.',
+  },
+  {
+    // `Date.now() - started`: a duration on the wall clock, which can step backwards mid-test (WSL, NTP); a
+    // readiness test once measured -748 ms. `Date.now() - 48 * HOUR` (a timestamp in the past) is fine.
+    selector:
+      "BinaryExpression[operator='-'][left.callee.object.name='Date'][left.callee.property.name='now'][right.type=/^(Identifier|MemberExpression)$/]",
+    message:
+      'Measure a duration with performance.now(): the wall clock can step backwards mid-test.',
+  },
+];
+
 export default tseslint.config(
   { ignores: ['dist', 'src/types/database.ts'] },
   {
@@ -52,6 +77,11 @@ export default tseslint.config(
     },
   },
   { files: ['src/**/*.ts'], rules: { 'no-restricted-syntax': forbidTables(null) } },
+  {
+    files: ['test/**/*.ts'],
+    ignores: ['test/setup/helpers.ts'],
+    rules: { 'no-restricted-syntax': ['error', ...WEAK_ERROR_STATUS] },
+  },
   ...ownerFiles.map((file) => ({
     files: [file],
     rules: { 'no-restricted-syntax': forbidTables(file) },

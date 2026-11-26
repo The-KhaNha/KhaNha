@@ -11,6 +11,7 @@ import {
   deleteTestStores,
   oldestStoreId,
   testAuthMatrix,
+  expectError,
   type TestUser,
 } from '../setup/helpers';
 
@@ -267,7 +268,7 @@ describe('owner invites', () => {
     ['an id that is no uuid', 'not-a-uuid'],
   ])('%s is 404', async (_label, id) => {
     const res = await invite(id, `x.${tag}@example.test`);
-    expect(res.status).toBe(404);
+    expectError(res, 404, 'NOT_FOUND');
   });
 
   it('a bad email is 400', async () => {
@@ -279,11 +280,11 @@ describe('owner invites', () => {
     const brand = await newBrand();
     const other = await newBrand();
     const { body } = await invite(brand.id, `revoke.${tag}@example.test`);
-    expect((await revoke(other.id, body.invite.id)).status).toBe(404);
+    expectError(await revoke(other.id, body.invite.id), 404, 'NOT_FOUND');
     expect((await revoke(brand.id, body.invite.id)).status).toBe(204);
     expect((await revoke(brand.id, body.invite.id)).status).toBe(204);
     expect(await openInvites(brand.id)).toEqual([]);
-    expect((await revoke(brand.id, 'not-a-uuid')).status).toBe(404);
+    expectError(await revoke(brand.id, 'not-a-uuid'), 404, 'NOT_FOUND');
   });
 });
 
