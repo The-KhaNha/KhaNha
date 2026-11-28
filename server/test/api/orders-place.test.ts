@@ -1,8 +1,14 @@
 import { randomUUID } from 'node:crypto';
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { invalidate } from '../../src/utils/cache';
 import { supabaseAdmin } from '../../src/utils/supabase';
-import { testAuthMatrix, expectError } from '../setup/helpers';
+import {
+  createTestUser,
+  deleteTestUser,
+  testAuthMatrix,
+  expectError,
+  type TestUser,
+} from '../setup/helpers';
 import { api } from '../setup/api';
 import {
   auth,
@@ -12,6 +18,7 @@ import {
   orderBody,
   patchStatus,
   placeOrder,
+  staff,
   storeId,
   useOrdersFixture,
 } from '../setup/orders';
@@ -261,6 +268,44 @@ describe('validation', () => {
 // ---------------------------------------------------------------------------
 // 4. Not found
 // ---------------------------------------------------------------------------
+
+describe('GET /api/orders history', () => {
+  // Fresh accounts: the shared customers have placed many orders by now, past the history limit.
+  let alice: TestUser;
+  let bob: TestUser;
+  beforeAll(async () => {
+    [alice, bob] = await Promise.all([createTestUser(), createTestUser()]);
+  });
+  afterAll(async () => {
+    // Orders reference profiles without ON DELETE CASCADE (see test/setup/orders.ts).
+    await supabaseAdmin.from('orders').delete().in('user_id', [alice.id, bob.id]).throwOnError();
+    await Promise.all([deleteTestUser(alice), deleteTestUser(bob)]);
+  });
+
+  const history = async (user: TestUser) =>
+    ((await api().get('/api/orders').set(auth(user.token))).body.orders as { id: string }[]).map(
+      (order) => order.id,
+    );
+
+  it("lists only the caller's own orders, newest first, and a store member sees no one else's", async () => {
+    const placed = async (user: TestUser) => (await placeOrder(user)).body.order.id as string;
+    const first = await placed(alice);
+    const theirs = await placed(bob);
+    const second = await placed(alice);
+    const third = await placed(alice);
+    const staffOwn = await placed(staff);
+
+    expect(await history(alice)).toEqual([third, second, first]);
+    expect(await history(bob)).toEqual([theirs]);
+    // The staff member may read this store's board, yet GET /api/orders stays their own history.
+    const board = await api().get(`/api/stores/${storeId}/orders`).set(auth(staff.token));
+    expect((board.body.orders as { id: string }[]).map((order) => order.id)).toContain(first);
+    const own = await history(staff);
+    expect(own).toContain(staffOwn);
+    expect(own).not.toContain(first);
+    expect(own).not.toContain(theirs);
+  });
+});
 
 describe('not found', () => {
   it('a random uuid on GET /orders/:id -> 404 NOT_FOUND', async () => {

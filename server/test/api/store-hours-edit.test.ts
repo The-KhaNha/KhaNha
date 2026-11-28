@@ -79,6 +79,18 @@ testStoreIsolation(
   'MANAGER',
 );
 testStoreIsolation(
+  'POST /api/stores/:storeId/schedule-exceptions',
+  (http, id) =>
+    http.post(`/api/stores/${id}/schedule-exceptions`).send({
+      startsOn: '2099-01-01',
+      endsOn: '2099-01-01',
+      kind: 'CLOSED',
+      label: 'Iso',
+    }),
+  undefined,
+  'MANAGER',
+);
+testStoreIsolation(
   'DELETE /api/stores/:storeId/schedule-exceptions/:exceptionId',
   (http, id, exceptionId) => http.delete(`/api/stores/${id}/schedule-exceptions/${exceptionId}`),
   async (id) => {

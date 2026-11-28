@@ -87,6 +87,18 @@ describe('the fake payment page', () => {
     });
   });
 
+  it('lets a failed payment be retried: fail, then pay, ends PAID', async () => {
+    const { gatewayOrderId } = await fakeOrder();
+    await api().post(`/api/fake-gateway/${gatewayOrderId}/fail`).expect(303);
+    await expect(gatewayFor('fake').getOrderStatus(gatewayOrderId)).resolves.toMatchObject({
+      status: 'FAILED',
+    });
+    await api().post(`/api/fake-gateway/${gatewayOrderId}/pay`).expect(303);
+    await expect(gatewayFor('fake').getOrderStatus(gatewayOrderId)).resolves.toMatchObject({
+      status: 'PAID',
+    });
+  });
+
   it('is 404 for an unknown id and 400 for a bad outcome', async () => {
     expectError(await api().get(`/api/fake-gateway/${randomUUID()}`), 404, 'NOT_FOUND');
     expectError(await api().post(`/api/fake-gateway/${randomUUID()}/pay`), 404, 'NOT_FOUND');

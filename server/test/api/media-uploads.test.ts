@@ -100,6 +100,15 @@ testAuthMatrix('POST /api/stores/:storeId/media/uploads', (http) =>
     .send({ contentType: 'image/png', byteSize: 10 }),
 );
 testStoreIsolation(
+  'POST /api/stores/:storeId/media/uploads',
+  (http, store) =>
+    http
+      .post(`/api/stores/${store}/media/uploads`)
+      .send({ contentType: 'image/png', byteSize: 10 }),
+  undefined,
+  'MANAGER',
+);
+testStoreIsolation(
   'GET /api/stores/:storeId/media/uploads/:uploadId',
   (http, store, id) => http.get(`/api/stores/${store}/media/uploads/${id}`),
   insertUpload,
@@ -200,7 +209,9 @@ describe('an upload, start to finish', () => {
     // A repeat changes nothing and emits nothing; the bytes cannot be replaced afterwards.
     expect((await complete(uploadId)).status).toBe(200);
     expect(await events(uploadId)).toHaveLength(1);
-    expect((await put(uploadId, bytes)).body.error.details.reason).toBe('state');
+    const late = await put(uploadId, bytes);
+    expectError(late, 400, 'UPLOAD_INVALID');
+    expect(late.body.error.details).toEqual({ kind: 'uploadInvalid', reason: 'state' });
     const read = await api().get(`${base()}/${uploadId}`).set(auth(manager));
     expect(read.body.upload.status).toBe('UPLOADED');
   });
