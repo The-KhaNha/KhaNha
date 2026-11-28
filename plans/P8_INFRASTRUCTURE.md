@@ -575,20 +575,33 @@ The job lines also gained `requestId`, so one query follows a request into the w
   `aws cloudwatch put-metric-data`. The instance role gains `cloudwatch:PutMetricData` for the app's namespace only.
   No CloudWatch agent: it would itself take memory on a 1 GB host. The two extra metrics stay inside CloudWatch's
   free allowance.
-- **A dead letter can be closed.** Nothing writes `job_failures.resolved_at` today, so the alarm's only answer is
-  hand-written SQL. A migration adds `resolve_job_failure(p_id, p_replay boolean)` (`service_role` only): it sets
-  `resolved_at`, and with `p_replay` sends `message` back to `queue_name` first; a resolved row is a no-op.
-  `docs/JOBS.md` gains the runbook the dead-letter alarm points at: find the row, fix the cause, replay or resolve.
 
 Tests: the script against a fixture `meminfo` gives the expected percentages; on the host, the published metric
-matches `free -m`; `resolve_job_failure` at the RPC (a replay is read back from its queue once, a second call
-changes nothing, an unknown id is refused); `test/logging.safe.test.ts` asserts the access line and the new lines carry the exact fields the metric
+matches `free -m`; `test/logging.safe.test.ts` asserts the access line and the new lines carry the exact fields the metric
 filters read, with a comment naming the Terraform file, so renaming a log field cannot silently blind an alarm;
 `test/unit/worker-health.safe.test.ts` covers the timer with an injected clock.
 
 Docs: `docs/LOGGING.md` (shipping, the metrics line), `docs/DEPLOYMENT.md` (alarms, the dashboard, the targets the
 roadmap calls SLOs), `docs/CONFIGURATION.md`, `docs/JOBS.md` (the runbook points at the alarms). Intent:
 `--server minor`.
+
+### PR 08b — A dead letter can be closed (P8.7, follow-up)
+
+- [ ] Merged
+
+Follows PR 08, whose dead-letter alarm has no answer but hand-written SQL, since nothing writes
+`job_failures.resolved_at`.
+
+`/before-write`: schema-guard, expected EXTEND (`job_failures`), one new function.
+
+- The migration adds `resolve_job_failure(p_id, p_replay boolean)` (`service_role` only): it sets `resolved_at`, and
+  with `p_replay` sends `message` back to `queue_name` first; a resolved row is a no-op.
+
+Tests: at the RPC: a replay is read back from its queue once, a second call changes nothing, an unknown id is
+refused.
+
+Docs: `docs/SCHEMA.md` (the function), `docs/JOBS.md` (the runbook the dead-letter alarm points at: find the row, fix
+the cause, replay or resolve). Intent: `--server patch`.
 
 ## Closing P8
 
