@@ -1,4 +1,5 @@
 import { afterAll, describe, expect, it } from 'vitest';
+import { LIMITS } from '../../src/schemas/limits';
 import type { OrderStatus } from '../../src/types/enums';
 import { invalidate } from '../../src/utils/cache';
 import { supabaseAdmin } from '../../src/utils/supabase';
@@ -134,6 +135,46 @@ describe('cancelling restores stock', () => {
       await supabaseAdmin
         .from('menu_items')
         .update({ stock_quantity: null })
+        .eq('id', item.id)
+        .throwOnError();
+    }
+  });
+
+  // The stock cap checks what a person types (adjust_stock), not stock coming back: a cancel returns all its order
+  // took, even past the cap, rather than refuse the cancel or drop units.
+  it('returns stock past the stock cap', async () => {
+    const item = menuItem('Blueberry Muffin');
+    const cap = LIMITS.menuItem.stockMax;
+    await supabaseAdmin
+      .from('menu_items')
+      .update({ stock_quantity: 5 })
+      .eq('id', item.id)
+      .throwOnError();
+    try {
+      const placed = await placeOrder(customer1, {
+        items: [{ menuItemId: item.id, quantity: 2 }],
+      });
+      expect(placed.status).toBe(201);
+      // Restocked to the cap while the order waited.
+      await supabaseAdmin
+        .from('menu_items')
+        .update({ stock_quantity: cap })
+        .eq('id', item.id)
+        .throwOnError();
+
+      const cancelled = await patchStatus(placed.body.order.id as string, 'CANCELLED');
+      expect(cancelled.status).toBe(200);
+      const { data } = await supabaseAdmin
+        .from('menu_items')
+        .select('stock_quantity')
+        .eq('id', item.id)
+        .single()
+        .throwOnError();
+      expect(data.stock_quantity).toBe(cap + 2);
+    } finally {
+      await supabaseAdmin
+        .from('menu_items')
+        .update({ stock_quantity: 5 })
         .eq('id', item.id)
         .throwOnError();
     }

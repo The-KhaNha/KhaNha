@@ -575,9 +575,14 @@ The job lines also gained `requestId`, so one query follows a request into the w
   `aws cloudwatch put-metric-data`. The instance role gains `cloudwatch:PutMetricData` for the app's namespace only.
   No CloudWatch agent: it would itself take memory on a 1 GB host. The two extra metrics stay inside CloudWatch's
   free allowance.
+- **A dead letter can be closed.** Nothing writes `job_failures.resolved_at` today, so the alarm's only answer is
+  hand-written SQL. A migration adds `resolve_job_failure(p_id, p_replay boolean)` (`service_role` only): it sets
+  `resolved_at`, and with `p_replay` sends `message` back to `queue_name` first; a resolved row is a no-op.
+  `docs/JOBS.md` gains the runbook the dead-letter alarm points at: find the row, fix the cause, replay or resolve.
 
 Tests: the script against a fixture `meminfo` gives the expected percentages; on the host, the published metric
-matches `free -m`; `test/logging.safe.test.ts` asserts the access line and the new lines carry the exact fields the metric
+matches `free -m`; `resolve_job_failure` at the RPC (a replay is read back from its queue once, a second call
+changes nothing, an unknown id is refused); `test/logging.safe.test.ts` asserts the access line and the new lines carry the exact fields the metric
 filters read, with a comment naming the Terraform file, so renaming a log field cannot silently blind an alarm;
 `test/unit/worker-health.safe.test.ts` covers the timer with an injected clock.
 

@@ -386,7 +386,9 @@ exception beats `SPECIAL_HOURS` on the same day. Index `(store_id, ends_on, star
 | `archived_at`      | timestamptz   | yes  |                     | set by `DELETE /api/stores/:storeId/menu-items/:itemId`; off the public menu and never copied; `menu_items_archived_unavailable` keeps it switched off |
 
 `stock_quantity` is decremented by `place_order` and restored when an order is cancelled, by what the order's lines
-reserved (`order_items.reserved_quantity`), not by what they ordered.
+reserved (`order_items.reserved_quantity`), not by what they ordered. It is restored in full even past
+`menuItem.stockMax` (`docs/CONFIGURATION.md`): the cap checks what a person types in `adjust_stock`, not stock
+coming back, so a cancel is never refused or trimmed for it.
 Any other change goes through `adjust_stock` (below), which writes a `stock_movements` row.
 
 ### stock_movements
