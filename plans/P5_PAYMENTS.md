@@ -388,10 +388,13 @@ Migration `<ts>_checkout_holds.sql`:
   migration adds that check); a repeat is a no-op with no event;
 - `expire_holds(p_now, p_limit)`: abandons orders whose hold has passed, `for update skip locked`, a bounded batch;
 - `run_order_deadlines()` calling it, scheduled every minute as `order-deadlines`, and
-  `purge_cron_history()` (keeps two days of `cron.job_run_details`), scheduled nightly.
+  `purge_cron_history()` (keeps two days of `cron.job_run_details`), scheduled nightly;
+- stock that comes back (an abandon or an expired hold here, a cancel or a rejection in PR 14) is added in full,
+  even past `menuItem.stockMax`: the cap checks what a person types in `adjust_stock`, not stock returning, so a
+  release is never refused or trimmed for it (`docs/SCHEMA.md`; `orders-status.test.ts` pins it for today's cancel).
 
 Tests (`test/api/checkout-holds.test.ts`, at the RPC): two checkouts for the last unit under `Promise.all`, one
-wins; an expired hold returns its stock exactly once, with an injected clock; abandon twice; a hold released while
+wins; an expired hold returns its stock exactly once, with an injected clock, and past the stock cap; abandon twice; a hold released while
 a second checkout waits lets it through; `POLICY_CHANGED`; the old route still places an order.
 
 Docs: `docs/SCHEMA.md`, `docs/JOBS.md` (the schedule, the cleanup), `docs/CONFIGURATION.md`, `docs/PAYMENTS.md`.
@@ -603,11 +606,16 @@ not-completed states. The main agent builds it: it drives the money path.
   or unfinished payment shows "Payment not completed" with **Try again** (a new session while the hold lasts) and
   **Cancel** (abandon). `CHECKOUT_EXPIRED` goes back to the cart, which is intact.
 - the cart is cleared when the order page first sees the order paid, not when checkout starts.
+- the checkout's `idempotencyKey` outlives the tab: it leaves `fp_checkout` (sessionStorage, which keeps the typed
+  name and phone to the tab on purpose) for `localStorage` beside the cart, and is still cleared when the order is
+  placed and on sign-out (`authStore`, `lib/storageKeys.test.ts`). A retry from a second tab after a lost answer
+  then finds the first order instead of placing, and charging, a second.
 - `/orders/:id/success` redirects to the order page (the route stays, so no client major).
 
 Tests: the checkout and order pages' units (each outcome); `e2e/checkout.spec.ts` with the API mocked: pay and
 return to a placed order; fail, try again, pay; let the hold expire and find the cart whole; Android Back from the
-confirming state. The visual gate at 390px throttled and 1280px; `perf-auditor` on the checkout and order routes.
+confirming state; a second tab, after the first lost its answer, sends the same key and lands on the one order.
+The visual gate at 390px throttled and 1280px; `perf-auditor` on the checkout and order routes.
 
 Docs: `docs/FRONTEND_STRUCTURE.md`, `docs/COMPONENTS.md`. Intent: `--client minor`.
 

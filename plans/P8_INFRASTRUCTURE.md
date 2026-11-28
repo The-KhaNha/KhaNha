@@ -585,6 +585,24 @@ Docs: `docs/LOGGING.md` (shipping, the metrics line), `docs/DEPLOYMENT.md` (alar
 roadmap calls SLOs), `docs/CONFIGURATION.md`, `docs/JOBS.md` (the runbook points at the alarms). Intent:
 `--server minor`.
 
+### PR 08b — A dead letter can be closed (P8.7, follow-up)
+
+- [ ] Merged
+
+Follows PR 08, whose dead-letter alarm has no answer but hand-written SQL, since nothing writes
+`job_failures.resolved_at`.
+
+`/before-write`: schema-guard, expected EXTEND (`job_failures`), one new function.
+
+- The migration adds `resolve_job_failure(p_id, p_replay boolean)` (`service_role` only): it sets `resolved_at`, and
+  with `p_replay` sends `message` back to `queue_name` first; a resolved row is a no-op.
+
+Tests: at the RPC: a replay is read back from its queue once, a second call changes nothing, an unknown id is
+refused.
+
+Docs: `docs/SCHEMA.md` (the function), `docs/JOBS.md` (the runbook the dead-letter alarm points at: find the row, fix
+the cause, replay or resolve). Intent: `--server patch`.
+
 ## Closing P8
 
 P8 is closed when production is deployed and healthy, **dark** (no announcement, no real users), from a pipeline
