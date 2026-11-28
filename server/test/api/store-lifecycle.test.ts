@@ -335,6 +335,43 @@ describe('publish and unpublish', () => {
     expectError(await publish(owner, templateId), 404, 'NOT_FOUND');
   });
 
+  // The menu check counts an item only when it is available, not archived and in stock: a store whose every item is
+  // sold out or archived has nothing to sell. The single-item case above covers a switched-off item.
+  it.each([
+    ['sold out', () => ({ stock_quantity: 0 })],
+    ['archived', () => ({ is_available: false, archived_at: new Date().toISOString() })],
+    ['a mix of sold out and archived', 'mix' as const],
+  ])('a menu whose items are all %s blocks publish with missing menu', async (_label, change) => {
+    const { data: rows } = await supabaseAdmin
+      .from('menu_items')
+      .select('id, is_available, stock_quantity, archived_at')
+      .eq('store_id', branchId)
+      .order('id')
+      .throwOnError();
+    expect(rows.length).toBeGreaterThanOrEqual(2);
+    try {
+      for (const [index, row] of rows.entries()) {
+        const patch =
+          change === 'mix'
+            ? index % 2 === 0
+              ? { stock_quantity: 0 }
+              : { is_available: false, archived_at: new Date().toISOString() }
+            : change();
+        await supabaseAdmin.from('menu_items').update(patch).eq('id', row.id).throwOnError();
+      }
+      const res = await publish(owner);
+      expect(res.status).toBe(409);
+      expect(res.body.error).toMatchObject({
+        code: 'STORE_NOT_READY',
+        details: { kind: 'storeNotReady', missing: ['menu'] },
+      });
+      expect(await statusOf(branchId)).toBe('DRAFT');
+    } finally {
+      for (const { id, ...original } of rows)
+        await supabaseAdmin.from('menu_items').update(original).eq('id', id).throwOnError();
+    }
+  });
+
   it('publish lists the store at once, with one store.changed; a repeat leaves none', async () => {
     expect(await listedIds()).not.toContain(branchId); // primes stores:list
     const before = (await changes()).length;
@@ -398,6 +435,22 @@ describe('publish and unpublish', () => {
     await supabaseAdmin.from('stores').update({ status: 'DRAFT' }).eq('id', branchId);
     expect(res.status).toBe(409);
     expect(res.body.error.code).toBe('INVALID_STATUS_TRANSITION');
+  });
+
+  it('an archived store → 409 INVALID_STATUS_TRANSITION on publish and on unpublish, and stays archived', async () => {
+    const was = await statusOf(branchId);
+    await supabaseAdmin
+      .from('stores')
+      .update({ status: 'ARCHIVED' })
+      .eq('id', branchId)
+      .throwOnError();
+    try {
+      expectError(await publish(owner), 409, 'INVALID_STATUS_TRANSITION');
+      expectError(await unpublish(owner), 409, 'INVALID_STATUS_TRANSITION');
+      expect(await statusOf(branchId)).toBe('ARCHIVED');
+    } finally {
+      await supabaseAdmin.from('stores').update({ status: was }).eq('id', branchId).throwOnError();
+    }
   });
 });
 

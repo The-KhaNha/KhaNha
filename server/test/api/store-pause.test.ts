@@ -195,6 +195,67 @@ describe('pause and resume', () => {
     await resume();
   });
 
+  it('resuming a pause that already ran out is 200, clears it and emits no store.resumed', async () => {
+    const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    await supabaseAdmin
+      .rpc('pause_store', {
+        p_store_id: store.a,
+        p_until: new Date(hourAgo.getTime() + 60 * 1000).toISOString(),
+        p_now: hourAgo.toISOString(),
+      })
+      .throwOnError();
+    const columns = async () =>
+      (
+        await supabaseAdmin
+          .from('stores')
+          .select('accepting_orders, paused_until')
+          .eq('id', store.a)
+          .single()
+          .throwOnError()
+      ).data;
+    // The lapsed pause is still on the row, so the empty event list below is the resume's doing, not a missing pause.
+    expect(await columns()).toEqual({
+      accepting_orders: false,
+      paused_until: expect.any(String),
+    });
+    const resumedBefore = (await events('store.resumed')).length;
+
+    const res = await resume();
+
+    expect(res.status).toBe(200);
+    expect(res.body.store.openState).toBe('OPEN');
+    expect(await columns()).toEqual({ accepting_orders: true, paused_until: null });
+    expect((await events('store.resumed')).length).toBe(resumedBefore);
+  });
+
+  it('two different pauses in a row leave two store.paused events and two audit rows', async () => {
+    await resume();
+    const auditRows = async () =>
+      (
+        await supabaseAdmin
+          .from('audit_log')
+          .select('actor_id, changes')
+          .eq('entity_id', store.a)
+          .eq('action', 'store.changed')
+          .order('id')
+          .throwOnError()
+      ).data;
+    const pausedBefore = (await events('store.paused')).length;
+    const auditBefore = (await auditRows()).length;
+
+    expect((await pause({ minutes: 10 })).status).toBe(200);
+    expect((await pause({ minutes: 20 })).status).toBe(200);
+
+    expect((await events('store.paused')).length).toBe(pausedBefore + 2);
+    const rows = (await auditRows()).slice(auditBefore);
+    expect(rows).toHaveLength(2);
+    expect(rows.map((row) => row.actor_id)).toEqual([staff.id, staff.id]);
+    expect(rows[0]?.changes).toMatchObject({ accepting_orders: [true, false] });
+    expect(rows[1]?.changes).toHaveProperty('paused_until');
+    expect(rows[1]?.changes).not.toHaveProperty('accepting_orders');
+    await resume();
+  });
+
   it('an admin may pause as support', async () => {
     expect((await pause({ minutes: 1 }, admin)).status).toBe(200);
     expect((await resume(admin)).status).toBe(200);

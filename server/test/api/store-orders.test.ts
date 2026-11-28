@@ -182,6 +182,24 @@ describe('PATCH /api/stores/:storeId/orders/:orderId/status', () => {
       .throwOnError();
     expect(rows).toEqual([{ actor_id: managerX.id, actor_role: 'MANAGER', store_id: store.x }]);
   });
+
+  // The owner has no membership row: the role comes from the brand, not from store_memberships, and the profile is a
+  // CUSTOMER, so a lost store role would show here as CUSTOMER.
+  it("records a brand owner moving an order as the audit row's actor_role OWNER", async () => {
+    const id = await insertOrder(store.x);
+    const res = await api()
+      .patch(`/api/stores/${store.x}/orders/${id}/status`)
+      .set(auth(owner))
+      .send({ status: 'PREPARING' });
+    expect(res.status).toBe(200);
+    const { data: rows } = await supabaseAdmin
+      .from('audit_log')
+      .select('actor_id, actor_role, store_id')
+      .eq('entity_id', id)
+      .eq('action', 'order.status_changed')
+      .throwOnError();
+    expect(rows).toEqual([{ actor_id: owner.id, actor_role: 'OWNER', store_id: store.x }]);
+  });
 });
 
 testStoreIsolation('GET /api/stores/:storeId/orders', (http, storeId) =>

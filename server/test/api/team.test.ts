@@ -460,6 +460,54 @@ describe('POST /api/me/invites/accept', () => {
     expect((await accept('', joiner)).status).toBe(400);
   });
 
+  it('an expired invite sent again: the old token is refused, the new one joins', async () => {
+    const joiner = await fresh();
+    const first = await invite({ email: joiner.email, role: 'STAFF' });
+    await supabaseAdmin
+      .from('store_invites')
+      .update({
+        created_at: new Date(Date.now() - 9 * 86_400_000).toISOString(),
+        expires_at: new Date(Date.now() - 1000).toISOString(),
+      })
+      .eq('id', first.body.invite.id)
+      .throwOnError();
+    const second = await invite({ email: joiner.email, role: 'STAFF' });
+    expect(second.status).toBe(201);
+    expect(second.body.token).not.toBe(first.body.token);
+
+    expectError(await accept(first.body.token, joiner), 404, 'NOT_FOUND');
+    expect(await membershipOf(joiner)).toEqual([]);
+    const joined = await accept(second.body.token, joiner);
+    expect(joined.status).toBe(200);
+    expect(joined.body.membership).toMatchObject({ role: 'STAFF', store: { id: storeId } });
+    expect(await membershipOf(joiner)).toHaveLength(1);
+  });
+
+  // Only the invited account can accept (the email check), so "a token used twice" is the same account again. A repeat
+  // while it is still a member is the idempotent 200 above; once the membership is gone the spent token must not
+  // grant it back.
+  it('a spent token does not join again after the member was removed: 404, no membership', async () => {
+    const joiner = await fresh();
+    const { body } = await invite({ email: joiner.email, role: 'STAFF' });
+    expect((await accept(body.token, joiner)).status).toBe(200);
+    const [membership] = await membershipOf(joiner);
+    const removed = await api()
+      .delete(`/api/stores/${storeId}/members/${membership?.id}`)
+      .set(auth(manager));
+    expect(removed.status).toBe(204);
+    expect(await membershipOf(joiner)).toEqual([]);
+
+    expectError(await accept(body.token, joiner), 404, 'NOT_FOUND');
+    expect(await membershipOf(joiner)).toEqual([]);
+    const { data: events } = await supabaseAdmin
+      .from('domain_events')
+      .select('id')
+      .eq('aggregate_id', body.invite.id)
+      .eq('type', 'store.member_joined')
+      .throwOnError();
+    expect(events).toHaveLength(1);
+  });
+
   it('a member of another role gets 404, and the invite stays open', async () => {
     const joiner = await fresh();
     const { body } = await invite({ email: joiner.email, role: 'MANAGER' });
